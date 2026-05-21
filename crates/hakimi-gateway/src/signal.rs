@@ -1,8 +1,9 @@
-//! Signal platform adapter stub.
+//! Signal platform adapter.
 //!
-//! Placeholder for Signal messenger integration via signal-cli.
+//! Communicates with a signal-cli REST daemon to send and receive messages.
 
 use async_trait::async_trait;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::info;
@@ -17,19 +18,36 @@ pub struct SignalAdapterConfig {
 
 pub struct SignalAdapter {
     config: SignalAdapterConfig,
+    client: Client,
     receiver: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
 }
 
 impl SignalAdapter {
     pub fn new(config: SignalAdapterConfig) -> Self {
         let (_, receiver) = mpsc::unbounded_channel();
-        Self { config, receiver: Some(receiver) }
+        Self {
+            config,
+            client: Client::new(),
+            receiver: Some(receiver),
+        }
+    }
+
+    /// Return the base URL of the signal-cli REST daemon.
+    fn base_url(&self) -> &str {
+        &self.config.signal_cli_path
+    }
+
+    /// Build the send-message endpoint URL.
+    fn send_url(&self) -> String {
+        format!("{}/v2/send", self.base_url().trim_end_matches('/'))
     }
 }
 
 #[async_trait]
 impl PlatformAdapter for SignalAdapter {
-    fn name(&self) -> &str { "signal" }
+    fn name(&self) -> &str {
+        "signal"
+    }
 
     async fn connect(&mut self) -> anyhow::Result<()> {
         info!(phone = %self.config.phone_number, "Signal adapter connected");
@@ -37,7 +55,33 @@ impl PlatformAdapter for SignalAdapter {
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> anyhow::Result<()> {
-        info!(chat_id, text_len = text.len(), "Signal: sending message");
+        let url = self.send_url();
+
+        let body = serde_json::json!({
+            "message": text,
+            "number": self.config.phone_number,
+            "recipients": [chat_id],
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body_text = resp.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "Signal send_message failed: status={}, body={}",
+                status,
+                body_text
+            );
+        }
+
+        info!(chat_id, text_len = text.len(), "Signal: message sent");
         Ok(())
     }
 
@@ -48,5 +92,46 @@ impl PlatformAdapter for SignalAdapter {
     async fn disconnect(&mut self) -> anyhow::Result<()> {
         info!("Signal adapter disconnected");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::PlatformAdapter;
+
+    fn make_config() -> SignalAdapterConfig {
+        SignalAdapterConfig {
+            phone_number: "+1234567890".into(),
+            signal_cli_path: "http://localhost:8080".into(),
+        }
+    }
+
+    #[test]
+    fn test_construction() {
+        let adapter = SignalAdapter::new(make_config());
+        assert_eq!(adapter.config.phone_number, "+1234567890");
+    }
+
+    #[test]
+    fn test_name() {
+        let adapter = SignalAdapter::new(make_config());
+        assert_eq!(adapter.name(), "signal");
+    }
+
+    #[test]
+    fn test_send_url_construction() {
+        let adapter = SignalAdapter::new(make_config());
+        assert_eq!(adapter.send_url(), "http://localhost:8080/v2/send");
+    }
+
+    #[test]
+    fn test_send_url_trailing_slash() {
+        let config = SignalAdapterConfig {
+            phone_number: "+1234567890".into(),
+            signal_cli_path: "http://localhost:8080/".into(),
+        };
+        let adapter = SignalAdapter::new(config);
+        assert_eq!(adapter.send_url(), "http://localhost:8080/v2/send");
     }
 }

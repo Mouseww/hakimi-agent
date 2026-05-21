@@ -274,6 +274,218 @@ mod tests {
     }
 
     #[test]
+    fn test_persist_and_reload_jobs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test_cron.db");
+
+        // Save jobs to one store instance.
+        {
+            let store = PersistentCronStore::open(&db_path).unwrap();
+            store
+                .save_job(&CronJob::new("job-a", CronSchedule::IntervalMinutes(15), "prompt-a"))
+                .unwrap();
+            store
+                .save_job(&CronJob::new("job-b", CronSchedule::IntervalHours(3), "prompt-b"))
+                .unwrap();
+            store
+                .save_job(&CronJob::new("job-c", CronSchedule::CronExpr("*/5 * * * *".into()), "prompt-c"))
+                .unwrap();
+        }
+
+        // Reload from a fresh store instance (simulates restart).
+        let store2 = PersistentCronStore::open(&db_path).unwrap();
+        let jobs = store2.load_all().unwrap();
+        assert_eq!(jobs.len(), 3);
+
+        let names: Vec<&str> = jobs.iter().map(|j| j.name.as_str()).collect();
+        assert!(names.contains(&"job-a"));
+        assert!(names.contains(&"job-b"));
+        assert!(names.contains(&"job-c"));
+
+        // Verify schedule round-trips.
+        for job in &jobs {
+            match job.name.as_str() {
+                "job-a" => matches!(&job.schedule, CronSchedule::IntervalMinutes(15)),
+                "job-b" => matches!(&job.schedule, CronSchedule::IntervalHours(3)),
+                "job-c" => matches!(&job.schedule, CronSchedule::CronExpr(e) if e == "*/5 * * * *"),
+                _ => panic!("unexpected job name"),
+            };
+        }
+    }
+
+    #[test]
+    fn test_toggle_job_enabled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test_cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let job = CronJob::new("toggle-me", CronSchedule::IntervalMinutes(10), "prompt");
+        let id = job.id.clone();
+        store.save_job(&job).unwrap();
+
+        // Initially enabled.
+        let loaded = store.load_all().unwrap();
+        assert!(loaded[0].enabled);
+
+        // Disable.
+        assert!(store.set_enabled(&id, false).unwrap());
+        let loaded = store.load_all().unwrap();
+        assert!(!loaded[0].enabled);
+
+        // Re-enable.
+        assert!(store.set_enabled(&id, true).unwrap());
+        let loaded = store.load_all().unwrap();
+        assert!(loaded[0].enabled);
+
+        // Toggling a non-existent job returns false.
+        assert!(!store.set_enabled("nonexistent-id", true).unwrap());
+    }
+
+    #[test]
+    fn test_update_run_times() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test_cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let job = CronJob::new("run-times", CronSchedule::IntervalMinutes(30), "prompt");
+        let id = job.id.clone();
+        store.save_job(&job).unwrap();
+
+        // Initially no last_run.
+        let loaded = store.load_all().unwrap();
+        assert!(loaded[0].last_run.is_none());
+
+        // Update run times.
+        let last = Utc::now();
+        let next = last + chrono::Duration::minutes(30);
+        store.update_run_times(&id, last, next).unwrap();
+
+        // Verify persisted.
+        let loaded = store.load_all().unwrap();
+        assert!(loaded[0].last_run.is_some());
+        assert!(loaded[0].next_run.is_some());
+
+        let persisted_last = loaded[0].last_run.unwrap();
+        let persisted_next = loaded[0].next_run.unwrap();
+        // Allow 1-second tolerance for rounding.
+        assert!((persisted_last - last).num_seconds().abs() <= 1);
+        assert!((persisted_next - next).num_seconds().abs() <= 1);
+    }
+
+    #[test]
+    fn test_get_due_jobs_via_scheduler() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test_cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        // Create a job whose next_run is in the past (already due).
+        let mut job = CronJob::new("due-job", CronSchedule::IntervalMinutes(60), "prompt");
+        job.next_run = Some(Utc::now() - chrono::Duration::minutes(5));
+        store.save_job(&job).unwrap();
+
+        // Create a job whose next_run is in the future (not due).
+        let mut future_job = CronJob::new("future-job", CronSchedule::IntervalHours(1), "prompt2");
+        future_job.next_run = Some(Utc::now() + chrono::Duration::hours(2));
+        store.save_job(&future_job).unwrap();
+
+        // Create a disabled job that is also in the past (should not appear).
+        let mut disabled = CronJob::new("disabled", CronSchedule::IntervalMinutes(10), "prompt3");
+        disabled.enabled = false;
+        disabled.next_run = Some(Utc::now() - chrono::Duration::minutes(1));
+        store.save_job(&disabled).unwrap();
+
+        // Load into scheduler and check next_tick.
+        let scheduler = store.load_into_scheduler().unwrap();
+        let due = scheduler.next_tick(Utc::now());
+        assert_eq!(due.len(), 1);
+
+        // The due job should be "due-job".
+        let scheduler_jobs = scheduler.list();
+        let due_job = scheduler_jobs.iter().find(|j| j.id == due[0]).unwrap();
+        assert_eq!(due_job.name, "due-job");
+    }
+
+    #[test]
+    fn test_delete_job() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test_cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let job1 = CronJob::new("keep", CronSchedule::IntervalMinutes(10), "p1");
+        let job2 = CronJob::new("delete-me", CronSchedule::IntervalMinutes(20), "p2");
+        let id1 = job1.id.clone();
+        let id2 = job2.id.clone();
+
+        store.save_job(&job1).unwrap();
+        store.save_job(&job2).unwrap();
+        assert_eq!(store.load_all().unwrap().len(), 2);
+
+        // Delete one job.
+        assert!(store.remove_job(&id2).unwrap());
+        assert_eq!(store.load_all().unwrap().len(), 1);
+
+        // Remaining job is the correct one.
+        let remaining = store.load_all().unwrap();
+        assert_eq!(remaining[0].id, id1);
+        assert_eq!(remaining[0].name, "keep");
+
+        // Deleting the same job again returns false.
+        assert!(!store.remove_job(&id2).unwrap());
+
+        // Deleting a non-existent id returns false.
+        assert!(!store.remove_job("nonexistent").unwrap());
+
+        // Delete the remaining job.
+        assert!(store.remove_job(&id1).unwrap());
+        assert!(store.load_all().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_list_enabled_jobs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test_cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        // Save 3 jobs, then disable 2 of them.
+        let job1 = CronJob::new("enabled-1", CronSchedule::IntervalMinutes(10), "p1");
+        let job2 = CronJob::new("disabled-1", CronSchedule::IntervalMinutes(20), "p2");
+        let job3 = CronJob::new("enabled-2", CronSchedule::IntervalMinutes(30), "p3");
+        let id2 = job2.id.clone();
+        let id3 = job3.id.clone();
+
+        store.save_job(&job1).unwrap();
+        store.save_job(&job2).unwrap();
+        store.save_job(&job3).unwrap();
+
+        // All enabled initially.
+        let all = store.load_all().unwrap();
+        assert!(all.iter().all(|j| j.enabled));
+
+        // Disable job2 and job3.
+        store.set_enabled(&id2, false).unwrap();
+        store.set_enabled(&id3, false).unwrap();
+
+        // Load and filter enabled jobs.
+        let all = store.load_all().unwrap();
+        let enabled: Vec<_> = all.iter().filter(|j| j.enabled).collect();
+        assert_eq!(enabled.len(), 1);
+        assert_eq!(enabled[0].name, "enabled-1");
+
+        // Re-enable job3.
+        store.set_enabled(&id3, true).unwrap();
+        let all = store.load_all().unwrap();
+        let enabled: Vec<_> = all.iter().filter(|j| j.enabled).collect();
+        assert_eq!(enabled.len(), 2);
+        let enabled_names: Vec<&str> = enabled.iter().map(|j| j.name.as_str()).collect();
+        assert!(enabled_names.contains(&"enabled-1"));
+        assert!(enabled_names.contains(&"enabled-2"));
+
+        // Load into scheduler – should contain all 3 jobs (scheduler doesn't filter).
+        let scheduler = store.load_into_scheduler().unwrap();
+        assert_eq!(scheduler.list().len(), 3);
+    }
+
+    #[test]
     fn test_file_lock() {
         let tmp = tempfile::tempdir().unwrap();
         let lock_path = tmp.path().join("test.lock");

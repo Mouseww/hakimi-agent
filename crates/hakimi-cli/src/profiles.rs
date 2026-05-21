@@ -190,4 +190,91 @@ mod tests {
         manager.create("test", None).unwrap();
         assert!(manager.exists("test"));
     }
+
+    #[test]
+    fn test_list_empty_profiles() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = ProfileManager::new(tmp.path());
+
+        // List should return an empty vec when the profiles dir doesn't exist yet
+        let profiles = manager.list().unwrap();
+        assert!(profiles.is_empty());
+        assert_eq!(profiles.len(), 0);
+
+        // Create the profiles dir but don't add any profiles
+        fs::create_dir_all(tmp.path().join("profiles")).unwrap();
+        let profiles = manager.list().unwrap();
+        assert!(profiles.is_empty());
+        assert_eq!(profiles.len(), 0);
+
+        // Add one profile and list should return exactly one
+        manager.create("alpha", Some("first")).unwrap();
+        let profiles = manager.list().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].name, "alpha");
+    }
+
+    #[test]
+    fn test_use_nonexistent_profile_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut manager = ProfileManager::new(tmp.path());
+
+        // Trying to use a profile when no profiles exist should fail
+        let result = manager.use_profile("ghost");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("ghost"));
+        assert!(err_msg.contains("does not exist"));
+
+        // Active profile should remain None after a failed use
+        assert!(manager.active().is_none());
+
+        // Create one profile, then try to use a different one
+        manager.create("real", None).unwrap();
+        let result = manager.use_profile("fake");
+        assert!(result.is_err());
+        assert!(manager.active().is_none());
+
+        // The real profile should still be usable
+        let dir = manager.use_profile("real").unwrap();
+        assert!(dir.exists());
+        assert_eq!(manager.active(), Some("real"));
+    }
+
+    #[test]
+    fn test_get_active_profile_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut manager = ProfileManager::new(tmp.path());
+
+        // profile_dir returns the expected path for any name
+        let expected = tmp.path().join("profiles").join("myprofile");
+        assert_eq!(manager.profile_dir("myprofile"), expected);
+
+        // No active profile initially
+        assert!(manager.active().is_none());
+
+        // Create and activate a profile, then verify the dir
+        manager.create("myprofile", Some("test profile")).unwrap();
+        let dir = manager.use_profile("myprofile").unwrap();
+
+        // The dir returned by use_profile should match profile_dir
+        assert_eq!(dir, manager.profile_dir("myprofile"));
+
+        // The dir should exist and contain expected subdirs
+        assert!(dir.exists());
+        assert!(dir.join("memory").exists());
+        assert!(dir.join("sessions").exists());
+        assert!(dir.join("skills").exists());
+        assert!(dir.join("profile.yaml").exists());
+
+        // active() should report the correct name
+        assert_eq!(manager.active(), Some("myprofile"));
+
+        // Switch to a second profile and verify the dir changes
+        manager.create("other", None).unwrap();
+        let dir2 = manager.use_profile("other").unwrap();
+        assert_eq!(dir2, manager.profile_dir("other"));
+        assert_ne!(dir, dir2);
+        assert_eq!(manager.active(), Some("other"));
+    }
 }

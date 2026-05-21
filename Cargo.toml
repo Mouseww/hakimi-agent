@@ -19,6 +19,7 @@ members = [
     "crates/hakimi-server",
     "crates/hakimi-i18n",
     "crates/hakimi-batch",
+    "crates/hakimi-knowledge",
 ]
 
 [workspace.package]
@@ -69,6 +70,12 @@ regex = "1"
 
 # Random
 rand = "0.9"
+
+# Graph
+petgraph = { version = "0.6", features = ["serde-1", "stable_graph"] }
+
+# Tempfile
+tempfile = "3"
 
 # Async traits
 async-trait = "0.1"

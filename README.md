@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-420-passing?style=for-the-badge&color=brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/lines-30.7K+-orange?style=for-the-badge" alt="Lines">
+  <img src="https://img.shields.io/badge/lines-36K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
 <h1 align="center">🐙 Hakimi Agent</h1>
@@ -39,7 +39,7 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 630 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 771 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
@@ -221,7 +221,7 @@ Response + Token Usage Stats
 # Build everything
 cargo build --workspace
 
-# Run all tests (630 tests)
+# Run all tests (771 tests)
 cargo test --workspace
 
 # Debug logging

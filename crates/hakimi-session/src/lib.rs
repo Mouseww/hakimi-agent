@@ -1,6 +1,7 @@
 //! hakimi-session: SQLite-backed session and message store.
 
 pub mod db;
+pub mod decision_tree;
 pub mod message_ops;
 pub mod schema;
 pub mod session_ops;

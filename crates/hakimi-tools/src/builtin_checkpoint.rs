@@ -336,4 +336,153 @@ mod tests {
         let result = tool.execute(&json!({"action": "diff"}), &ctx).await;
         assert!(result.is_err());
     }
+
+    #[test]
+    fn schema_has_valid_actions_enum() {
+        let tool = CheckpointTool;
+        let schema = tool.schema();
+        let actions = schema["properties"]["action"]["enum"]
+            .as_array()
+            .expect("action enum should be an array");
+        let action_strs: Vec<&str> = actions.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(action_strs.contains(&"create"), "enum must contain 'create'");
+        assert!(action_strs.contains(&"list"), "enum must contain 'list'");
+        assert!(action_strs.contains(&"rollback"), "enum must contain 'rollback'");
+        assert!(action_strs.contains(&"diff"), "enum must contain 'diff'");
+    }
+
+    #[test]
+    fn test_toolset_is_file() {
+        let tool = CheckpointTool;
+        assert_eq!(tool.toolset(), "file");
+    }
+
+    #[test]
+    fn test_emoji_not_empty() {
+        let tool = CheckpointTool;
+        assert!(!tool.emoji().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_create_checkpoint_in_tempdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        // The checkpoint tool runs git add/commit in workdir, so we need a real repo.
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        // Seed the temp dir with a file so there's something to commit.
+        std::fs::write(tmp.path().join("hello.txt"), "checkpoint content").unwrap();
+
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+        let result = tool.execute(&json!({"action": "create"}), &ctx).await;
+        assert!(result.is_ok(), "create should succeed: {:?}", result.err());
+        let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+        assert_eq!(body["status"], "created");
+        assert!(!body["checkpoint_id"].as_str().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_checkpoints_after_create() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::fs::write(tmp.path().join("file.txt"), "data").unwrap();
+
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+
+        // Create a checkpoint.
+        let create_res = tool.execute(&json!({"action": "create"}), &ctx).await;
+        assert!(create_res.is_ok(), "create failed: {:?}", create_res.err());
+
+        // List checkpoints.
+        let list_res = tool.execute(&json!({"action": "list"}), &ctx).await;
+        assert!(list_res.is_ok(), "list failed: {:?}", list_res.err());
+        let body: serde_json::Value = serde_json::from_str(&list_res.unwrap()).unwrap();
+        let count = body["count"].as_u64().expect("count should be a number");
+        assert!(count >= 1, "expected at least 1 checkpoint, got {}", count);
+    }
+
+    #[tokio::test]
+    async fn test_create_checkpoint_with_label() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::fs::write(tmp.path().join("labeled.txt"), "labeled content").unwrap();
+
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+        let result = tool
+            .execute(&json!({"action": "create", "label": "before-refactor"}), &ctx)
+            .await;
+        assert!(result.is_ok(), "create with label failed: {:?}", result.err());
+        let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+        assert_eq!(body["label"], "before-refactor");
+        let msg = body["message"].as_str().unwrap();
+        assert!(
+            msg.contains("before-refactor"),
+            "commit message should contain the label, got: {}",
+            msg
+        );
+    }
 }

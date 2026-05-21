@@ -2,11 +2,12 @@
 name = "hakimi-knowledge"
 version.workspace = true
 edition.workspace = true
+description = "Knowledge graph memory for Hakimi Agent"
 
 [dependencies]
 hakimi-common = { path = "../hakimi-common" }
 hakimi-context = { path = "../hakimi-context" }
-petgraph = "0.8"
+petgraph = { version = "0.6", features = ["serde-1", "stable_graph"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

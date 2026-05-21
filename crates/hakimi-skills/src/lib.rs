@@ -1,3 +1,4 @@
+pub mod extractor;
 pub mod loader;
 pub mod skill;
 pub mod store;
