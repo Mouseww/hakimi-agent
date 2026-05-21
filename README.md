@@ -1,9 +1,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.2.1-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-771-passing?style=for-the-badge&color=brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/lines-36K+-orange?style=for-the-badge" alt="Lines">
+  <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
 <h1 align="center">🐙 Hakimi Agent</h1>
@@ -105,13 +105,14 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - Auto-generates reusable YAML skill files from extracted patterns
 - Pattern merging and confidence scoring
 
-### 🛠️ 25 Built-in Tools
+### 🛠️ 30 Built-in Tools
 
 - **Files**: read_file, write_file, search_files, patch
 - **Shell**: terminal, process (background process management)
 - **Web**: web_search, web_extract
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
+- **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium automation)
 - **Media**: vision_analyze (image analysis), image_generate
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
@@ -244,7 +245,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 771 |
+| Tests | ~500 | 1035 |
 
 ---
 
@@ -254,7 +255,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (771 tests)
+# Run all tests (1035 tests)
 cargo test --workspace
 
 # Debug logging
@@ -282,6 +283,7 @@ cargo clippy --workspace
 - [x] Vision analysis + checkpoint rollback
 - [x] Profiles system + i18n + batch processing
 - [x] Install script + cargo install + CI/CD
+- [x] **Browser automation** (Chromium via chromiumoxide)
 - [x] Setup wizard + doctor diagnostics
 - [x] **Knowledge graph memory** (petgraph)
 - [x] **Intent reasoning engine**

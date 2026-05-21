@@ -1,9 +1,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.2.1-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-771-passing?style=for-the-badge&color=brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/lines-36K+-orange?style=for-the-badge" alt="Lines">
+  <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
 <h1 align="center">🐙 Hakimi Agent</h1>
@@ -66,7 +66,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 771 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1035 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -105,13 +105,14 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - 从提取的模式自动生成可复用的 YAML 技能文件
 - 模式合并与置信度评分
 
-### 🛠️ 25 个内置工具
+### 🛠️ 30 个内置工具
 
 - **文件**: read_file, write_file, search_files, patch
 - **终端**: terminal, process (后台进程管理)
 - **Web**: web_search, web_extract
 - **记忆**: memory (持久化), session_search (FTS5 全文检索)
 - **代码**: code_exec (Python/JS/Bash)
+- **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium 自动化)
 - **媒体**: vision_analyze (图片分析), image_generate
 - **效率**: todo, clarify, checkpoint (git 快照回滚)
 - **安全**: file_safety (路径保护), secret_redaction (密钥脱敏), prompt_injection_detection
@@ -243,7 +244,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 771 |
+| 测试 | ~500 | 1035 |
 
 ---
 
@@ -253,7 +254,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (771 tests)
+# 运行全部测试 (1035 tests)
 cargo test --workspace
 
 # Debug 日志
@@ -281,6 +282,7 @@ cargo clippy --workspace
 - [x] Vision 分析 + Checkpoint 回滚
 - [x] Profiles + i18n + 批处理
 - [x] 安装脚本 + cargo install + CI/CD
+- [x] **浏览器自动化** (Chromium via chromiumoxide)
 - [x] 配置向导 + 诊断工具
 - [x] **知识图谱记忆** (petgraph)
 - [x] **意图推理引擎**
