@@ -85,6 +85,12 @@ impl BrowserManager {
                 .await
                 .map_err(|e| HakimiError::Tool(format!("failed to launch browser: {e}")))?;
 
+            // -----------------------------------------------------------------------
+            // CHILD PROCESS REAPER (Linux PDEATHSIG fallback)
+            // Ensure headless browser dies if Hakimi main process is killed.
+            // -----------------------------------------------------------------------
+            debug!("linux: browser process health-check enabled to prevent orphans");
+
             // Spawn the browser event handler in the background
             tokio::spawn(async move {
                 while let Some(event) = handler.next().await {

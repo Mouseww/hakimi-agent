@@ -95,7 +95,7 @@ impl ToolGuardrails {
             turn: self.current_turn,
         };
         self.observations.push(observation);
-        
+
         // ... (existing logic)
     }
 
@@ -109,13 +109,19 @@ impl ToolGuardrails {
         let hash = format!("{:x}", hasher.finish());
 
         // Update the most recent observation with the result hash
-        if let Some(obs) = self.observations.iter_mut().rev().find(|o| o.tool_name == tool_name && o.result_hash.is_none()) {
+        if let Some(obs) = self
+            .observations
+            .iter_mut()
+            .rev()
+            .find(|o| o.tool_name == tool_name && o.result_hash.is_none())
+        {
             obs.result_hash = Some(hash.clone());
         }
 
-        // Check if we've seen this exact output multiple times recently 
+        // Check if we've seen this exact output multiple times recently
         // with the same tool, even if arguments were slightly different.
-        let stall_count = self.observations
+        let stall_count = self
+            .observations
             .iter()
             .rev()
             .take(5)

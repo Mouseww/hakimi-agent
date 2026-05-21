@@ -1,6 +1,6 @@
 [package]
 name = "hakimi-agent"
-version = "0.2.1"
+version.workspace = true
 edition = "2024"
 description = "A high-performance AI agent framework written in Rust"
 
