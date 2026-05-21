@@ -1034,7 +1034,7 @@ mod tests {
     #[tokio::test]
     async fn test_llm_compress_full_pipeline() {
         let c = LlmCompressor::new(10000);
-        let messages = vec![
+        let mut messages = vec![
             // System messages (protected: indices 0-2)
             Message::system("You are a coding assistant."),
             Message::system("Be helpful."),
