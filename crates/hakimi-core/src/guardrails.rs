@@ -96,7 +96,40 @@ impl ToolGuardrails {
         };
         self.observations.push(observation);
 
-        // ... (existing logic)
+        // Check for identical calls
+        let identical_count = self.count_identical(tool_name, arguments);
+        if identical_count >= self.max_identical_calls {
+            let msg = format!(
+                "[Guardrail] Tool '{}' has been called with the same arguments {} times this turn. \
+                 Please try a different approach to avoid an infinite loop.",
+                tool_name, identical_count
+            );
+            warn!("{}", msg);
+            return GuardrailDecision::SyntheticResult(msg);
+        }
+
+        // Check turn limits
+        let total_calls = self.observations.len();
+        if total_calls > self.hard_limit_per_turn {
+            let msg = format!(
+                "HALT: Hard limit of {} tool calls per turn reached.",
+                self.hard_limit_per_turn
+            );
+            warn!("{}", msg);
+            return GuardrailDecision::Halt(msg);
+        }
+
+        if total_calls > self.max_calls_per_turn {
+            let msg = format!(
+                "Warning: Soft limit of {} tool calls per turn exceeded ({} calls so far). \
+                 Consider if the task can be simplified or if there's a loop.",
+                self.max_calls_per_turn, total_calls
+            );
+            warn!("{}", msg);
+            return GuardrailDecision::Warn(msg);
+        }
+
+        GuardrailDecision::Allow
     }
 
     /// Record the result of a tool call to detect stalled output loops.
