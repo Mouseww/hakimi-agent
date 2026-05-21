@@ -1,0 +1,16 @@
+[package]
+name = "hakimi-mcp"
+version.workspace = true
+edition.workspace = true
+description = "MCP (Model Context Protocol) client for Hakimi Agent"
+
+[dependencies]
+hakimi-common = { path = "../hakimi-common" }
+hakimi-tools = { path = "../hakimi-tools" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }

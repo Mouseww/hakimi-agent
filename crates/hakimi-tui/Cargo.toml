@@ -1,0 +1,28 @@
+[package]
+name = "hakimi-tui"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hakimi-tui"
+path = "src/main.rs"
+
+[dependencies]
+hakimi-common = { path = "../hakimi-common" }
+hakimi-core = { path = "../hakimi-core" }
+hakimi-tools = { path = "../hakimi-tools" }
+hakimi-transports = { path = "../hakimi-transports" }
+hakimi-context = { path = "../hakimi-context" }
+hakimi-config = { path = "../hakimi-config" }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dirs = { workspace = true }
+serde_yaml = { workspace = true }
+serde = { workspace = true }
+reqwest = { workspace = true }
+uuid = { workspace = true }

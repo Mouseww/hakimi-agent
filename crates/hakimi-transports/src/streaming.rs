@@ -1,0 +1,661 @@
+use futures::stream::Stream;
+use futures::task::{Context, Poll};
+use serde_json::Value as JsonValue;
+use std::pin::Pin;
+
+/// A parsed SSE event from an LLM streaming response.
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    /// A delta of text content.
+    ContentDelta(String),
+    /// A tool call being built incrementally.
+    ToolCallDelta {
+        index: usize,
+        id: Option<String>,
+        name: Option<String>,
+        arguments_delta: String,
+    },
+    /// Usage information (usually sent at the end).
+    Usage {
+        prompt_tokens: u32,
+        completion_tokens: u32,
+    },
+    /// Stream finished.
+    Done,
+}
+
+/// Accumulates streaming deltas into a complete response.
+#[derive(Debug, Default)]
+pub struct StreamAccumulator {
+    pub content: String,
+    pub tool_calls: Vec<AccumulatedToolCall>,
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AccumulatedToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+impl StreamAccumulator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&mut self, event: StreamEvent) {
+        match event {
+            StreamEvent::ContentDelta(text) => self.content.push_str(&text),
+            StreamEvent::ToolCallDelta {
+                index,
+                id,
+                name,
+                arguments_delta,
+            } => {
+                while self.tool_calls.len() <= index {
+                    self.tool_calls.push(AccumulatedToolCall::default());
+                }
+                let tc = &mut self.tool_calls[index];
+                if let Some(id) = id {
+                    tc.id = id;
+                }
+                if let Some(name) = name {
+                    tc.name = name;
+                }
+                tc.arguments.push_str(&arguments_delta);
+            }
+            StreamEvent::Usage {
+                prompt_tokens,
+                completion_tokens,
+            } => {
+                self.prompt_tokens = prompt_tokens;
+                self.completion_tokens = completion_tokens;
+            }
+            StreamEvent::Done => {}
+        }
+    }
+}
+
+// ── SSE line buffer helpers ─────────────────────────────────────────────────
+
+fn strip_prefix<'a>(line: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
+    if line.len() >= prefix.len() && &line[..prefix.len()] == prefix {
+        Some(&line[prefix.len()..])
+    } else {
+        None
+    }
+}
+
+// ── OpenAI SSE parsing ──────────────────────────────────────────────────────
+
+/// Parse an OpenAI-format streaming chunk JSON into a list of `StreamEvent`s.
+///
+/// OpenAI format: `choices[0].delta.{content, tool_calls}`.
+pub fn parse_openai_chunk(json_str: &str) -> Vec<StreamEvent> {
+    if json_str.trim() == "[DONE]" {
+        return vec![StreamEvent::Done];
+    }
+
+    let parsed: Result<JsonValue, _> = serde_json::from_str(json_str);
+    let Ok(val) = parsed else {
+        return vec![];
+    };
+
+    let mut events = Vec::new();
+
+    if let Some(choices) = val["choices"].as_array() {
+        for choice in choices {
+            let delta = &choice["delta"];
+
+            // Content delta.
+            if let Some(content) = delta["content"].as_str() {
+                if !content.is_empty() {
+                    events.push(StreamEvent::ContentDelta(content.to_string()));
+                }
+            }
+
+            // Tool call deltas.
+            if let Some(tool_calls) = delta["tool_calls"].as_array() {
+                for tc in tool_calls {
+                    let index = tc["index"].as_u64().unwrap_or(0) as usize;
+                    let id = tc["id"].as_str().map(String::from);
+                    let name = tc["function"]["name"].as_str().map(String::from);
+                    let arguments_delta = tc["function"]["arguments"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string();
+
+                    events.push(StreamEvent::ToolCallDelta {
+                        index,
+                        id,
+                        name,
+                        arguments_delta,
+                    });
+                }
+            }
+        }
+    }
+
+    // Some providers send usage at the top level even with empty choices.
+    if let Some(usage) = val.get("usage") {
+        if let (Some(prompt), Some(completion)) = (
+            usage["prompt_tokens"].as_u64(),
+            usage["completion_tokens"].as_u64(),
+        ) {
+            events.push(StreamEvent::Usage {
+                prompt_tokens: prompt as u32,
+                completion_tokens: completion as u32,
+            });
+        }
+    }
+
+    events
+}
+
+// ── Anthropic SSE parsing ───────────────────────────────────────────────────
+
+/// Parse an Anthropic SSE event by event type and JSON data.
+///
+/// Anthropic uses typed events: `message_start`, `content_block_start`,
+/// `content_block_delta`, `message_delta`, `message_stop`, etc.
+pub fn parse_anthropic_event(event_type: &str, json_str: &str) -> Vec<StreamEvent> {
+    let parsed: Result<JsonValue, _> = serde_json::from_str(json_str);
+    let Ok(val) = parsed else {
+        return vec![];
+    };
+
+    let mut events = Vec::new();
+
+    match event_type {
+        "content_block_delta" => {
+            let delta = &val["delta"];
+            match delta["type"].as_str() {
+                Some("text_delta") => {
+                    if let Some(text) = delta["text"].as_str() {
+                        if !text.is_empty() {
+                            events.push(StreamEvent::ContentDelta(text.to_string()));
+                        }
+                    }
+                }
+                Some("input_json_delta") => {
+                    if let Some(json_fragment) = delta["partial_json"].as_str() {
+                        let index = val["index"].as_u64().unwrap_or(0) as usize;
+                        events.push(StreamEvent::ToolCallDelta {
+                            index,
+                            id: None,
+                            name: None,
+                            arguments_delta: json_fragment.to_string(),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+        "content_block_start" => {
+            let block = &val["content_block"];
+            if block["type"].as_str() == Some("tool_use") {
+                let index = val["index"].as_u64().unwrap_or(0) as usize;
+                let id = block["id"].as_str().map(String::from);
+                let name = block["name"].as_str().map(String::from);
+                events.push(StreamEvent::ToolCallDelta {
+                    index,
+                    id,
+                    name,
+                    arguments_delta: String::new(),
+                });
+            }
+        }
+        "message_delta" => {
+            let usage = &val["usage"];
+            if let Some(output_tokens) = usage["output_tokens"].as_u64() {
+                events.push(StreamEvent::Usage {
+                    prompt_tokens: 0, // Provided in message_start
+                    completion_tokens: output_tokens as u32,
+                });
+            }
+        }
+        "message_start" => {
+            let usage = &val["message"]["usage"];
+            if let Some(input_tokens) = usage["input_tokens"].as_u64() {
+                events.push(StreamEvent::Usage {
+                    prompt_tokens: input_tokens as u32,
+                    completion_tokens: 0,
+                });
+            }
+        }
+        "message_stop" => {
+            events.push(StreamEvent::Done);
+        }
+        _ => {
+            // Ignore ping, error, and other event types.
+        }
+    }
+
+    events
+}
+
+/// Parse an Anthropic SSE data payload by inferring the event type from the JSON `"type"` field.
+#[cfg(test)]
+fn parse_anthropic_chunk(json_str: &str) -> Vec<StreamEvent> {
+    let parsed: Result<JsonValue, _> = serde_json::from_str(json_str);
+    let Ok(val) = parsed else {
+        return vec![];
+    };
+
+    let event_type = val["type"].as_str().unwrap_or("");
+    parse_anthropic_event(event_type, json_str)
+}
+
+// ── Full SSE buffer (supports both OpenAI and Anthropic) ────────────────────
+
+/// Extended SSE buffer that captures both `event:` and `data:` lines,
+/// yielding `(Option<String>, String)` pairs of (event_type, data_payload).
+///
+/// This is needed for Anthropic's SSE format where event types are on
+/// separate `event:` lines preceding the `data:` lines.
+#[derive(Debug, Default)]
+pub struct SseFullBuffer {
+    carry: Vec<u8>,
+    pending_event_type: Option<String>,
+}
+
+impl SseFullBuffer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Feed a chunk and return `(event_type, data_payload)` pairs.
+    pub fn feed(&mut self, chunk: &[u8]) -> Vec<(Option<String>, String)> {
+        let mut combined = Vec::with_capacity(self.carry.len() + chunk.len());
+        combined.extend_from_slice(&self.carry);
+        combined.extend_from_slice(chunk);
+
+        let mut results = Vec::new();
+        let mut last_split = 0;
+
+        for i in 0..combined.len() {
+            if combined[i] == b'\n' {
+                let line = &combined[last_split..i];
+                last_split = i + 1;
+
+                if line.is_empty() {
+                    // Blank line = event boundary. Reset pending event type.
+                    self.pending_event_type = None;
+                    continue;
+                }
+
+                if let Some(rest) = strip_prefix(line, b"event: ") {
+                    let event_type = String::from_utf8_lossy(rest).trim().to_string();
+                    self.pending_event_type = Some(event_type);
+                } else if let Some(rest) = strip_prefix(line, b"data: ") {
+                    let payload = String::from_utf8_lossy(rest).trim().to_string();
+                    if !payload.is_empty() {
+                        results.push((self.pending_event_type.take(), payload));
+                    }
+                }
+                // Ignore other SSE fields (id:, retry:, comments).
+            }
+        }
+
+        self.carry = combined[last_split..].to_vec();
+        results
+    }
+}
+
+// ── SSE event stream ────────────────────────────────────────────────────────
+
+/// Wraps a `reqwest` byte stream into a `Stream<Item = Result<StreamEvent, String>>`.
+///
+/// Handles SSE framing for both OpenAI and Anthropic formats:
+/// - Splits bytes into lines, capturing `event:` and `data:` fields
+/// - Detects `data: [DONE]` (OpenAI) or `message_stop` events (Anthropic)
+/// - Parses JSON data payloads into [`StreamEvent`]s
+pub struct SseEventStream {
+    inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+    buffer: SseFullBuffer,
+    done: bool,
+    pending: Vec<StreamEvent>,
+    anthropic_mode: bool,
+}
+
+impl SseEventStream {
+    /// Create a new SSE event stream in OpenAI mode.
+    pub fn openai(
+        inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+    ) -> Self {
+        Self {
+            inner,
+            buffer: SseFullBuffer::new(),
+            done: false,
+            pending: Vec::new(),
+            anthropic_mode: false,
+        }
+    }
+
+    /// Create a new SSE event stream in Anthropic mode.
+    pub fn anthropic(
+        inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+    ) -> Self {
+        Self {
+            inner,
+            buffer: SseFullBuffer::new(),
+            done: false,
+            pending: Vec::new(),
+            anthropic_mode: true,
+        }
+    }
+
+    fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<Option<std::result::Result<(), String>>> {
+        use futures::StreamExt;
+
+        loop {
+            match self.inner.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(chunk))) => {
+                    let pairs = self.buffer.feed(&chunk);
+
+                    for (event_type, payload) in pairs {
+                        if !self.anthropic_mode && payload == "[DONE]" {
+                            self.done = true;
+                            self.pending.push(StreamEvent::Done);
+                            break;
+                        }
+
+                        if self.anthropic_mode {
+                            let et = event_type.as_deref().unwrap_or("");
+                            let events = parse_anthropic_event(et, &payload);
+                            self.pending.extend(events);
+                        } else {
+                            let events = parse_openai_chunk(&payload);
+                            self.pending.extend(events);
+                        }
+                    }
+
+                    if !self.pending.is_empty() {
+                        return Poll::Ready(Some(Ok(())));
+                    }
+                    // No complete events yet — continue polling.
+                }
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(format!("SSE stream error: {e}"))))
+                }
+                Poll::Ready(None) => {
+                    self.done = true;
+                    return Poll::Ready(None);
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+    }
+}
+
+impl Stream for SseEventStream {
+    type Item = std::result::Result<StreamEvent, String>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // Yield pending events first.
+        if !self.pending.is_empty() {
+            let event = self.pending.remove(0);
+            return Poll::Ready(Some(Ok(event)));
+        }
+
+        if self.done {
+            return Poll::Ready(None);
+        }
+
+        // Poll inner stream to fill pending buffer.
+        match self.poll_inner(cx) {
+            Poll::Ready(Some(Ok(()))) => {
+                if !self.pending.is_empty() {
+                    let event = self.pending.remove(0);
+                    Poll::Ready(Some(Ok(event)))
+                } else {
+                    // Shouldn't happen, but handle gracefully.
+                    Poll::Ready(None)
+                }
+            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sse_full_buffer_simple() {
+        let mut buf = SseFullBuffer::new();
+        let chunk = b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n";
+        let pairs = buf.feed(chunk);
+        assert_eq!(pairs.len(), 1);
+        assert!(pairs[0].1.contains("Hello"));
+    }
+
+    #[test]
+    fn test_sse_full_buffer_split_chunk() {
+        let mut buf = SseFullBuffer::new();
+        let pairs1 = buf.feed(b"data: {\"choices\":[{\"delta\":{\"conte");
+        assert!(pairs1.is_empty());
+        let pairs2 = buf.feed(b"nt\":\"Hello\"}}]}\n\n");
+        assert_eq!(pairs2.len(), 1);
+        assert!(pairs2[0].1.contains("Hello"));
+    }
+
+    #[test]
+    fn test_sse_full_buffer_done() {
+        let mut buf = SseFullBuffer::new();
+        let pairs = buf.feed(b"data: [DONE]\n\n");
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].1, "[DONE]");
+    }
+
+    #[test]
+    fn test_sse_full_buffer_event_and_data() {
+        let mut buf = SseFullBuffer::new();
+        let chunk = b"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hi\"}}\n\n";
+        let pairs = buf.feed(chunk);
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].0.as_deref(), Some("content_block_delta"));
+        assert!(pairs[0].1.contains("Hi"));
+    }
+
+    #[test]
+    fn test_sse_full_buffer_multiple_events() {
+        let mut buf = SseFullBuffer::new();
+        let chunk = b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n";
+        let pairs = buf.feed(chunk);
+        assert_eq!(pairs.len(), 2);
+        assert!(pairs[0].1.contains("Hello"));
+        assert!(pairs[1].1.contains("world"));
+    }
+
+    #[test]
+    fn test_sse_full_buffer_ignores_comments() {
+        let mut buf = SseFullBuffer::new();
+        let chunk = b": this is a comment\ndata: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n";
+        let pairs = buf.feed(chunk);
+        assert_eq!(pairs.len(), 1);
+        assert!(pairs[0].1.contains("Hi"));
+    }
+
+    #[test]
+    fn test_parse_openai_content_delta() {
+        let json = r#"{"choices":[{"delta":{"content":"Hello world"},"index":0}]}"#;
+        let events = parse_openai_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ContentDelta(s) => assert_eq!(s, "Hello world"),
+            _ => panic!("expected ContentDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_openai_tool_call_delta() {
+        let json = r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_file","arguments":""}}]},"index":0}]}"#;
+        let events = parse_openai_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCallDelta { index, id, name, .. } => {
+                assert_eq!(*index, 0);
+                assert_eq!(id.as_deref(), Some("call_1"));
+                assert_eq!(name.as_deref(), Some("read_file"));
+            }
+            _ => panic!("expected ToolCallDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_openai_usage() {
+        let json = r#"{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":20}}"#;
+        let events = parse_openai_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Usage { prompt_tokens, completion_tokens } => {
+                assert_eq!(*prompt_tokens, 10);
+                assert_eq!(*completion_tokens, 20);
+            }
+            _ => panic!("expected Usage"),
+        }
+    }
+
+    #[test]
+    fn test_parse_openai_empty_content_ignored() {
+        let json = r#"{"choices":[{"delta":{"content":""},"index":0}]}"#;
+        let events = parse_openai_chunk(json);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_parse_anthropic_text_delta() {
+        let json = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
+        let events = parse_anthropic_event("content_block_delta", json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ContentDelta(s) => assert_eq!(s, "Hello"),
+            _ => panic!("expected ContentDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_anthropic_tool_use_start() {
+        let json = r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_123","name":"read_file","input":{}}}"#;
+        let events = parse_anthropic_event("content_block_start", json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCallDelta { index, id, name, .. } => {
+                assert_eq!(*index, 1);
+                assert_eq!(id.as_deref(), Some("toolu_123"));
+                assert_eq!(name.as_deref(), Some("read_file"));
+            }
+            _ => panic!("expected ToolCallDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_anthropic_input_json_delta() {
+        let json = r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}"#;
+        let events = parse_anthropic_event("content_block_delta", json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCallDelta { index, arguments_delta, .. } => {
+                assert_eq!(*index, 1);
+                assert_eq!(arguments_delta, "{\"path\":");
+            }
+            _ => panic!("expected ToolCallDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_anthropic_message_stop() {
+        let json = r#"{"type":"message_stop"}"#;
+        let events = parse_anthropic_event("message_stop", json);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], StreamEvent::Done));
+    }
+
+    #[test]
+    fn test_parse_anthropic_message_start_usage() {
+        let json = r#"{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-3","stop_reason":null,"usage":{"input_tokens":25,"output_tokens":1}}}"#;
+        let events = parse_anthropic_event("message_start", json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Usage { prompt_tokens, .. } => {
+                assert_eq!(*prompt_tokens, 25);
+            }
+            _ => panic!("expected Usage"),
+        }
+    }
+
+    #[test]
+    fn test_parse_anthropic_chunk_inferred_type() {
+        let json = r#"{"type":"message_stop"}"#;
+        let events = parse_anthropic_chunk(json);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], StreamEvent::Done));
+    }
+
+    #[test]
+    fn test_accumulator() {
+        let mut acc = StreamAccumulator::new();
+        acc.push(StreamEvent::ContentDelta("Hello ".to_string()));
+        acc.push(StreamEvent::ContentDelta("world".to_string()));
+        acc.push(StreamEvent::ToolCallDelta {
+            index: 0,
+            id: Some("call_1".to_string()),
+            name: Some("read_file".to_string()),
+            arguments_delta: r#"{"path"#.to_string(),
+        });
+        acc.push(StreamEvent::ToolCallDelta {
+            index: 0,
+            id: None,
+            name: None,
+            arguments_delta: r#"":"foo.txt"}"#.to_string(),
+        });
+        acc.push(StreamEvent::Usage {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+        });
+
+        assert_eq!(acc.content, "Hello world");
+        assert_eq!(acc.tool_calls.len(), 1);
+        assert_eq!(acc.tool_calls[0].id, "call_1");
+        assert_eq!(acc.tool_calls[0].name, "read_file");
+        assert_eq!(acc.tool_calls[0].arguments, r#"{"path":"foo.txt"}"#);
+        assert_eq!(acc.prompt_tokens, 10);
+        assert_eq!(acc.completion_tokens, 20);
+    }
+
+    #[test]
+    fn test_accumulator_multiple_tool_calls() {
+        let mut acc = StreamAccumulator::new();
+        acc.push(StreamEvent::ToolCallDelta {
+            index: 0,
+            id: Some("call_1".to_string()),
+            name: Some("read_file".to_string()),
+            arguments_delta: "{}".to_string(),
+        });
+        acc.push(StreamEvent::ToolCallDelta {
+            index: 1,
+            id: Some("call_2".to_string()),
+            name: Some("write_file".to_string()),
+            arguments_delta: "{}".to_string(),
+        });
+        acc.push(StreamEvent::ToolCallDelta {
+            index: 2,
+            id: Some("call_3".to_string()),
+            name: Some("bash".to_string()),
+            arguments_delta: "{}".to_string(),
+        });
+
+        assert_eq!(acc.tool_calls.len(), 3);
+        assert_eq!(acc.tool_calls[0].id, "call_1");
+        assert_eq!(acc.tool_calls[1].id, "call_2");
+        assert_eq!(acc.tool_calls[2].id, "call_3");
+    }
+}

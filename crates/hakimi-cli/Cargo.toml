@@ -1,0 +1,31 @@
+[package]
+name = "hakimi-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hakimi"
+path = "src/main.rs"
+
+[dependencies]
+hakimi-common = { path = "../hakimi-common" }
+hakimi-core = { path = "../hakimi-core" }
+hakimi-config = { path = "../hakimi-config" }
+hakimi-session = { path = "../hakimi-session" }
+hakimi-tools = { path = "../hakimi-tools" }
+hakimi-transports = { path = "../hakimi-transports" }
+hakimi-context = { path = "../hakimi-context" }
+hakimi-mcp = { path = "../hakimi-mcp" }
+clap = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+dirs = { workspace = true }
+reqwest = { workspace = true }

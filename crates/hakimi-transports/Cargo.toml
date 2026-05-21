@@ -1,0 +1,19 @@
+[package]
+name = "hakimi-transports"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hakimi-common = { path = "../hakimi-common" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+fancy-regex = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+pin-project = { workspace = true }

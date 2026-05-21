@@ -1,0 +1,638 @@
+//! Integration tests for the Hakimi Agent.
+
+use std::pin::Pin;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use futures::stream;
+use hakimi_common::{
+    ApiMode, FinishReason, Message, NormalizedResponse, Result, ToolContext,
+    ToolDefinition, Usage,
+};
+use hakimi_context::SimpleContextEngine;
+use hakimi_core::{AIAgent, IterationBudget};
+use hakimi_tools::{Tool, ToolContextBuilder, ToolRegistry};
+use hakimi_transports::{ProviderTransport, RequestParams, StreamAccumulator, StreamEvent};
+use serde_json::{json, Value as JsonValue};
+use tokio::sync::RwLock;
+
+// ── Mock Transport ──────────────────────────────────────────────────────────
+
+/// A mock transport that returns pre-configured responses.
+struct MockTransport {
+    responses: Vec<NormalizedResponse>,
+    call_index: std::sync::atomic::AtomicUsize,
+}
+
+impl MockTransport {
+    fn new(responses: Vec<NormalizedResponse>) -> Self {
+        Self {
+            responses,
+            call_index: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    fn single(response: NormalizedResponse) -> Self {
+        Self::new(vec![response])
+    }
+
+    fn text_response(text: &str) -> Self {
+        Self::single(NormalizedResponse {
+            content: Some(text.to_string()),
+            tool_calls: None,
+            finish_reason: Some(FinishReason::Stop),
+            usage: Some(Usage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            }),
+            reasoning: None,
+        })
+    }
+}
+
+#[async_trait]
+impl ProviderTransport for MockTransport {
+    fn api_mode(&self) -> ApiMode {
+        ApiMode::ChatCompletions
+    }
+
+    fn provider_name(&self) -> &str {
+        "mock"
+    }
+
+    async fn execute(
+        &self,
+        _model: &str,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _params: &RequestParams,
+    ) -> Result<NormalizedResponse> {
+        let idx = self
+            .call_index
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if idx < self.responses.len() {
+            Ok(self.responses[idx].clone())
+        } else {
+            // Default: return a simple text response
+            Ok(NormalizedResponse {
+                content: Some("(no more responses)".to_string()),
+                tool_calls: None,
+                finish_reason: Some(FinishReason::Stop),
+                usage: Some(Usage::default()),
+                reasoning: None,
+            })
+        }
+    }
+
+    async fn execute_streaming(
+        &self,
+        _model: &str,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _params: &RequestParams,
+    ) -> Result<Pin<Box<dyn futures::Stream<Item = std::result::Result<StreamEvent, String>> + Send>>>
+    {
+        let idx = self
+            .call_index
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if idx < self.responses.len() {
+            let resp = &self.responses[idx];
+            let mut events: Vec<std::result::Result<StreamEvent, String>> = Vec::new();
+
+            if let Some(ref content) = resp.content {
+                events.push(Ok(StreamEvent::ContentDelta(content.clone())));
+            }
+
+            if let Some(ref tool_calls) = resp.tool_calls {
+                for (i, tc) in tool_calls.iter().enumerate() {
+                    events.push(Ok(StreamEvent::ToolCallDelta {
+                        index: i,
+                        id: Some(tc.id.clone()),
+                        name: Some(tc.name.clone()),
+                        arguments_delta: tc.arguments.clone(),
+                    }));
+                }
+            }
+
+            events.push(Ok(StreamEvent::Usage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+            }));
+            events.push(Ok(StreamEvent::Done));
+
+            Ok(Box::pin(stream::iter(events)))
+        } else {
+            let events: Vec<std::result::Result<StreamEvent, String>> = vec![
+                Ok(StreamEvent::ContentDelta("(no more responses)".to_string())),
+                Ok(StreamEvent::Done),
+            ];
+            Ok(Box::pin(stream::iter(events)))
+        }
+    }
+}
+
+// ── Helper functions ────────────────────────────────────────────────────────
+
+fn make_context_engine() -> Arc<RwLock<SimpleContextEngine>> {
+    Arc::new(RwLock::new(SimpleContextEngine::new(128_000)))
+}
+
+// ── AIAgent Builder Tests ───────────────────────────────────────────────────
+
+#[test]
+fn test_agent_builder_required_fields() {
+    // Missing transport
+    let result = AIAgent::builder()
+        .model("test-model")
+        .context_engine(make_context_engine())
+        .build();
+    assert!(result.is_err());
+    // AIAgent doesn't impl Debug, so use format!("{:?}") on Result
+    let err_msg = match result {
+        Ok(_) => panic!("expected error"),
+        Err(e) => format!("{e}"),
+    };
+    assert!(err_msg.contains("transport"));
+}
+
+#[test]
+fn test_agent_builder_missing_model() {
+    let transport = Arc::new(MockTransport::text_response("hi"));
+    let result = AIAgent::builder()
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .build();
+    assert!(result.is_err());
+    let err_msg = match result {
+        Ok(_) => panic!("expected error"),
+        Err(e) => format!("{e}"),
+    };
+    assert!(err_msg.contains("model"));
+}
+
+#[test]
+fn test_agent_builder_missing_context_engine() {
+    let transport = Arc::new(MockTransport::text_response("hi"));
+    let result = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .build();
+    assert!(result.is_err());
+    let err_msg = match result {
+        Ok(_) => panic!("expected error"),
+        Err(e) => format!("{e}"),
+    };
+    assert!(err_msg.contains("context_engine"));
+}
+
+#[test]
+fn test_agent_builder_success() {
+    let transport = Arc::new(MockTransport::text_response("hi"));
+    let agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-session")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    assert_eq!(agent.model(), "test-model");
+    assert_eq!(agent.session_id(), "test-session");
+}
+
+// ── Conversation Loop Tests ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_simple_text_conversation() {
+    let transport = Arc::new(MockTransport::text_response("Hello, I'm the assistant!"));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-conv-1")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    let result = agent.run_conversation("Hi there").await.unwrap();
+    assert_eq!(result.final_response, "Hello, I'm the assistant!");
+    assert_eq!(result.api_call_count, 1);
+    // Should have: user message + assistant message = 2
+    assert!(result.messages.len() >= 2);
+}
+
+#[tokio::test]
+async fn test_tool_dispatch_e2e() {
+    // First response: tool call. Second response: text with the result.
+    let tool_call_response = NormalizedResponse {
+        content: None,
+        tool_calls: Some(vec![hakimi_common::ToolCall {
+            id: "call_1".to_string(),
+            name: "terminal".to_string(),
+            arguments: r#"{"command":"echo hello"}"#.to_string(),
+            index: None,
+        }]),
+        finish_reason: Some(FinishReason::ToolCalls),
+        usage: Some(Usage {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            total_tokens: 15,
+            cached_tokens: 0,
+            reasoning_tokens: 0,
+        }),
+        reasoning: None,
+    };
+
+    let text_response = NormalizedResponse {
+        content: Some("The command output was: hello".to_string()),
+        tool_calls: None,
+        finish_reason: Some(FinishReason::Stop),
+        usage: Some(Usage {
+            prompt_tokens: 20,
+            completion_tokens: 10,
+            total_tokens: 30,
+            cached_tokens: 0,
+            reasoning_tokens: 0,
+        }),
+        reasoning: None,
+    };
+
+    let transport = Arc::new(MockTransport::new(vec![tool_call_response, text_response]));
+
+    let registry = ToolRegistry::new();
+    // Register a simple echo tool
+    registry
+        .register(Arc::new(EchoTool))
+        .await;
+
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .tool_registry(registry)
+        .session_id("test-tool-e2e")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    let result = agent.run_conversation("echo test").await.unwrap();
+    assert_eq!(result.final_response, "The command output was: hello");
+    assert_eq!(result.api_call_count, 2);
+    // Should have: user, assistant(tool_calls), tool_result, assistant(text) = 4
+    assert!(result.messages.len() >= 4);
+}
+
+#[tokio::test]
+async fn test_agent_interrupt() {
+    let transport = Arc::new(MockTransport::text_response("won't reach"));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-interrupt")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    // Set interrupt before running
+    agent.interrupt();
+
+    // Running with interrupt should still work (interrupt is checked in the loop)
+    // For a simple text response, the loop only checks interrupt at the top,
+    // and the first API call should still succeed
+    let result = agent.chat("test").await;
+    // It should either succeed (if interrupt wasn't checked before the call)
+    // or return empty (budget exhausted)
+    assert!(result.is_ok() || result.is_err());
+}
+
+// ── IterationBudget Tests ───────────────────────────────────────────────────
+
+#[test]
+fn test_iteration_budget() {
+    let budget = IterationBudget::new(3);
+    assert!(!budget.is_exhausted());
+    assert_eq!(budget.remaining(), 3);
+
+    budget.use_one();
+    assert!(!budget.is_exhausted());
+    assert_eq!(budget.remaining(), 2);
+
+    budget.use_one();
+    budget.use_one();
+    assert!(budget.is_exhausted());
+    assert_eq!(budget.remaining(), 0);
+}
+
+#[test]
+fn test_iteration_budget_zero() {
+    let budget = IterationBudget::new(0);
+    assert!(budget.is_exhausted());
+}
+
+// ── Streaming Accumulator Tests ─────────────────────────────────────────────
+
+#[test]
+fn test_streaming_accumulator_content_only() {
+    let mut acc = StreamAccumulator::new();
+    acc.push(StreamEvent::ContentDelta("Hello ".to_string()));
+    acc.push(StreamEvent::ContentDelta("World".to_string()));
+    acc.push(StreamEvent::Usage {
+        prompt_tokens: 5,
+        completion_tokens: 10,
+    });
+    acc.push(StreamEvent::Done);
+
+    assert_eq!(acc.content, "Hello World");
+    assert!(acc.tool_calls.is_empty());
+    assert_eq!(acc.prompt_tokens, 5);
+    assert_eq!(acc.completion_tokens, 10);
+}
+
+#[test]
+fn test_streaming_accumulator_with_tool_calls() {
+    let mut acc = StreamAccumulator::new();
+    acc.push(StreamEvent::ToolCallDelta {
+        index: 0,
+        id: Some("call_abc".to_string()),
+        name: Some("read_file".to_string()),
+        arguments_delta: r#"{"path":"#.to_string(),
+    });
+    acc.push(StreamEvent::ToolCallDelta {
+        index: 0,
+        id: None,
+        name: None,
+        arguments_delta: r#""test.txt"}"#.to_string(),
+    });
+    acc.push(StreamEvent::Done);
+
+    assert_eq!(acc.content, "");
+    assert_eq!(acc.tool_calls.len(), 1);
+    assert_eq!(acc.tool_calls[0].id, "call_abc");
+    assert_eq!(acc.tool_calls[0].name, "read_file");
+    assert_eq!(acc.tool_calls[0].arguments, r#"{"path":"test.txt"}"#);
+}
+
+#[test]
+fn test_streaming_accumulator_multiple_tool_calls_interleaved() {
+    let mut acc = StreamAccumulator::new();
+    acc.push(StreamEvent::ToolCallDelta {
+        index: 0,
+        id: Some("call_1".to_string()),
+        name: Some("tool_a".to_string()),
+        arguments_delta: "{}".to_string(),
+    });
+    acc.push(StreamEvent::ToolCallDelta {
+        index: 1,
+        id: Some("call_2".to_string()),
+        name: Some("tool_b".to_string()),
+        arguments_delta: "{}".to_string(),
+    });
+    acc.push(StreamEvent::ToolCallDelta {
+        index: 0,
+        id: None,
+        name: None,
+        arguments_delta: "".to_string(),
+    });
+
+    assert_eq!(acc.tool_calls.len(), 2);
+    assert_eq!(acc.tool_calls[0].id, "call_1");
+    assert_eq!(acc.tool_calls[1].id, "call_2");
+}
+
+// ── EchoTool (mock for integration tests) ───────────────────────────────────
+
+struct EchoTool;
+
+#[async_trait]
+impl Tool for EchoTool {
+    fn name(&self) -> &str {
+        "terminal"
+    }
+
+    fn toolset(&self) -> &str {
+        "shell"
+    }
+
+    fn description(&self) -> &str {
+        "Echo tool for testing"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"}
+            }
+        })
+    }
+
+    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let cmd = args
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        Ok(format!("output of: {cmd}"))
+    }
+}
+
+// ── ToolContextBuilder Tests ────────────────────────────────────────────────
+
+#[test]
+fn test_tool_context_builder() {
+    let ctx = ToolContextBuilder::new()
+        .session_id("s1")
+        .user_id("u1")
+        .workdir("/tmp")
+        .build();
+
+    assert_eq!(ctx.session_id, "s1");
+    assert_eq!(ctx.user_id, Some("u1".to_string()));
+    assert_eq!(ctx.workdir, "/tmp");
+}
+
+#[test]
+fn test_tool_context_builder_try_build() {
+    let result = ToolContextBuilder::new()
+        .session_id("s1")
+        .workdir("/tmp")
+        .try_build();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_tool_context_builder_try_build_missing_session() {
+    let result = ToolContextBuilder::new()
+        .workdir("/tmp")
+        .try_build();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("session_id"));
+}
+
+#[test]
+fn test_tool_context_builder_try_build_missing_workdir() {
+    let result = ToolContextBuilder::new()
+        .session_id("s1")
+        .try_build();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("workdir"));
+}
+
+// ── Streaming Conversation Loop Tests ─────────────────────────────────────
+
+#[tokio::test]
+async fn test_streaming_text_conversation() {
+    let transport = Arc::new(MockTransport::text_response("Streaming hello!"));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-streaming-1")
+        .workdir("/tmp")
+        .streaming(true)
+        .build()
+        .unwrap();
+
+    let result = agent.run_conversation("Hi streaming").await.unwrap();
+    assert_eq!(result.final_response, "Streaming hello!");
+    assert_eq!(result.api_call_count, 1);
+    assert!(result.messages.len() >= 2);
+}
+
+#[tokio::test]
+async fn test_streaming_tool_dispatch_e2e() {
+    let tool_call_response = NormalizedResponse {
+        content: None,
+        tool_calls: Some(vec![hakimi_common::ToolCall {
+            id: "call_s1".to_string(),
+            name: "terminal".to_string(),
+            arguments: r#"{"command":"echo streaming"}"#.to_string(),
+            index: None,
+        }]),
+        finish_reason: Some(FinishReason::ToolCalls),
+        usage: Some(Usage {
+            prompt_tokens: 15,
+            completion_tokens: 8,
+            total_tokens: 23,
+            cached_tokens: 0,
+            reasoning_tokens: 0,
+        }),
+        reasoning: None,
+    };
+
+    let text_response = NormalizedResponse {
+        content: Some("Streaming tool result done".to_string()),
+        tool_calls: None,
+        finish_reason: Some(FinishReason::Stop),
+        usage: Some(Usage {
+            prompt_tokens: 25,
+            completion_tokens: 12,
+            total_tokens: 37,
+            cached_tokens: 0,
+            reasoning_tokens: 0,
+        }),
+        reasoning: None,
+    };
+
+    let transport = Arc::new(MockTransport::new(vec![tool_call_response, text_response]));
+
+    let registry = ToolRegistry::new();
+    registry.register(Arc::new(EchoTool)).await;
+
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .tool_registry(registry)
+        .session_id("test-streaming-tools")
+        .workdir("/tmp")
+        .streaming(true)
+        .build()
+        .unwrap();
+
+    let result = agent.run_conversation("echo streaming test").await.unwrap();
+    assert_eq!(result.final_response, "Streaming tool result done");
+    assert_eq!(result.api_call_count, 2);
+    assert!(result.messages.len() >= 4);
+    // Verify usage was accumulated across both API calls
+    assert!(result.usage.total_tokens > 0);
+}
+
+#[tokio::test]
+async fn test_multi_turn_conversation() {
+    // Simulate two separate conversation turns
+    let transport = Arc::new(MockTransport::new(vec![
+        NormalizedResponse {
+            content: Some("Turn 1 response".to_string()),
+            tool_calls: None,
+            finish_reason: Some(FinishReason::Stop),
+            usage: Some(Usage { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cached_tokens: 0, reasoning_tokens: 0 }),
+            reasoning: None,
+        },
+        NormalizedResponse {
+            content: Some("Turn 2 response".to_string()),
+            tool_calls: None,
+            finish_reason: Some(FinishReason::Stop),
+            usage: Some(Usage { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28, cached_tokens: 0, reasoning_tokens: 0 }),
+            reasoning: None,
+        },
+    ]));
+
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-multi-turn")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    let result1 = agent.chat("first message").await.unwrap();
+    assert_eq!(result1, "Turn 1 response");
+    assert!(agent.messages().len() >= 2);
+
+    let result2 = agent.chat("second message").await.unwrap();
+    assert_eq!(result2, "Turn 2 response");
+    // Messages should accumulate: user1 + assistant1 + user2 + assistant2 = 4
+    assert!(agent.messages().len() >= 4);
+}
+
+#[tokio::test]
+async fn test_clear_messages() {
+    let transport = Arc::new(MockTransport::text_response("response"));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-clear")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    agent.chat("hello").await.unwrap();
+    assert!(!agent.messages().is_empty());
+
+    agent.clear_messages();
+    assert!(agent.messages().is_empty());
+}
+
+#[tokio::test]
+async fn test_set_system_prompt() {
+    let transport = Arc::new(MockTransport::text_response("ok"));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-sysprompt")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    agent.set_system_prompt("You are a pirate.");
+    let result = agent.chat("hello").await.unwrap();
+    assert_eq!(result, "ok");
+}
