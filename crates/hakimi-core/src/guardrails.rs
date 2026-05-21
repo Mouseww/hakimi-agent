@@ -168,10 +168,10 @@ impl ToolGuardrails {
                 tool_name, stall_count
             );
             warn!("{}", msg);
-            return GuardrailDecision::SyntheticResult(format!(
+            return GuardrailDecision::SyntheticResult(
                 "[Guardrail] This tool is repeatedly returning the same output. \
-                 Please stop trying this specific command or approach, as it is not producing new information."
-            ));
+                 Please stop trying this specific command or approach, as it is not producing new information.".to_string()
+            );
         }
 
         GuardrailDecision::Allow
