@@ -814,7 +814,7 @@ async fn self_update() -> Result<()> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
     let (platform, ext) = match os {
-        "linux" => ("unknown-linux-musl", "tar.gz"),
+        "linux" => ("unknown-linux-gnu", "tar.gz"),
         "macos" => ("apple-darwin", "tar.gz"),
         _ => anyhow::bail!("Self-update not supported on this OS. Use the install script."),
     };
@@ -1010,6 +1010,7 @@ pub async fn run() -> Result<()> {
                 >,
             >,
             base_system_prompt: String,
+            bot_token: String,
         }
 
         let mut agent_states: std::collections::HashMap<String, AgentState> =
@@ -1135,6 +1136,7 @@ pub async fn run() -> Result<()> {
                             std::collections::HashMap::new(),
                         )),
                         base_system_prompt,
+                        bot_token: tg_binding.bot_token.clone(),
                     },
                 );
 
@@ -1180,6 +1182,7 @@ pub async fn run() -> Result<()> {
                         std::collections::HashMap::new(),
                     )),
                     base_system_prompt,
+                    bot_token: tg_config.bot_token.clone(),
                 },
             );
         }
@@ -1256,9 +1259,26 @@ pub async fn run() -> Result<()> {
                         }
                     };
 
+                    // Send "typing" indicator immediately.
+                    let _ = gateway.send_chat_action(&bot_id, &chat_id, "typing").await;
+
                     let agent_clone = state.agent.clone();
                     let histories_clone = state.chat_histories.clone();
                     let base_sp = &state.base_system_prompt;
+
+                    // Spawn keepalive "typing" every 4s via direct HTTP.
+                    let typing_client = reqwest::Client::new();
+                    let typing_token = state.bot_token.clone();
+                    let typing_chat = chat_id.clone();
+                    let typing_handle = tokio::spawn(async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                            let url = format!("https://api.telegram.org/bot{}/sendChatAction", typing_token);
+                            let _ = typing_client.post(&url)
+                                .json(&serde_json::json!({"chat_id": typing_chat, "action": "typing"}))
+                                .send().await;
+                        }
+                    });
 
                     // Process the message with the correct agent.
                     let response = {
@@ -1303,6 +1323,9 @@ pub async fn run() -> Result<()> {
 
                         result
                     };
+
+                    // Stop typing indicator.
+                    typing_handle.abort();
 
                     // Send response back via gateway (routed to the correct adapter by bot_id).
                     if let Err(e) = gateway
