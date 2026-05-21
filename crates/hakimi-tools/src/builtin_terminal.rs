@@ -59,6 +59,35 @@ impl Tool for TerminalTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| HakimiError::Tool("missing required parameter: command".into()))?;
 
+        // -----------------------------------------------------------------------
+        // HEAVY TASK DETECTION (Anti-Deadlock)
+        // Prevent machine hangs by redirecting heavy build/test tasks.
+        // -----------------------------------------------------------------------
+        let heavy_patterns = [
+            "cargo build",
+            "cargo test",
+            "cargo clippy",
+            "cargo check",
+            "npm install",
+            "npm build",
+            "docker build",
+            "make ",
+            "cmake ",
+        ];
+
+        let is_heavy = heavy_patterns.iter().any(|p| command.contains(p));
+        if is_heavy && !command.contains("--force-local") {
+            return Ok(format!(
+                "WARNING: Detected heavy task: `{}`\n\n\
+                 Executing heavy build/test tasks on the main gateway machine often leads to system freezes (deadlocks). \
+                 As per user preference, these tasks MUST be offloaded to a Codespace or high-performance worker.\n\n\
+                 ACTION REQUIRED:\n\
+                 1. Push your changes to GitHub: `git push` (CI will run tests automatically)\n\
+                 2. Or use the `--force-local` flag if you are absolutely sure (NOT RECOMMENDED).",
+                command
+            ));
+        }
+
         let timeout_secs = args
             .get("timeout")
             .and_then(|v| v.as_u64())
