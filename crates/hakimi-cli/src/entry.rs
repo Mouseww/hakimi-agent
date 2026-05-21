@@ -531,6 +531,7 @@ async fn build_agent(
         std::sync::Arc::new(hakimi_tools::SearchFilesTool),
         std::sync::Arc::new(hakimi_tools::PatchTool),
         std::sync::Arc::new(hakimi_tools::WebSearchTool),
+        std::sync::Arc::new(hakimi_tools::WebExtractTool),
         std::sync::Arc::new(hakimi_tools::MemoryTool::new()),
         std::sync::Arc::new(hakimi_tools::TodoTool),
         std::sync::Arc::new(hakimi_tools::ProcessTool),

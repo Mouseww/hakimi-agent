@@ -21,6 +21,7 @@ hakimi-session = { path = "../hakimi-session" }
 chrono = { workspace = true }
 dirs = { workspace = true }
 base64 = { workspace = true }
+scraper = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
