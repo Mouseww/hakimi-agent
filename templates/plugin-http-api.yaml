@@ -1,0 +1,19 @@
+# HTTP API Plugin Template
+# Copy to ~/.hakimi/plugins/ and customize
+name: my_api
+version: "1.0"
+description: "My custom API plugin"
+tools:
+  - name: example_tool
+    endpoint: "https://api.example.com/v1/action"
+    method: POST
+    description: "Description of what this tool does"
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+    parameters:
+      type: object
+      properties:
+        input:
+          type: string
+          description: "Input parameter"
+      required: ["input"]

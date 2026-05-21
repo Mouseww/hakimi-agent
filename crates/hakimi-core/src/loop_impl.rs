@@ -6,6 +6,8 @@ use tracing::{debug, info, warn};
 use crate::agent::AIAgent;
 use crate::budget::IterationBudget;
 use crate::conversation::ConversationResult;
+use crate::error_classifier::{ErrorClassifier, ErrorClassification, RecoveryAction};
+use crate::guardrails::{ToolGuardrails, GuardrailDecision};
 use crate::retry::{jittered_backoff, should_retry};
 use std::time::Duration;
 
@@ -89,18 +91,41 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
             Err(e) => {
                 api_call_count += 1;
                 let attempt = (api_call_count % (MAX_RETRIES as usize + 1)) as u32;
-                if should_retry(&e, attempt, MAX_RETRIES) {
-                    let delay = jittered_backoff(attempt, BASE_DELAY, MAX_DELAY);
-                    warn!(
-                        error = %e,
-                        attempt = attempt,
-                        delay_ms = delay.as_millis(),
-                        "Retrying after transient error"
-                    );
-                    tokio::time::sleep(delay).await;
-                    continue;
+
+                // Use error classifier for smarter recovery decisions
+                let classifier = ErrorClassifier::new();
+                let classification = classifier.classify_transport_error(&e.to_string());
+
+                match classification.action {
+                    RecoveryAction::CompressContext => {
+                        warn!(error = %e, "Context overflow detected — triggering compression");
+                        let engine = agent.context_engine.write().await;
+                        engine.compress(&mut agent.messages).await?;
+                        continue;
+                    }
+                    RecoveryAction::Abort => {
+                        warn!(error = %e, reason = ?classification.reason, "Non-recoverable error — aborting");
+                        return Err(e);
+                    }
+                    _ if should_retry(&e, attempt, MAX_RETRIES) => {
+                        let delay = if let Some(retry_after) = classification.retry_after_ms {
+                            Duration::from_millis(retry_after)
+                        } else {
+                            jittered_backoff(attempt, BASE_DELAY, MAX_DELAY)
+                        };
+                        warn!(
+                            error = %e,
+                            reason = ?classification.reason,
+                            action = ?classification.action,
+                            attempt = attempt,
+                            delay_ms = delay.as_millis(),
+                            "Retrying after classified error"
+                        );
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+                    _ => return Err(e),
                 }
-                return Err(e);
             }
         };
 
@@ -134,11 +159,36 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
             );
             agent.messages.push(assistant_msg);
 
+            // Initialize guardrails for this turn.
+            let mut guardrails = ToolGuardrails::new();
+
             // Dispatch each tool call and append results.
             for tc in &tool_calls {
                 if agent.check_interrupt() {
                     info!("Interrupted during tool dispatch");
                     break;
+                }
+
+                // Check guardrails before dispatching
+                let decision = guardrails.record_call(&tc.name, &tc.arguments);
+                match decision {
+                    GuardrailDecision::Halt(reason) => {
+                        warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch");
+                        agent.messages.push(Message::tool_result(
+                            &tc.id, &tc.name,
+                            format!("HALT: Tool dispatch halted by guardrails: {reason}"),
+                        ));
+                        break;
+                    }
+                    GuardrailDecision::SyntheticResult(msg) => {
+                        warn!(tool = %tc.name, "Injecting synthetic result to break loop");
+                        agent.messages.push(Message::tool_result(&tc.id, &tc.name, msg));
+                        continue;
+                    }
+                    GuardrailDecision::Warn(msg) => {
+                        warn!(tool = %tc.name, reason = %msg, "Guardrail warning");
+                    }
+                    GuardrailDecision::Allow => {}
                 }
 
                 let tool_result = dispatch_tool(agent, &tool_ctx, tc).await;
@@ -328,18 +378,41 @@ pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResul
             Err(e) => {
                 api_call_count += 1;
                 let attempt = (api_call_count % (MAX_RETRIES as usize + 1)) as u32;
-                if should_retry(&e, attempt, MAX_RETRIES) {
-                    let delay = jittered_backoff(attempt, BASE_DELAY, MAX_DELAY);
-                    warn!(
-                        error = %e,
-                        attempt = attempt,
-                        delay_ms = delay.as_millis(),
-                        "Retrying after transient error"
-                    );
-                    tokio::time::sleep(delay).await;
-                    continue;
+
+                // Use error classifier for smarter recovery decisions
+                let classifier = ErrorClassifier::new();
+                let classification = classifier.classify_transport_error(&e.to_string());
+
+                match classification.action {
+                    RecoveryAction::CompressContext => {
+                        warn!(error = %e, "Context overflow detected — triggering compression (streaming)");
+                        let engine = agent.context_engine.write().await;
+                        engine.compress(&mut agent.messages).await?;
+                        continue;
+                    }
+                    RecoveryAction::Abort => {
+                        warn!(error = %e, reason = ?classification.reason, "Non-recoverable error — aborting (streaming)");
+                        return Err(e);
+                    }
+                    _ if should_retry(&e, attempt, MAX_RETRIES) => {
+                        let delay = if let Some(retry_after) = classification.retry_after_ms {
+                            Duration::from_millis(retry_after)
+                        } else {
+                            jittered_backoff(attempt, BASE_DELAY, MAX_DELAY)
+                        };
+                        warn!(
+                            error = %e,
+                            reason = ?classification.reason,
+                            action = ?classification.action,
+                            attempt = attempt,
+                            delay_ms = delay.as_millis(),
+                            "Retrying after classified error (streaming)"
+                        );
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+                    _ => return Err(e),
                 }
-                return Err(e);
             }
         };
 
@@ -402,11 +475,36 @@ pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResul
             );
             agent.messages.push(assistant_msg);
 
+            // Initialize guardrails for this turn.
+            let mut guardrails = ToolGuardrails::new();
+
             // Dispatch each tool call and append results.
             for tc in &tool_calls {
                 if agent.check_interrupt() {
                     info!("Interrupted during tool dispatch");
                     break;
+                }
+
+                // Check guardrails before dispatching
+                let decision = guardrails.record_call(&tc.name, &tc.arguments);
+                match decision {
+                    GuardrailDecision::Halt(reason) => {
+                        warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch (streaming)");
+                        agent.messages.push(Message::tool_result(
+                            &tc.id, &tc.name,
+                            format!("HALT: Tool dispatch halted by guardrails: {reason}"),
+                        ));
+                        break;
+                    }
+                    GuardrailDecision::SyntheticResult(msg) => {
+                        warn!(tool = %tc.name, "Injecting synthetic result to break loop (streaming)");
+                        agent.messages.push(Message::tool_result(&tc.id, &tc.name, msg));
+                        continue;
+                    }
+                    GuardrailDecision::Warn(msg) => {
+                        warn!(tool = %tc.name, reason = %msg, "Guardrail warning (streaming)");
+                    }
+                    GuardrailDecision::Allow => {}
                 }
 
                 let tool_result = dispatch_tool(agent, &tool_ctx, tc).await;

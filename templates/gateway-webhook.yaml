@@ -1,0 +1,7 @@
+# Webhook Gateway Template
+# Configure webhook endpoints for your Hakimi Agent
+name: my_webhook
+type: webhook
+port: 8080
+path: "/webhook"
+secret: "your-webhook-secret"

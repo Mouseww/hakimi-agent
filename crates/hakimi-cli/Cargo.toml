@@ -33,7 +33,9 @@ tokio = { workspace = true }
 dirs = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
+dialoguer = { workspace = true }
+rusqlite = { workspace = true }
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
 chrono = { workspace = true }

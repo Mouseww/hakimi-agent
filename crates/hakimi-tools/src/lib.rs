@@ -40,3 +40,6 @@ pub use builtin_session_search::*;
 pub use builtin_delegate_task::*;
 pub use builtin_skill_manage::*;
 pub use builtin_send_message::*;
+pub use builtin_vision_analyze::*;
+pub use builtin_clarify::*;
+pub use builtin_checkpoint::*;

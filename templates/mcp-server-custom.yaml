@@ -1,0 +1,7 @@
+# Custom MCP Server Template
+# Copy to ~/.hakimi/config.yaml under mcp_servers: and customize
+name: my_mcp_server
+command: "node"
+args: ["/path/to/server.js"]
+env:
+  API_KEY: "your-api-key"

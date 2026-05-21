@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-420-passing?style=for-the-badge&color=brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/lines-29K+-orange?style=for-the-badge" alt="Lines">
+  <img src="https://img.shields.io/badge/lines-30.7K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
 <h1 align="center">🐙 Hakimi Agent</h1>
@@ -218,7 +218,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (420 tests)
+# 运行全部测试 (630 tests)
 cargo test --workspace
 
 # Debug 日志

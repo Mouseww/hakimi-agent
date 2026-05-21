@@ -5,6 +5,7 @@
 pub mod profiles;
 pub mod setup_wizard;
 pub mod doctor;
+pub mod entry;
 
 use std::fmt;
 
@@ -43,6 +44,8 @@ pub enum Command {
     Setup,
     /// Cron job management.
     Cron(Option<String>),
+    /// Plugin management.
+    Plugins(Option<String>),
 }
 
 impl Command {
@@ -75,6 +78,7 @@ impl Command {
             "doctor" => Some(Command::Doctor),
             "setup" => Some(Command::Setup),
             "cron" => Some(Command::Cron(arg.map(String::from))),
+            "plugins" | "plugin" => Some(Command::Plugins(arg.map(String::from))),
             _ => None,
         }
     }
@@ -104,6 +108,8 @@ impl fmt::Display for Command {
             Command::Setup => write!(f, "/setup"),
             Command::Cron(None) => write!(f, "/cron"),
             Command::Cron(Some(c)) => write!(f, "/cron {c}"),
+            Command::Plugins(None) => write!(f, "/plugins"),
+            Command::Plugins(Some(p)) => write!(f, "/plugins {p}"),
         }
     }
 }

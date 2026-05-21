@@ -1,0 +1,14 @@
+[package]
+name = "hakimi-agent"
+version = "0.1.0"
+edition = "2024"
+description = "A high-performance AI agent framework written in Rust"
+
+[[bin]]
+name = "hakimi"
+path = "src/main.rs"
+
+[dependencies]
+hakimi-cli = { path = "../hakimi-cli" }
+anyhow = { workspace = true }
+tokio = { workspace = true }

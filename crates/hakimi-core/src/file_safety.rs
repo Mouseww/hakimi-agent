@@ -128,7 +128,7 @@ impl SecretRedactor {
             // Generic Bearer tokens.
             Regex::new(r"Bearer\s+[a-zA-Z0-9._\-]{20,}").unwrap(),
             // Generic API key patterns.
-            Regex::new(r"(?i)(api[_-]?key|apikey|token|secret|password)\s*[:=]\s*['\"]?([a-zA-Z0-9._\-]{20,})['\"]?").unwrap(),
+            Regex::new(r#"(?i)(api[_-]?key|apikey|token|secret|password)\s*[:=]\s*["']?([a-zA-Z0-9._\-]{20,})["']?"#).unwrap(),
             // AWS access keys.
             Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
             // GitHub tokens.
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_mask_token_short() {
-        assert_eq!(mask_token("short"), "******");
+        assert_eq!(mask_token("short"), "*****");
         assert_eq!(mask_token("12345"), "*****");
     }
 

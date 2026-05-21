@@ -1,0 +1,15 @@
+# Weather API Plugin
+# Copy to ~/.hakimi/plugins/ and customize
+name: weather
+tools:
+  - name: get_weather
+    endpoint: "https://wttr.in/{city}?format=j1"
+    method: GET
+    description: "Get weather for a city"
+    parameters:
+      type: object
+      properties:
+        city:
+          type: string
+          description: "City name"
+      required: ["city"]
