@@ -83,6 +83,8 @@ const POLL_TIMEOUT: u64 = 30;
 pub struct TelegramAdapterConfig {
     /// Bot token obtained from BotFather.
     pub token: String,
+    /// Bot / role identifier for this instance.
+    pub bot_id: String,
     /// Optional base URL override (useful for testing with a local Bot API server).
     /// Defaults to `https://api.telegram.org`.
     pub base_url: Option<String>,
@@ -92,6 +94,8 @@ pub struct TelegramAdapterConfig {
 pub struct TelegramAdapter {
     /// Bot token.
     token: String,
+    /// Bot / role identifier.
+    bot_id: String,
     /// Base URL for the Bot API (default: `https://api.telegram.org`).
     base_url: String,
     /// Shared HTTP client.
@@ -113,6 +117,7 @@ impl TelegramAdapter {
             .unwrap_or_else(|| "https://api.telegram.org".to_owned());
         Self {
             token: config.token,
+            bot_id: config.bot_id,
             base_url,
             client: reqwest::Client::new(),
             msg_tx,
@@ -122,9 +127,10 @@ impl TelegramAdapter {
     }
 
     /// Convenience constructor – create an adapter with just a token.
-    pub fn from_token(token: impl Into<String>) -> Self {
+    pub fn from_token(bot_id: impl Into<String>, token: impl Into<String>) -> Self {
         Self::new(TelegramAdapterConfig {
             token: token.into(),
+            bot_id: bot_id.into(),
             base_url: None,
         })
     }
@@ -166,6 +172,7 @@ impl TelegramAdapter {
         let client = self.client.clone();
         let api_url = self.api_url("getUpdates");
         let msg_tx = self.msg_tx.clone();
+        let bot_id = self.bot_id.clone();
 
         tokio::spawn(async move {
             let mut offset: i64 = 0;
@@ -177,7 +184,7 @@ impl TelegramAdapter {
                             let update_id = update.update_id;
 
                             if let Some(message) = update.message {
-                                if let Some(gw_msg) = convert_message(&message) {
+                                if let Some(gw_msg) = convert_message(&bot_id, &message) {
                                     // Handle bot commands: reply directly via
                                     // the sender's channel instead of forwarding
                                     // upstream (commands are not agent queries).
@@ -227,6 +234,10 @@ impl TelegramAdapter {
 impl PlatformAdapter for TelegramAdapter {
     fn name(&self) -> &str {
         "telegram"
+    }
+
+    fn bot_id(&self) -> &str {
+        &self.bot_id
     }
 
     async fn connect(&mut self) -> Result<()> {
@@ -364,7 +375,7 @@ async fn poll_once(
 /// Convert a [`TgMessage`] into a [`GatewayMessage`].
 ///
 /// Returns `None` if the message has no usable content (no text and no photo).
-fn convert_message(msg: &TgMessage) -> Option<GatewayMessage> {
+fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
     let user_id = msg
         .from
         .as_ref()
@@ -393,6 +404,7 @@ fn convert_message(msg: &TgMessage) -> Option<GatewayMessage> {
 
     Some(GatewayMessage {
         platform: "telegram".to_owned(),
+        bot_id: bot_id.to_owned(),
         chat_id,
         user_id,
         text,
@@ -480,7 +492,7 @@ mod tests {
             text: Some("Hello!".into()),
             photo: None,
         };
-        let gw = convert_message(&msg).unwrap();
+        let gw = convert_message("default", &msg).unwrap();
         assert_eq!(gw.platform, "telegram");
         assert_eq!(gw.chat_id, "100");
         assert_eq!(gw.user_id, "42");
@@ -510,7 +522,7 @@ mod tests {
                 },
             ]),
         };
-        let gw = convert_message(&msg).unwrap();
+        let gw = convert_message("default", &msg).unwrap();
         assert_eq!(gw.text, "[photo]");
         assert_eq!(gw.media.as_deref(), Some("large_id"));
     }
@@ -537,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_adapter_name() {
-        let adapter = TelegramAdapter::from_token("test:token");
+        let adapter = TelegramAdapter::from_token("default", "test:token");
         assert_eq!(adapter.name(), "telegram");
     }
 }

@@ -86,6 +86,8 @@ const RATE_LIMIT_MAX_RETRIES: u32 = 3;
 pub struct DiscordAdapterConfig {
     /// Bot token (without the `Bot ` prefix — the adapter adds it).
     pub token: String,
+    /// Bot / role identifier for this instance.
+    pub bot_id: String,
     /// Channel ID to poll for messages (optional — if unset, polling is skipped).
     pub channel_id: Option<String>,
     /// Optional API base URL override (useful for testing).
@@ -95,6 +97,7 @@ pub struct DiscordAdapterConfig {
 /// Discord Bot API adapter with REST-based polling for inbound messages.
 pub struct DiscordAdapter {
     token: String,
+    bot_id: String,
     channel_id: Option<String>,
     base_url: String,
     client: reqwest::Client,
@@ -112,6 +115,7 @@ impl DiscordAdapter {
             .unwrap_or_else(|| DISCORD_API_BASE.to_owned());
         Self {
             token: config.token,
+            bot_id: config.bot_id,
             channel_id: config.channel_id,
             base_url,
             client: reqwest::Client::new(),
@@ -122,9 +126,10 @@ impl DiscordAdapter {
     }
 
     /// Convenience constructor — create an adapter with just a token and channel.
-    pub fn from_token_and_channel(token: impl Into<String>, channel_id: impl Into<String>) -> Self {
+    pub fn from_token_and_channel(bot_id: impl Into<String>, token: impl Into<String>, channel_id: impl Into<String>) -> Self {
         Self::new(DiscordAdapterConfig {
             token: token.into(),
+            bot_id: bot_id.into(),
             channel_id: Some(channel_id.into()),
             base_url: None,
         })
@@ -251,6 +256,7 @@ impl DiscordAdapter {
         let token = self.token.clone();
         let channel_id = self.channel_id.clone().unwrap_or_default();
         let msg_tx = self.msg_tx.clone();
+        let bot_id = self.bot_id.clone();
 
         tokio::spawn(async move {
             // Track the last message ID we've seen so we only forward new ones.
@@ -320,6 +326,7 @@ impl DiscordAdapter {
 
                     let gw_msg = GatewayMessage {
                         platform: "discord".to_owned(),
+                        bot_id: bot_id.clone(),
                         chat_id: msg.channel_id.clone(),
                         user_id,
                         text,
@@ -375,6 +382,10 @@ impl DiscordAdapter {
 impl PlatformAdapter for DiscordAdapter {
     fn name(&self) -> &str {
         "discord"
+    }
+
+    fn bot_id(&self) -> &str {
+        &self.bot_id
     }
 
     async fn connect(&mut self) -> Result<()> {
@@ -518,7 +529,7 @@ mod tests {
 
     #[test]
     fn test_adapter_construction() {
-        let adapter = DiscordAdapter::from_token_and_channel("test-token", "12345");
+        let adapter = DiscordAdapter::from_token_and_channel("default", "test-token", "12345");
         assert_eq!(adapter.name(), "discord");
         assert_eq!(adapter.channel_id.as_deref(), Some("12345"));
         assert!(adapter.poll_handle.is_none());
@@ -526,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_take_receiver_once() {
-        let mut adapter = DiscordAdapter::from_token_and_channel("tok", "ch");
+        let mut adapter = DiscordAdapter::from_token_and_channel("default", "tok", "ch");
         let rx = adapter.take_receiver();
         assert!(rx.is_some());
         let rx2 = adapter.take_receiver();

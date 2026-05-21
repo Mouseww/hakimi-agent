@@ -369,6 +369,10 @@ pub struct HakimiConfig {
     /// Memory configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
+
+    /// Named roles — each can bind to its own bot(s).
+    #[serde(default)]
+    pub roles: HashMap<String, RoleConfig>,
 }
 
 /// Configuration for all gateway platforms.
@@ -389,6 +393,49 @@ pub struct TelegramGatewayConfig {
     pub allowed_users: Vec<i64>,
 }
 
+/// Per-role configuration — each role can bind to its own bot(s).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RoleConfig {
+    /// Identity/system prompt for this role
+    #[serde(default)]
+    pub identity: String,
+    /// Model override for this role (falls back to top-level model)
+    #[serde(default)]
+    pub model: String,
+    /// API mode override
+    #[serde(default)]
+    pub api_mode: String,
+    /// Gateway bindings per platform
+    #[serde(default)]
+    pub gateways: RoleGatewaysConfig,
+    /// Allowed Telegram user IDs
+    #[serde(default)]
+    pub allowed_users: Vec<i64>,
+    /// Max conversation turns
+    #[serde(default)]
+    pub max_turns: usize,
+    /// Enabled tool names (empty = all)
+    #[serde(default)]
+    pub tools: Vec<String>,
+    /// Whether to enable streaming
+    #[serde(default = "default_true")]
+    pub streaming: bool,
+}
+
+/// Gateway bindings for a specific role.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RoleGatewaysConfig {
+    #[serde(default)]
+    pub telegram: Option<RoleTelegramConfig>,
+}
+
+/// Telegram-specific config for a role gateway binding.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RoleTelegramConfig {
+    #[serde(default)]
+    pub bot_token: String,
+}
+
 impl Default for HakimiConfig {
     fn default() -> Self {
         Self {
@@ -402,6 +449,7 @@ impl Default for HakimiConfig {
             credential_pools: HashMap::new(),
             gateways: GatewaysConfig::default(),
             memory: MemoryConfig::default(),
+            roles: HashMap::new(),
         }
     }
 }

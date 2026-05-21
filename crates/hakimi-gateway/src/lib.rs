@@ -34,6 +34,8 @@ use serde::{Deserialize, Serialize};
 pub struct GatewayMessage {
     /// Platform identifier (e.g. "telegram", "slack", "discord").
     pub platform: String,
+    /// Bot / role identifier — distinguishes multiple bots on the same platform.
+    pub bot_id: String,
     /// Chat / channel identifier on the platform.
     pub chat_id: String,
     /// User identifier on the platform.
@@ -56,6 +58,9 @@ pub struct GatewayMessage {
 pub trait PlatformAdapter: Send + Sync {
     /// Human-readable platform name (e.g. "telegram").
     fn name(&self) -> &str;
+
+    /// Identifier for this specific bot / role instance.
+    fn bot_id(&self) -> &str;
 
     /// Establish the connection to the platform (login, WebSocket, polling, etc.).
     async fn connect(&mut self) -> anyhow::Result<()>;
@@ -129,8 +134,8 @@ impl Gateway {
         let adapter = self
             .adapters
             .iter()
-            .find(|a| a.name() == msg.platform)
-            .ok_or_else(|| anyhow::anyhow!("no adapter for platform: {}", msg.platform))?;
+            .find(|a| a.name() == msg.platform && a.bot_id() == msg.bot_id)
+            .ok_or_else(|| anyhow::anyhow!("no adapter for platform '{}' with bot_id '{}'", msg.platform, msg.bot_id))?;
 
         adapter.send_message(&msg.chat_id, &msg.text).await
     }
@@ -148,13 +153,14 @@ impl Gateway {
     /// taken and merged into a single stream.
     pub fn take_all_receivers(
         &mut self,
-    ) -> Vec<(String, tokio::sync::mpsc::UnboundedReceiver<GatewayMessage>)> {
+    ) -> Vec<(String, String, tokio::sync::mpsc::UnboundedReceiver<GatewayMessage>)> {
         let mut receivers = Vec::new();
         for adapter in &mut self.adapters {
             let name = adapter.name().to_owned();
+            let bid = adapter.bot_id().to_owned();
             if let Some(rx) = adapter.take_receiver() {
                 tracing::info!("took message receiver for adapter: {}", name);
-                receivers.push((name, rx));
+                receivers.push((name, bid, rx));
             }
         }
         receivers

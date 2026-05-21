@@ -20,6 +20,8 @@ pub enum StreamEvent {
         prompt_tokens: u32,
         completion_tokens: u32,
     },
+    /// A delta of reasoning content (reasoning models like DeepSeek R1, QwQ).
+    ReasoningDelta(String),
     /// Stream finished.
     Done,
 }
@@ -28,6 +30,7 @@ pub enum StreamEvent {
 #[derive(Debug, Default)]
 pub struct StreamAccumulator {
     pub content: String,
+    pub reasoning: String,
     pub tool_calls: Vec<AccumulatedToolCall>,
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -48,6 +51,7 @@ impl StreamAccumulator {
     pub fn push(&mut self, event: StreamEvent) {
         match event {
             StreamEvent::ContentDelta(text) => self.content.push_str(&text),
+            StreamEvent::ReasoningDelta(text) => self.reasoning.push_str(&text),
             StreamEvent::ToolCallDelta {
                 index,
                 id,
@@ -113,6 +117,13 @@ pub fn parse_openai_chunk(json_str: &str) -> Vec<StreamEvent> {
             if let Some(content) = delta["content"].as_str() {
                 if !content.is_empty() {
                     events.push(StreamEvent::ContentDelta(content.to_string()));
+                }
+            }
+
+            // Reasoning content delta (reasoning models: DeepSeek R1, QwQ, etc.).
+            if let Some(reasoning) = delta["reasoning_content"].as_str() {
+                if !reasoning.is_empty() {
+                    events.push(StreamEvent::ReasoningDelta(reasoning.to_string()));
                 }
             }
 

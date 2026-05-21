@@ -269,8 +269,8 @@ fn build_assistant_message_with_tools(
         tool_calls: Some(tool_calls.to_vec()),
         tool_call_id: None,
         name: None,
-        reasoning,
-        reasoning_content: None,
+        reasoning: reasoning.clone(),
+        reasoning_content: reasoning,
         timestamp: None,
         token_count: None,
         finish_reason: None,
@@ -609,11 +609,17 @@ fn accumulator_to_response(acc: &StreamAccumulator) -> NormalizedResponse {
         None
     };
 
+    let reasoning = if acc.reasoning.is_empty() {
+        None
+    } else {
+        Some(acc.reasoning.clone())
+    };
+
     NormalizedResponse {
         content,
         tool_calls,
         finish_reason,
         usage,
-        reasoning: None,
+        reasoning,
     }
 }

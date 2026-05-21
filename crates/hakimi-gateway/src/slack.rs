@@ -150,6 +150,8 @@ const POLL_INTERVAL_SECS: u64 = 10;
 pub struct SlackAdapterConfig {
     /// Bot token (xoxb-…).
     pub token: String,
+    /// Bot / role identifier for this instance.
+    pub bot_id: String,
     /// Channel ID to poll for messages (optional — if unset, polling is skipped).
     pub channel_id: Option<String>,
     /// Optional API base URL override (useful for testing).
@@ -159,6 +161,7 @@ pub struct SlackAdapterConfig {
 /// Slack Web API adapter with polling for inbound messages.
 pub struct SlackAdapter {
     token: String,
+    bot_id: String,
     channel_id: Option<String>,
     base_url: String,
     client: reqwest::Client,
@@ -176,6 +179,7 @@ impl SlackAdapter {
             .unwrap_or_else(|| SLACK_API_BASE.to_owned());
         Self {
             token: config.token,
+            bot_id: config.bot_id,
             channel_id: config.channel_id,
             base_url,
             client: reqwest::Client::new(),
@@ -187,11 +191,13 @@ impl SlackAdapter {
 
     /// Convenience constructor — create an adapter with just a token and channel.
     pub fn from_token_and_channel(
+        bot_id: impl Into<String>,
         token: impl Into<String>,
         channel_id: impl Into<String>,
     ) -> Self {
         Self::new(SlackAdapterConfig {
             token: token.into(),
+            bot_id: bot_id.into(),
             channel_id: Some(channel_id.into()),
             base_url: None,
         })
@@ -215,6 +221,7 @@ impl SlackAdapter {
         let token = self.token.clone();
         let channel_id = self.channel_id.clone().unwrap_or_default();
         let msg_tx = self.msg_tx.clone();
+        let bot_id = self.bot_id.clone();
 
         tokio::spawn(async move {
             // Track the latest timestamp we've seen so we only forward new messages.
@@ -286,6 +293,7 @@ impl SlackAdapter {
 
                     let gw_msg = GatewayMessage {
                         platform: "slack".to_owned(),
+                        bot_id: bot_id.clone(),
                         chat_id: channel_id.clone(),
                         user_id,
                         text,
@@ -364,6 +372,10 @@ impl SlackAdapter {
 impl PlatformAdapter for SlackAdapter {
     fn name(&self) -> &str {
         "slack"
+    }
+
+    fn bot_id(&self) -> &str {
+        &self.bot_id
     }
 
     async fn connect(&mut self) -> Result<()> {
@@ -562,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_adapter_construction() {
-        let adapter = SlackAdapter::from_token_and_channel("xoxb-test", "C12345");
+        let adapter = SlackAdapter::from_token_and_channel("default", "xoxb-test", "C12345");
         assert_eq!(adapter.name(), "slack");
         assert_eq!(adapter.channel_id.as_deref(), Some("C12345"));
         assert!(adapter.poll_handle.is_none());
@@ -570,7 +582,7 @@ mod tests {
 
     #[test]
     fn test_take_receiver_once() {
-        let mut adapter = SlackAdapter::from_token_and_channel("tok", "ch");
+        let mut adapter = SlackAdapter::from_token_and_channel("default", "tok", "ch");
         let rx = adapter.take_receiver();
         assert!(rx.is_some());
         let rx2 = adapter.take_receiver();

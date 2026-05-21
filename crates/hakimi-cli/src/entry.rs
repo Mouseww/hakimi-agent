@@ -531,7 +531,7 @@ async fn build_agent(
         std::sync::Arc::new(hakimi_tools::SearchFilesTool),
         std::sync::Arc::new(hakimi_tools::PatchTool),
         std::sync::Arc::new(hakimi_tools::WebSearchTool),
-        std::sync::Arc::new(hakimi_tools::MemoryTool),
+        std::sync::Arc::new(hakimi_tools::MemoryTool::new()),
         std::sync::Arc::new(hakimi_tools::TodoTool),
         std::sync::Arc::new(hakimi_tools::ProcessTool),
         std::sync::Arc::new(hakimi_tools::ImageDescribeTool),
@@ -871,23 +871,25 @@ pub async fn run() -> Result<()> {
     if args.gateway {
         info!("starting gateway mode");
 
-        // Read bot_token from config gateways.telegram
-        let tg_config = &config.gateways.telegram;
-        if tg_config.bot_token.is_empty() {
-            error!("No Telegram bot_token in config. Add gateways.telegram.bot_token to ~/.hakimi/config.yaml");
-            std::process::exit(1);
+        // -----------------------------------------------------------------------
+        // Per-role agent state.
+        // Each role gets its own AIAgent, chat histories, and system prompt.
+        // -----------------------------------------------------------------------
+        struct AgentState {
+            agent: std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
+            chat_histories: std::sync::Arc<
+                tokio::sync::Mutex<
+                    std::collections::HashMap<String, Vec<hakimi_common::Message>>,
+                >,
+            >,
+            base_system_prompt: String,
         }
 
+        let mut agent_states: std::collections::HashMap<String, AgentState> =
+            std::collections::HashMap::new();
         let mut gateway = hakimi_gateway::Gateway::new();
-        let telegram_adapter = hakimi_gateway::TelegramAdapter::from_token(&tg_config.bot_token);
-        gateway.add_adapter(Box::new(telegram_adapter));
 
-        // Build the base system prompt using build_system_prompt() with all components.
-        let identity = if config.agent.system_prompt.is_empty() {
-            "You are Hakimi, a helpful AI assistant.".to_string()
-        } else {
-            config.agent.system_prompt.clone()
-        };
+        // ---- Shared resources (used by all roles) ----
 
         let env_hints = hakimi_context::build_environment_hints(
             "gateway",
@@ -939,57 +941,203 @@ pub async fn run() -> Result<()> {
             String::new()
         };
 
-        // Build the base system prompt (without skills — skills are injected per-message).
-        let base_system_prompt = hakimi_context::build_system_prompt(
-            &identity,
-            "telegram",  // platform hint for Telegram formatting
-            "",          // skills injected per-message below
-            &memory_text,
-            &env_hints,
-        );
+        // ---- Build agent states: multi-role or single-bot fallback ----
 
-        // Set the base system prompt on the agent.
-        agent.set_system_prompt(&base_system_prompt);
+        if !config.roles.is_empty() {
+            // Multi-role mode: create a separate agent + TelegramAdapter per role.
+            info!(role_count = config.roles.len(), "multi-role gateway mode");
 
-        // Per-chat message histories for session isolation.
-        let chat_histories: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>> =
-            std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+            for (role_name, role_config) in &config.roles {
+                // Only process roles that have a telegram binding with a non-empty token.
+                let tg_binding = match &role_config.gateways.telegram {
+                    Some(tg) if !tg.bot_token.is_empty() => tg,
+                    _ => {
+                        warn!(
+                            role = %role_name,
+                            "role has no telegram binding or empty bot_token, skipping"
+                        );
+                        continue;
+                    }
+                };
 
-        // Wrap agent in Arc<Mutex> for sharing across tasks
-        let agent = std::sync::Arc::new(tokio::sync::Mutex::new(agent));
+                // Create a TelegramAdapter for this role.
+                let adapter = hakimi_gateway::TelegramAdapter::from_token(
+                    role_name,
+                    &tg_binding.bot_token,
+                );
+                gateway.add_adapter(Box::new(adapter));
+
+                // Build a fresh agent for this role.
+                let mut role_agent = match build_agent(&args, &config).await {
+                    Ok(a) => a,
+                    Err(e) => {
+                        error!(role = %role_name, error = %e, "failed to build agent for role");
+                        std::process::exit(1);
+                    }
+                };
+
+                // Override model if the role specifies one.
+                if !role_config.model.is_empty() {
+                    role_agent.set_model(&role_config.model);
+                }
+
+                // Build the role's system prompt from its identity (or fallback to global).
+                let identity = if !role_config.identity.is_empty() {
+                    role_config.identity.clone()
+                } else if !config.agent.system_prompt.is_empty() {
+                    config.agent.system_prompt.clone()
+                } else {
+                    "You are Hakimi, a helpful AI assistant.".to_string()
+                };
+
+                let base_system_prompt = hakimi_context::build_system_prompt(
+                    &identity,
+                    "telegram",
+                    "",
+                    &memory_text,
+                    &env_hints,
+                );
+
+                role_agent.set_system_prompt(&base_system_prompt);
+
+                agent_states.insert(
+                    role_name.clone(),
+                    AgentState {
+                        agent: std::sync::Arc::new(tokio::sync::Mutex::new(role_agent)),
+                        chat_histories: std::sync::Arc::new(tokio::sync::Mutex::new(
+                            std::collections::HashMap::new(),
+                        )),
+                        base_system_prompt,
+                    },
+                );
+
+                info!(role = %role_name, "role agent initialized");
+            }
+        } else {
+            // Backward compatibility: single-bot mode using config.gateways.telegram.
+            let tg_config = &config.gateways.telegram;
+            if tg_config.bot_token.is_empty() {
+                error!(
+                    "No Telegram bot_token in config. \
+                     Add gateways.telegram.bot_token to ~/.hakimi/config.yaml"
+                );
+                std::process::exit(1);
+            }
+
+            let adapter =
+                hakimi_gateway::TelegramAdapter::from_token("default", &tg_config.bot_token);
+            gateway.add_adapter(Box::new(adapter));
+
+            let identity = if config.agent.system_prompt.is_empty() {
+                "You are Hakimi, a helpful AI assistant.".to_string()
+            } else {
+                config.agent.system_prompt.clone()
+            };
+
+            let base_system_prompt = hakimi_context::build_system_prompt(
+                &identity,
+                "telegram",
+                "",
+                &memory_text,
+                &env_hints,
+            );
+
+            // Use the pre-built agent (already constructed before gateway mode).
+            agent.set_system_prompt(&base_system_prompt);
+
+            agent_states.insert(
+                "default".to_string(),
+                AgentState {
+                    agent: std::sync::Arc::new(tokio::sync::Mutex::new(agent)),
+                    chat_histories: std::sync::Arc::new(tokio::sync::Mutex::new(
+                        std::collections::HashMap::new(),
+                    )),
+                    base_system_prompt,
+                },
+            );
+        }
+
+        if agent_states.is_empty() {
+            error!("No agent states created (no roles with telegram bindings and no default bot token)");
+            std::process::exit(1);
+        }
+
+        // ---- Connect adapters and merge receivers ----
+
         gateway.connect_all().await?;
 
-        // Take all inbound message receivers
-        let mut receivers = gateway.take_all_receivers();
+        let receivers = gateway.take_all_receivers();
         if receivers.is_empty() {
             error!("No message receivers available from any adapter");
             std::process::exit(1);
         }
 
-        info!("Gateway connected. Listening for messages from {} adapter(s)...", receivers.len());
+        info!(
+            "Gateway connected. Listening for messages from {} adapter(s) serving {} role(s)...",
+            receivers.len(),
+            agent_states.len()
+        );
 
-        // Merge all receivers into one select loop
-        let (_platform, mut rx) = receivers.remove(0);
+        // Merge all receivers into a single channel for one select loop.
+        let (merged_tx, mut merged_rx) =
+            tokio::sync::mpsc::unbounded_channel::<hakimi_gateway::GatewayMessage>();
+        for (_platform, _bot_id, mut rx) in receivers {
+            let tx = merged_tx.clone();
+            tokio::spawn(async move {
+                while let Some(msg) = rx.recv().await {
+                    if tx.send(msg).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        drop(merged_tx); // Close original sender so merged_rx returns None when all forwarders finish.
+
+        // ---- Message processing loop ----
+
+        let agent_states_ref = &agent_states;
+        let skill_store_ref = &skill_store;
 
         loop {
             tokio::select! {
-                Some(msg) = rx.recv() => {
+                msg = merged_rx.recv() => {
+                    let msg = match msg {
+                        Some(m) => m,
+                        None => {
+                            info!("All message channels closed, shutting down gateway");
+                            break;
+                        }
+                    };
+
+                    let bot_id = msg.bot_id.clone();
                     let user_text = msg.text.clone();
                     let chat_id = msg.chat_id.clone();
                     let platform = msg.platform.clone();
-                    info!(platform = %platform, chat_id = %chat_id, "received message");
+                    info!(
+                        platform = %platform,
+                        bot_id = %bot_id,
+                        chat_id = %chat_id,
+                        "received message"
+                    );
 
-                    let agent_clone = agent.clone();
-                    let histories_clone = chat_histories.clone();
-                    let skill_store_ref = &skill_store;
-                    let base_sp = &base_system_prompt;
-                    let gateway_ref = &gateway;
+                    // Look up the agent state for this bot_id.
+                    let state = match agent_states_ref.get(&bot_id) {
+                        Some(s) => s,
+                        None => {
+                            warn!(bot_id = %bot_id, "no agent state for bot_id, ignoring message");
+                            continue;
+                        }
+                    };
 
-                    // Process the message with the agent
+                    let agent_clone = state.agent.clone();
+                    let histories_clone = state.chat_histories.clone();
+                    let base_sp = &state.base_system_prompt;
+
+                    // Process the message with the correct agent.
                     let response = {
                         let mut a = agent_clone.lock().await;
 
-                        // 1. Load chat-specific message history
+                        // 1. Load chat-specific message history.
                         {
                             let histories = histories_clone.lock().await;
                             let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
@@ -999,14 +1147,16 @@ pub async fn run() -> Result<()> {
                             }
                         }
 
-                        // 2. Inject matching skills into the system prompt
-                        let skill_additions = skill_store_ref.get_system_prompt_additions(&user_text);
+                        // 2. Inject matching skills into the system prompt.
+                        let skill_additions =
+                            skill_store_ref.get_system_prompt_additions(&user_text);
                         if !skill_additions.is_empty() {
-                            let combined = format!("{base_sp}\n\n## Skills\n{skill_additions}");
+                            let combined =
+                                format!("{base_sp}\n\n## Skills\n{skill_additions}");
                             a.set_system_prompt(&combined);
                         }
 
-                        // 3. Call agent.chat()
+                        // 3. Call agent.chat().
                         let result = match a.chat(&user_text).await {
                             Ok(resp) => resp,
                             Err(e) => {
@@ -1015,10 +1165,10 @@ pub async fn run() -> Result<()> {
                             }
                         };
 
-                        // 4. Restore base system prompt
+                        // 4. Restore base system prompt.
                         a.set_system_prompt(base_sp);
 
-                        // 5. Save updated chat history back
+                        // 5. Save updated chat history back.
                         {
                             let mut histories = histories_clone.lock().await;
                             histories.insert(chat_id.clone(), a.messages().to_vec());
@@ -1027,25 +1177,36 @@ pub async fn run() -> Result<()> {
                         result
                     };
 
-                    // Send response back via gateway
-                    if let Err(e) = gateway_ref.route_message(&hakimi_gateway::GatewayMessage {
-                        platform: platform.clone(),
-                        chat_id: chat_id.clone(),
-                        user_id: String::new(), // outbound response, user_id not needed
-                        text: response.clone(),
-                        media: None,
-                    }).await {
+                    // Send response back via gateway (routed to the correct adapter by bot_id).
+                    if let Err(e) = gateway
+                        .route_message(&hakimi_gateway::GatewayMessage {
+                            platform: platform.clone(),
+                            bot_id: bot_id.clone(),
+                            chat_id: chat_id.clone(),
+                            user_id: String::new(),
+                            text: response.clone(),
+                            media: None,
+                        })
+                        .await
+                    {
                         error!(error = %e, "failed to send response");
                     }
-                    info!(platform = %platform, chat_id = %chat_id, response_len = response.len(), "sent response");
+                    info!(
+                        platform = %platform,
+                        bot_id = %bot_id,
+                        chat_id = %chat_id,
+                        response_len = response.len(),
+                        "sent response"
+                    );
                 }
                 _ = tokio::signal::ctrl_c() => {
                     info!("Shutting down gateway...");
-                    gateway.disconnect_all().await?;
                     break;
                 }
             }
         }
+
+        gateway.disconnect_all().await?;
         return Ok(());
     }
 

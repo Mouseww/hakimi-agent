@@ -85,6 +85,12 @@ impl ChatCompletionsTransport {
                     obj["name"] = json!(name);
                 }
 
+                // Reasoning content — must be passed back for reasoning models
+                // (DeepSeek R1, QwQ, etc.) or the API returns 400.
+                if let Some(ref reasoning_content) = m.reasoning_content {
+                    obj["reasoning_content"] = json!(reasoning_content);
+                }
+
                 obj
             })
             .collect()
@@ -202,7 +208,7 @@ impl ChatCompletionsTransport {
             tool_calls,
             finish_reason,
             usage,
-            reasoning: None,
+            reasoning: choice.message.reasoning_content.clone(),
         })
     }
 
@@ -362,6 +368,9 @@ struct ChatCompletionMessage {
     content: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<ChatCompletionToolCall>>,
+    /// Reasoning content from reasoning models (DeepSeek R1, QwQ, etc.).
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

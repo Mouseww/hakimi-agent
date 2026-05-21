@@ -12,12 +12,20 @@ use crate::{GatewayMessage, PlatformAdapter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignalAdapterConfig {
+    /// Bot / role identifier for this instance.
+    #[serde(default = "default_signal_bot_id")]
+    pub bot_id: String,
     pub phone_number: String,
     pub signal_cli_path: String,
 }
 
+fn default_signal_bot_id() -> String {
+    "default".to_string()
+}
+
 pub struct SignalAdapter {
     config: SignalAdapterConfig,
+    bot_id: String,
     client: Client,
     receiver: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
 }
@@ -25,8 +33,10 @@ pub struct SignalAdapter {
 impl SignalAdapter {
     pub fn new(config: SignalAdapterConfig) -> Self {
         let (_, receiver) = mpsc::unbounded_channel();
+        let bot_id = config.bot_id.clone();
         Self {
             config,
+            bot_id,
             client: Client::new(),
             receiver: Some(receiver),
         }
@@ -47,6 +57,10 @@ impl SignalAdapter {
 impl PlatformAdapter for SignalAdapter {
     fn name(&self) -> &str {
         "signal"
+    }
+
+    fn bot_id(&self) -> &str {
+        &self.bot_id
     }
 
     async fn connect(&mut self) -> anyhow::Result<()> {
@@ -102,6 +116,7 @@ mod tests {
 
     fn make_config() -> SignalAdapterConfig {
         SignalAdapterConfig {
+            bot_id: "default".into(),
             phone_number: "+1234567890".into(),
             signal_cli_path: "http://localhost:8080".into(),
         }
@@ -128,6 +143,7 @@ mod tests {
     #[test]
     fn test_send_url_trailing_slash() {
         let config = SignalAdapterConfig {
+            bot_id: "default".into(),
             phone_number: "+1234567890".into(),
             signal_cli_path: "http://localhost:8080/".into(),
         };

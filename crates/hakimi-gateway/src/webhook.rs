@@ -15,16 +15,24 @@ use crate::{GatewayMessage, PlatformAdapter};
 pub struct WebhookAdapterConfig {
     /// Port to listen on for incoming webhooks.
     pub port: u16,
+    /// Bot / role identifier for this instance.
+    #[serde(default = "default_webhook_bot_id")]
+    pub bot_id: String,
     /// Path to listen on (e.g. "/webhook").
     pub path: String,
     /// Optional secret for HMAC verification.
     pub secret: Option<String>,
 }
 
+fn default_webhook_bot_id() -> String {
+    "default".to_string()
+}
+
 impl Default for WebhookAdapterConfig {
     fn default() -> Self {
         Self {
             port: 8080,
+            bot_id: "default".to_string(),
             path: "/webhook".to_string(),
             secret: None,
         }
@@ -34,6 +42,7 @@ impl Default for WebhookAdapterConfig {
 /// Generic webhook platform adapter.
 pub struct WebhookAdapter {
     config: WebhookAdapterConfig,
+    bot_id: String,
     sender: Option<mpsc::UnboundedSender<GatewayMessage>>,
     receiver: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
 }
@@ -41,8 +50,10 @@ pub struct WebhookAdapter {
 impl WebhookAdapter {
     pub fn new(config: WebhookAdapterConfig) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
+        let bot_id = config.bot_id.clone();
         Self {
             config,
+            bot_id,
             sender: Some(sender),
             receiver: Some(receiver),
         }
@@ -60,6 +71,10 @@ impl WebhookAdapter {
 impl PlatformAdapter for WebhookAdapter {
     fn name(&self) -> &str {
         "webhook"
+    }
+
+    fn bot_id(&self) -> &str {
+        &self.bot_id
     }
 
     async fn connect(&mut self) -> anyhow::Result<()> {
@@ -91,6 +106,7 @@ mod tests {
     fn make_config() -> WebhookAdapterConfig {
         WebhookAdapterConfig {
             port: 9090,
+            bot_id: "default".to_string(),
             path: "/test-hook".to_string(),
             secret: Some("s3cret".to_string()),
         }
@@ -124,6 +140,7 @@ mod tests {
 
         let msg = GatewayMessage {
             platform: "webhook".to_string(),
+            bot_id: "default".to_string(),
             chat_id: "c1".to_string(),
             user_id: "u1".to_string(),
             text: "ping".to_string(),
@@ -158,6 +175,7 @@ mod tests {
         // sender still exists internally; inject should not panic
         let msg = GatewayMessage {
             platform: "webhook".to_string(),
+            bot_id: "default".to_string(),
             chat_id: "c2".to_string(),
             user_id: "u2".to_string(),
             text: "test".to_string(),

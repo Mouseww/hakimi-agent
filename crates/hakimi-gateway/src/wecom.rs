@@ -13,13 +13,21 @@ use crate::{GatewayMessage, PlatformAdapter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeComAdapterConfig {
+    /// Bot / role identifier for this instance.
+    #[serde(default = "default_wecom_bot_id")]
+    pub bot_id: String,
     pub corp_id: String,
     pub agent_id: String,
     pub secret: String,
 }
 
+fn default_wecom_bot_id() -> String {
+    "default".to_string()
+}
+
 pub struct WeComAdapter {
     config: WeComAdapterConfig,
+    bot_id: String,
     client: Client,
     receiver: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
 }
@@ -27,8 +35,10 @@ pub struct WeComAdapter {
 impl WeComAdapter {
     pub fn new(config: WeComAdapterConfig) -> Self {
         let (_, receiver) = mpsc::unbounded_channel();
+        let bot_id = config.bot_id.clone();
         Self {
             config,
+            bot_id,
             client: Client::new(),
             receiver: Some(receiver),
         }
@@ -77,6 +87,10 @@ impl WeComAdapter {
 impl PlatformAdapter for WeComAdapter {
     fn name(&self) -> &str {
         "wecom"
+    }
+
+    fn bot_id(&self) -> &str {
+        &self.bot_id
     }
 
     async fn connect(&mut self) -> anyhow::Result<()> {
@@ -136,6 +150,7 @@ mod tests {
 
     fn make_config() -> WeComAdapterConfig {
         WeComAdapterConfig {
+            bot_id: "default".into(),
             corp_id: "ww_corp123".into(),
             agent_id: "1000002".into(),
             secret: "test_secret".into(),

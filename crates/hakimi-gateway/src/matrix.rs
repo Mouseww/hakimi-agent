@@ -12,13 +12,21 @@ use crate::{GatewayMessage, PlatformAdapter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatrixAdapterConfig {
+    /// Bot / role identifier for this instance.
+    #[serde(default = "default_matrix_bot_id")]
+    pub bot_id: String,
     pub homeserver_url: String,
     pub access_token: String,
     pub room_id: String,
 }
 
+fn default_matrix_bot_id() -> String {
+    "default".to_string()
+}
+
 pub struct MatrixAdapter {
     config: MatrixAdapterConfig,
+    bot_id: String,
     client: Client,
     receiver: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
 }
@@ -26,8 +34,10 @@ pub struct MatrixAdapter {
 impl MatrixAdapter {
     pub fn new(config: MatrixAdapterConfig) -> Self {
         let (_, receiver) = mpsc::unbounded_channel();
+        let bot_id = config.bot_id.clone();
         Self {
             config,
+            bot_id,
             client: Client::new(),
             receiver: Some(receiver),
         }
@@ -51,6 +61,10 @@ impl MatrixAdapter {
 impl PlatformAdapter for MatrixAdapter {
     fn name(&self) -> &str {
         "matrix"
+    }
+
+    fn bot_id(&self) -> &str {
+        &self.bot_id
     }
 
     async fn connect(&mut self) -> anyhow::Result<()> {
@@ -117,6 +131,7 @@ mod tests {
 
     fn make_config() -> MatrixAdapterConfig {
         MatrixAdapterConfig {
+            bot_id: "default".into(),
             homeserver_url: "https://matrix.example.com".into(),
             access_token: "syt_test_token".into(),
             room_id: "!abc:example.com".into(),
@@ -149,6 +164,7 @@ mod tests {
     #[test]
     fn test_build_send_url_trailing_slash() {
         let config = MatrixAdapterConfig {
+            bot_id: "default".into(),
             homeserver_url: "https://matrix.example.com/".into(),
             access_token: "token".into(),
             room_id: "!room:server".into(),
