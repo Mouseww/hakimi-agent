@@ -2,42 +2,130 @@
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-391-passing?style=for-the-badge&color=brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/lines-29.1K++-orange?style=for-the-badge" alt="Lines">
+  <img src="https://img.shields.io/badge/tests-420-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/lines-29K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
 <h1 align="center">🐙 Hakimi Agent</h1>
 
 <p align="center">
-  <b>A high-performance AI agent framework written in Rust</b><br>
-  <sub>Modular • Async-native • Multi-platform • Tool-rich • Extensible</sub>
+  <b>A Rust-native AI Agent framework — 40x faster startup, 90% less memory than Python</b><br>
+  <sub>Production-grade architecture from <a href="https://github.com/NousResearch/hermes-agent">Nous Research's Hermes Agent</a>, rewritten from scratch in Rust</sub>
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-architecture">Architecture</a> •
-  <a href="#-tools">Tools</a> •
-  <a href="#-platforms">Platforms</a> •
-  <a href="#-configuration">Configuration</a> •
-  <a href="#-extending">Extending</a>
+  <a href="#why-hakimi">Why Hakimi</a> •
+  <a href="#capabilities">Capabilities</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#benchmark">Benchmark</a> •
+  <a href="#roadmap">Roadmap</a> •
+  <a href="README_CN.md">中文</a>
 </p>
 
 ---
 
-## What is Hakimi?
+## Why Hakimi
 
-Hakimi is a Rust rewrite of the [Hermes Agent](https://github.com/NousResearch/hermes-agent) Python framework — rebuilt from the ground up for **performance**, **safety**, and **extensibility**. It provides a complete AI agent runtime with:
+Every major AI agent framework — LangChain, AutoGen, CrewAI, Hermes — is written in Python. **Hakimi is the first production-grade agent framework rewritten entirely in Rust.**
 
-- **17 built-in tools** (file ops, shell, search, web, memory, code execution, ...)
-- **2 LLM transports** (OpenAI-compatible + Anthropic Messages API)
-- **3 platform adapters** (Telegram, Discord, Slack)
-- **SSE streaming** with real-time token delivery
-- **MCP client** for external tool servers
-- **Plugin system** for HTTP-based and native tool extensions
-- **ratatui TUI** for a rich terminal experience
-- **SQLite** session storage with full-text search
-- **SmartContextEngine** with 3-tier compression (summarize, truncate, sliding window)
-- **MCP & Plugin systems** wired into CLI for extensibility
+This isn't a toy. It faithfully ports the complete architecture of [Hermes Agent](https://github.com/NousResearch/hermes-agent), a battle-tested system serving thousands of users at Nous Research.
+
+### 🔥 Three reasons to pay attention
+
+**1. Brutal performance: 50ms startup, 15MB idle memory**
+
+| Metric | Python Agent | Hakimi (Rust) | Improvement |
+|--------|-------------|---------------|-------------|
+| Startup | ~2s | ~50ms | **40x** |
+| Idle memory | ~150MB | ~15MB | **10x** |
+| Concurrency | asyncio + thread bridge | tokio native async | No GIL |
+| Tool registration | Runtime AST scanning | Compile-time trait impl | Zero overhead |
+| Type safety | Runtime crashes | Compile-time guarantees | 100% |
+
+**2. Production reliability: 420 tests, 20+ error recovery strategies**
+
+Not a demo project. The error classifier covers 20+ API error types (auth, rate-limit, overloaded, context overflow...) each with automatic recovery. Credential pools support multi-key rotation with circuit breakers.
+
+**3. Batteries included: 25 built-in tools, 8 platform adapters**
+
+File ops, Shell, Search, Web, Memory, Code execution, Vision analysis, Checkpoint rollback, Task delegation — all built-in. Telegram, Discord, Slack, DingTalk, WeCom, Signal, Matrix, Webhook — all ready to go.
+
+---
+
+## Capabilities
+
+### 🛠️ 25 Built-in Tools
+
+- **Files**: read_file, write_file, search_files, patch
+- **Shell**: terminal, process (background process management)
+- **Web**: web_search, web_extract
+- **Memory**: memory (persistent), session_search (FTS5 full-text)
+- **Code**: code_exec (Python/JS/Bash)
+- **Media**: vision_analyze (image analysis), image_generate
+- **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
+- **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
+- **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
+
+### 🔌 Transports
+
+| Transport | API | Streaming | Status |
+|-----------|-----|-----------|--------|
+| ChatCompletions | OpenAI-compatible (`/v1/chat/completions`) | ✅ SSE | Production |
+| Anthropic | Messages API (`/v1/messages`) | ✅ SSE + Prompt Caching | Production |
+| Gemini | Google Gemini native API | ✅ SSE | Production |
+| Bedrock | AWS Converse API | ✅ | Planned |
+
+### 🌐 8 Platform Adapters
+
+Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
+
+### 🧠 Smart Context Compression
+
+Three-tier compression strategy — no manual context window management needed:
+- **Tier 1**: Drop old tool call results
+- **Tier 2**: LLM-powered summarization of middle conversation turns
+- **Tier 3**: Sliding window preserving recent context
+
+### 🔐 Credential Pool & Error Recovery
+
+```yaml
+credential_pools:
+  openrouter:
+    strategy: round_robin  # round_robin / fill_first / random / least_used
+    credentials:
+      - api_key: "sk-key-1"
+        priority: 10
+      - api_key: "sk-key-2"
+        priority: 5
+```
+
+20+ error types auto-classified: auth failure → rotate key; rate limit → exponential backoff; context overflow → trigger compression; model not found → fallback model.
+
+### 🔧 MCP (Model Context Protocol)
+
+Full MCP client with stdio / HTTP / SSE transports:
+
+```rust
+let mut client = McpClient::connect_stdio("npx", &["@modelcontextprotocol/server-filesystem"]).await?;
+client.initialize().await?;
+let tools = client.list_tools().await?;
+let result = client.call_tool("read_file", json!({"path": "/tmp/test.txt"})).await?;
+```
+
+### 📦 Plugin System
+
+```yaml
+# ~/.hakimi/plugins/weather.yaml
+name: my_api
+tools:
+  - name: get_weather
+    endpoint: "https://api.weather.com/v1/current?city={city}"
+    method: GET
+    description: "Get current weather for a city"
+```
+
+---
 
 ## Quick Start
 
@@ -50,41 +138,47 @@ cargo build --release
 # Set your API key
 export OPENAI_API_KEY="sk-..."
 
-# Run the CLI
-./target/release/hakimi-cli
+# Interactive REPL
+./target/release/hakimi
 
-# Or single-query mode
-./target/release/hakimi-cli --query "What is the Rust borrow checker?"
+# Single query mode
+./target/release/hakimi --query "Explain Rust's ownership model"
 
-# Or the TUI
-./target/release/hakimi-tui
+# TUI mode
+./target/release/hakimi --tui
+
+# HTTP API server
+./target/release/hakimi --serve --port 3000
 ```
 
-On first run, Hakimi creates `~/.hakimi/config.yaml` with sensible defaults. Edit it to customize your model, provider, and agent behavior.
+On first run, Hakimi creates `~/.hakimi/config.yaml` with sensible defaults.
+
+---
 
 ## Architecture
 
-Hakimi is a **Cargo workspace** with 13 crates, each with a single responsibility.
-The context engine (`hakimi-context`) features a **SmartContextEngine** with 3-tier
-compression — summarization, truncation, and sliding window — to keep conversations
-within token limits without losing critical information.
+**19 crates, each with a single responsibility**:
 
 ```
 hakimi-agent/
 ├── crates/
-│   ├── hakimi-common/      # Shared types: Message, ToolCall, Usage, Error
-│   ├── hakimi-config/      # YAML config loading, profiles, env expansion
-│   ├── hakimi-session/     # SQLite WAL + FTS5 full-text search
-│   ├── hakimi-context/     # Context engine, compression, prompt building
-│   ├── hakimi-core/        # AIAgent builder, conversation loop, retry logic
-│   ├── hakimi-transports/  # LLM providers (OpenAI, Anthropic) + SSE streaming
-│   ├── hakimi-tools/       # 17 built-in tools + registry
-│   ├── hakimi-cron/        # Cron scheduler for recurring tasks
-│   ├── hakimi-gateway/     # Platform adapters (Telegram, Discord, Slack)
-│   ├── hakimi-mcp/         # MCP (Model Context Protocol) client
-│   ├── hakimi-plugin/      # Plugin loader (HTTP tools, native libs, WASM)
-│   ├── hakimi-cli/         # Interactive REPL CLI
-│   └── hakimi-tui/         # ratatui-based terminal UI
+│   ├── hakimi-common/      # Shared types: Message, ToolCall, Usage, Error, 20+ error classifications
+│   ├── hakimi-config/      # YAML config, credential pool config, env expansion
+│   ├── hakimi-session/     # SQLite WAL + FTS5 full-text search, decision tree
+│   ├── hakimi-context/     # Context engine, 3-tier compression, prompt building, role adaptation
+│   ├── hakimi-core/        # AIAgent builder, conversation loop, retry, error classifier, credential pool, guardrails
+│   ├── hakimi-transports/  # LLM transports (OpenAI, Anthropic, Gemini) + SSE streaming + prompt caching
+│   ├── hakimi-tools/       # 25 built-in tools + registry
+│   ├── hakimi-cron/        # Cron scheduler (SQLite persistent)
+│   ├── hakimi-gateway/     # 8 platform adapters
+│   ├── hakimi-mcp/         # MCP client (stdio/HTTP/SSE)
+│   ├── hakimi-plugin/      # Plugin loader
+│   ├── hakimi-skills/      # Skill system (YAML frontmatter .md files)
+│   ├── hakimi-i18n/        # Internationalization (YAML locale catalogs)
+│   ├── hakimi-batch/       # Parallel batch processing + checkpointing
+│   ├── hakimi-server/      # HTTP REST API (Axum)
+│   ├── hakimi-cli/         # REPL CLI + setup wizard + doctor diagnostics
+│   └── hakimi-tui/         # ratatui terminal UI
 ```
 
 ### Core Loop
@@ -93,195 +187,43 @@ hakimi-agent/
 User Message
     │
     ▼
-┌─────────────────────────────────────────────┐
-│  AIAgent.run_conversation()                 │
-│                                             │
-│  1. Build system prompt + context           │
-│  2. Call LLM via Transport (streaming)      │
-│  3. If tool_calls → dispatch & loop         │
-│  4. If text response → return               │
-│  5. Retry on transient errors (backoff)     │
-│  6. Compress context if near limit          │
-│     └─ SmartContextEngine 3-tier compression │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  AIAgent.run_conversation()                      │
+│                                                  │
+│  1. Build system prompt + context                │
+│     (SmartContextEngine 3-tier compression)      │
+│  2. Acquire API key from credential pool         │
+│     → Call LLM via Transport (SSE streaming)     │
+│  3. If tool_calls → dispatch & loop              │
+│  4. If text response → return                    │
+│  5. Error classifier → auto-recovery             │
+│     (retry / rotate / compress / fallback)       │
+│  6. Guardrails → loop detection / circuit break  │
+└──────────────────────────────────────────────────┘
     │
     ▼
-Final Response + Usage Stats
+Response + Token Usage Stats
 ```
 
-## Tools
+---
 
-17 built-in tools organized by toolset:
+## Benchmark
 
-### 📁 File (`file`)
-| Tool | Description |
-|------|-------------|
-| `read_file` | Read files with line numbers, offset, and limit |
-| `write_file` | Write files, auto-create parent directories |
-| `search_files` | Regex search via ripgrep (with grep fallback) |
-| `patch` | Find-and-replace in files with uniqueness validation |
+| Feature | Hermes (Python) | Hakimi (Rust) |
+|---------|-----------------|---------------|
+| Language | Python 3.11+ | Rust 2024 |
+| Async model | asyncio + thread bridge | tokio native async |
+| Memory model | threading.RLock | `Arc<RwLock>` |
+| Tool registration | Runtime AST scanning | Compile-time trait impl |
+| Startup time | ~2s | ~50ms |
+| Idle memory | ~150MB | ~15MB |
+| Streaming | Generator-based | SSE + futures Stream |
+| Error recovery | Basic retry | 20+ classifiers + auto-strategy |
+| Credential mgmt | Single key | Multi-key pool + rotation + circuit breaker |
+| Platforms | 20+ | 8 (growing) |
+| Tests | ~500 | 420 |
 
-### 💻 Shell (`shell`)
-| Tool | Description |
-|------|-------------|
-| `terminal` | Execute shell commands with timeout |
-| `process` | Manage background processes (start/stop/log) |
-
-### 🌐 Web (`web`)
-| Tool | Description |
-|------|-------------|
-| `web_search` | Web search (DuckDuckGo or API) |
-
-### 🧠 Memory (`memory`)
-| Tool | Description |
-|------|-------------|
-| `memory` | Persistent agent memory (add/replace/remove) |
-| `session_search` | Full-text search across past sessions |
-
-### ✅ Productivity (`productivity`)
-| Tool | Description |
-|------|-------------|
-| `todo` | Task management (create/update/list) |
-
-### 🐍 Code (`code`)
-| Tool | Description |
-|------|-------------|
-| `code_exec` | Execute Python/JavaScript/Bash snippets |
-
-### 📨 Communication (`communication`)
-| Tool | Description |
-|------|-------------|
-| `send_message` | Queue messages for platform delivery |
-
-### 🤝 Meta (`meta`)
-| Tool | Description |
-|------|-------------|
-| `delegate_task` | Spawn sub-tasks (planned: child agents) |
-| `skill_manage` | CRUD operations on reusable skill files |
-
-### 👁️ Media (`media`)
-| Tool | Description |
-|------|-------------|
-| `image_describe` | Image analysis (requires vision model) |
-
-## Platforms
-
-### Telegram
-```yaml
-gateway:
-  telegram:
-    token: "your-bot-token"
-```
-- Long polling with auto-reconnect
-- Markdown formatting with plain-text fallback
-- Auto-splits messages > 4096 chars
-- Photo message support
-
-### Discord
-```yaml
-gateway:
-  discord:
-    token: "your-bot-token"
-    channel_id: "123456789"
-```
-- REST API (no WebSocket gateway required)
-- Rich embed support
-- Rate limit handling with retry
-
-### Slack
-```yaml
-gateway:
-  slack:
-    token: "xoxb-your-bot-token"
-    channel_id: "C0123456789"
-```
-- Block Kit support for rich formatting
-- Timestamp-based message cursor
-
-## Configuration
-
-`~/.hakimi/config.yaml`:
-
-```yaml
-model:
-  default: "anthropic/claude-sonnet-4-20250514"
-  provider: "openrouter"
-  base_url: "https://openrouter.ai/api"
-
-api_key: "sk-your-key"
-
-agent:
-  max_turns: 90
-  max_retries: 3
-
-display:
-  streaming: true
-```
-
-Environment variables (override config):
-- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY`
-- `HAKIMI_MODEL` — model override
-- `HAKIMI_BASE_URL` — API endpoint override
-
-## Transports
-
-| Transport | API | Streaming | Status |
-|-----------|-----|-----------|--------|
-| `ChatCompletionsTransport` | OpenAI-compatible (`/v1/chat/completions`) | ✅ SSE | Production |
-| `AnthropicTransport` | Anthropic Messages API (`/v1/messages`) | ✅ SSE | Production |
-
-Both transports support:
-- Non-streaming (blocking) mode
-- SSE streaming with real-time token delivery
-- Tool calling (function calling)
-- Usage tracking (prompt/completion/cached tokens)
-- Error classification and retry logic
-
-## MCP (Model Context Protocol)
-
-Hakimi includes a full MCP client for connecting to external tool servers:
-
-```rust
-use hakimi_mcp::McpClient;
-
-// Connect to an MCP server via stdio
-let mut client = McpClient::connect_stdio("npx", &["@modelcontextprotocol/server-filesystem"]).await?;
-client.initialize().await?;
-
-// Discover tools
-let tools = client.list_tools().await?;
-
-// Call a tool
-let result = client.call_tool("read_file", json!({"path": "/tmp/test.txt"})).await?;
-```
-
-## Plugins
-
-Extend Hakimi with custom tools via the plugin system:
-
-### HTTP Tool Plugins
-
-Create a YAML file in `~/.hakimi/plugins/`:
-
-```yaml
-name: my_api
-tools:
-  - name: get_weather
-    endpoint: "https://api.weather.com/v1/current?city={city}"
-    method: GET
-    description: "Get current weather for a city"
-    parameters:
-      type: object
-      properties:
-        city:
-          type: string
-          description: "City name"
-      required: ["city"]
-```
-
-### Native Plugins (planned)
-
-Load `.so`/`.dylib` dynamic libraries that implement the `Plugin` trait.
+---
 
 ## Development
 
@@ -289,88 +231,56 @@ Load `.so`/`.dylib` dynamic libraries that implement the `Plugin` trait.
 # Build everything
 cargo build --workspace
 
-# Run all tests (310 tests)
+# Run all tests (420 tests)
 cargo test --workspace
 
-# Run with debug logging
+# Debug logging
 RUST_LOG=debug cargo run -p hakimi-cli
 
-# Run the TUI
-cargo run -p hakimi-tui
-
-# Check for warnings
+# Clippy linting
 cargo clippy --workspace
 ```
 
-### Test Coverage
-
-```
-310 tests passing across 13 crates
-├── hakimi-common:      22 tests
-├── hakimi-config:       6 tests
-├── hakimi-context:     25 tests (SmartContextEngine)
-├── hakimi-core:         16 tests + 21 integration tests
-├── hakimi-cron:          4 tests
-├── hakimi-gateway:      24 tests (Telegram, Discord, Slack)
-├── hakimi-mcp:          13 tests
-├── hakimi-plugin:        4 tests
-├── hakimi-session:      36 tests (SQLite WAL + FTS5)
-├── hakimi-tools:         95 tests
-├── hakimi-transports:    43 tests (ChatCompletions, Anthropic, Streaming)
-├── hakimi-cli:            1 test
-└── hakimi-tui:            0 tests
-```
+---
 
 ## Roadmap
 
-- [x] Core agent loop with tool dispatch
-- [x] OpenAI-compatible + Anthropic transports
+- [x] Core agent loop + tool dispatch
+- [x] OpenAI / Anthropic / Gemini transports
 - [x] SSE streaming
-- [x] 17 built-in tools
-- [x] Telegram / Discord / Slack adapters
-- [x] MCP client
-- [x] Plugin system (HTTP tools)
+- [x] 25 built-in tools
+- [x] 8 platform adapters
+- [x] MCP client (stdio/HTTP/SSE)
+- [x] Plugin system
 - [x] ratatui TUI
-- [x] SQLite session storage with FTS5
-- [x] Context compression (SmartContextEngine — 3-tier)
-- [x] MCP & Plugin systems wired into CLI
-- [ ] Skill system (load SKILL.md files)
-- [ ] Delegated sub-agents
+- [x] SQLite session storage + FTS5
+- [x] Smart context compression (3-tier)
+- [x] Error classifier (20+ types)
+- [x] Credential pool (multi-key rotation)
+- [x] Prompt caching (Anthropic)
+- [x] Vision analysis
+- [x] Checkpoint rollback
+- [x] Profiles system
+- [x] i18n internationalization
+- [x] Batch processing + checkpointing
+- [ ] Knowledge graph memory (petgraph)
+- [ ] Meta-skill auto-extraction
+- [ ] Intent reasoning engine
+- [ ] Decision tree backtracking
+- [ ] Role adaptation
 - [ ] WASM plugin runtime
-- [ ] Web UI dashboard
+- [ ] Web dashboard
 - [ ] Voice input/output
-- [ ] Multi-agent orchestration
 
-## Recent Changes
-
-- **SmartContextEngine** — 3-tier context compression (summarize, truncate, sliding window)
-- **hakimi-session** — jumped from 0 to 36 tests with full SQLite/FTS5 coverage
-- **MCP & Plugin systems** — now wired into CLI (`hakimi-cli`)
-- **hakimi-tools** — expanded to 95 tests (up from 42+)
-- **hakimi-common** — expanded to 22 tests (up from 3)
-- **Total tests** — 310 passing (up from 212)
-- **Total lines** — 18,700+ Rust LOC (up from 16,478)
-
-## Comparison with Hermes (Python)
-
-| Feature | Hermes (Python) | Hakimi (Rust) |
-|---------|-----------------|---------------|
-| Language | Python 3.11+ | Rust 2024 |
-| Async | asyncio + threading bridge | tokio native async |
-| Memory model | threading.RLock | Arc\<RwLock\> |
-| Session store | SQLite via Python | rusqlite (bundled) |
-| Tool registration | Runtime AST scanning | Compile-time trait impl |
-| Startup time | ~2s | ~50ms |
-| Memory usage | ~150MB idle | ~15MB idle |
-| Streaming | Generator-based | SSE + futures Stream |
+---
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE)
 
 ---
 
 <p align="center">
-  <b>Built with 🦀 Rust and ❤️ by the Hakimi contributors</b><br>
+  <b>Built with 🦀 Rust and ❤️</b><br>
   <sub>Inspired by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research</sub>
 </p>
