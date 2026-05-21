@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-420-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-771-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-36K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -14,14 +14,34 @@
 </p>
 
 <p align="center">
+  <a href="#install">Install</a> •
   <a href="#overview">Overview</a> •
   <a href="#capabilities">Capabilities</a> •
-  <a href="#quick-start">Quick Start</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#benchmark">Benchmark</a> •
   <a href="#roadmap">Roadmap</a> •
   <a href="README_CN.md">中文</a>
 </p>
+
+---
+
+## Install
+
+```bash
+# One-line install (Linux/macOS)
+curl -sSL https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.sh | bash
+
+# Or via cargo
+cargo install hakimi-agent
+```
+
+After install, run the interactive setup wizard:
+
+```bash
+hakimi --setup
+```
+
+The wizard walks you through LLM provider, API key, model, platform adapters, and MCP server configuration — all saved to `~/.hakimi/config.yaml`.
 
 ---
 
@@ -44,6 +64,39 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ---
 
 ## Capabilities
+
+### 🧠 Hakimi-Original Features
+
+These features do not exist in the original Hermes Agent — they are unique to Hakimi:
+
+**Knowledge Graph Memory** (`hakimi-knowledge`)
+- petgraph-based directed graph with 10 node types (Entity, Concept, Fact, Preference, Person, Location, Skill, Tool, Event, Note) and 12 edge types
+- BFS neighbor queries, shortest path, subgraph extraction, fuzzy search
+- File persistence with auto-save, wired into the MemoryProvider trait
+- Replaces flat memory with structured, queryable knowledge
+
+**Intent Reasoning** (`hakimi-context`)
+- Classifies user messages into 10 intent categories (InformationSeeking, TaskExecution, Debugging, Planning, Research, etc.)
+- Rule-based keyword + pattern matching — no ML dependency, zero latency
+- Confidence scoring, secondary intents, predicted next tool actions
+- Context-aware: uses recent tool history to refine predictions
+
+**Decision Tree Backtracking** (`hakimi-session`)
+- Conversations stored as a branching tree, not a flat list
+- Backtrack to any decision point and explore alternative paths
+- Compare outcomes across branches with `PathComparison`
+- JSON serialization for persistence and replay
+
+**Role Adaptation** (`hakimi-context`)
+- 8 role profiles: Coder, Researcher, Writer, Analyst, Tutor, Assistant, DevOps, Reviewer
+- Auto-detects appropriate role from message content and tool context
+- Per-role tool filtering and prioritization (coder gets terminal/patch first, researcher gets web_search)
+- Role transitions with history tracking
+
+**Meta-Skill Extraction** (`hakimi-skills`)
+- Analyzes past sessions for 6 pattern types: ToolSequence, ErrorFixCycle, SearchRefine, FileEditCycle, DelegatePattern, ConfigPattern
+- Auto-generates reusable YAML skill files from extracted patterns
+- Pattern merging and confidence scoring
 
 ### 🛠️ 25 Built-in Tools
 
@@ -72,7 +125,7 @@ Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
 
 ### 🧠 Smart Context Compression
 
-Three-tier compression strategy — no manual context window management needed:
+Three-tier compression — no manual context window management:
 - **Tier 1**: Drop old tool call results
 - **Tier 2**: LLM-powered summarization of middle conversation turns
 - **Tier 3**: Sliding window preserving recent context
@@ -82,7 +135,7 @@ Three-tier compression strategy — no manual context window management needed:
 ```yaml
 credential_pools:
   openrouter:
-    strategy: round_robin  # round_robin / fill_first / random / least_used
+    strategy: round_robin
     credentials:
       - api_key: "sk-key-1"
         priority: 10
@@ -94,80 +147,48 @@ credential_pools:
 
 ### 🔧 MCP (Model Context Protocol)
 
-Full MCP client with stdio / HTTP / SSE transports:
-
-```rust
-let mut client = McpClient::connect_stdio("npx", &["@modelcontextprotocol/server-filesystem"]).await?;
-client.initialize().await?;
-let tools = client.list_tools().await?;
-let result = client.call_tool("read_file", json!({"path": "/tmp/test.txt"})).await?;
-```
+Full MCP client with stdio / HTTP / SSE transports. Built-in catalog of 9 popular servers (filesystem, GitHub, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking).
 
 ### 📦 Plugin System
 
 ```yaml
 # ~/.hakimi/plugins/weather.yaml
-name: my_api
+name: weather
 tools:
   - name: get_weather
-    endpoint: "https://api.weather.com/v1/current?city={city}"
+    endpoint: "https://wttr.in/{city}?format=j1"
     method: GET
-    description: "Get current weather for a city"
+    description: "Get weather for a city"
 ```
 
----
-
-## Quick Start
-
-```bash
-# Clone and build
-git clone https://github.com/Mouseww/hakimi-agent.git
-cd hakimi-agent
-cargo build --release
-
-# Set your API key
-export OPENAI_API_KEY="sk-..."
-
-# Interactive REPL
-./target/release/hakimi
-
-# Single query mode
-./target/release/hakimi --query "Explain Rust's ownership model"
-
-# TUI mode
-./target/release/hakimi --tui
-
-# HTTP API server
-./target/release/hakimi --serve --port 3000
-```
-
-On first run, Hakimi creates `~/.hakimi/config.yaml` with sensible defaults.
+4 ready-to-use templates bundled. `hakimi plugins list` to browse, `hakimi plugins init <name>` to scaffold.
 
 ---
 
 ## Architecture
 
-**19 crates, each with a single responsibility**:
+**20 crates, each with a single responsibility**:
 
 ```
 hakimi-agent/
 ├── crates/
-│   ├── hakimi-common/      # Shared types: Message, ToolCall, Usage, Error, 20+ error classifications
-│   ├── hakimi-config/      # YAML config, credential pool config, env expansion
-│   ├── hakimi-session/     # SQLite WAL + FTS5 full-text search, decision tree
-│   ├── hakimi-context/     # Context engine, 3-tier compression, prompt building, role adaptation
-│   ├── hakimi-core/        # AIAgent builder, conversation loop, retry, error classifier, credential pool, guardrails
-│   ├── hakimi-transports/  # LLM transports (OpenAI, Anthropic, Gemini) + SSE streaming + prompt caching
+│   ├── hakimi-common/      # Shared types, 20+ error classifications
+│   ├── hakimi-config/      # YAML config, credential pool, env expansion
+│   ├── hakimi-session/     # SQLite WAL + FTS5, decision tree backtracking
+│   ├── hakimi-context/     # Context engine, compression, intent reasoning, role adaptation
+│   ├── hakimi-core/        # Agent loop, error classifier, credential pool, guardrails
+│   ├── hakimi-transports/  # LLM transports (OpenAI, Anthropic, Gemini) + prompt caching
 │   ├── hakimi-tools/       # 25 built-in tools + registry
+│   ├── hakimi-knowledge/   # Knowledge graph memory (petgraph)
+│   ├── hakimi-skills/      # Skill system + meta-skill extraction
 │   ├── hakimi-cron/        # Cron scheduler (SQLite persistent)
 │   ├── hakimi-gateway/     # 8 platform adapters
-│   ├── hakimi-mcp/         # MCP client (stdio/HTTP/SSE)
+│   ├── hakimi-mcp/         # MCP client (stdio/HTTP/SSE) + server catalog
 │   ├── hakimi-plugin/      # Plugin loader
-│   ├── hakimi-skills/      # Skill system (YAML frontmatter .md files)
-│   ├── hakimi-i18n/        # Internationalization (YAML locale catalogs)
-│   ├── hakimi-batch/       # Parallel batch processing + checkpointing
+│   ├── hakimi-i18n/        # Internationalization
+│   ├── hakimi-batch/       # Parallel batch processing
 │   ├── hakimi-server/      # HTTP REST API (Axum)
-│   ├── hakimi-cli/         # REPL CLI + setup wizard + doctor diagnostics
+│   ├── hakimi-cli/         # REPL CLI + setup wizard + doctor
 │   └── hakimi-tui/         # ratatui terminal UI
 ```
 
@@ -180,19 +201,20 @@ User Message
 ┌──────────────────────────────────────────────────┐
 │  AIAgent.run_conversation()                      │
 │                                                  │
-│  1. Build system prompt + context                │
-│     (SmartContextEngine 3-tier compression)      │
-│  2. Acquire API key from credential pool         │
+│  1. Classify intent → predict needed tools       │
+│  2. Adapt role → filter/prioritize tools         │
+│  3. Build system prompt + knowledge context      │
+│  4. Acquire API key from credential pool         │
 │     → Call LLM via Transport (SSE streaming)     │
-│  3. If tool_calls → dispatch & loop              │
-│  4. If text response → return                    │
-│  5. Error classifier → auto-recovery             │
-│     (retry / rotate / compress / fallback)       │
-│  6. Guardrails → loop detection / circuit break  │
+│  5. If tool_calls → dispatch & loop              │
+│  6. If text response → return                    │
+│  7. Error classifier → auto-recovery             │
+│  8. Guardrails → loop detection / circuit break  │
+│  9. Record decision tree node                    │
 └──────────────────────────────────────────────────┘
     │
     ▼
-Response + Token Usage Stats
+Response + Token Usage Stats + Knowledge Updates
 ```
 
 ---
@@ -210,8 +232,12 @@ Response + Token Usage Stats
 | Streaming | Generator-based | SSE + futures Stream |
 | Error recovery | Basic retry | 20+ classifiers + auto-strategy |
 | Credential mgmt | Single key | Multi-key pool + rotation + circuit breaker |
-| Platforms | 20+ | 8 (growing) |
-| Tests | ~500 | 420 |
+| Knowledge model | Flat memory file | Graph database (petgraph) |
+| Intent detection | None | 10-category classifier |
+| Role adaptation | None | 8 roles with auto-detection |
+| Conversation model | Flat message list | Decision tree with backtracking |
+| Skill extraction | Manual | Automatic pattern extraction |
+| Tests | ~500 | 771 |
 
 ---
 
@@ -236,28 +262,25 @@ cargo clippy --workspace
 ## Roadmap
 
 - [x] Core agent loop + tool dispatch
-- [x] OpenAI / Anthropic / Gemini transports
-- [x] SSE streaming
+- [x] OpenAI / Anthropic / Gemini transports + SSE streaming
 - [x] 25 built-in tools
 - [x] 8 platform adapters
-- [x] MCP client (stdio/HTTP/SSE)
-- [x] Plugin system
+- [x] MCP client (stdio/HTTP/SSE) + server catalog
+- [x] Plugin system + templates
 - [x] ratatui TUI
 - [x] SQLite session storage + FTS5
 - [x] Smart context compression (3-tier)
-- [x] Error classifier (20+ types)
-- [x] Credential pool (multi-key rotation)
+- [x] Error classifier (20+ types) + credential pool
 - [x] Prompt caching (Anthropic)
-- [x] Vision analysis
-- [x] Checkpoint rollback
-- [x] Profiles system
-- [x] i18n internationalization
-- [x] Batch processing + checkpointing
-- [ ] Knowledge graph memory (petgraph)
-- [ ] Meta-skill auto-extraction
-- [ ] Intent reasoning engine
-- [ ] Decision tree backtracking
-- [ ] Role adaptation
+- [x] Vision analysis + checkpoint rollback
+- [x] Profiles system + i18n + batch processing
+- [x] Install script + cargo install + CI/CD
+- [x] Setup wizard + doctor diagnostics
+- [x] **Knowledge graph memory** (petgraph)
+- [x] **Intent reasoning engine**
+- [x] **Decision tree backtracking**
+- [x] **Role adaptation**
+- [x] **Meta-skill auto-extraction**
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
 - [ ] Voice input/output
