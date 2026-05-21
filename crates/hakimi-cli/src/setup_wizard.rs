@@ -672,4 +672,105 @@ mod tests {
         let yaml = generate_config_yaml(&config);
         assert!(yaml.contains("telegram"));
     }
+
+    #[test]
+    fn test_default_config_base_url() {
+        let config = SetupConfig::default();
+        assert_eq!(config.base_url, "https://openrouter.ai/api/v1");
+    }
+
+    #[test]
+    fn test_default_config_model() {
+        let config = SetupConfig::default();
+        assert_eq!(config.model, "anthropic/claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn test_non_interactive_returns_defaults() {
+        let config = run_setup_wizard(true).unwrap();
+        assert_eq!(config.provider, "openrouter");
+        assert_eq!(config.max_turns, 90);
+        assert_eq!(config.max_retries, 3);
+        assert!(config.streaming);
+        assert!(!config.yolo);
+        assert!(config.platforms.is_empty());
+        assert!(config.mcp_servers.is_empty());
+    }
+
+    #[test]
+    fn test_mcp_server_list_not_empty() {
+        assert!(!MCP_SERVERS.is_empty());
+        assert!(MCP_SERVERS.iter().any(|s| s.name == "filesystem"));
+        assert!(MCP_SERVERS.iter().any(|s| s.name == "github"));
+        assert!(MCP_SERVERS.iter().any(|s| s.name == "brave-search"));
+        assert!(MCP_SERVERS.iter().any(|s| s.name == "postgres"));
+    }
+
+    #[test]
+    fn test_model_list_not_empty() {
+        assert!(!MODELS.is_empty());
+        assert!(MODELS.iter().any(|m| m.contains("claude-sonnet")));
+        assert!(MODELS.iter().any(|m| m.contains("gpt-4.1")));
+        assert!(MODELS.iter().any(|m| m.contains("gemini")));
+    }
+
+    #[test]
+    fn test_generate_config_yaml_with_mcp_servers() {
+        let config = SetupConfig {
+            mcp_servers: vec![
+                "github".to_string(),
+                "brave-search".to_string(),
+            ],
+            ..Default::default()
+        };
+        let yaml = generate_config_yaml(&config);
+        assert!(yaml.contains("github"));
+        assert!(yaml.contains("GITHUB_TOKEN"));
+        assert!(yaml.contains("brave-search"));
+        assert!(yaml.contains("BRAVE_API_KEY"));
+        assert!(yaml.contains("mcp_servers:"));
+    }
+
+    #[test]
+    fn test_generate_config_yaml_no_mcp_servers() {
+        let config = SetupConfig::default();
+        let yaml = generate_config_yaml(&config);
+        assert!(!yaml.contains("mcp_servers:"));
+    }
+
+    #[test]
+    fn test_generate_config_yaml_with_discord_platform() {
+        let config = SetupConfig {
+            platforms: vec![PlatformConfig {
+                platform: "discord".to_string(),
+                token: "discord-token-12345".to_string(),
+                channel_id: Some("123456789".to_string()),
+            }],
+            ..Default::default()
+        };
+        let yaml = generate_config_yaml(&config);
+        assert!(yaml.contains("discord"));
+    }
+
+    #[test]
+    fn test_setup_config_serialization_roundtrip() {
+        let config = SetupConfig {
+            provider: "openai".to_string(),
+            api_key: "sk-test".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4.1".to_string(),
+            max_turns: 50,
+            max_retries: 5,
+            streaming: false,
+            yolo: true,
+            platforms: vec![],
+            mcp_servers: vec![],
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: SetupConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.provider, "openai");
+        assert_eq!(deserialized.max_turns, 50);
+        assert!(deserialized.yolo);
+        assert!(!deserialized.streaming);
+    }
 }

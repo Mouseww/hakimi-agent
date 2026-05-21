@@ -78,7 +78,9 @@ impl DelegateExecutor for CoreDelegateExecutor {
 
         // Build the system prompt for the child agent.
         let system_prompt = if context.is_empty() {
-            format!("You are a sub-agent delegated by a parent agent. Your task: {goal}. Complete this task and return a clear, concise result.")
+            format!(
+                "You are a sub-agent delegated by a parent agent. Your task: {goal}. Complete this task and return a clear, concise result."
+            )
         } else {
             format!(
                 "You are a sub-agent delegated by a parent agent. Your task: {goal}. \
@@ -91,9 +93,8 @@ impl DelegateExecutor for CoreDelegateExecutor {
             let engine = self.context_engine.read().await;
             engine.context_length()
         };
-        let child_context_engine = Arc::new(RwLock::new(SimpleContextEngine::new(
-            parent_context_length,
-        )));
+        let child_context_engine =
+            Arc::new(RwLock::new(SimpleContextEngine::new(parent_context_length)));
 
         // Build the child agent.
         let mut child_agent = AIAgent::builder()
@@ -108,11 +109,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
             .map_err(|e| HakimiError::Tool(format!("failed to create child agent: {e}")))?;
 
         // Run the child agent with a timeout.
-        let result = tokio::time::timeout(
-            DEFAULT_DELEGATION_TIMEOUT,
-            child_agent.chat(goal),
-        )
-        .await;
+        let result = tokio::time::timeout(DEFAULT_DELEGATION_TIMEOUT, child_agent.chat(goal)).await;
 
         match result {
             Ok(Ok(response)) => {

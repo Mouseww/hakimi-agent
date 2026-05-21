@@ -254,4 +254,101 @@ mod tests {
         assert_eq!(output["format"], "open_ended");
         assert!(output["context"].is_null());
     }
+
+    #[test]
+    fn test_clarify_request_single_option() {
+        let req = ClarifyRequest {
+            question: "confirm?".to_string(),
+            options: vec!["Yes".to_string()],
+            context: "".to_string(),
+            session_id: "s2".to_string(),
+        };
+        let output = req.to_output();
+        assert_eq!(output["format"], "multiple_choice");
+        assert_eq!(output["has_other"], true);
+        let opts = output["options"].as_array().unwrap();
+        assert_eq!(opts.len(), 1);
+        assert_eq!(opts[0]["index"], 1);
+        assert_eq!(opts[0]["text"], "Yes");
+    }
+
+    #[test]
+    fn test_clarify_request_option_indexing() {
+        let req = ClarifyRequest {
+            question: "pick?".to_string(),
+            options: vec!["A".to_string(), "B".to_string(), "C".to_string()],
+            context: "".to_string(),
+            session_id: "s3".to_string(),
+        };
+        let output = req.to_output();
+        let opts = output["options"].as_array().unwrap();
+        assert_eq!(opts.len(), 3);
+        assert_eq!(opts[0]["index"], 1);
+        assert_eq!(opts[1]["index"], 2);
+        assert_eq!(opts[2]["index"], 3);
+        assert_eq!(opts[0]["text"], "A");
+        assert_eq!(opts[1]["text"], "B");
+        assert_eq!(opts[2]["text"], "C");
+    }
+
+    #[test]
+    fn test_clarify_request_session_id_preserved() {
+        let req = ClarifyRequest {
+            question: "q?".to_string(),
+            options: vec![],
+            context: "".to_string(),
+            session_id: "my-session-123".to_string(),
+        };
+        let output = req.to_output();
+        assert_eq!(output["session_id"], "my-session-123");
+    }
+
+    #[test]
+    fn test_clarify_request_with_long_context() {
+        let long_ctx = "A".repeat(1000);
+        let req = ClarifyRequest {
+            question: "details?".to_string(),
+            options: vec![],
+            context: long_ctx.clone(),
+            session_id: "s4".to_string(),
+        };
+        let output = req.to_output();
+        assert_eq!(output["context"], long_ctx);
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_empty_options_array() {
+        let tool = ClarifyTool;
+        let ctx = make_ctx();
+        let result = tool
+            .execute(&json!({"question": "What?", "options": []}), &ctx)
+            .await
+            .unwrap();
+        let parsed: JsonValue = serde_json::from_str(&result).unwrap();
+        // Empty options treated as open-ended
+        assert_eq!(parsed["format"], "open_ended");
+        assert!(parsed["options"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_context_and_options() {
+        let tool = ClarifyTool;
+        let ctx = make_ctx();
+        let result = tool
+            .execute(
+                &json!({
+                    "question": "Pick a color",
+                    "options": ["Red", "Blue"],
+                    "context": "Choose your favorite."
+                }),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        let parsed: JsonValue = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["format"], "multiple_choice");
+        assert_eq!(parsed["context"], "Choose your favorite.");
+        let opts = parsed["options"].as_array().unwrap();
+        assert_eq!(opts.len(), 2);
+    }
 }

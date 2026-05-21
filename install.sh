@@ -61,9 +61,24 @@ esac
 case "$OS" in
     linux)   PLATFORM="unknown-linux-gnu" ;;
     darwin)  PLATFORM="apple-darwin" ;;
+    mingw*|msys*|cygwin*)
+        error "Windows detected. Please use the PowerShell installer instead:"
+        error ""
+        error "  irm https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.ps1 | iex"
+        error ""
+        error "Or install via cargo:"
+        error "  cargo install hakimi-agent"
+        exit 1
+        ;;
     *)
         error "Unsupported OS: $OS"
         error "Supported: linux, darwin (macOS)"
+        error ""
+        error "For Windows, use the PowerShell installer:"
+        error "  irm https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.ps1 | iex"
+        error ""
+        error "Or install via cargo:"
+        error "  cargo install hakimi-agent"
         exit 1
         ;;
 esac

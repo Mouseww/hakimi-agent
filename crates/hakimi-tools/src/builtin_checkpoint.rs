@@ -485,4 +485,199 @@ mod tests {
             msg
         );
     }
+
+    #[tokio::test]
+    async fn test_missing_action_fails() {
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+        let result = tool.execute(&json!({}), &ctx).await;
+        assert!(result.is_err(), "missing action should fail");
+    }
+
+    #[tokio::test]
+    async fn test_list_checkpoints_empty_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+        // No shadow git dir exists — list should return empty
+        let result = tool.execute(&json!({"action": "list"}), &ctx).await;
+        assert!(result.is_ok(), "list on empty dir should succeed: {:?}", result.err());
+        let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+        let checkpoints = body["checkpoints"].as_array().unwrap();
+        assert!(checkpoints.is_empty(), "should have no checkpoints");
+    }
+
+    #[tokio::test]
+    async fn test_rollback_with_no_checkpoints() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+        // No shadow git dir — rollback should fail
+        let result = tool
+            .execute(&json!({"action": "rollback", "checkpoint_id": "abc123"}), &ctx)
+            .await;
+        assert!(result.is_err(), "rollback with no checkpoints should fail");
+    }
+
+    #[tokio::test]
+    async fn test_diff_with_no_checkpoints() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+        // No shadow git dir — diff should fail
+        let result = tool
+            .execute(&json!({"action": "diff", "checkpoint_id": "abc123"}), &ctx)
+            .await;
+        assert!(result.is_err(), "diff with no checkpoints should fail");
+    }
+
+    #[tokio::test]
+    async fn test_create_multiple_checkpoints_and_list() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::fs::write(tmp.path().join("file.txt"), "v1").unwrap();
+
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+
+        // Create first checkpoint
+        let r1 = tool
+            .execute(&json!({"action": "create", "label": "v1"}), &ctx)
+            .await;
+        assert!(r1.is_ok(), "first create failed: {:?}", r1.err());
+
+        // Modify file and create second checkpoint
+        std::fs::write(tmp.path().join("file.txt"), "v2").unwrap();
+        let r2 = tool
+            .execute(&json!({"action": "create", "label": "v2"}), &ctx)
+            .await;
+        assert!(r2.is_ok(), "second create failed: {:?}", r2.err());
+
+        // List should show 2 checkpoints
+        let list_res = tool.execute(&json!({"action": "list"}), &ctx).await;
+        assert!(list_res.is_ok(), "list failed: {:?}", list_res.err());
+        let body: serde_json::Value = serde_json::from_str(&list_res.unwrap()).unwrap();
+        let count = body["count"].as_u64().unwrap();
+        assert!(count >= 2, "expected at least 2 checkpoints, got {}", count);
+
+        // Verify both labels appear in checkpoint messages
+        let checkpoints = body["checkpoints"].as_array().unwrap();
+        let messages: Vec<&str> = checkpoints
+            .iter()
+            .map(|cp| cp["message"].as_str().unwrap())
+            .collect();
+        assert!(messages.iter().any(|m| m.contains("v1")), "should have v1 checkpoint");
+        assert!(messages.iter().any(|m| m.contains("v2")), "should have v2 checkpoint");
+    }
+
+    #[tokio::test]
+    async fn test_create_and_diff_checkpoint() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        std::fs::write(tmp.path().join("file.txt"), "original").unwrap();
+
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+
+        // Create checkpoint
+        let create_res = tool
+            .execute(&json!({"action": "create", "label": "baseline"}), &ctx)
+            .await
+            .unwrap();
+        let create_body: serde_json::Value = serde_json::from_str(&create_res).unwrap();
+        let cp_id = create_body["checkpoint_id"].as_str().unwrap().to_string();
+
+        // Modify file
+        std::fs::write(tmp.path().join("file.txt"), "modified").unwrap();
+
+        // Diff against the checkpoint
+        let diff_res = tool
+            .execute(&json!({"action": "diff", "checkpoint_id": cp_id}), &ctx)
+            .await;
+        assert!(diff_res.is_ok(), "diff should succeed: {:?}", diff_res.err());
+        let diff_body: serde_json::Value = serde_json::from_str(&diff_res.unwrap()).unwrap();
+        assert_eq!(diff_body["has_changes"], true, "should detect changes");
+        let diff_text = diff_body["diff"].as_str().unwrap();
+        assert!(diff_text.contains("original"), "diff should mention original content");
+        assert!(diff_text.contains("modified"), "diff should mention modified content");
+    }
+
+    #[tokio::test]
+    async fn test_schema_has_action_enum() {
+        let tool = CheckpointTool;
+        let schema = tool.schema();
+        let action_prop = &schema["properties"]["action"];
+        assert_eq!(action_prop["type"], "string");
+        assert!(action_prop["description"].as_str().unwrap().len() > 0);
+    }
 }

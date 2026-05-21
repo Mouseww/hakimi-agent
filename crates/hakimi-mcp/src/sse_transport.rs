@@ -390,4 +390,77 @@ mod tests {
         let result = transport.list_tools().await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_call_tool_before_init() {
+        let mut transport = SseTransport::new("http://localhost/sse", None, None);
+        let result = transport.call_tool("test_tool", None).await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sse_transport_post_url_none_initially() {
+        let transport = SseTransport::new("http://localhost/sse", None, None);
+        assert!(transport.post_url.is_none());
+    }
+
+    #[test]
+    fn test_sse_transport_with_custom_reconnect_config() {
+        let config = ReconnectConfig {
+            max_attempts: 10,
+            base_delay: Duration::from_millis(500),
+            max_delay: Duration::from_secs(60),
+        };
+        let transport = SseTransport::new(
+            "http://localhost/sse",
+            None,
+            Some(config.clone()),
+        );
+        assert_eq!(transport.reconnect_config.max_attempts, 10);
+        assert_eq!(transport.reconnect_config.base_delay, Duration::from_millis(500));
+        assert_eq!(transport.reconnect_config.max_delay, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_compute_backoff_respects_max_delay() {
+        let config = ReconnectConfig {
+            max_attempts: 20,
+            base_delay: Duration::from_secs(1),
+            max_delay: Duration::from_secs(5),
+        };
+        let mut transport = SseTransport::new("http://localhost/sse", None, Some(config));
+        // At attempt 10, 2^10 * 1000ms = 1024s, but should cap at 5s
+        transport.reconnect_attempts = 10;
+        let delay = transport.compute_backoff();
+        assert_eq!(delay, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_compute_backoff_high_attempts_no_overflow() {
+        let mut transport = SseTransport::new("http://localhost/sse", None, None);
+        transport.reconnect_attempts = 63;
+        let delay = transport.compute_backoff();
+        // Should not panic due to overflow; saturating_mul handles it
+        assert!(delay <= Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_ensure_initialized_error_message() {
+        let transport = SseTransport::new("http://localhost/sse", None, None);
+        let err = transport.ensure_initialized().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("not initialized"));
+        assert!(msg.contains("SSE"));
+    }
+
+    #[tokio::test]
+    async fn test_sse_next_id_increments() {
+        let transport = SseTransport::new("http://localhost/sse", None, None);
+        let id1 = transport.next_id().await;
+        let id2 = transport.next_id().await;
+        let id3 = transport.next_id().await;
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+        assert_eq!(id3, 3);
+    }
 }

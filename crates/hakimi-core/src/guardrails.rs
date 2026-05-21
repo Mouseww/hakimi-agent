@@ -3,8 +3,8 @@
 //! Detects infinite tool-calling loops, tracks repeated identical calls,
 //! and provides halt/warning decisions to protect against runaway agents.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tracing::{debug, warn};
 
 /// Decision returned by the guardrails system.
@@ -240,8 +240,14 @@ mod tests {
     fn test_guardrails_allow_normal_calls() {
         let mut g = ToolGuardrails::new();
         g.begin_turn();
-        assert_eq!(g.record_call("read_file", r#"{"path":"/tmp/a"}"#), GuardrailDecision::Allow);
-        assert_eq!(g.record_call("write_file", r#"{"path":"/tmp/b"}"#), GuardrailDecision::Allow);
+        assert_eq!(
+            g.record_call("read_file", r#"{"path":"/tmp/a"}"#),
+            GuardrailDecision::Allow
+        );
+        assert_eq!(
+            g.record_call("write_file", r#"{"path":"/tmp/b"}"#),
+            GuardrailDecision::Allow
+        );
     }
 
     #[test]
@@ -293,11 +299,23 @@ mod tests {
     fn test_guardrails_different_args_not_counted_as_identical() {
         let mut g = ToolGuardrails::with_limits(3, 100, 200);
         g.begin_turn();
-        assert_eq!(g.record_call("read_file", r#"{"path":"/a"}"#), GuardrailDecision::Allow);
-        assert_eq!(g.record_call("read_file", r#"{"path":"/b"}"#), GuardrailDecision::Allow);
-        assert_eq!(g.record_call("read_file", r#"{"path":"/c"}"#), GuardrailDecision::Allow);
+        assert_eq!(
+            g.record_call("read_file", r#"{"path":"/a"}"#),
+            GuardrailDecision::Allow
+        );
+        assert_eq!(
+            g.record_call("read_file", r#"{"path":"/b"}"#),
+            GuardrailDecision::Allow
+        );
+        assert_eq!(
+            g.record_call("read_file", r#"{"path":"/c"}"#),
+            GuardrailDecision::Allow
+        );
         // Different args means not identical.
-        assert_eq!(g.record_call("read_file", r#"{"path":"/d"}"#), GuardrailDecision::Allow);
+        assert_eq!(
+            g.record_call("read_file", r#"{"path":"/d"}"#),
+            GuardrailDecision::Allow
+        );
     }
 
     #[test]

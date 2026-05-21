@@ -3,7 +3,7 @@ use std::time::Duration;
 use hakimi_common::HakimiError;
 use rand::Rng;
 
-use crate::error_classifier::{ErrorClassification, Classifiable};
+use crate::error_classifier::{Classifiable, ErrorClassification};
 
 /// Compute a jittered exponential backoff delay.
 ///

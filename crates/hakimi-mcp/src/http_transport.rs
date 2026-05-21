@@ -271,4 +271,81 @@ mod tests {
         let result = transport.call_tool("test", None).await;
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_http_transport_url_variants() {
+        let transport = HttpTransport::new(
+            "https://example.com:8443/mcp/v1",
+            None,
+            Duration::from_secs(10),
+        );
+        assert_eq!(transport.url, "https://example.com:8443/mcp/v1");
+    }
+
+    #[test]
+    fn test_http_transport_timeout_stored() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_secs(60),
+        );
+        assert_eq!(transport.timeout, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_http_transport_server_info_none_initially() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_secs(30),
+        );
+        assert!(transport.server_info.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_http_transport_next_id_increments() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_secs(30),
+        );
+        let id1 = transport.next_id().await;
+        let id2 = transport.next_id().await;
+        let id3 = transport.next_id().await;
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+        assert_eq!(id3, 3);
+    }
+
+    #[test]
+    fn test_http_transport_no_auth_header() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_secs(30),
+        );
+        assert!(transport.auth_header.is_none());
+    }
+
+    #[test]
+    fn test_http_transport_short_timeout() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_millis(100),
+        );
+        assert_eq!(transport.timeout, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_ensure_initialized_error_message() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_secs(30),
+        );
+        let err = transport.ensure_initialized().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("not initialized"));
+    }
 }

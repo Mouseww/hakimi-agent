@@ -258,4 +258,32 @@ mod tests {
         // Should fail at download, not at parameter parsing.
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_schema_has_correct_properties() {
+        let tool = VisionAnalyzeTool;
+        let schema = tool.schema();
+        let props = schema["properties"].as_object().expect("properties should be an object");
+        assert!(props.contains_key("image_url"), "schema must have image_url property");
+        assert!(props.contains_key("question"), "schema must have question property");
+        assert_eq!(props["image_url"]["type"], "string");
+        assert_eq!(props["question"]["type"], "string");
+    }
+
+    #[test]
+    fn test_guess_mime_type_from_url() {
+        // guess_mime_type does simple ends_with matching on the full path
+        assert_eq!(guess_mime_type("https://example.com/image.png"), "image/png");
+        assert_eq!(guess_mime_type("http://cdn.example.com/photo.jpg"), "image/jpeg");
+        // URLs with query strings won't match (ends_with sees the query, not extension)
+        assert_eq!(guess_mime_type("https://example.com/image.png?v=1"), "image/jpeg");
+    }
+
+    #[test]
+    fn test_guess_mime_type_case_insensitive() {
+        assert_eq!(guess_mime_type("FILE.GIF"), "image/gif");
+        assert_eq!(guess_mime_type("photo.WEBP"), "image/webp");
+        assert_eq!(guess_mime_type("icon.SVG"), "image/svg+xml");
+        assert_eq!(guess_mime_type("scan.BMP"), "image/bmp");
+    }
 }

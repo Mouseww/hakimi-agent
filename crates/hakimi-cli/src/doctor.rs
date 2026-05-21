@@ -556,4 +556,119 @@ mod tests {
         // Should at least not crash
         assert!(result.status == CheckStatus::Pass || result.status == CheckStatus::Warn);
     }
+
+    #[test]
+    fn test_check_status_equality() {
+        assert_eq!(CheckStatus::Pass, CheckStatus::Pass);
+        assert_eq!(CheckStatus::Fail, CheckStatus::Fail);
+        assert_eq!(CheckStatus::Warn, CheckStatus::Warn);
+        assert_ne!(CheckStatus::Pass, CheckStatus::Fail);
+        assert_ne!(CheckStatus::Pass, CheckStatus::Warn);
+        assert_ne!(CheckStatus::Fail, CheckStatus::Warn);
+    }
+
+    #[test]
+    fn test_format_report_all_pass() {
+        let results = vec![
+            DiagnosticResult {
+                name: "check1".to_string(),
+                status: CheckStatus::Pass,
+                message: "OK".to_string(),
+                fix: None,
+            },
+            DiagnosticResult {
+                name: "check2".to_string(),
+                status: CheckStatus::Pass,
+                message: "Fine".to_string(),
+                fix: None,
+            },
+        ];
+        let report = format_report(&results);
+        assert!(report.contains("✓"));
+        assert!(!report.contains("✗"));
+        assert!(report.contains("2 passed, 0 failed, 0 warnings"));
+        assert!(report.contains("All critical checks passed"));
+    }
+
+    #[test]
+    fn test_format_report_empty() {
+        let results: Vec<DiagnosticResult> = vec![];
+        let report = format_report(&results);
+        assert!(report.contains("Hakimi Agent Diagnostics"));
+        assert!(report.contains("0 passed, 0 failed, 0 warnings"));
+    }
+
+    #[test]
+    fn test_format_report_shows_fixes() {
+        let results = vec![
+            DiagnosticResult {
+                name: "broken".to_string(),
+                status: CheckStatus::Fail,
+                message: "Missing".to_string(),
+                fix: Some("Install it".to_string()),
+            },
+        ];
+        let report = format_report(&results);
+        assert!(report.contains("→ Install it"));
+        assert!(report.contains("Some checks failed"));
+    }
+
+    #[test]
+    fn test_run_diagnostics_contains_all_expected_checks() {
+        let results = run_diagnostics();
+        let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
+        assert!(names.contains(&"~/.hakimi/ directory"));
+        assert!(names.contains(&"config.yaml"));
+        assert!(names.contains(&"API key"));
+        assert!(names.contains(&"API connectivity"));
+        assert!(names.contains(&"Rust toolchain"));
+        assert!(names.contains(&"Disk space"));
+        assert!(names.contains(&"SQLite"));
+        assert!(names.contains(&"Git"));
+        assert!(names.contains(&"Node.js"));
+        assert_eq!(results.len(), 9);
+    }
+
+    #[test]
+    fn test_diagnostic_result_fix_is_none_for_pass() {
+        let result = DiagnosticResult {
+            name: "test".to_string(),
+            status: CheckStatus::Pass,
+            message: "OK".to_string(),
+            fix: None,
+        };
+        assert!(result.fix.is_none());
+    }
+
+    #[test]
+    fn test_check_node() {
+        let result = check_node();
+        // Node may or may not be installed; just verify structure
+        assert_eq!(result.name, "Node.js");
+        assert!(
+            result.status == CheckStatus::Pass || result.status == CheckStatus::Warn,
+            "Node check should be Pass or Warn, got {:?}",
+            result.status
+        );
+        if result.status == CheckStatus::Pass {
+            assert!(result.fix.is_none());
+        } else {
+            assert!(result.fix.is_some());
+        }
+    }
+
+    #[test]
+    fn test_format_report_warn_has_no_fix_displayed_when_none() {
+        let results = vec![DiagnosticResult {
+            name: "warn-check".to_string(),
+            status: CheckStatus::Warn,
+            message: "Heads up".to_string(),
+            fix: None,
+        }];
+        let report = format_report(&results);
+        assert!(report.contains("⚠"));
+        assert!(report.contains("Heads up"));
+        // No arrow since fix is None
+        assert!(!report.contains("→"));
+    }
 }

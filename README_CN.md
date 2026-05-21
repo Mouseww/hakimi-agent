@@ -27,11 +27,18 @@
 
 ## 安装
 
+**Linux / macOS：**
 ```bash
-# 一行安装 (Linux/macOS)
 curl -sSL https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.sh | bash
+```
 
-# 或通过 cargo
+**Windows (PowerShell)：**
+```powershell
+irm https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.ps1 | iex
+```
+
+**任意平台 (已安装 Rust)：**
+```bash
 cargo install hakimi-agent
 ```
 

@@ -226,4 +226,115 @@ mod tests {
         assert!(sched.remove(&id));
         assert_eq!(sched.list().len(), 0);
     }
+
+    #[test]
+    fn test_parse_schedule_trims_whitespace() {
+        let s = parse_schedule("  45m  ").unwrap();
+        match s {
+            CronSchedule::IntervalMinutes(45) => {}
+            _ => panic!("expected IntervalMinutes(45)"),
+        }
+    }
+
+    #[test]
+    fn test_parse_schedule_zero_minutes_fails() {
+        assert!(parse_schedule("0m").is_err());
+    }
+
+    #[test]
+    fn test_parse_schedule_zero_hours_fails() {
+        assert!(parse_schedule("0h").is_err());
+    }
+
+    #[test]
+    fn test_parse_schedule_invalid_number_fails() {
+        assert!(parse_schedule("abc").is_ok()); // treated as cron expr
+        assert!(parse_schedule("xm").is_err());
+        assert!(parse_schedule("xh").is_err());
+    }
+
+    #[test]
+    fn test_cron_expr_next_after_adds_one_hour() {
+        let schedule = CronSchedule::CronExpr("0 * * * *".to_string());
+        let base = Utc::now();
+        let next = schedule.next_after(base);
+        let diff = next - base;
+        assert_eq!(diff, chrono::Duration::hours(1));
+    }
+
+    #[test]
+    fn test_cron_job_new_sets_fields() {
+        let job = CronJob::new(
+            "my-job",
+            CronSchedule::IntervalMinutes(5),
+            "do something",
+        );
+        assert_eq!(job.name, "my-job");
+        assert_eq!(job.prompt, "do something");
+        assert!(job.enabled);
+        assert!(job.last_run.is_none());
+        assert!(job.next_run.is_some());
+        // next_run should be ~5 minutes from now (within a small tolerance)
+        let diff = job.next_run.unwrap() - Utc::now();
+        assert!(diff >= chrono::Duration::minutes(4));
+    }
+
+    #[test]
+    fn test_scheduler_next_tick() {
+        let mut sched = CronScheduler::new();
+
+        // Create a job whose next_run is in the past
+        let mut job = CronJob::new("past", CronSchedule::IntervalMinutes(1), "run");
+        job.next_run = Some(Utc::now() - chrono::Duration::minutes(1));
+        sched.add(job);
+
+        // Create a job whose next_run is in the future
+        let mut job2 = CronJob::new("future", CronSchedule::IntervalMinutes(60), "later");
+        job2.next_run = Some(Utc::now() + chrono::Duration::hours(1));
+        sched.add(job2);
+
+        let due = sched.next_tick(Utc::now());
+        assert_eq!(due.len(), 1);
+    }
+
+    #[test]
+    fn test_scheduler_remove_nonexistent_returns_false() {
+        let mut sched = CronScheduler::new();
+        assert!(!sched.remove("nonexistent-id"));
+    }
+
+    #[test]
+    fn test_mark_executed_updates_timestamps() {
+        let mut sched = CronScheduler::new();
+        let job = CronJob::new("exec", CronSchedule::IntervalMinutes(10), "run");
+        let id = sched.add(job);
+
+        sched.mark_executed(&id);
+
+        let binding = sched.list();
+        let job = binding.iter().find(|j| j.id == id).unwrap();
+        assert!(job.last_run.is_some());
+        assert!(job.next_run.is_some());
+        // next_run should be ~10 minutes after last_run
+        let diff = job.next_run.unwrap() - job.last_run.unwrap();
+        assert_eq!(diff, chrono::Duration::minutes(10));
+    }
+
+    #[test]
+    fn test_get_mut_returns_none_for_missing() {
+        let mut sched = CronScheduler::new();
+        assert!(sched.get_mut("missing").is_none());
+    }
+
+    #[test]
+    fn test_disabled_job_not_in_next_tick() {
+        let mut sched = CronScheduler::new();
+        let mut job = CronJob::new("disabled", CronSchedule::IntervalMinutes(1), "skip");
+        job.enabled = false;
+        job.next_run = Some(Utc::now() - chrono::Duration::minutes(5));
+        sched.add(job);
+
+        let due = sched.next_tick(Utc::now());
+        assert!(due.is_empty());
+    }
 }

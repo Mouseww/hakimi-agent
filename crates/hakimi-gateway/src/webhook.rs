@@ -82,3 +82,87 @@ impl PlatformAdapter for WebhookAdapter {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::PlatformAdapter;
+
+    fn make_config() -> WebhookAdapterConfig {
+        WebhookAdapterConfig {
+            port: 9090,
+            path: "/test-hook".to_string(),
+            secret: Some("s3cret".to_string()),
+        }
+    }
+
+    #[test]
+    fn test_default_config() {
+        let cfg = WebhookAdapterConfig::default();
+        assert_eq!(cfg.port, 8080);
+        assert_eq!(cfg.path, "/webhook");
+        assert!(cfg.secret.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_adapter_name_and_connect() {
+        let mut adapter = WebhookAdapter::new(make_config());
+        assert_eq!(adapter.name(), "webhook");
+        assert!(adapter.connect().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_send_message_succeeds() {
+        let adapter = WebhookAdapter::new(make_config());
+        assert!(adapter.send_message("chat1", "hello").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_inject_and_receive_message() {
+        let mut adapter = WebhookAdapter::new(make_config());
+        let mut rx = adapter.take_receiver().expect("should have receiver");
+
+        let msg = GatewayMessage {
+            platform: "webhook".to_string(),
+            chat_id: "c1".to_string(),
+            user_id: "u1".to_string(),
+            text: "ping".to_string(),
+            media: None,
+        };
+        adapter.inject_message(msg);
+
+        let received = rx.recv().await.expect("should receive message");
+        assert_eq!(received.chat_id, "c1");
+        assert_eq!(received.user_id, "u1");
+        assert_eq!(received.text, "ping");
+    }
+
+    #[test]
+    fn test_take_receiver_returns_none_on_second_call() {
+        let mut adapter = WebhookAdapter::new(make_config());
+        assert!(adapter.take_receiver().is_some());
+        assert!(adapter.take_receiver().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_succeeds() {
+        let mut adapter = WebhookAdapter::new(make_config());
+        assert!(adapter.disconnect().await.is_ok());
+    }
+
+    #[test]
+    fn test_inject_without_receiver_is_noop() {
+        // If sender is taken (simulated by dropping), inject_message should not panic.
+        let mut adapter = WebhookAdapter::new(make_config());
+        let _ = adapter.take_receiver(); // drain receiver
+        // sender still exists internally; inject should not panic
+        let msg = GatewayMessage {
+            platform: "webhook".to_string(),
+            chat_id: "c2".to_string(),
+            user_id: "u2".to_string(),
+            text: "test".to_string(),
+            media: Some("https://example.com/img.png".to_string()),
+        };
+        adapter.inject_message(msg);
+    }
+}

@@ -1,13 +1,15 @@
-use hakimi_common::{FinishReason, HakimiError, Message, MessageRole, NormalizedResponse, Result, ToolCall, Usage};
-use hakimi_transports::{RequestParams, StreamAccumulator, StreamEvent};
 use futures::StreamExt;
+use hakimi_common::{
+    FinishReason, HakimiError, Message, MessageRole, NormalizedResponse, Result, ToolCall, Usage,
+};
+use hakimi_transports::{RequestParams, StreamAccumulator, StreamEvent};
 use tracing::{debug, info, warn};
 
 use crate::agent::AIAgent;
 use crate::budget::IterationBudget;
 use crate::conversation::ConversationResult;
-use crate::error_classifier::{ErrorClassifier, ErrorClassification, RecoveryAction};
-use crate::guardrails::{ToolGuardrails, GuardrailDecision};
+use crate::error_classifier::{ErrorClassification, ErrorClassifier, RecoveryAction};
+use crate::guardrails::{GuardrailDecision, ToolGuardrails};
 use crate::retry::{jittered_backoff, should_retry};
 use std::time::Duration;
 
@@ -56,10 +58,7 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
     loop {
         // Check budget and interrupt.
         if budget.is_exhausted() {
-            warn!(
-                api_calls = api_call_count,
-                "Iteration budget exhausted"
-            );
+            warn!(api_calls = api_call_count, "Iteration budget exhausted");
             break;
         }
         if agent.check_interrupt() {
@@ -175,14 +174,17 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
                     GuardrailDecision::Halt(reason) => {
                         warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch");
                         agent.messages.push(Message::tool_result(
-                            &tc.id, &tc.name,
+                            &tc.id,
+                            &tc.name,
                             format!("HALT: Tool dispatch halted by guardrails: {reason}"),
                         ));
                         break;
                     }
                     GuardrailDecision::SyntheticResult(msg) => {
                         warn!(tool = %tc.name, "Injecting synthetic result to break loop");
-                        agent.messages.push(Message::tool_result(&tc.id, &tc.name, msg));
+                        agent
+                            .messages
+                            .push(Message::tool_result(&tc.id, &tc.name, msg));
                         continue;
                     }
                     GuardrailDecision::Warn(msg) => {
@@ -294,7 +296,11 @@ async fn dispatch_tool(
 
     debug!(tool = %tc.name, call_id = %tc.id, "Dispatching tool");
 
-    match agent.tool_registry.dispatch(&tc.name, &args, tool_ctx).await {
+    match agent
+        .tool_registry
+        .dispatch(&tc.name, &args, tool_ctx)
+        .await
+    {
         Ok(content) => {
             debug!(
                 tool = %tc.name,
@@ -343,10 +349,7 @@ pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResul
     loop {
         // Check budget and interrupt.
         if budget.is_exhausted() {
-            warn!(
-                api_calls = api_call_count,
-                "Iteration budget exhausted"
-            );
+            warn!(api_calls = api_call_count, "Iteration budget exhausted");
             break;
         }
         if agent.check_interrupt() {
@@ -465,7 +468,10 @@ pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResul
         if response.has_tool_calls() {
             let tool_calls = response.tool_calls.unwrap();
 
-            debug!(count = tool_calls.len(), "Processing tool calls (streaming)");
+            debug!(
+                count = tool_calls.len(),
+                "Processing tool calls (streaming)"
+            );
 
             // Append the assistant message (with tool_calls) to history.
             let assistant_msg = build_assistant_message_with_tools(
@@ -491,14 +497,17 @@ pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResul
                     GuardrailDecision::Halt(reason) => {
                         warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch (streaming)");
                         agent.messages.push(Message::tool_result(
-                            &tc.id, &tc.name,
+                            &tc.id,
+                            &tc.name,
                             format!("HALT: Tool dispatch halted by guardrails: {reason}"),
                         ));
                         break;
                     }
                     GuardrailDecision::SyntheticResult(msg) => {
                         warn!(tool = %tc.name, "Injecting synthetic result to break loop (streaming)");
-                        agent.messages.push(Message::tool_result(&tc.id, &tc.name, msg));
+                        agent
+                            .messages
+                            .push(Message::tool_result(&tc.id, &tc.name, msg));
                         continue;
                     }
                     GuardrailDecision::Warn(msg) => {

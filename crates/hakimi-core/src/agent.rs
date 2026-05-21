@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use hakimi_common::{HakimiError, Message, Result, ToolContext};
 use hakimi_context::ContextEngine;
@@ -196,7 +196,9 @@ impl AIAgentBuilder {
             .context_engine
             .ok_or_else(|| HakimiError::Config("context_engine is required".into()))?;
 
-        let session_id = self.session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let session_id = self
+            .session_id
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let provider = self
             .provider
             .unwrap_or_else(|| transport.provider_name().to_string());
@@ -204,7 +206,9 @@ impl AIAgentBuilder {
         let api_key = self.api_key.unwrap_or_default();
         let max_iterations = self.max_iterations.unwrap_or(90);
         let tool_registry = self.tool_registry.unwrap_or_default();
-        let interrupt = self.interrupt.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        let interrupt = self
+            .interrupt
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
         let workdir = self.workdir.unwrap_or_else(|| ".".to_string());
 
         info!(

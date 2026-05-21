@@ -318,7 +318,10 @@ impl CredentialPool {
 
     /// Number of credentials that are currently available.
     pub fn available_count(&self) -> usize {
-        self.credentials.iter().filter(|c| Self::is_available(c)).count()
+        self.credentials
+            .iter()
+            .filter(|c| Self::is_available(c))
+            .count()
     }
 
     /// Total credentials in the pool.
@@ -452,7 +455,10 @@ impl CredentialPoolConfig {
         let strategy = self
             .strategy
             .as_deref()
-            .map(|s| s.parse::<RotationStrategy>().unwrap_or(RotationStrategy::RoundRobin))
+            .map(|s| {
+                s.parse::<RotationStrategy>()
+                    .unwrap_or(RotationStrategy::RoundRobin)
+            })
             .unwrap_or(RotationStrategy::RoundRobin);
 
         let mut pool = CredentialPool::new(provider_name, strategy);
@@ -893,5 +899,362 @@ mod tests {
         assert_eq!(stats.total_requests, 0);
         assert_eq!(stats.total_errors, 0);
         assert!(stats.per_credential.is_empty());
+    }
+
+    // --- Additional comprehensive tests ---
+
+    #[test]
+    fn test_round_robin_cycles_through_all() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+        pool.add_credential(make_cred("c"));
+
+        // Cycle 1
+        let r1 = pool.acquire().unwrap();
+        let r2 = pool.acquire().unwrap();
+        let r3 = pool.acquire().unwrap();
+        assert_eq!(r1.id, "a");
+        assert_eq!(r2.id, "b");
+        assert_eq!(r3.id, "c");
+
+        // Release and cycle 2
+        pool.release("a");
+        pool.release("b");
+        pool.release("c");
+
+        let r4 = pool.acquire().unwrap();
+        let r5 = pool.acquire().unwrap();
+        let r6 = pool.acquire().unwrap();
+        assert_eq!(r4.id, "a");
+        assert_eq!(r5.id, "b");
+        assert_eq!(r6.id, "c");
+    }
+
+    #[test]
+    fn test_single_credential_pool() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("only"));
+
+        let r = pool.acquire().unwrap();
+        assert_eq!(r.id, "only");
+        assert_eq!(pool.total_count(), 1);
+        assert_eq!(pool.available_count(), 1); // max_concurrent=10, active_requests=1, still available
+    }
+
+    #[test]
+    fn test_single_credential_exhausted_returns_none() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("only"));
+
+        pool.mark_exhausted("only", 60_000);
+        assert!(pool.acquire().is_none());
+    }
+
+    #[test]
+    fn test_add_and_remove_multiple_credentials() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+        pool.add_credential(make_cred("c"));
+        pool.add_credential(make_cred("d"));
+        assert_eq!(pool.total_count(), 4);
+
+        assert!(pool.remove_credential("b"));
+        assert_eq!(pool.total_count(), 3);
+        assert!(pool.remove_credential("d"));
+        assert_eq!(pool.total_count(), 2);
+        assert!(!pool.remove_credential("b")); // already removed
+        assert_eq!(pool.total_count(), 2);
+    }
+
+    #[test]
+    fn test_acquire_updates_total_requests() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        pool.acquire().unwrap();
+        pool.release("a");
+        pool.acquire().unwrap();
+
+        assert_eq!(pool.credentials[0].total_requests, 2);
+    }
+
+    #[test]
+    fn test_acquire_sets_last_used_ms() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        assert!(pool.credentials[0].last_used_ms.is_none());
+        pool.acquire().unwrap();
+        assert!(pool.credentials[0].last_used_ms.is_some());
+    }
+
+    #[test]
+    fn test_mark_error_increments_counts() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        pool.mark_error("a");
+        pool.mark_error("a");
+        assert_eq!(pool.credentials[0].error_count, 2);
+        assert_eq!(pool.credentials[0].total_errors, 2);
+    }
+
+    #[test]
+    fn test_mark_error_below_threshold_not_exhausted() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        for _ in 0..ERROR_THRESHOLD - 1 {
+            pool.mark_error("a");
+        }
+        assert!(!pool.credentials[0].is_exhausted);
+        assert_eq!(pool.available_count(), 1);
+    }
+
+    #[test]
+    fn test_mark_success_resets_error_count_after_errors() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        pool.mark_error("a");
+        pool.mark_error("a");
+        pool.mark_error("a");
+        assert_eq!(pool.credentials[0].error_count, 3);
+        assert_eq!(pool.credentials[0].total_errors, 3);
+
+        pool.mark_success("a");
+        assert_eq!(pool.credentials[0].error_count, 0);
+        // total_errors should NOT reset — it's a lifetime counter
+        assert_eq!(pool.credentials[0].total_errors, 3);
+    }
+
+    #[test]
+    fn test_fill_first_respects_priority_ordering() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::FillFirst);
+        pool.add_credential(make_cred_with_priority("low", 1));
+        pool.add_credential(make_cred_with_priority("high", 100));
+        pool.add_credential(make_cred_with_priority("mid", 50));
+
+        // Should always pick highest priority first
+        let r1 = pool.acquire().unwrap();
+        assert_eq!(r1.id, "high");
+        let r2 = pool.acquire().unwrap();
+        assert_eq!(r2.id, "high");
+    }
+
+    #[test]
+    fn test_rotation_on_rate_limit_error() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+
+        // Simulate rate-limit: mark "a" as exhausted (as if 429 received)
+        pool.mark_exhausted("a", 60_000);
+
+        // Next acquire should rotate to "b"
+        let r = pool.acquire().unwrap();
+        assert_eq!(r.id, "b");
+    }
+
+    #[test]
+    fn test_rotation_after_error_threshold() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+
+        // Hit error threshold on "a" — should auto-exhaust and rotate to "b"
+        for _ in 0..ERROR_THRESHOLD {
+            pool.mark_error("a");
+        }
+
+        let r = pool.acquire().unwrap();
+        assert_eq!(r.id, "b");
+    }
+
+    #[test]
+    fn test_strategy_switch_round_robin_to_fill_first() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred_with_priority("low", 1));
+        pool.add_credential(make_cred_with_priority("high", 10));
+
+        // With RoundRobin, first is "low" (index 0)
+        let r1 = pool.acquire().unwrap();
+        assert_eq!(r1.id, "low");
+
+        // Switch strategy
+        pool.strategy = RotationStrategy::FillFirst;
+        pool.release("low");
+
+        // Now FillFirst should pick highest priority
+        let r2 = pool.acquire().unwrap();
+        assert_eq!(r2.id, "high");
+    }
+
+    #[test]
+    fn test_is_available_checks_max_concurrent() {
+        let mut cred = make_cred("a");
+        cred.max_concurrent = 2;
+        assert!(CredentialPool::is_available(&cred));
+
+        cred.active_requests = 1;
+        assert!(CredentialPool::is_available(&cred));
+
+        cred.active_requests = 2;
+        assert!(!CredentialPool::is_available(&cred));
+    }
+
+    #[test]
+    fn test_is_available_permanently_exhausted() {
+        let mut cred = make_cred("a");
+        cred.is_exhausted = true;
+        // No exhausted_until_ms → permanently exhausted
+        assert!(!CredentialPool::is_available(&cred));
+    }
+
+    #[test]
+    fn test_is_available_cooldown_expired() {
+        let mut cred = make_cred("a");
+        cred.is_exhausted = true;
+        // Set cooldown to 0 (already expired)
+        cred.exhausted_until_ms = Some(0);
+        assert!(CredentialPool::is_available(&cred));
+    }
+
+    #[test]
+    fn test_stats_after_exhaustion() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+
+        pool.mark_exhausted("a", 60_000);
+        let stats = pool.stats();
+        assert_eq!(stats.exhausted, 1);
+        assert_eq!(stats.available, 1);
+
+        let a_stats = stats.per_credential.iter().find(|s| s.id == "a").unwrap();
+        assert!(a_stats.is_exhausted);
+        let b_stats = stats.per_credential.iter().find(|s| s.id == "b").unwrap();
+        assert!(!b_stats.is_exhausted);
+    }
+
+    #[test]
+    fn test_concurrent_limit_single_credential() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        let mut a = make_cred("a");
+        a.max_concurrent = 3;
+        pool.add_credential(a);
+
+        let _r1 = pool.acquire().unwrap();
+        let _r2 = pool.acquire().unwrap();
+        let _r3 = pool.acquire().unwrap();
+
+        // At capacity
+        assert!(pool.acquire().is_none());
+
+        // Release one
+        pool.release("a");
+        let r4 = pool.acquire().unwrap();
+        assert_eq!(r4.id, "a");
+    }
+
+    #[test]
+    fn test_fill_first_same_priority_prefers_lower_index() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::FillFirst);
+        pool.add_credential(make_cred_with_priority("a", 10));
+        pool.add_credential(make_cred_with_priority("b", 10));
+
+        // Same priority, should prefer index 0 ("a")
+        let r = pool.acquire().unwrap();
+        assert_eq!(r.id, "a");
+    }
+
+    #[test]
+    fn test_remove_credential_adjusts_index() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+        pool.add_credential(make_cred("c"));
+
+        // Acquire to advance index to 2
+        pool.acquire().unwrap(); // a, index -> 1
+        pool.release("a");
+        pool.acquire().unwrap(); // b, index -> 2
+
+        // Remove "c" (index 2), current_index=2 should be adjusted
+        pool.remove_credential("c");
+        assert_eq!(pool.total_count(), 2);
+        // Pool should still function
+        pool.release("b");
+        let r = pool.acquire().unwrap();
+        assert!(r.id == "a" || r.id == "b");
+    }
+
+    #[test]
+    fn test_strategy_display_and_parse_roundtrip() {
+        for strategy in &[
+            RotationStrategy::RoundRobin,
+            RotationStrategy::FillFirst,
+            RotationStrategy::Random,
+            RotationStrategy::LeastUsed,
+        ] {
+            let s = strategy.to_string();
+            let parsed: RotationStrategy = s.parse().unwrap();
+            assert_eq!(*strategy, parsed);
+        }
+    }
+
+    #[test]
+    fn test_rotation_strategy_alternate_parsing() {
+        assert_eq!(
+            "round-robin".parse::<RotationStrategy>().unwrap(),
+            RotationStrategy::RoundRobin
+        );
+        assert_eq!(
+            "fill-first".parse::<RotationStrategy>().unwrap(),
+            RotationStrategy::FillFirst
+        );
+        assert_eq!(
+            "least-used".parse::<RotationStrategy>().unwrap(),
+            RotationStrategy::LeastUsed
+        );
+        assert_eq!(
+            "ROUNDROBIN".parse::<RotationStrategy>().unwrap(),
+            RotationStrategy::RoundRobin
+        );
+    }
+
+    #[test]
+    fn test_config_default_strategy_is_round_robin() {
+        let cfg = CredentialPoolConfig {
+            strategy: None,
+            credentials: vec![CredentialConfig {
+                api_key: "sk-test".to_string(),
+                ..Default::default()
+            }],
+        };
+        let pool = cfg.to_pool("test");
+        assert_eq!(pool.strategy, RotationStrategy::RoundRobin);
+    }
+
+    #[test]
+    fn test_least_used_across_multiple_acquires() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::LeastUsed);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+        pool.add_credential(make_cred("c"));
+
+        // Acquire 6 times, releasing between to see LeastUsed balance
+        let r1 = pool.acquire().unwrap(); // a (0,0,0) -> a gets 1
+        pool.release(&r1.id);
+        let r2 = pool.acquire().unwrap(); // b (1,0,0) -> b gets 1
+        pool.release(&r2.id);
+        let r3 = pool.acquire().unwrap(); // c (1,1,0) -> c gets 1
+        pool.release(&r3.id);
+
+        // Now all at 1 request each, next should be "a" (tie-break by index)
+        let r4 = pool.acquire().unwrap();
+        assert_eq!(r4.id, "a");
     }
 }

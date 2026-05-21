@@ -6,14 +6,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures::stream;
 use hakimi_common::{
-    ApiMode, FinishReason, Message, NormalizedResponse, Result, ToolContext,
-    ToolDefinition, Usage,
+    ApiMode, FinishReason, Message, NormalizedResponse, Result, ToolContext, ToolDefinition, Usage,
 };
 use hakimi_context::SimpleContextEngine;
 use hakimi_core::{AIAgent, IterationBudget};
 use hakimi_tools::{Tool, ToolContextBuilder, ToolRegistry};
 use hakimi_transports::{ProviderTransport, RequestParams, StreamAccumulator, StreamEvent};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::sync::RwLock;
 
 // ── Mock Transport ──────────────────────────────────────────────────────────
@@ -265,9 +264,7 @@ async fn test_tool_dispatch_e2e() {
 
     let registry = ToolRegistry::new();
     // Register a simple echo tool
-    registry
-        .register(Arc::new(EchoTool))
-        .await;
+    registry.register(Arc::new(EchoTool)).await;
 
     let mut agent = AIAgent::builder()
         .model("test-model")
@@ -432,10 +429,7 @@ impl Tool for EchoTool {
     }
 
     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
-        let cmd = args
-            .get("command")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
         Ok(format!("output of: {cmd}"))
     }
 }
@@ -466,18 +460,14 @@ fn test_tool_context_builder_try_build() {
 
 #[test]
 fn test_tool_context_builder_try_build_missing_session() {
-    let result = ToolContextBuilder::new()
-        .workdir("/tmp")
-        .try_build();
+    let result = ToolContextBuilder::new().workdir("/tmp").try_build();
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("session_id"));
 }
 
 #[test]
 fn test_tool_context_builder_try_build_missing_workdir() {
-    let result = ToolContextBuilder::new()
-        .session_id("s1")
-        .try_build();
+    let result = ToolContextBuilder::new().session_id("s1").try_build();
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("workdir"));
 }
@@ -570,14 +560,26 @@ async fn test_multi_turn_conversation() {
             content: Some("Turn 1 response".to_string()),
             tool_calls: None,
             finish_reason: Some(FinishReason::Stop),
-            usage: Some(Usage { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cached_tokens: 0, reasoning_tokens: 0 }),
+            usage: Some(Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            }),
             reasoning: None,
         },
         NormalizedResponse {
             content: Some("Turn 2 response".to_string()),
             tool_calls: None,
             finish_reason: Some(FinishReason::Stop),
-            usage: Some(Usage { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28, cached_tokens: 0, reasoning_tokens: 0 }),
+            usage: Some(Usage {
+                prompt_tokens: 20,
+                completion_tokens: 8,
+                total_tokens: 28,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            }),
             reasoning: None,
         },
     ]));

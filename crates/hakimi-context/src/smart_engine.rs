@@ -756,4 +756,209 @@ mod tests {
         assert_eq!(count, 2, "Should not compress if too few messages");
         assert_eq!(saved, 0);
     }
+
+    // ── Engine metadata ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_engine_name() {
+        let engine = make_engine(1000);
+        assert_eq!(engine.name(), "smart");
+    }
+
+    #[test]
+    fn test_context_length() {
+        let engine = make_engine(128000);
+        assert_eq!(engine.context_length(), 128000);
+    }
+
+    // ── Session lifecycle ───────────────────────────────────────────────
+
+    #[test]
+    fn test_on_session_start_resets() {
+        let mut engine = make_engine(1000);
+        engine.estimated_tokens = 500;
+        engine.on_session_start();
+        assert_eq!(engine.estimated_tokens, 0);
+        let stats = engine.compression_stats().unwrap();
+        assert_eq!(stats.compression_count, 0);
+        assert_eq!(stats.total_tokens_saved, 0);
+    }
+
+    #[test]
+    fn test_update_from_response() {
+        let mut engine = make_engine(1000);
+        engine.update_from_response(&Usage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            ..Default::default()
+        });
+        assert_eq!(engine.estimated_tokens, 150);
+    }
+
+    // ── Tier 1 edge cases ───────────────────────────────────────────────
+
+    #[test]
+    fn test_tier1_preserves_short_tool_results() {
+        let mut messages = vec![
+            Message::system("sys"),
+            make_assistant_with_tool_call("tc1"),
+            make_tool_result("tc1", false), // short result
+        ];
+        let (_, saved) = SmartContextEngine::tier1_drop_tool_results(&mut messages, 0);
+        // Short results (< 100 chars) should NOT be truncated
+        assert!(
+            !messages[2].content.as_ref().unwrap().contains("truncated"),
+            "Short tool results should not be truncated"
+        );
+        assert_eq!(saved, 0);
+    }
+
+    // ── Tier 2 edge cases ───────────────────────────────────────────────
+
+    #[test]
+    fn test_tier2_preserves_leading_system_messages() {
+        let mut messages = vec![
+            Message::system("System A"),
+            Message::system("System B"),
+            Message::user("q1"),
+            Message::assistant("a1"),
+            Message::user("q2"),
+            Message::assistant("a2"),
+            Message::user("q3"),
+        ];
+        let (_, _) = SmartContextEngine::tier2_summarize_old_turns(&mut messages, 2);
+        // Both system messages should be preserved at the front
+        assert_eq!(messages[0].content.as_deref(), Some("System A"));
+        assert_eq!(messages[1].content.as_deref(), Some("System B"));
+        // Summary message follows
+        assert!(messages[2].content.as_ref().unwrap().contains("context-compression"));
+    }
+
+    // ── Tier 3 edge cases ───────────────────────────────────────────────
+
+    #[test]
+    fn test_tier3_preserves_multiple_system_messages() {
+        let mut messages = vec![
+            Message::system("Sys1"),
+            Message::system("Sys2"),
+            Message::user("msg1"),
+            Message::assistant("r1"),
+            Message::user("msg2"),
+            Message::assistant("r2"),
+            Message::user("msg3"),
+            Message::assistant("r3"),
+        ];
+        let (_, _) = SmartContextEngine::tier3_sliding_window(&mut messages, 2);
+        // Both system messages preserved
+        assert_eq!(messages[0].content.as_deref(), Some("Sys1"));
+        assert_eq!(messages[1].content.as_deref(), Some("Sys2"));
+        // Then notice + last 2 messages
+        assert!(messages[2].content.as_ref().unwrap().contains("sliding window"));
+        assert_eq!(messages[3].content.as_deref(), Some("msg3"));
+        assert_eq!(messages[4].content.as_deref(), Some("r3"));
+    }
+
+    // ── choose_tier boundary values ─────────────────────────────────────
+
+    #[test]
+    fn test_choose_tier_exact_boundaries() {
+        assert_eq!(SmartContextEngine::choose_tier(699, 1000), CompressionTier::None);
+        assert_eq!(SmartContextEngine::choose_tier(700, 1000), CompressionTier::None);
+        assert_eq!(SmartContextEngine::choose_tier(701, 1000), CompressionTier::DropToolResults);
+        assert_eq!(SmartContextEngine::choose_tier(850, 1000), CompressionTier::DropToolResults);
+        assert_eq!(SmartContextEngine::choose_tier(851, 1000), CompressionTier::SummarizeOldTurns);
+        assert_eq!(SmartContextEngine::choose_tier(950, 1000), CompressionTier::SummarizeOldTurns);
+        assert_eq!(SmartContextEngine::choose_tier(951, 1000), CompressionTier::SlidingWindow);
+        assert_eq!(SmartContextEngine::choose_tier(1000, 1000), CompressionTier::SlidingWindow);
+    }
+
+    // ── Empty compress ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_compress_empty_messages() {
+        let engine = make_engine(1000);
+        let mut messages: Vec<Message> = vec![];
+        engine.compress(&mut messages).await.unwrap();
+        assert!(messages.is_empty());
+    }
+
+    // ── Multiple compressions accumulate stats ──────────────────────────
+
+    #[tokio::test]
+    async fn test_multiple_compressions_accumulate_stats() {
+        let mut engine = make_engine(200);
+        engine.update_from_response(&Usage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 195,
+            ..Default::default()
+        });
+
+        let make_messages = || {
+            let mut msgs = vec![Message::system("System prompt.")];
+            for i in 0..20 {
+                msgs.push(Message::user(format!("Question {i} about programming")));
+                msgs.push(Message::assistant(format!("Answer {i}: detailed explanation.")));
+            }
+            msgs
+        };
+
+        let mut msgs1 = make_messages();
+        engine.compress(&mut msgs1).await.unwrap();
+        let stats1 = engine.compression_stats().unwrap();
+        assert_eq!(stats1.compression_count, 1);
+
+        let mut msgs2 = make_messages();
+        engine.compress(&mut msgs2).await.unwrap();
+        let stats2 = engine.compression_stats().unwrap();
+        assert_eq!(stats2.compression_count, 2);
+        assert!(stats2.total_tokens_saved >= stats1.total_tokens_saved);
+    }
+
+    // ── CompressionTier equality ────────────────────────────────────────
+
+    #[test]
+    fn test_compression_tier_equality() {
+        assert_eq!(CompressionTier::None, CompressionTier::None);
+        assert_eq!(CompressionTier::DropToolResults, CompressionTier::DropToolResults);
+        assert_ne!(CompressionTier::None, CompressionTier::SlidingWindow);
+        assert_ne!(CompressionTier::DropToolResults, CompressionTier::SummarizeOldTurns);
+    }
+
+    // ── Tier 1 with keep_recent covering all messages ───────────────────
+
+    #[test]
+    fn test_tier1_keep_recent_covers_all() {
+        let mut messages = vec![
+            Message::system("sys"),
+            make_assistant_with_tool_call("tc1"),
+            make_tool_result("tc1", true),
+        ];
+        let (_, saved) = SmartContextEngine::tier1_drop_tool_results(&mut messages, 100);
+        // keep_recent > messages.len(), so nothing should be truncated
+        assert_eq!(saved, 0);
+        assert!(!messages[2].content.as_ref().unwrap().contains("truncated"));
+    }
+
+    // ── estimate_tokens with reasoning content ──────────────────────────
+
+    #[test]
+    fn test_estimate_total_tokens_with_reasoning() {
+        let msg = Message {
+            role: MessageRole::Assistant,
+            content: Some("answer".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning: Some("chain of thought".to_string()),
+            reasoning_content: Some("more thinking".to_string()),
+            timestamp: None,
+            token_count: None,
+            finish_reason: None,
+        };
+        let tokens = SmartContextEngine::estimate_total_tokens(&[msg]);
+        // Should include content + reasoning + reasoning_content + overhead
+        assert!(tokens > 10, "Should count reasoning tokens, got {}", tokens);
+    }
 }

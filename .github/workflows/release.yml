@@ -17,16 +17,24 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: hakimi-x86_64-unknown-linux-gnu
+            ext: tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             artifact: hakimi-aarch64-unknown-linux-gnu
             cross: true
+            ext: tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: hakimi-x86_64-apple-darwin
+            ext: tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: hakimi-aarch64-apple-darwin
+            ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: hakimi-x86_64-pc-windows-msvc
+            ext: zip
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -41,6 +49,7 @@ jobs:
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build
+        shell: bash
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }} -p hakimi-cli
@@ -48,16 +57,25 @@ jobs:
             cargo build --release --target ${{ matrix.target }} -p hakimi-cli
           fi
 
-      - name: Package
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           cd target/${{ matrix.target }}/release
           tar czf ../../../${{ matrix.artifact }}.tar.gz hakimi
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../${{ matrix.artifact }}.zip hakimi.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          path: ${{ matrix.artifact }}.*
 
   release:
     needs: build
@@ -70,13 +88,12 @@ jobs:
         with:
           path: artifacts
 
-      - name: List artifacts
-        run: find artifacts -type f
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*.tar.gz
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
           generate_release_notes: true
 
   publish-crate:

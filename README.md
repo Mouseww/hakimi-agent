@@ -27,11 +27,18 @@
 
 ## Install
 
+**Linux / macOS:**
 ```bash
-# One-line install (Linux/macOS)
 curl -sSL https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.sh | bash
+```
 
-# Or via cargo
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.ps1 | iex
+```
+
+**Any platform (with Rust):**
+```bash
 cargo install hakimi-agent
 ```
 

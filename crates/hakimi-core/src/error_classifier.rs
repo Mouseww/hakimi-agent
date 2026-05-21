@@ -242,7 +242,10 @@ impl ErrorClassifier {
                 retry_after_ms: None,
             };
         }
-        if lower.contains("timeout") || lower.contains("timed out") || lower.contains("deadline exceeded") {
+        if lower.contains("timeout")
+            || lower.contains("timed out")
+            || lower.contains("deadline exceeded")
+        {
             return ErrorClassification {
                 reason: FailoverReason::NetworkTimeout,
                 action: RecoveryAction::RetryWithBackoff,
@@ -251,7 +254,11 @@ impl ErrorClassifier {
                 retry_after_ms: None,
             };
         }
-        if lower.contains("connection refused") || lower.contains("connection reset") || lower.contains("broken pipe") || lower.contains("network") {
+        if lower.contains("connection refused")
+            || lower.contains("connection reset")
+            || lower.contains("broken pipe")
+            || lower.contains("network")
+        {
             return ErrorClassification {
                 reason: FailoverReason::NetworkTimeout,
                 action: RecoveryAction::RetryWithBackoff,
@@ -260,7 +267,11 @@ impl ErrorClassifier {
                 retry_after_ms: None,
             };
         }
-        if lower.contains("stream") && (lower.contains("interrupted") || lower.contains("broken") || lower.contains("closed")) {
+        if lower.contains("stream")
+            && (lower.contains("interrupted")
+                || lower.contains("broken")
+                || lower.contains("closed"))
+        {
             return ErrorClassification {
                 reason: FailoverReason::StreamInterrupted,
                 action: RecoveryAction::RetryImmediate,
@@ -269,7 +280,8 @@ impl ErrorClassifier {
                 retry_after_ms: None,
             };
         }
-        if lower.contains("parse") || lower.contains("deserializ") || lower.contains("invalid json") {
+        if lower.contains("parse") || lower.contains("deserializ") || lower.contains("invalid json")
+        {
             return ErrorClassification {
                 reason: FailoverReason::ParsingError,
                 action: RecoveryAction::Abort,
@@ -296,17 +308,30 @@ impl ErrorClassifier {
             402 => (FailoverReason::BillingError, RecoveryAction::Abort),
             403 => (FailoverReason::PermissionDenied, RecoveryAction::Abort),
             404 => (FailoverReason::ModelNotFound, RecoveryAction::FallbackModel),
-            408 => (FailoverReason::NetworkTimeout, RecoveryAction::RetryWithBackoff),
+            408 => (
+                FailoverReason::NetworkTimeout,
+                RecoveryAction::RetryWithBackoff,
+            ),
             429 => (FailoverReason::RateLimit, RecoveryAction::RetryWithBackoff),
-            500 => (FailoverReason::ServerError, RecoveryAction::RetryWithBackoff),
+            500 => (
+                FailoverReason::ServerError,
+                RecoveryAction::RetryWithBackoff,
+            ),
             502 | 503 => (FailoverReason::ServerError, RecoveryAction::RetryImmediate),
-            504 => (FailoverReason::NetworkTimeout, RecoveryAction::RetryWithBackoff),
+            504 => (
+                FailoverReason::NetworkTimeout,
+                RecoveryAction::RetryWithBackoff,
+            ),
             529 => (FailoverReason::Overloaded, RecoveryAction::RetryWithBackoff),
             400 => (FailoverReason::InvalidRequest, RecoveryAction::Abort),
-            451 => (FailoverReason::RegionBlocked, RecoveryAction::ChangeProvider),
-            s if (500..600).contains(&s) => {
-                (FailoverReason::ServerError, RecoveryAction::RetryWithBackoff)
-            }
+            451 => (
+                FailoverReason::RegionBlocked,
+                RecoveryAction::ChangeProvider,
+            ),
+            s if (500..600).contains(&s) => (
+                FailoverReason::ServerError,
+                RecoveryAction::RetryWithBackoff,
+            ),
             _ => (FailoverReason::Unknown, RecoveryAction::Abort),
         }
     }
@@ -578,27 +603,46 @@ mod tests {
     fn test_is_retryable_true() {
         assert!(ErrorClassifier::is_retryable(&FailoverReason::RateLimit));
         assert!(ErrorClassifier::is_retryable(&FailoverReason::Overloaded));
-        assert!(ErrorClassifier::is_retryable(&FailoverReason::NetworkTimeout));
+        assert!(ErrorClassifier::is_retryable(
+            &FailoverReason::NetworkTimeout
+        ));
         assert!(ErrorClassifier::is_retryable(&FailoverReason::ServerError));
-        assert!(ErrorClassifier::is_retryable(&FailoverReason::StreamInterrupted));
+        assert!(ErrorClassifier::is_retryable(
+            &FailoverReason::StreamInterrupted
+        ));
     }
 
     #[test]
     fn test_is_retryable_false() {
         assert!(!ErrorClassifier::is_retryable(&FailoverReason::AuthError));
-        assert!(!ErrorClassifier::is_retryable(&FailoverReason::BillingError));
-        assert!(!ErrorClassifier::is_retryable(&FailoverReason::ContentFilter));
-        assert!(!ErrorClassifier::is_retryable(&FailoverReason::PermissionDenied));
-        assert!(!ErrorClassifier::is_retryable(&FailoverReason::ModelNotFound));
-        assert!(!ErrorClassifier::is_retryable(&FailoverReason::ContextOverflow));
-        assert!(!ErrorClassifier::is_retryable(&FailoverReason::ParsingError));
+        assert!(!ErrorClassifier::is_retryable(
+            &FailoverReason::BillingError
+        ));
+        assert!(!ErrorClassifier::is_retryable(
+            &FailoverReason::ContentFilter
+        ));
+        assert!(!ErrorClassifier::is_retryable(
+            &FailoverReason::PermissionDenied
+        ));
+        assert!(!ErrorClassifier::is_retryable(
+            &FailoverReason::ModelNotFound
+        ));
+        assert!(!ErrorClassifier::is_retryable(
+            &FailoverReason::ContextOverflow
+        ));
+        assert!(!ErrorClassifier::is_retryable(
+            &FailoverReason::ParsingError
+        ));
     }
 
     #[test]
     fn test_extract_retry_after_seconds() {
         let mut headers = HashMap::new();
         headers.insert("retry-after".to_string(), "10".to_string());
-        assert_eq!(ErrorClassifier::extract_retry_after_ms(&headers), Some(10000));
+        assert_eq!(
+            ErrorClassifier::extract_retry_after_ms(&headers),
+            Some(10000)
+        );
     }
 
     #[test]
@@ -611,7 +655,10 @@ mod tests {
 
     #[test]
     fn test_extract_retry_after_missing() {
-        assert_eq!(ErrorClassifier::extract_retry_after_ms(&empty_headers()), None);
+        assert_eq!(
+            ErrorClassifier::extract_retry_after_ms(&empty_headers()),
+            None
+        );
     }
 
     #[test]
@@ -778,7 +825,10 @@ mod tests {
     fn test_retry_after_case_insensitive_header() {
         let mut headers = HashMap::new();
         headers.insert("Retry-After".to_string(), "3".to_string());
-        assert_eq!(ErrorClassifier::extract_retry_after_ms(&headers), Some(3000));
+        assert_eq!(
+            ErrorClassifier::extract_retry_after_ms(&headers),
+            Some(3000)
+        );
     }
 
     #[test]
@@ -786,5 +836,338 @@ mod tests {
         let (reason, action) = ErrorClassifier::classify_status(451);
         assert_eq!(reason, FailoverReason::RegionBlocked);
         assert_eq!(action, RecoveryAction::ChangeProvider);
+    }
+
+    // --- Additional tests (12+) ---
+
+    #[test]
+    fn test_classify_504_gateway_timeout() {
+        let c = make_classifier();
+        let r = c.classify_http(504, &empty_headers(), "");
+        assert_eq!(r.reason, FailoverReason::NetworkTimeout);
+        assert_eq!(r.action, RecoveryAction::RetryWithBackoff);
+        assert!(r.is_retryable);
+    }
+
+    #[test]
+    fn test_classify_400_invalid_request() {
+        let c = make_classifier();
+        let r = c.classify_http(400, &empty_headers(), "");
+        assert_eq!(r.reason, FailoverReason::InvalidRequest);
+        assert_eq!(r.action, RecoveryAction::Abort);
+        assert!(!r.is_retryable);
+    }
+
+    #[test]
+    fn test_classify_body_model_not_found_alternate() {
+        let c = make_classifier();
+        // "model not found" variant (with spaces, not underscore)
+        let r = c.classify_http(
+            404,
+            &empty_headers(),
+            r#"{"error": "model not found: xyz-99"}"#,
+        );
+        assert_eq!(r.reason, FailoverReason::ModelNotFound);
+        assert_eq!(r.action, RecoveryAction::FallbackModel);
+    }
+
+    #[test]
+    fn test_classify_body_thinking_signature() {
+        let c = make_classifier();
+        let r = c.classify_http(
+            400,
+            &empty_headers(),
+            r#"{"error": "thinking_signature validation failed"}"#,
+        );
+        assert_eq!(r.reason, FailoverReason::ThinkingSignature);
+        assert_eq!(r.action, RecoveryAction::Abort);
+        assert!(!r.is_retryable);
+    }
+
+    #[test]
+    fn test_classify_body_thinking_signature_alt() {
+        let c = make_classifier();
+        let r = c.classify_http(400, &empty_headers(), "Error: thinking signature mismatch");
+        assert_eq!(r.reason, FailoverReason::ThinkingSignature);
+    }
+
+    #[test]
+    fn test_classify_body_quota_exceeded() {
+        let c = make_classifier();
+        let r = c.classify_http(
+            429,
+            &empty_headers(),
+            r#"{"error": "quota_exceeded: monthly limit reached"}"#,
+        );
+        assert_eq!(r.reason, FailoverReason::QuotaExceeded);
+        assert_eq!(r.action, RecoveryAction::Abort);
+        assert!(!r.is_retryable);
+    }
+
+    #[test]
+    fn test_classify_body_quota_exceeded_alt() {
+        let c = make_classifier();
+        let r = c.classify_http(429, &empty_headers(), "quota exceeded for this account");
+        assert_eq!(r.reason, FailoverReason::QuotaExceeded);
+    }
+
+    #[test]
+    fn test_classify_body_region_blocked() {
+        let c = make_classifier();
+        let r = c.classify_http(
+            403,
+            &empty_headers(),
+            "Access denied: this region is blocked",
+        );
+        assert_eq!(r.reason, FailoverReason::RegionBlocked);
+        assert_eq!(r.action, RecoveryAction::ChangeProvider);
+    }
+
+    #[test]
+    fn test_classify_body_context_window_variant() {
+        let c = make_classifier();
+        let r = c.classify_http(
+            400,
+            &empty_headers(),
+            "Error: maximum context length is 128000 tokens",
+        );
+        assert_eq!(r.reason, FailoverReason::ContextOverflow);
+        assert_eq!(r.action, RecoveryAction::CompressContext);
+    }
+
+    #[test]
+    fn test_classify_body_content_filter_alt() {
+        let c = make_classifier();
+        let r = c.classify_http(
+            400,
+            &empty_headers(),
+            "The request was blocked by the content filter",
+        );
+        assert_eq!(r.reason, FailoverReason::ContentFilter);
+        assert!(!r.is_retryable);
+    }
+
+    #[test]
+    fn test_transport_tls_keyword() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("TLS handshake failed with peer");
+        assert_eq!(r.reason, FailoverReason::SslError);
+        assert_eq!(r.action, RecoveryAction::ChangeProvider);
+        assert!(!r.is_retryable);
+    }
+
+    #[test]
+    fn test_transport_certificate_keyword() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("certificate has expired");
+        assert_eq!(r.reason, FailoverReason::SslError);
+    }
+
+    #[test]
+    fn test_transport_deadline_exceeded() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("request deadline exceeded");
+        assert_eq!(r.reason, FailoverReason::NetworkTimeout);
+        assert!(r.is_retryable);
+    }
+
+    #[test]
+    fn test_transport_connection_reset() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("connection reset by peer");
+        assert_eq!(r.reason, FailoverReason::NetworkTimeout);
+        assert!(r.is_retryable);
+    }
+
+    #[test]
+    fn test_transport_broken_pipe() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("broken pipe on write");
+        assert_eq!(r.reason, FailoverReason::NetworkTimeout);
+        assert!(r.is_retryable);
+    }
+
+    #[test]
+    fn test_transport_stream_broken() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("SSE stream broken mid-response");
+        assert_eq!(r.reason, FailoverReason::StreamInterrupted);
+        assert_eq!(r.action, RecoveryAction::RetryImmediate);
+    }
+
+    #[test]
+    fn test_transport_stream_closed() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("stream closed unexpectedly");
+        assert_eq!(r.reason, FailoverReason::StreamInterrupted);
+        assert!(r.is_retryable);
+    }
+
+    #[test]
+    fn test_transport_deserialize_error() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("failed to deserialize response body");
+        assert_eq!(r.reason, FailoverReason::ParsingError);
+        assert_eq!(r.action, RecoveryAction::Abort);
+    }
+
+    #[test]
+    fn test_transport_invalid_json() {
+        let c = make_classifier();
+        let r = c.classify_transport_error("invalid JSON at line 1 col 10");
+        assert_eq!(r.reason, FailoverReason::ParsingError);
+        assert!(!r.is_retryable);
+    }
+
+    #[test]
+    fn test_classify_status_other_5xx() {
+        // 501, 505, 599 – all should be ServerError via the catch-all 5xx arm
+        for status in [501, 505, 506, 599] {
+            let (reason, action) = ErrorClassifier::classify_status(status);
+            assert_eq!(reason, FailoverReason::ServerError, "status {status}");
+            assert_eq!(action, RecoveryAction::RetryWithBackoff, "status {status}");
+        }
+    }
+
+    #[test]
+    fn test_classify_status_unknown_codes() {
+        // Non-standard codes → Unknown + Abort
+        for status in [100, 200, 201, 204, 301, 302, 418, 499] {
+            let (reason, action) = ErrorClassifier::classify_status(status);
+            assert_eq!(reason, FailoverReason::Unknown, "status {status}");
+            assert_eq!(action, RecoveryAction::Abort, "status {status}");
+        }
+    }
+
+    #[test]
+    fn test_retry_after_all_caps_header() {
+        let mut headers = HashMap::new();
+        headers.insert("RETRY-AFTER".to_string(), "7".to_string());
+        assert_eq!(
+            ErrorClassifier::extract_retry_after_ms(&headers),
+            Some(7000)
+        );
+    }
+
+    #[test]
+    fn test_retry_after_unparseable_returns_none() {
+        let mut headers = HashMap::new();
+        headers.insert("retry-after".to_string(), "not-a-number".to_string());
+        assert_eq!(ErrorClassifier::extract_retry_after_ms(&headers), None);
+    }
+
+    #[test]
+    fn test_retry_after_with_whitespace() {
+        let mut headers = HashMap::new();
+        headers.insert("retry-after".to_string(), "  15  ".to_string());
+        assert_eq!(
+            ErrorClassifier::extract_retry_after_ms(&headers),
+            Some(15000)
+        );
+    }
+
+    #[test]
+    fn test_custom_rule_on_transport_error() {
+        let mut c = make_classifier();
+        c.add_rule(
+            "custom_transport_fail",
+            FailoverReason::QuotaExceeded,
+            RecoveryAction::Abort,
+        );
+        let r = c.classify_transport_error("got custom_transport_fail error");
+        assert_eq!(r.reason, FailoverReason::QuotaExceeded);
+        assert_eq!(r.action, RecoveryAction::Abort);
+    }
+
+    #[test]
+    fn test_custom_rule_overrides_body_pattern() {
+        let mut c = make_classifier();
+        // Custom rule should take precedence over built-in body patterns
+        c.add_rule(
+            "context_length_exceeded",
+            FailoverReason::RateLimit,
+            RecoveryAction::RetryWithBackoff,
+        );
+        let r = c.classify_http(400, &empty_headers(), "context_length_exceeded: limit hit");
+        assert_eq!(r.reason, FailoverReason::RateLimit);
+        assert_eq!(r.action, RecoveryAction::RetryWithBackoff);
+    }
+
+    #[test]
+    fn test_classify_500_with_retry_after_header() {
+        let c = make_classifier();
+        let mut headers = HashMap::new();
+        headers.insert("retry-after".to_string(), "30".to_string());
+        let r = c.classify_http(500, &headers, "");
+        assert_eq!(r.reason, FailoverReason::ServerError);
+        assert_eq!(r.retry_after_ms, Some(30000));
+        assert!(r.is_retryable);
+    }
+
+    #[test]
+    fn test_classify_empty_body_and_headers() {
+        let c = make_classifier();
+        let r = c.classify_http(200, &empty_headers(), "");
+        assert_eq!(r.reason, FailoverReason::Unknown);
+        assert_eq!(r.action, RecoveryAction::Abort);
+        assert!(!r.is_retryable);
+        assert_eq!(r.retry_after_ms, None);
+    }
+
+    #[test]
+    fn test_suggest_fallback_all_remaining_reasons() {
+        // Cover the remaining reasons not in test_suggest_fallback
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::BillingError),
+            RecoveryAction::Abort
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::RateLimit),
+            RecoveryAction::RetryWithBackoff
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::Overloaded),
+            RecoveryAction::RetryWithBackoff
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::ThinkingSignature),
+            RecoveryAction::Abort
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::NetworkTimeout),
+            RecoveryAction::RetryWithBackoff
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::InvalidRequest),
+            RecoveryAction::Abort
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::ContentFilter),
+            RecoveryAction::Abort
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::PermissionDenied),
+            RecoveryAction::Abort
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::QuotaExceeded),
+            RecoveryAction::Abort
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::ServerError),
+            RecoveryAction::RetryWithBackoff
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::ProxyError),
+            RecoveryAction::ChangeProvider
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::ParsingError),
+            RecoveryAction::Abort
+        );
+        assert_eq!(
+            ErrorClassifier::suggest_fallback(&FailoverReason::Unknown),
+            RecoveryAction::RetryWithBackoff
+        );
     }
 }
