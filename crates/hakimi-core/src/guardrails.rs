@@ -27,6 +27,8 @@ pub struct ToolCallObservation {
     pub tool_name: String,
     /// Serialized arguments.
     pub arguments: String,
+    /// Hash of the tool result (to detect stalled output).
+    pub result_hash: Option<String>,
     /// Turn number when this call was made.
     pub turn: usize,
 }
@@ -89,45 +91,48 @@ impl ToolGuardrails {
         let observation = ToolCallObservation {
             tool_name: tool_name.to_string(),
             arguments: arguments.to_string(),
+            result_hash: None,
             turn: self.current_turn,
         };
         self.observations.push(observation);
+        
+        // ... (existing logic)
+    }
 
-        // Check hard limit.
-        if self.observations.len() > self.hard_limit_per_turn {
-            let msg = format!(
-                "HALT: {} tool calls in a single turn exceeds hard limit of {}. Possible infinite loop.",
-                self.observations.len(),
-                self.hard_limit_per_turn
-            );
-            warn!("{}", msg);
-            return GuardrailDecision::Halt(msg);
+    /// Record the result of a tool call to detect stalled output loops.
+    pub fn record_result(&mut self, tool_name: &str, result: &str) -> GuardrailDecision {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        result.hash(&mut hasher);
+        let hash = format!("{:x}", hasher.finish());
+
+        // Update the most recent observation with the result hash
+        if let Some(obs) = self.observations.iter_mut().rev().find(|o| o.tool_name == tool_name && o.result_hash.is_none()) {
+            obs.result_hash = Some(hash.clone());
         }
 
-        // Check for identical call loops.
-        let identical_count = self.count_identical(tool_name, arguments);
-        if identical_count >= self.max_identical_calls {
+        // Check if we've seen this exact output multiple times recently 
+        // with the same tool, even if arguments were slightly different.
+        let stall_count = self.observations
+            .iter()
+            .rev()
+            .take(5)
+            .filter(|o| o.tool_name == tool_name && o.result_hash.as_ref() == Some(&hash))
+            .count();
+
+        if stall_count >= 3 {
             let msg = format!(
-                "Detected {} identical calls to '{}' with same arguments. Injecting synthetic result to break loop.",
-                identical_count, tool_name
+                "STALL DETECTED: Tool '{}' has returned the same output {} times. \
+                 The agent is likely stuck in an error loop or making no progress.",
+                tool_name, stall_count
             );
             warn!("{}", msg);
             return GuardrailDecision::SyntheticResult(format!(
-                "[Guardrail] This tool has been called {} times with identical arguments in this turn. \
-                 Please try a different approach or provide different arguments.",
-                identical_count
+                "[Guardrail] This tool is repeatedly returning the same output. \
+                 Please stop trying this specific command or approach, as it is not producing new information."
             ));
-        }
-
-        // Check soft limit.
-        if self.observations.len() > self.max_calls_per_turn {
-            let msg = format!(
-                "Warning: {} tool calls in this turn exceeds soft limit of {}.",
-                self.observations.len(),
-                self.max_calls_per_turn
-            );
-            debug!("{}", msg);
-            return GuardrailDecision::Warn(msg);
         }
 
         GuardrailDecision::Allow
