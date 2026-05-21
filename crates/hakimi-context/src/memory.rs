@@ -25,7 +25,7 @@ pub trait MemoryProvider: Send + Sync {
     async fn handle_tool_call(&self, name: &str, args: &JsonValue) -> Result<String>;
 }
 
-/// A memory provider backed by files in `~/.hermes/memory/`.
+/// A memory provider backed by files in `~/.hakimi/memory/`.
 ///
 /// Each file in the directory is treated as a separate memory entry.
 /// Files are read into the system prompt and searched during prefetch.
@@ -39,7 +39,7 @@ impl FileMemoryProvider {
     /// `home` is the user's home directory (e.g. `/root`).
     pub fn new(home: &str) -> Self {
         Self {
-            memory_dir: std::path::Path::new(home).join(".hermes").join("memory"),
+            memory_dir: std::path::Path::new(home).join(".hakimi").join("memory"),
         }
     }
 }
@@ -146,7 +146,7 @@ impl MemoryProvider for FileMemoryProvider {
         vec![
             ToolDefinition {
                 name: "memory_save".to_string(),
-                description: "Save a piece of information to long-term memory. The memory is stored as a file in ~/.hermes/memory/.".to_string(),
+                description: "Save a piece of information to long-term memory. The memory is stored as a file in ~/.hakimi/memory/.".to_string(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -273,7 +273,7 @@ impl MemoryProvider for FileMemoryProvider {
     }
 }
 
-/// A memory provider backed by a user profile file at `~/.hermes/user_profile`.
+/// A memory provider backed by a user profile file at `~/.hakimi/user_profile`.
 ///
 /// This is a single-file memory that stores user preferences, identity, etc.
 pub struct UserMemoryProvider {
@@ -285,7 +285,7 @@ impl UserMemoryProvider {
     pub fn new(home: &str) -> Self {
         Self {
             profile_path: std::path::Path::new(home)
-                .join(".hermes")
+                .join(".hakimi")
                 .join("user_profile"),
         }
     }
@@ -330,7 +330,7 @@ impl MemoryProvider for UserMemoryProvider {
     fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
         vec![ToolDefinition {
             name: "update_user_profile".to_string(),
-            description: "Update the user profile stored at ~/.hermes/user_profile. \
+            description: "Update the user profile stored at ~/.hakimi/user_profile. \
                           Use this to remember user preferences, identity details, etc."
                 .to_string(),
             parameters: serde_json::json!({

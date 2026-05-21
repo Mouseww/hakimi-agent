@@ -54,6 +54,10 @@ pub struct Args {
     #[arg(long)]
     pub serve: bool,
 
+    /// Start gateway mode (Telegram/Discord/etc.) instead of interactive REPL.
+    #[arg(long)]
+    pub gateway: bool,
+
     /// Address for the HTTP API server (default: 127.0.0.1:3000).
     #[arg(long, default_value = "127.0.0.1:3000")]
     pub addr: String,
@@ -860,6 +864,188 @@ pub async fn run() -> Result<()> {
 
         let server = hakimi_server::Server::new(&args.addr, agent, config, session_db)?;
         server.start().await?;
+        return Ok(());
+    }
+
+    // --gateway mode: start platform gateway (Telegram, Discord, etc.)
+    if args.gateway {
+        info!("starting gateway mode");
+
+        // Read bot_token from config gateways.telegram
+        let tg_config = &config.gateways.telegram;
+        if tg_config.bot_token.is_empty() {
+            error!("No Telegram bot_token in config. Add gateways.telegram.bot_token to ~/.hakimi/config.yaml");
+            std::process::exit(1);
+        }
+
+        let mut gateway = hakimi_gateway::Gateway::new();
+        let telegram_adapter = hakimi_gateway::TelegramAdapter::from_token(&tg_config.bot_token);
+        gateway.add_adapter(Box::new(telegram_adapter));
+
+        // Build the base system prompt using build_system_prompt() with all components.
+        let identity = if config.agent.system_prompt.is_empty() {
+            "You are Hakimi, a helpful AI assistant.".to_string()
+        } else {
+            config.agent.system_prompt.clone()
+        };
+
+        let env_hints = hakimi_context::build_environment_hints(
+            "gateway",
+            std::env::consts::OS,
+            &dirs::home_dir()
+                .map(|h| h.to_string_lossy().to_string())
+                .unwrap_or_else(|| "/root".to_string()),
+            &std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| ".".to_string()),
+        );
+
+        // Load memory content from ~/.hakimi/memory/
+        let memory_text = if config.memory.enabled {
+            let memory_dir = if config.memory.path.is_empty() {
+                dirs::home_dir()
+                    .map(|h| h.join(".hakimi").join("memory"))
+                    .unwrap_or_else(|| std::path::PathBuf::from("/root/.hakimi/memory"))
+            } else {
+                std::path::PathBuf::from(&config.memory.path)
+            };
+
+            let mut memory_parts = Vec::new();
+
+            let memory_file = memory_dir.join("memory.md");
+            if memory_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&memory_file) {
+                    if !content.trim().is_empty() {
+                        memory_parts.push(format!("[memory]\n{content}"));
+                    }
+                }
+            }
+
+            let user_file = memory_dir.join("user.md");
+            if user_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&user_file) {
+                    if !content.trim().is_empty() {
+                        memory_parts.push(format!("[user profile]\n{content}"));
+                    }
+                }
+            }
+
+            if memory_parts.is_empty() {
+                String::new()
+            } else {
+                memory_parts.join("\n\n")
+            }
+        } else {
+            String::new()
+        };
+
+        // Build the base system prompt (without skills — skills are injected per-message).
+        let base_system_prompt = hakimi_context::build_system_prompt(
+            &identity,
+            "telegram",  // platform hint for Telegram formatting
+            "",          // skills injected per-message below
+            &memory_text,
+            &env_hints,
+        );
+
+        // Set the base system prompt on the agent.
+        agent.set_system_prompt(&base_system_prompt);
+
+        // Per-chat message histories for session isolation.
+        let chat_histories: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>> =
+            std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+
+        // Wrap agent in Arc<Mutex> for sharing across tasks
+        let agent = std::sync::Arc::new(tokio::sync::Mutex::new(agent));
+        gateway.connect_all().await?;
+
+        // Take all inbound message receivers
+        let mut receivers = gateway.take_all_receivers();
+        if receivers.is_empty() {
+            error!("No message receivers available from any adapter");
+            std::process::exit(1);
+        }
+
+        info!("Gateway connected. Listening for messages from {} adapter(s)...", receivers.len());
+
+        // Merge all receivers into one select loop
+        let (_platform, mut rx) = receivers.remove(0);
+
+        loop {
+            tokio::select! {
+                Some(msg) = rx.recv() => {
+                    let user_text = msg.text.clone();
+                    let chat_id = msg.chat_id.clone();
+                    let platform = msg.platform.clone();
+                    info!(platform = %platform, chat_id = %chat_id, "received message");
+
+                    let agent_clone = agent.clone();
+                    let histories_clone = chat_histories.clone();
+                    let skill_store_ref = &skill_store;
+                    let base_sp = &base_system_prompt;
+                    let gateway_ref = &gateway;
+
+                    // Process the message with the agent
+                    let response = {
+                        let mut a = agent_clone.lock().await;
+
+                        // 1. Load chat-specific message history
+                        {
+                            let histories = histories_clone.lock().await;
+                            let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
+                            a.clear_messages();
+                            for m in chat_msgs {
+                                a.add_message(m);
+                            }
+                        }
+
+                        // 2. Inject matching skills into the system prompt
+                        let skill_additions = skill_store_ref.get_system_prompt_additions(&user_text);
+                        if !skill_additions.is_empty() {
+                            let combined = format!("{base_sp}\n\n## Skills\n{skill_additions}");
+                            a.set_system_prompt(&combined);
+                        }
+
+                        // 3. Call agent.chat()
+                        let result = match a.chat(&user_text).await {
+                            Ok(resp) => resp,
+                            Err(e) => {
+                                error!(error = %e, "agent error");
+                                format!("Error: {e}")
+                            }
+                        };
+
+                        // 4. Restore base system prompt
+                        a.set_system_prompt(base_sp);
+
+                        // 5. Save updated chat history back
+                        {
+                            let mut histories = histories_clone.lock().await;
+                            histories.insert(chat_id.clone(), a.messages().to_vec());
+                        }
+
+                        result
+                    };
+
+                    // Send response back via gateway
+                    if let Err(e) = gateway_ref.route_message(&hakimi_gateway::GatewayMessage {
+                        platform: platform.clone(),
+                        chat_id: chat_id.clone(),
+                        user_id: String::new(), // outbound response, user_id not needed
+                        text: response.clone(),
+                        media: None,
+                    }).await {
+                        error!(error = %e, "failed to send response");
+                    }
+                    info!(platform = %platform, chat_id = %chat_id, response_len = response.len(), "sent response");
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Shutting down gateway...");
+                    gateway.disconnect_all().await?;
+                    break;
+                }
+            }
+        }
         return Ok(());
     }
 

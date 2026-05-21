@@ -688,6 +688,7 @@ dependencies = [
  "hakimi-context",
  "hakimi-core",
  "hakimi-cron",
+ "hakimi-gateway",
  "hakimi-mcp",
  "hakimi-plugin",
  "hakimi-server",

@@ -308,6 +308,27 @@ pub struct McpServerConfig {
     pub env: HashMap<String, String>,
 }
 
+/// Memory configuration section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    /// Whether memory loading into system prompt is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Custom memory directory path (default: ~/.hakimi/memory/).
+    #[serde(default)]
+    pub path: String,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            path: String::new(),
+        }
+    }
+}
+
 /// Top-level Hakimi configuration.
 ///
 /// All fields have sensible defaults via `serde(default)` so partial config
@@ -340,6 +361,32 @@ pub struct HakimiConfig {
     /// Credential pools keyed by provider name.
     #[serde(default)]
     pub credential_pools: HashMap<String, CredentialPoolConfig>,
+
+    /// Gateway platform configurations.
+    #[serde(default)]
+    pub gateways: GatewaysConfig,
+
+    /// Memory configuration.
+    #[serde(default)]
+    pub memory: MemoryConfig,
+}
+
+/// Configuration for all gateway platforms.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GatewaysConfig {
+    #[serde(default)]
+    pub telegram: TelegramGatewayConfig,
+}
+
+/// Telegram-specific gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TelegramGatewayConfig {
+    /// Telegram Bot API token.
+    #[serde(default)]
+    pub bot_token: String,
+    /// List of allowed user IDs (empty = allow all).
+    #[serde(default)]
+    pub allowed_users: Vec<i64>,
 }
 
 impl Default for HakimiConfig {
@@ -353,6 +400,8 @@ impl Default for HakimiConfig {
             delegation: DelegationConfig::default(),
             mcp_servers: HashMap::new(),
             credential_pools: HashMap::new(),
+            gateways: GatewaysConfig::default(),
+            memory: MemoryConfig::default(),
         }
     }
 }

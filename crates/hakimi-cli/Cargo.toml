@@ -8,6 +8,7 @@ name = "hakimi"
 path = "src/main.rs"
 
 [dependencies]
+hakimi-gateway = { path = "../hakimi-gateway" }
 hakimi-common = { path = "../hakimi-common" }
 hakimi-core = { path = "../hakimi-core" }
 hakimi-config = { path = "../hakimi-config" }

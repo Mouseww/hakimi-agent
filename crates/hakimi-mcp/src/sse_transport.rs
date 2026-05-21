@@ -463,4 +463,29 @@ mod tests {
         assert_eq!(id2, 2);
         assert_eq!(id3, 3);
     }
+
+    #[test]
+    fn test_sse_transport_server_info_none_initially() {
+        let transport = SseTransport::new("http://localhost/sse", None, None);
+        assert!(transport.server_info.is_none());
+        assert!(transport.post_url.is_none());
+        assert_eq!(transport.reconnect_attempts, 0);
+    }
+
+    #[test]
+    fn test_reconnect_config_custom_values() {
+        let config = ReconnectConfig {
+            max_attempts: 3,
+            base_delay: Duration::from_millis(200),
+            max_delay: Duration::from_secs(10),
+        };
+        let transport = SseTransport::new(
+            "http://example.com/sse",
+            Some("Bearer xyz".to_string()),
+            Some(config),
+        );
+        assert_eq!(transport.reconnect_config.max_attempts, 3);
+        assert_eq!(transport.sse_url, "http://example.com/sse");
+        assert_eq!(transport.auth_header, Some("Bearer xyz".to_string()));
+    }
 }

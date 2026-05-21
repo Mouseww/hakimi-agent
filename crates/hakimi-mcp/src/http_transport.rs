@@ -348,4 +348,42 @@ mod tests {
         let msg = format!("{}", err);
         assert!(msg.contains("not initialized"));
     }
+
+    #[test]
+    fn test_http_transport_default_next_id_is_one() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_secs(30),
+        );
+        // next_id is behind a Mutex so we can't read it directly, but
+        // the first call to next_id().await should return 1 (tested in async test below).
+        // Here we just verify the transport was constructed.
+        assert!(!transport.initialized);
+        assert!(transport.server_info.is_none());
+        assert!(transport.auth_header.is_none());
+    }
+
+    #[test]
+    fn test_http_transport_bearer_token_format() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            Some("Bearer sk-abc123".to_string()),
+            Duration::from_secs(30),
+        );
+        let auth = transport.auth_header.as_ref().unwrap();
+        assert!(auth.starts_with("Bearer "));
+        assert!(auth.contains("sk-abc123"));
+    }
+
+    #[tokio::test]
+    async fn test_http_transport_next_id_starts_at_one() {
+        let transport = HttpTransport::new(
+            "http://localhost:3000/mcp",
+            None,
+            Duration::from_secs(30),
+        );
+        let first_id = transport.next_id().await;
+        assert_eq!(first_id, 1, "first next_id should be 1");
+    }
 }
