@@ -158,18 +158,19 @@ fn generate_filename(prefix: &str, ext: &str) -> String {
 /// Map aspect ratio strings to resolution dimensions.
 fn aspect_ratio_to_dimensions(aspect_ratio: &str) -> (u32, u32) {
     match aspect_ratio {
-        "landscape" => (1024, 576),   // 16:9
-        "portrait" => (576, 1024),    // 9:16
-        "square" | _ => (1024, 1024), // 1:1
+        "landscape" => (1024, 576), // 16:9
+        "portrait" => (576, 1024),  // 9:16
+        _ => (1024, 1024),          // 1:1
     }
 }
 
 /// Map aspect ratio to the string format used by FAL.ai.
+#[allow(dead_code)]
 fn aspect_ratio_to_fal(aspect_ratio: &str) -> &str {
     match aspect_ratio {
         "landscape" => "16:9",
         "portrait" => "9:16",
-        "square" | _ => "1:1",
+        _ => "1:1",
     }
 }
 
@@ -178,7 +179,7 @@ fn aspect_ratio_to_openai_size(aspect_ratio: &str) -> &str {
     match aspect_ratio {
         "landscape" => "1792x1024",
         "portrait" => "1024x1792",
-        "square" | _ => "1024x1024",
+        _ => "1024x1024",
     }
 }
 

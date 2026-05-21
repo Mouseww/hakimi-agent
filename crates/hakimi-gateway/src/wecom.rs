@@ -66,18 +66,18 @@ impl WeComAdapter {
         let resp = self.client.get(&url).send().await?;
         let body: serde_json::Value = resp.json().await?;
 
-        if let Some(errcode) = body.get("errcode") {
-            if errcode.as_i64().unwrap_or(0) != 0 {
-                let errmsg = body
-                    .get("errmsg")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                anyhow::bail!(
-                    "WeCom gettoken error: errcode={}, errmsg={}",
-                    errcode,
-                    errmsg
-                );
-            }
+        if let Some(errcode) = body.get("errcode")
+            && errcode.as_i64().unwrap_or(0) != 0
+        {
+            let errmsg = body
+                .get("errmsg")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            anyhow::bail!(
+                "WeCom gettoken error: errcode={}, errmsg={}",
+                errcode,
+                errmsg
+            );
         }
 
         body.get("access_token")

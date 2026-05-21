@@ -309,15 +309,15 @@ impl DiscordAdapter {
 
                 for msg in &messages {
                     // Skip messages from bots (including ourselves).
-                    if msg.author.as_ref().map_or(false, |a| a.bot) {
+                    if msg.author.as_ref().is_some_and(|a| a.bot) {
                         continue;
                     }
 
                     // Skip messages we've already seen.
-                    if let Some(ref seen) = last_seen_id {
-                        if msg.id <= *seen {
-                            continue;
-                        }
+                    if let Some(ref seen) = last_seen_id
+                        && msg.id <= *seen
+                    {
+                        continue;
                     }
 
                     let text = msg.content.clone();

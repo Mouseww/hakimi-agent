@@ -151,12 +151,12 @@ impl SseTransport {
         for line in body.lines() {
             if line.starts_with("data:") {
                 let data = line.strip_prefix("data:").unwrap_or("").trim();
-                if let Ok(value) = serde_json::from_str::<Value>(data) {
-                    if let Some(uri) = value.get("uri").and_then(|v| v.as_str()) {
-                        self.post_url = Some(uri.to_string());
-                        debug!(post_url = %uri, "Discovered SSE POST endpoint");
-                        return Ok(());
-                    }
+                if let Ok(value) = serde_json::from_str::<Value>(data)
+                    && let Some(uri) = value.get("uri").and_then(|v| v.as_str())
+                {
+                    self.post_url = Some(uri.to_string());
+                    debug!(post_url = %uri, "Discovered SSE POST endpoint");
+                    return Ok(());
                 }
             }
         }

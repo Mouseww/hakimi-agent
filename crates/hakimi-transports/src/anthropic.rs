@@ -126,13 +126,13 @@ impl AnthropicTransport {
                     let mut content_blocks: Vec<JsonValue> = Vec::new();
 
                     // Text content block (if any).
-                    if let Some(ref text) = msg.content {
-                        if !text.is_empty() {
-                            content_blocks.push(json!({
-                                "type": "text",
-                                "text": text
-                            }));
-                        }
+                    if let Some(ref text) = msg.content
+                        && !text.is_empty()
+                    {
+                        content_blocks.push(json!({
+                            "type": "text",
+                            "text": text
+                        }));
                     }
 
                     // Tool use blocks from tool_calls.

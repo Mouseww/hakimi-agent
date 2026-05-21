@@ -333,14 +333,13 @@ impl CredentialPool {
     pub fn refresh(&mut self) {
         let now = now_millis();
         for cred in &mut self.credentials {
-            if cred.is_exhausted {
-                if let Some(until) = cred.exhausted_until_ms {
-                    if now >= until {
-                        cred.is_exhausted = false;
-                        cred.exhausted_until_ms = None;
-                        cred.error_count = 0;
-                    }
-                }
+            if cred.is_exhausted
+                && let Some(until) = cred.exhausted_until_ms
+                && now >= until
+            {
+                cred.is_exhausted = false;
+                cred.exhausted_until_ms = None;
+                cred.error_count = 0;
             }
         }
     }

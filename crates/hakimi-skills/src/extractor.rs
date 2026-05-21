@@ -38,7 +38,7 @@ impl SkillExtractor {
     pub fn with_thresholds(min_frequency: usize, min_confidence: f32) -> Self {
         Self {
             min_pattern_frequency: min_frequency,
-            min_confidence: min_confidence,
+            min_confidence,
         }
     }
 

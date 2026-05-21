@@ -5,7 +5,6 @@
 
 use regex::Regex;
 use std::path::{Path, PathBuf};
-use tracing::warn;
 
 /// Paths that should never be written to by the agent.
 const WRITE_DENIED_PATHS: &[&str] = &[
@@ -194,10 +193,10 @@ const INJECTION_PATTERNS: &[&str] = &[
 pub fn detect_prompt_injection(text: &str) -> Vec<String> {
     let mut detections = Vec::new();
     for pattern in INJECTION_PATTERNS {
-        if let Ok(re) = Regex::new(pattern) {
-            if re.is_match(text) {
-                detections.push(pattern.to_string());
-            }
+        if let Ok(re) = Regex::new(pattern)
+            && re.is_match(text)
+        {
+            detections.push(pattern.to_string());
         }
     }
     detections

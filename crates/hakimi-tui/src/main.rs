@@ -67,10 +67,10 @@ fn load_config() -> hakimi_config::HakimiConfig {
 
     let config_path = hakimi_dir.join("config.yaml");
 
-    if !hakimi_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&hakimi_dir) {
-            warn!(path = %hakimi_dir.display(), error = %e, "failed to create .hakimi directory");
-        }
+    if !hakimi_dir.exists()
+        && let Err(e) = std::fs::create_dir_all(&hakimi_dir)
+    {
+        warn!(path = %hakimi_dir.display(), error = %e, "failed to create .hakimi directory");
     }
 
     if !config_path.exists() {
@@ -103,10 +103,10 @@ fn resolve_api_key(config: &hakimi_config::HakimiConfig) -> String {
         "OPENROUTER_API_KEY",
         "ANTHROPIC_API_KEY",
     ] {
-        if let Ok(val) = std::env::var(var) {
-            if !val.is_empty() {
-                return val;
-            }
+        if let Ok(val) = std::env::var(var)
+            && !val.is_empty()
+        {
+            return val;
         }
     }
     if !config.delegation.api_key.is_empty() {
@@ -116,10 +116,10 @@ fn resolve_api_key(config: &hakimi_config::HakimiConfig) -> String {
 }
 
 fn resolve_base_url(config: &hakimi_config::HakimiConfig) -> String {
-    if let Ok(val) = std::env::var("HAKIMI_BASE_URL") {
-        if !val.is_empty() {
-            return val;
-        }
+    if let Ok(val) = std::env::var("HAKIMI_BASE_URL")
+        && !val.is_empty()
+    {
+        return val;
     }
     if !config.model.base_url.is_empty() {
         return config.model.base_url.clone();
@@ -128,10 +128,10 @@ fn resolve_base_url(config: &hakimi_config::HakimiConfig) -> String {
 }
 
 fn resolve_model(config: &hakimi_config::HakimiConfig) -> String {
-    if let Ok(val) = std::env::var("HAKIMI_MODEL") {
-        if !val.is_empty() {
-            return val;
-        }
+    if let Ok(val) = std::env::var("HAKIMI_MODEL")
+        && !val.is_empty()
+    {
+        return val;
     }
     if !config.model.default.is_empty() {
         return config.model.default.clone();
@@ -377,12 +377,12 @@ async fn run_event_loop(
         terminal.draw(|frame| ui::render(frame, app))?;
 
         // Poll for keyboard events (non-blocking).
-        if event::poll(tick_rate)? {
-            if let Event::Key(key) = event::read()? {
-                // Only process key-down events (not releases).
-                if key.kind == KeyEventKind::Press {
-                    app.handle_key_event(key);
-                }
+        if event::poll(tick_rate)?
+            && let Event::Key(key) = event::read()?
+        {
+            // Only process key-down events (not releases).
+            if key.kind == KeyEventKind::Press {
+                app.handle_key_event(key);
             }
         }
 

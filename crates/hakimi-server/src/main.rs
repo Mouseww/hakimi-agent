@@ -44,10 +44,10 @@ fn load_config() -> hakimi_config::HakimiConfig {
 
     let config_path = hakimi_dir.join("config.yaml");
 
-    if !hakimi_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&hakimi_dir) {
-            warn!(path = %hakimi_dir.display(), error = %e, "failed to create .hakimi directory");
-        }
+    if !hakimi_dir.exists()
+        && let Err(e) = std::fs::create_dir_all(&hakimi_dir)
+    {
+        warn!(path = %hakimi_dir.display(), error = %e, "failed to create .hakimi directory");
     }
 
     match std::fs::read_to_string(&config_path) {
@@ -80,10 +80,7 @@ async fn build_agent(
     let model = args
         .model
         .clone()
-        .or_else(|| {
-            let env = std::env::var("HAKIMI_MODEL").ok().filter(|s| !s.is_empty());
-            env
-        })
+        .or_else(|| std::env::var("HAKIMI_MODEL").ok().filter(|s| !s.is_empty()))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| {
             if !config.model.default.is_empty() {

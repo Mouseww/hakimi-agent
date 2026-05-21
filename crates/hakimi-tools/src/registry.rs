@@ -107,14 +107,14 @@ impl ToolRegistry {
         let result = tool.execute(args, ctx).await?;
 
         // Truncate if max_result_size is set
-        if let Some(max) = tool.max_result_size() {
-            if result.len() > max {
-                warn!(tool = %name, len = result.len(), max, "truncating tool result");
-                let mut truncated = String::with_capacity(max + 20);
-                truncated.push_str(&result[..max]);
-                truncated.push_str("\n[truncated]");
-                return Ok(truncated);
-            }
+        if let Some(max) = tool.max_result_size()
+            && result.len() > max
+        {
+            warn!(tool = %name, len = result.len(), max, "truncating tool result");
+            let mut truncated = String::with_capacity(max + 20);
+            truncated.push_str(&result[..max]);
+            truncated.push_str("\n[truncated]");
+            return Ok(truncated);
         }
 
         Ok(result)

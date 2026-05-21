@@ -76,7 +76,7 @@ impl SmartContextEngine {
 
     /// Rough token estimate: 1 token ≈ 4 characters.
     fn estimate_tokens(text: &str) -> usize {
-        (text.len() + 3) / 4
+        text.len().div_ceil(4)
     }
 
     /// Estimate the total tokens across all messages.
@@ -112,7 +112,7 @@ impl SmartContextEngine {
     ///
     /// Walk backwards from the end, keeping recent tool results intact.
     /// For older tool results, replace their content with a placeholder.
-    fn tier1_drop_tool_results(messages: &mut Vec<Message>, keep_recent: usize) -> (usize, usize) {
+    fn tier1_drop_tool_results(messages: &mut [Message], keep_recent: usize) -> (usize, usize) {
         let total = messages.len();
         if total <= keep_recent {
             return (total, 0);

@@ -119,52 +119,50 @@ fn check_api_key() -> DiagnosticResult {
         "OPENROUTER_API_KEY",
         "ANTHROPIC_API_KEY",
     ] {
-        if let Ok(val) = std::env::var(var) {
-            if !val.is_empty() {
-                let masked = format!(
-                    "{}...{}",
-                    &val[..4.min(val.len())],
-                    if val.len() > 4 {
-                        &val[val.len() - 4..]
-                    } else {
-                        ""
-                    }
-                );
-                return DiagnosticResult {
-                    name: "API key".to_string(),
-                    status: CheckStatus::Pass,
-                    message: format!("Found in ${} ({})", var, masked),
-                    fix: None,
-                };
-            }
+        if let Ok(val) = std::env::var(var)
+            && !val.is_empty()
+        {
+            let masked = format!(
+                "{}...{}",
+                &val[..4.min(val.len())],
+                if val.len() > 4 {
+                    &val[val.len() - 4..]
+                } else {
+                    ""
+                }
+            );
+            return DiagnosticResult {
+                name: "API key".to_string(),
+                status: CheckStatus::Pass,
+                message: format!("Found in ${} ({})", var, masked),
+                fix: None,
+            };
         }
     }
 
     // Check config file
     let path = config_path();
-    if path.exists() {
-        if let Ok(contents) = std::fs::read_to_string(&path) {
-            if let Ok(config) = serde_yaml::from_str::<hakimi_config::HakimiConfig>(&contents) {
-                if !config.delegation.api_key.is_empty() {
-                    let key = &config.delegation.api_key;
-                    let masked = format!(
-                        "{}...{}",
-                        &key[..4.min(key.len())],
-                        if key.len() > 4 {
-                            &key[key.len() - 4..]
-                        } else {
-                            ""
-                        }
-                    );
-                    return DiagnosticResult {
-                        name: "API key".to_string(),
-                        status: CheckStatus::Pass,
-                        message: format!("Found in config ({})", masked),
-                        fix: None,
-                    };
-                }
+    if path.exists()
+        && let Ok(contents) = std::fs::read_to_string(&path)
+        && let Ok(config) = serde_yaml::from_str::<hakimi_config::HakimiConfig>(&contents)
+        && !config.delegation.api_key.is_empty()
+    {
+        let key = &config.delegation.api_key;
+        let masked = format!(
+            "{}...{}",
+            &key[..4.min(key.len())],
+            if key.len() > 4 {
+                &key[key.len() - 4..]
+            } else {
+                ""
             }
-        }
+        );
+        return DiagnosticResult {
+            name: "API key".to_string(),
+            status: CheckStatus::Pass,
+            message: format!("Found in config ({})", masked),
+            fix: None,
+        };
     }
 
     DiagnosticResult {
@@ -460,10 +458,10 @@ pub fn format_report(results: &[DiagnosticResult]) -> String {
             color, icon, reset, result.name, result.message
         ));
 
-        if let Some(ref fix) = result.fix {
-            if result.status != CheckStatus::Pass {
-                report.push_str(&format!("    → {}\n", fix));
-            }
+        if let Some(ref fix) = result.fix
+            && result.status != CheckStatus::Pass
+        {
+            report.push_str(&format!("    → {}\n", fix));
         }
     }
 

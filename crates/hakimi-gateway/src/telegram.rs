@@ -183,30 +183,30 @@ impl TelegramAdapter {
                         for update in updates {
                             let update_id = update.update_id;
 
-                            if let Some(message) = update.message {
-                                if let Some(gw_msg) = convert_message(&bot_id, &message) {
-                                    // Handle bot commands: reply directly via
-                                    // the sender's channel instead of forwarding
-                                    // upstream (commands are not agent queries).
-                                    if let Some(_reply_text) = Self::handle_command(&gw_msg.text) {
-                                        // We send the *command* GatewayMessage
-                                        // through as well so the upstream can
-                                        // decide what to do, but we also mark
-                                        // it so the caller knows this was a
-                                        // command. For simplicity we just push
-                                        // it through – the agent may choose to
-                                        // ignore commands.
-                                        debug!(
-                                            chat_id = %gw_msg.chat_id,
-                                            command = %gw_msg.text,
-                                            "bot command received"
-                                        );
-                                    }
+                            if let Some(message) = update.message
+                                && let Some(gw_msg) = convert_message(&bot_id, &message)
+                            {
+                                // Handle bot commands: reply directly via
+                                // the sender's channel instead of forwarding
+                                // upstream (commands are not agent queries).
+                                if let Some(_reply_text) = Self::handle_command(&gw_msg.text) {
+                                    // We send the *command* GatewayMessage
+                                    // through as well so the upstream can
+                                    // decide what to do, but we also mark
+                                    // it so the caller knows this was a
+                                    // command. For simplicity we just push
+                                    // it through – the agent may choose to
+                                    // ignore commands.
+                                    debug!(
+                                        chat_id = %gw_msg.chat_id,
+                                        command = %gw_msg.text,
+                                        "bot command received"
+                                    );
+                                }
 
-                                    if msg_tx.send(gw_msg).is_err() {
-                                        error!("message receiver dropped – stopping poll loop");
-                                        return;
-                                    }
+                                if msg_tx.send(gw_msg).is_err() {
+                                    error!("message receiver dropped – stopping poll loop");
+                                    return;
                                 }
                             }
 
@@ -353,10 +353,10 @@ impl PlatformAdapter for TelegramAdapter {
             .json()
             .await
             .context("failed to parse sendMessage response")?;
-        if resp.ok {
-            if let Some(result) = &resp.result {
-                return Ok(result.get("message_id").and_then(|v| v.as_i64()));
-            }
+        if resp.ok
+            && let Some(result) = &resp.result
+        {
+            return Ok(result.get("message_id").and_then(|v| v.as_i64()));
         }
         // Fallback: retry plain text
         let plain_body = serde_json::json!({
@@ -373,10 +373,10 @@ impl PlatformAdapter for TelegramAdapter {
             .json()
             .await
             .context("failed to parse sendMessage response (plain)")?;
-        if resp.ok {
-            if let Some(result) = &resp.result {
-                return Ok(result.get("message_id").and_then(|v| v.as_i64()));
-            }
+        if resp.ok
+            && let Some(result) = &resp.result
+        {
+            return Ok(result.get("message_id").and_then(|v| v.as_i64()));
         }
         Ok(None)
     }

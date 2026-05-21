@@ -367,13 +367,13 @@ fn collect_files<'a>(
             let file_name_str = file_name.to_string_lossy();
 
             // Check glob filter
-            if let Some(glob) = file_glob {
-                if !matches_glob(&file_name_str, glob) {
-                    if path.is_dir() {
-                        collect_files(&path, re, file_glob, results, max).await?;
-                    }
-                    continue;
+            if let Some(glob) = file_glob
+                && !matches_glob(&file_name_str, glob)
+            {
+                if path.is_dir() {
+                    collect_files(&path, re, file_glob, results, max).await?;
                 }
+                continue;
             }
 
             if path.is_dir() {

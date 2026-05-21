@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::protocol::*;
 
@@ -27,6 +27,7 @@ pub struct HttpTransport {
     /// Optional authorization header value.
     auth_header: Option<String>,
     /// Request timeout.
+    #[allow(dead_code)]
     timeout: Duration,
 }
 

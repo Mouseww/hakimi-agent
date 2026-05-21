@@ -151,22 +151,18 @@ impl App {
             }
 
             // Backspace
-            KeyCode::Backspace => {
-                if self.cursor_position > 0 {
-                    let before = &self.input[..self.cursor_position - 1];
-                    let after = &self.input[self.cursor_position..];
-                    self.input = format!("{before}{after}");
-                    self.cursor_position -= 1;
-                }
+            KeyCode::Backspace if self.cursor_position > 0 => {
+                let before = &self.input[..self.cursor_position - 1];
+                let after = &self.input[self.cursor_position..];
+                self.input = format!("{before}{after}");
+                self.cursor_position -= 1;
             }
 
             // Delete
-            KeyCode::Delete => {
-                if self.cursor_position < self.input.len() {
-                    let before = &self.input[..self.cursor_position];
-                    let after = &self.input[self.cursor_position + 1..];
-                    self.input = format!("{before}{after}");
-                }
+            KeyCode::Delete if self.cursor_position < self.input.len() => {
+                let before = &self.input[..self.cursor_position];
+                let after = &self.input[self.cursor_position + 1..];
+                self.input = format!("{before}{after}");
             }
 
             // Home
@@ -180,17 +176,13 @@ impl App {
             }
 
             // Left arrow
-            KeyCode::Left => {
-                if self.cursor_position > 0 {
-                    self.cursor_position -= 1;
-                }
+            KeyCode::Left if self.cursor_position > 0 => {
+                self.cursor_position -= 1;
             }
 
             // Right arrow
-            KeyCode::Right => {
-                if self.cursor_position < self.input.len() {
-                    self.cursor_position += 1;
-                }
+            KeyCode::Right if self.cursor_position < self.input.len() => {
+                self.cursor_position += 1;
             }
 
             // Regular character input

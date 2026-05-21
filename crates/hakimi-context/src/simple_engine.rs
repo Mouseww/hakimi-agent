@@ -24,7 +24,7 @@ impl SimpleContextEngine {
 
     /// Rough estimate: 1 token ≈ 4 characters (conservative for English text).
     fn estimate_tokens(text: &str) -> usize {
-        (text.len() + 3) / 4
+        text.len().div_ceil(4)
     }
 }
 

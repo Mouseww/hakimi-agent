@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{Value as JsonValue, json};
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::Tool;
 
@@ -104,7 +104,7 @@ impl Tool for CheckpointTool {
 fn ensure_shadow_git(workdir: &Path) -> Result<PathBuf> {
     let git_dir = workdir.join(SHADOW_GIT_DIR);
     if !git_dir.join("HEAD").exists() {
-        std::fs::create_dir_all(&git_dir).map_err(|e| HakimiError::Io(e))?;
+        std::fs::create_dir_all(&git_dir).map_err(HakimiError::Io)?;
         // Initialize a bare-ish git repo.
         run_git(workdir, &["init", "--bare", &git_dir.to_string_lossy()])?;
         // Configure the shadow git repo.
@@ -116,7 +116,7 @@ fn ensure_shadow_git(workdir: &Path) -> Result<PathBuf> {
 
 /// Create a new checkpoint.
 async fn create_checkpoint(workdir: &Path, label: &str) -> Result<String> {
-    let git_dir = ensure_shadow_git(workdir)?;
+    let _git_dir = ensure_shadow_git(workdir)?;
 
     // Add all files in the working directory.
     run_git(workdir, &["add", "-A"])?;
@@ -130,7 +130,7 @@ async fn create_checkpoint(workdir: &Path, label: &str) -> Result<String> {
     };
 
     // Commit to the shadow git store.
-    let output = run_git_raw(workdir, &["commit", "-m", &message, "--allow-empty"])?;
+    let _output = run_git_raw(workdir, &["commit", "-m", &message, "--allow-empty"])?;
 
     // Extract the commit hash.
     let hash = run_git_raw(workdir, &["rev-parse", "HEAD"])?;

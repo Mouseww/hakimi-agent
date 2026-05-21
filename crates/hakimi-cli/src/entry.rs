@@ -239,16 +239,18 @@ fn resolve_provider<'a>(
     model: &str,
 ) -> String {
     // 1. CLI argument
-    if let Some(p) = args_provider {
-        if !p.is_empty() && p != "auto" {
-            return p.to_string();
-        }
+    if let Some(p) = args_provider
+        && !p.is_empty()
+        && p != "auto"
+    {
+        return p.to_string();
     }
     // 2. Environment variable
-    if let Ok(val) = std::env::var("HAKIMI_PROVIDER") {
-        if !val.is_empty() && val != "auto" {
-            return val;
-        }
+    if let Ok(val) = std::env::var("HAKIMI_PROVIDER")
+        && !val.is_empty()
+        && val != "auto"
+    {
+        return val;
     }
     // 3. Config file
     if !config.model.provider.is_empty() && config.model.provider != "auto" {
@@ -289,10 +291,10 @@ fn is_anthropic_provider(provider: &str, base_url: &str) -> bool {
 
 fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
     // 1. CLI argument
-    if let Some(key) = args_key {
-        if !key.is_empty() {
-            return key.to_string();
-        }
+    if let Some(key) = args_key
+        && !key.is_empty()
+    {
+        return key.to_string();
     }
     // 2. Environment variables
     for var in &[
@@ -301,11 +303,11 @@ fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig)
         "OPENROUTER_API_KEY",
         "ANTHROPIC_API_KEY",
     ] {
-        if let Ok(val) = std::env::var(var) {
-            if !val.is_empty() {
-                info!(env_var = var, "using API key from environment");
-                return val;
-            }
+        if let Ok(val) = std::env::var(var)
+            && !val.is_empty()
+        {
+            info!(env_var = var, "using API key from environment");
+            return val;
         }
     }
     // 3. Config file model.api_key
@@ -326,16 +328,16 @@ fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig)
 
 fn resolve_base_url(args_url: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
     // 1. CLI argument
-    if let Some(url) = args_url {
-        if !url.is_empty() {
-            return url.to_string();
-        }
+    if let Some(url) = args_url
+        && !url.is_empty()
+    {
+        return url.to_string();
     }
     // 2. Environment variable
-    if let Ok(val) = std::env::var("HAKIMI_BASE_URL") {
-        if !val.is_empty() {
-            return val;
-        }
+    if let Ok(val) = std::env::var("HAKIMI_BASE_URL")
+        && !val.is_empty()
+    {
+        return val;
     }
     // 3. Config
     if !config.model.base_url.is_empty() {
@@ -351,16 +353,16 @@ fn resolve_base_url(args_url: Option<&str>, config: &hakimi_config::HakimiConfig
 
 fn resolve_model(args_model: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
     // 1. CLI argument
-    if let Some(m) = args_model {
-        if !m.is_empty() {
-            return m.to_string();
-        }
+    if let Some(m) = args_model
+        && !m.is_empty()
+    {
+        return m.to_string();
     }
     // 2. Environment variable
-    if let Ok(val) = std::env::var("HAKIMI_MODEL") {
-        if !val.is_empty() {
-            return val;
-        }
+    if let Ok(val) = std::env::var("HAKIMI_MODEL")
+        && !val.is_empty()
+    {
+        return val;
     }
     // 3. Config
     if !config.model.default.is_empty() {
@@ -668,11 +670,11 @@ fn handle_plugins_command(arg: Option<&str>) {
                 if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if let Some(ext) = path.extension() {
-                            if ext == "yaml" || ext == "yml" || ext == "json" {
-                                println!("  • {}", path.file_name().unwrap().to_string_lossy());
-                                found = true;
-                            }
+                        if let Some(ext) = path.extension()
+                            && (ext == "yaml" || ext == "yml" || ext == "json")
+                        {
+                            println!("  • {}", path.file_name().unwrap().to_string_lossy());
+                            found = true;
                         }
                     }
                 }
@@ -695,10 +697,10 @@ fn handle_plugins_command(arg: Option<&str>) {
                 if let Ok(entries) = std::fs::read_dir(&templates_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if let Some(ext) = path.extension() {
-                            if ext == "yaml" || ext == "yml" {
-                                println!("  • {}", path.file_name().unwrap().to_string_lossy());
-                            }
+                        if let Some(ext) = path.extension()
+                            && (ext == "yaml" || ext == "yml")
+                        {
+                            println!("  • {}", path.file_name().unwrap().to_string_lossy());
                         }
                     }
                 }
@@ -1079,21 +1081,19 @@ pub async fn run() -> Result<()> {
             let mut memory_parts = Vec::new();
 
             let memory_file = memory_dir.join("memory.md");
-            if memory_file.exists() {
-                if let Ok(content) = std::fs::read_to_string(&memory_file) {
-                    if !content.trim().is_empty() {
-                        memory_parts.push(format!("[memory]\n{content}"));
-                    }
-                }
+            if memory_file.exists()
+                && let Ok(content) = std::fs::read_to_string(&memory_file)
+                && !content.trim().is_empty()
+            {
+                memory_parts.push(format!("[memory]\n{content}"));
             }
 
             let user_file = memory_dir.join("user.md");
-            if user_file.exists() {
-                if let Ok(content) = std::fs::read_to_string(&user_file) {
-                    if !content.trim().is_empty() {
-                        memory_parts.push(format!("[user profile]\n{content}"));
-                    }
-                }
+            if user_file.exists()
+                && let Ok(content) = std::fs::read_to_string(&user_file)
+                && !content.trim().is_empty()
+            {
+                memory_parts.push(format!("[user profile]\n{content}"));
             }
 
             if memory_parts.is_empty() {
@@ -1702,11 +1702,10 @@ pub async fn run() -> Result<()> {
                                                 );
                                                 let id = cron_scheduler.add(job.clone());
                                                 // Persist if DB available.
-                                                if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
-                                                    if let Err(e) = store.save_job(&job) {
+                                                if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path)
+                                                    && let Err(e) = store.save_job(&job) {
                                                         warn!(error = %e, "failed to persist cron job");
                                                     }
-                                                }
                                                 println!("Cron job created: {}", &id[..8]);
                                             }
                                             Err(e) => {

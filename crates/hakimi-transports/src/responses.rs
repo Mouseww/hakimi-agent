@@ -92,13 +92,13 @@ impl ResponsesTransport {
                         }
                     }
                     // If the assistant has text content, emit a message item.
-                    if let Some(ref content) = msg.content {
-                        if !content.is_empty() {
-                            items.push(json!({
-                                "role": "assistant",
-                                "content": content,
-                            }));
-                        }
+                    if let Some(ref content) = msg.content
+                        && !content.is_empty()
+                    {
+                        items.push(json!({
+                            "role": "assistant",
+                            "content": content,
+                        }));
                     }
                 }
                 MessageRole::Tool => {
@@ -399,6 +399,7 @@ impl ProviderTransport for ResponsesTransport {
 
 #[derive(Debug, Deserialize)]
 struct ResponsesOutput {
+    #[allow(dead_code)]
     id: String,
     #[serde(default)]
     status: String,
@@ -413,6 +414,7 @@ enum OutputItem {
     #[serde(rename = "message")]
     Message {
         content: Vec<ContentPart>,
+        #[allow(dead_code)]
         role: String,
     },
     #[serde(rename = "function_call")]
@@ -422,7 +424,12 @@ enum OutputItem {
         call_id: String,
     },
     #[serde(rename = "function_call_output")]
-    FunctionCallOutput { call_id: String, output: String },
+    FunctionCallOutput {
+        #[allow(dead_code)]
+        call_id: String,
+        #[allow(dead_code)]
+        output: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -486,10 +493,10 @@ impl ResponsesSseEventStream {
 
         match event_type {
             "response.output_text.delta" => {
-                if let Some(delta) = val["delta"].as_str() {
-                    if !delta.is_empty() {
-                        events.push(StreamEvent::ContentDelta(delta.to_string()));
-                    }
+                if let Some(delta) = val["delta"].as_str()
+                    && !delta.is_empty()
+                {
+                    events.push(StreamEvent::ContentDelta(delta.to_string()));
                 }
             }
             "response.function_call_arguments.delta" => {
@@ -503,25 +510,25 @@ impl ResponsesSseEventStream {
             }
             "response.output_item.added" => {
                 // Check if this is a function_call item to track its index.
-                if let Some(item_type) = val["item"]["type"].as_str() {
-                    if item_type == "function_call" {
-                        let id = val["item"]["id"].as_str().map(String::from);
-                        let name = val["item"]["name"].as_str().map(String::from);
-                        events.push(StreamEvent::ToolCallDelta {
-                            index: *current_tool_index,
-                            id,
-                            name,
-                            arguments_delta: String::new(),
-                        });
-                    }
+                if let Some(item_type) = val["item"]["type"].as_str()
+                    && item_type == "function_call"
+                {
+                    let id = val["item"]["id"].as_str().map(String::from);
+                    let name = val["item"]["name"].as_str().map(String::from);
+                    events.push(StreamEvent::ToolCallDelta {
+                        index: *current_tool_index,
+                        id,
+                        name,
+                        arguments_delta: String::new(),
+                    });
                 }
             }
             "response.output_item.done" => {
                 // When a function_call item is done, advance the tool index.
-                if let Some(item_type) = val["item"]["type"].as_str() {
-                    if item_type == "function_call" {
-                        *current_tool_index += 1;
-                    }
+                if let Some(item_type) = val["item"]["type"].as_str()
+                    && item_type == "function_call"
+                {
+                    *current_tool_index += 1;
                 }
             }
             "response.completed" | "response.incomplete" => {

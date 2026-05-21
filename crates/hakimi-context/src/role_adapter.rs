@@ -30,6 +30,12 @@ pub struct RoleAdapter {
     transition_history: Vec<(Role, String, String)>,
 }
 
+impl Default for RoleAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RoleAdapter {
     pub fn new() -> Self {
         let mut profiles = HashMap::new();

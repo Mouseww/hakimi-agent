@@ -24,6 +24,7 @@ pub struct IntentPrediction {
     pub context_hints: Vec<String>,
 }
 
+#[allow(dead_code)]
 struct PatternRule {
     pattern: String,
     intent: Intent,
@@ -33,6 +34,12 @@ struct PatternRule {
 pub struct IntentClassifier {
     keyword_rules: HashMap<String, Vec<(Intent, f32)>>,
     pattern_rules: Vec<PatternRule>,
+}
+
+impl Default for IntentClassifier {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl IntentClassifier {
@@ -134,7 +141,7 @@ impl IntentClassifier {
         // 1) Keyword matching (check multi-word keywords first, longer first)
         let mut sorted_keywords: Vec<(&String, &Vec<(Intent, f32)>)> =
             self.keyword_rules.iter().collect();
-        sorted_keywords.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        sorted_keywords.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
 
         for (keyword, intents) in &sorted_keywords {
             if keyword.contains(' ') {

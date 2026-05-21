@@ -122,7 +122,7 @@ impl MessageOps for SessionDB {
                     .context("Failed to prepare restore_session statement")?;
 
                 let rows = stmt
-                    .query_map(params![session_id, limit as i64], |row| row_to_message(row))
+                    .query_map(params![session_id, limit as i64], row_to_message)
                     .context("Failed to query restore_session")?;
 
                 let mut msgs = Vec::new();

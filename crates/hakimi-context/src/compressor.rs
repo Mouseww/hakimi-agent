@@ -318,7 +318,7 @@ impl LlmCompressor {
     /// Rough token estimate: ~4 chars per token.
     #[allow(dead_code)]
     fn estimate_tokens(text: &str) -> usize {
-        (text.len() + 3) / 4
+        text.len().div_ceil(4)
     }
 
     // -----------------------------------------------------------------
@@ -329,17 +329,16 @@ impl LlmCompressor {
     fn prune_tool_outputs(messages: &mut [Message]) -> usize {
         let mut pruned = 0;
         for msg in messages.iter_mut() {
-            if msg.role == MessageRole::Tool {
-                if let Some(ref content) = msg.content {
-                    if content.len() > TOOL_OUTPUT_PRUNE_THRESHOLD {
-                        let orig_len = content.len();
-                        msg.content = Some(format!(
-                            "[Tool output pruned — {} chars reduced to summary]",
-                            orig_len
-                        ));
-                        pruned += 1;
-                    }
-                }
+            if msg.role == MessageRole::Tool
+                && let Some(ref content) = msg.content
+                && content.len() > TOOL_OUTPUT_PRUNE_THRESHOLD
+            {
+                let orig_len = content.len();
+                msg.content = Some(format!(
+                    "[Tool output pruned — {} chars reduced to summary]",
+                    orig_len
+                ));
+                pruned += 1;
             }
         }
         pruned
@@ -353,34 +352,34 @@ impl LlmCompressor {
     fn update_questions(&mut self, messages: &[Message]) {
         // Collect user messages that look like questions.
         for msg in messages {
-            if msg.role == MessageRole::User {
-                if let Some(ref content) = msg.content {
-                    let trimmed = content.trim();
-                    // Heuristic: a message is a question if it ends with '?'
-                    // or starts with common question words.
-                    let is_question = trimmed.ends_with('?')
-                        || trimmed.starts_with("how ")
-                        || trimmed.starts_with("what ")
-                        || trimmed.starts_with("why ")
-                        || trimmed.starts_with("when ")
-                        || trimmed.starts_with("where ")
-                        || trimmed.starts_with("who ")
-                        || trimmed.starts_with("which ")
-                        || trimmed.starts_with("can ")
-                        || trimmed.starts_with("could ")
-                        || trimmed.starts_with("should ")
-                        || trimmed.starts_with("is ")
-                        || trimmed.starts_with("are ");
+            if msg.role == MessageRole::User
+                && let Some(ref content) = msg.content
+            {
+                let trimmed = content.trim();
+                // Heuristic: a message is a question if it ends with '?'
+                // or starts with common question words.
+                let is_question = trimmed.ends_with('?')
+                    || trimmed.starts_with("how ")
+                    || trimmed.starts_with("what ")
+                    || trimmed.starts_with("why ")
+                    || trimmed.starts_with("when ")
+                    || trimmed.starts_with("where ")
+                    || trimmed.starts_with("who ")
+                    || trimmed.starts_with("which ")
+                    || trimmed.starts_with("can ")
+                    || trimmed.starts_with("could ")
+                    || trimmed.starts_with("should ")
+                    || trimmed.starts_with("is ")
+                    || trimmed.starts_with("are ");
 
-                    if is_question {
-                        // Avoid duplicates by checking if we already track this question.
-                        let already_tracked = self.questions.iter().any(|q| q.text == trimmed);
-                        if !already_tracked {
-                            self.questions.push(TrackedQuestion {
-                                text: trimmed.to_string(),
-                                resolved: false,
-                            });
-                        }
+                if is_question {
+                    // Avoid duplicates by checking if we already track this question.
+                    let already_tracked = self.questions.iter().any(|q| q.text == trimmed);
+                    if !already_tracked {
+                        self.questions.push(TrackedQuestion {
+                            text: trimmed.to_string(),
+                            resolved: false,
+                        });
                     }
                 }
             }
@@ -390,16 +389,16 @@ impl LlmCompressor {
         // after the question.
         let mut question_indices: Vec<usize> = Vec::new();
         for (i, msg) in messages.iter().enumerate() {
-            if msg.role == MessageRole::User {
-                if let Some(ref content) = msg.content {
-                    let trimmed = content.trim();
-                    if self
-                        .questions
-                        .iter()
-                        .any(|q| q.text == trimmed && !q.resolved)
-                    {
-                        question_indices.push(i);
-                    }
+            if msg.role == MessageRole::User
+                && let Some(ref content) = msg.content
+            {
+                let trimmed = content.trim();
+                if self
+                    .questions
+                    .iter()
+                    .any(|q| q.text == trimmed && !q.resolved)
+                {
+                    question_indices.push(i);
                 }
             }
         }
@@ -668,7 +667,7 @@ impl ContextEngine for LlmCompressor {
         // Update cumulative stats.
         if let Ok(mut stats) = self.stats.lock() {
             stats.compression_count += 1;
-            let saved = (removed_chars + 3) / 4;
+            let saved = removed_chars.div_ceil(4);
             stats.total_tokens_saved += saved;
         }
 

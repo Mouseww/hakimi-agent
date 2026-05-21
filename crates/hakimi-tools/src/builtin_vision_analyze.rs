@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{Value as JsonValue, json};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::Tool;
 

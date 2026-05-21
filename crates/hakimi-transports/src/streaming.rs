@@ -114,17 +114,17 @@ pub fn parse_openai_chunk(json_str: &str) -> Vec<StreamEvent> {
             let delta = &choice["delta"];
 
             // Content delta.
-            if let Some(content) = delta["content"].as_str() {
-                if !content.is_empty() {
-                    events.push(StreamEvent::ContentDelta(content.to_string()));
-                }
+            if let Some(content) = delta["content"].as_str()
+                && !content.is_empty()
+            {
+                events.push(StreamEvent::ContentDelta(content.to_string()));
             }
 
             // Reasoning content delta (reasoning models: DeepSeek R1, QwQ, etc.).
-            if let Some(reasoning) = delta["reasoning_content"].as_str() {
-                if !reasoning.is_empty() {
-                    events.push(StreamEvent::ReasoningDelta(reasoning.to_string()));
-                }
+            if let Some(reasoning) = delta["reasoning_content"].as_str()
+                && !reasoning.is_empty()
+            {
+                events.push(StreamEvent::ReasoningDelta(reasoning.to_string()));
             }
 
             // Tool call deltas.
@@ -150,16 +150,16 @@ pub fn parse_openai_chunk(json_str: &str) -> Vec<StreamEvent> {
     }
 
     // Some providers send usage at the top level even with empty choices.
-    if let Some(usage) = val.get("usage") {
-        if let (Some(prompt), Some(completion)) = (
+    if let Some(usage) = val.get("usage")
+        && let (Some(prompt), Some(completion)) = (
             usage["prompt_tokens"].as_u64(),
             usage["completion_tokens"].as_u64(),
-        ) {
-            events.push(StreamEvent::Usage {
-                prompt_tokens: prompt as u32,
-                completion_tokens: completion as u32,
-            });
-        }
+        )
+    {
+        events.push(StreamEvent::Usage {
+            prompt_tokens: prompt as u32,
+            completion_tokens: completion as u32,
+        });
     }
 
     events
@@ -186,10 +186,10 @@ pub fn parse_gemini_chunk(json_str: &str) -> Vec<StreamEvent> {
             if let Some(parts) = candidate["content"]["parts"].as_array() {
                 for part in parts {
                     // Text content delta.
-                    if let Some(text) = part["text"].as_str() {
-                        if !text.is_empty() {
-                            events.push(StreamEvent::ContentDelta(text.to_string()));
-                        }
+                    if let Some(text) = part["text"].as_str()
+                        && !text.is_empty()
+                    {
+                        events.push(StreamEvent::ContentDelta(text.to_string()));
                     }
 
                     // Function call deltas.
@@ -212,13 +212,10 @@ pub fn parse_gemini_chunk(json_str: &str) -> Vec<StreamEvent> {
             }
 
             // Check for finish reason - emit Done when we see STOP or similar terminal states.
-            if let Some(finish_reason) = candidate["finishReason"].as_str() {
-                match finish_reason {
-                    "STOP" | "MAX_TOKENS" | "SAFETY" | "RECITATION" | "OTHER" => {
-                        events.push(StreamEvent::Done);
-                    }
-                    _ => {}
-                }
+            if let Some("STOP" | "MAX_TOKENS" | "SAFETY" | "RECITATION" | "OTHER") =
+                candidate["finishReason"].as_str()
+            {
+                events.push(StreamEvent::Done);
             }
         }
     }
@@ -261,10 +258,10 @@ pub fn parse_anthropic_event(event_type: &str, json_str: &str) -> Vec<StreamEven
             let delta = &val["delta"];
             match delta["type"].as_str() {
                 Some("text_delta") => {
-                    if let Some(text) = delta["text"].as_str() {
-                        if !text.is_empty() {
-                            events.push(StreamEvent::ContentDelta(text.to_string()));
-                        }
+                    if let Some(text) = delta["text"].as_str()
+                        && !text.is_empty()
+                    {
+                        events.push(StreamEvent::ContentDelta(text.to_string()));
                     }
                 }
                 Some("input_json_delta") => {

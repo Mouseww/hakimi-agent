@@ -111,10 +111,10 @@ impl BrowserManager {
     /// Close the browser and clean up.
     pub async fn close(&self) {
         let mut inner = self.inner.lock().await;
-        if let Some(mut browser) = inner.browser.take() {
-            if let Err(e) = browser.close().await {
-                warn!(error = %e, "error closing browser");
-            }
+        if let Some(mut browser) = inner.browser.take()
+            && let Err(e) = browser.close().await
+        {
+            warn!(error = %e, "error closing browser");
         }
         inner.current_page = None;
     }

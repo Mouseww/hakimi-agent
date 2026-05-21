@@ -179,10 +179,10 @@ fn extract_readable_text(html: &str) -> String {
     // Build result
     let mut result = String::new();
 
-    if let Some(t) = title {
-        if !t.is_empty() {
-            result.push_str(&format!("# {t}\n\n"));
-        }
+    if let Some(t) = title
+        && !t.is_empty()
+    {
+        result.push_str(&format!("# {t}\n\n"));
     }
 
     for part in &content_parts {
@@ -199,22 +199,22 @@ fn extract_readable_text(html: &str) -> String {
 /// Extract the page title.
 fn extract_title(document: &Html) -> Option<String> {
     // Try <title> tag
-    if let Ok(sel) = Selector::parse("title") {
-        if let Some(el) = document.select(&sel).next() {
-            let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
-            if !text.is_empty() {
-                return Some(text);
-            }
+    if let Ok(sel) = Selector::parse("title")
+        && let Some(el) = document.select(&sel).next()
+    {
+        let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
+        if !text.is_empty() {
+            return Some(text);
         }
     }
 
     // Try <h1> tag
-    if let Ok(sel) = Selector::parse("h1") {
-        if let Some(el) = document.select(&sel).next() {
-            let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
-            if !text.is_empty() {
-                return Some(text);
-            }
+    if let Ok(sel) = Selector::parse("h1")
+        && let Some(el) = document.select(&sel).next()
+    {
+        let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
+        if !text.is_empty() {
+            return Some(text);
         }
     }
 
@@ -406,7 +406,7 @@ fn score_text_block(text: &str) -> f64 {
     let length_score = (len / 100.0).min(1.0);
 
     // Prefer reasonable word lengths (4-8 chars average)
-    let word_score = if avg_word_len >= 3.0 && avg_word_len <= 12.0 {
+    let word_score = if (3.0..=12.0).contains(&avg_word_len) {
         1.0
     } else if avg_word_len < 2.0 {
         0.1 // Likely not real text
@@ -430,7 +430,7 @@ fn score_text_block(text: &str) -> f64 {
         })
         .count() as f64
         / len;
-    let link_penalty = (1.0 - (link_chars as f64 / word_count.max(1.0))).max(0.1);
+    let link_penalty = (1.0 - (link_chars / word_count.max(1.0))).max(0.1);
     let special_penalty = (1.0 - special_ratio * 2.0).max(0.3);
 
     // Bonus for sentences (contains periods followed by spaces)

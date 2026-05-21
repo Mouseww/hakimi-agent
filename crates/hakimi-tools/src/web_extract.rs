@@ -20,19 +20,15 @@ use tracing::debug;
 /// Output format for extracted content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum OutputFormat {
     /// Clean Markdown with headings, lists, emphasis, etc.
+    #[default]
     Markdown,
     /// Plain text with no formatting markers.
     PlainText,
     /// Sanitised HTML (scripts/styles removed, content preserved).
     Html,
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        Self::Markdown
-    }
 }
 
 /// Structured result of a web-page extraction.
@@ -233,23 +229,23 @@ pub fn strip_html_tags(html: &str) -> String {
 pub fn extract_title(html: &str) -> String {
     let doc = Html::parse_document(html);
 
-    if let Ok(sel) = Selector::parse("title") {
-        if let Some(el) = doc.select(&sel).next() {
-            let text = el.text().collect::<Vec<_>>().join(" ");
-            let text = text.trim();
-            if !text.is_empty() {
-                return text.to_string();
-            }
+    if let Ok(sel) = Selector::parse("title")
+        && let Some(el) = doc.select(&sel).next()
+    {
+        let text = el.text().collect::<Vec<_>>().join(" ");
+        let text = text.trim();
+        if !text.is_empty() {
+            return text.to_string();
         }
     }
 
-    if let Ok(sel) = Selector::parse("h1") {
-        if let Some(el) = doc.select(&sel).next() {
-            let text = el.text().collect::<Vec<_>>().join(" ");
-            let text = text.trim();
-            if !text.is_empty() {
-                return text.to_string();
-            }
+    if let Ok(sel) = Selector::parse("h1")
+        && let Some(el) = doc.select(&sel).next()
+    {
+        let text = el.text().collect::<Vec<_>>().join(" ");
+        let text = text.trim();
+        if !text.is_empty() {
+            return text.to_string();
         }
     }
 
@@ -306,13 +302,13 @@ pub fn html_to_markdown(html: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     // Title
-    if let Ok(sel) = Selector::parse("title") {
-        if let Some(el) = doc.select(&sel).next() {
-            let t = el.text().collect::<Vec<_>>().join(" ");
-            let t = t.trim();
-            if !t.is_empty() {
-                parts.push(format!("# {t}"));
-            }
+    if let Ok(sel) = Selector::parse("title")
+        && let Some(el) = doc.select(&sel).next()
+    {
+        let t = el.text().collect::<Vec<_>>().join(" ");
+        let t = t.trim();
+        if !t.is_empty() {
+            parts.push(format!("# {t}"));
         }
     }
 

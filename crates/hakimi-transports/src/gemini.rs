@@ -112,10 +112,10 @@ impl GeminiTransport {
                     let mut parts: Vec<JsonValue> = Vec::new();
 
                     // Text content part (if any).
-                    if let Some(ref text) = msg.content {
-                        if !text.is_empty() {
-                            parts.push(json!({"text": text}));
-                        }
+                    if let Some(ref text) = msg.content
+                        && !text.is_empty()
+                    {
+                        parts.push(json!({"text": text}));
                     }
 
                     // functionCall parts from tool_calls.
@@ -208,12 +208,12 @@ impl GeminiTransport {
             "contents": gemini_messages,
         });
 
-        if let Some(ref sys) = system {
-            if !sys.is_empty() {
-                body["systemInstruction"] = json!({
-                    "parts": [{"text": sys}]
-                });
-            }
+        if let Some(ref sys) = system
+            && !sys.is_empty()
+        {
+            body["systemInstruction"] = json!({
+                "parts": [{"text": sys}]
+            });
         }
 
         if !tools.is_empty() {
@@ -235,7 +235,7 @@ impl GeminiTransport {
             gen_config["stopSequences"] = json!(stop);
         }
 
-        if gen_config.as_object().map_or(false, |o| !o.is_empty()) {
+        if gen_config.as_object().is_some_and(|o| !o.is_empty()) {
             body["generationConfig"] = gen_config;
         }
 
@@ -263,10 +263,10 @@ impl GeminiTransport {
         let mut tool_calls: Vec<ToolCall> = Vec::new();
 
         for (idx, part) in candidate.content.parts.iter().enumerate() {
-            if let Some(ref text) = part.text {
-                if !text.is_empty() {
-                    text_parts.push(text.clone());
-                }
+            if let Some(ref text) = part.text
+                && !text.is_empty()
+            {
+                text_parts.push(text.clone());
             }
 
             if let Some(ref fc) = part.function_call {
@@ -533,6 +533,7 @@ struct GeminiPart {
     #[serde(default)]
     function_call: Option<GeminiFunctionCall>,
     #[serde(default)]
+    #[allow(dead_code)]
     function_response: Option<GeminiFunctionResponse>,
 }
 
@@ -547,8 +548,10 @@ struct GeminiFunctionCall {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GeminiFunctionResponse {
+    #[allow(dead_code)]
     name: String,
     #[serde(default)]
+    #[allow(dead_code)]
     response: JsonValue,
 }
 

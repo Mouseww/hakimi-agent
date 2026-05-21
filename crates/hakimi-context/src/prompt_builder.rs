@@ -148,11 +148,11 @@ pub fn build_context_files_prompt(cwd: &str) -> String {
     while let Some(current) = dir {
         for name in context_filenames {
             let path = current.join(name);
-            if path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let label = format!("{} ({})", name, current.display());
-                    collected.push((label, content));
-                }
+            if path.exists()
+                && let Ok(content) = std::fs::read_to_string(&path)
+            {
+                let label = format!("{} ({})", name, current.display());
+                collected.push((label, content));
             }
         }
         dir = current.parent().map(|p| p.to_path_buf());
@@ -193,6 +193,7 @@ pub fn build_environment_hints(platform: &str, os: &str, home: &str, cwd: &str) 
 }
 
 /// Inject intent prediction context into a prompt section.
+#[allow(dead_code)]
 pub fn inject_intent_context(prediction: &IntentPrediction) -> String {
     let mut parts = Vec::new();
 
@@ -223,6 +224,7 @@ pub fn inject_intent_context(prediction: &IntentPrediction) -> String {
 }
 
 /// Inject role profile context into a prompt section.
+#[allow(dead_code)]
 pub fn inject_role_context(profile: &RoleProfile) -> String {
     let mut parts = Vec::new();
 

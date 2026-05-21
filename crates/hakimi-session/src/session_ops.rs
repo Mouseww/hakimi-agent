@@ -262,8 +262,8 @@ impl SessionOps for SessionDB {
             .prepare(sql)
             .context("Failed to prepare get_recent_sessions")?;
 
-        let rows = if source.is_some() {
-            stmt.query_map(params![source.unwrap(), limit], row_to_session_meta)
+        let rows = if let Some(source_val) = source {
+            stmt.query_map(params![source_val, limit], row_to_session_meta)
                 .context("Failed to query recent sessions")?
         } else {
             stmt.query_map(params![limit], row_to_session_meta)

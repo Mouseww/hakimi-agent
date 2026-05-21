@@ -105,10 +105,8 @@ impl PluginLoader {
             let pattern = dir.join(format!("*.{ext}"));
             let pattern_str = pattern.to_string_lossy();
             if let Ok(entries) = glob::glob(&pattern_str) {
-                for entry in entries {
-                    if let Ok(p) = entry {
-                        paths.push(p);
-                    }
+                for p in entries.flatten() {
+                    paths.push(p);
                 }
             }
         }
@@ -125,9 +123,9 @@ impl PluginLoader {
 
     /// Load a single HTTP plugin config file.
     fn load_http_plugin_file(&mut self, path: &Path) -> Result<()> {
-        let content = std::fs::read_to_string(path).map_err(|e| HakimiError::Io(e))?;
+        let content = std::fs::read_to_string(path).map_err(HakimiError::Io)?;
 
-        let config: HttpPluginConfig = if path.extension().map_or(false, |e| e == "json") {
+        let config: HttpPluginConfig = if path.extension().is_some_and(|e| e == "json") {
             serde_json::from_str(&content)
                 .map_err(|e| HakimiError::Config(format!("invalid JSON plugin config: {e}")))?
         } else {
@@ -151,12 +149,11 @@ impl PluginLoader {
             let full = dir.join(pattern);
             let full_str = full.to_string_lossy();
             if let Ok(entries) = glob::glob(&full_str) {
-                for entry in entries {
-                    if let Ok(path) = entry {
-                        debug!(path = %path.display(), "native plugin found (loading not yet implemented)");
-                        // TODO: Use `libloading` to dlopen the shared library and
-                        // call a known entry-point symbol to obtain a Plugin impl.
-                    }
+                for entry in entries.flatten() {
+                    let path = entry;
+                    debug!(path = %path.display(), "native plugin found (loading not yet implemented)");
+                    // TODO: Use `libloading` to dlopen the shared library and
+                    // call a known entry-point symbol to obtain a Plugin impl.
                 }
             }
         }
@@ -168,12 +165,11 @@ impl PluginLoader {
         let pattern = dir.join("*.wasm");
         let pattern_str = pattern.to_string_lossy();
         if let Ok(entries) = glob::glob(&pattern_str) {
-            for entry in entries {
-                if let Ok(path) = entry {
-                    debug!(path = %path.display(), "WASM plugin found (loading not yet implemented)");
-                    // TODO: Use a WASM runtime (e.g. wasmtime) to load the module
-                    // and call a known export to obtain a Plugin impl.
-                }
+            for entry in entries.flatten() {
+                let path = entry;
+                debug!(path = %path.display(), "WASM plugin found (loading not yet implemented)");
+                // TODO: Use a WASM runtime (e.g. wasmtime) to load the module
+                // and call a known export to obtain a Plugin impl.
             }
         }
         Ok(())

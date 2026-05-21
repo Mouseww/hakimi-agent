@@ -176,22 +176,21 @@ impl FileLock {
     /// Acquire a file lock at the given path.
     pub fn acquire(path: &Path) -> anyhow::Result<Self> {
         // Create a lock file. If it exists and is recent, another process holds it.
-        if path.exists() {
-            if let Ok(metadata) = std::fs::metadata(path) {
-                if let Ok(modified) = metadata.modified() {
-                    let age = std::time::SystemTime::now()
-                        .duration_since(modified)
-                        .unwrap_or_default();
-                    // If lock is older than 60 seconds, consider it stale.
-                    if age < std::time::Duration::from_secs(60) {
-                        anyhow::bail!(
-                            "Cron lock file exists at {} (held by another process)",
-                            path.display()
-                        );
-                    }
-                    warn!("Removing stale lock file at {}", path.display());
-                }
+        if path.exists()
+            && let Ok(metadata) = std::fs::metadata(path)
+            && let Ok(modified) = metadata.modified()
+        {
+            let age = std::time::SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or_default();
+            // If lock is older than 60 seconds, consider it stale.
+            if age < std::time::Duration::from_secs(60) {
+                anyhow::bail!(
+                    "Cron lock file exists at {} (held by another process)",
+                    path.display()
+                );
             }
+            warn!("Removing stale lock file at {}", path.display());
         }
         std::fs::write(path, std::process::id().to_string())?;
         Ok(Self {

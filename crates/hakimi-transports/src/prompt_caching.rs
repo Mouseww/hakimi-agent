@@ -159,20 +159,20 @@ fn apply_system_cache(body: &mut JsonValue, cc: &CacheControl) {
                 "text": text,
                 "cache_control": cc
             }]);
-        } else if let Some(arr) = system.as_array_mut() {
-            if let Some(last) = arr.last_mut() {
-                last["cache_control"] = json!(cc);
-            }
+        } else if let Some(arr) = system.as_array_mut()
+            && let Some(last) = arr.last_mut()
+        {
+            last["cache_control"] = json!(cc);
         }
     }
 }
 
 /// Add `cache_control` to the last tool definition.
 fn apply_tools_cache(body: &mut JsonValue, cc: &CacheControl) {
-    if let Some(tools) = body.get_mut("tools").and_then(|v| v.as_array_mut()) {
-        if let Some(last) = tools.last_mut() {
-            last["cache_control"] = json!(cc);
-        }
+    if let Some(tools) = body.get_mut("tools").and_then(|v| v.as_array_mut())
+        && let Some(last) = tools.last_mut()
+    {
+        last["cache_control"] = json!(cc);
     }
 }
 
@@ -182,22 +182,21 @@ fn apply_tools_cache(body: &mut JsonValue, cc: &CacheControl) {
 /// with a single text content block that has `cache_control`.
 /// If it's already an array, adds `cache_control` to the last content block.
 fn apply_message_cache_at(body: &mut JsonValue, index: usize, cc: &CacheControl) {
-    if let Some(messages) = body.get_mut("messages").and_then(|v| v.as_array_mut()) {
-        if let Some(msg) = messages.get_mut(index) {
-            if let Some(content) = msg.get_mut("content") {
-                if content.is_string() {
-                    let text = content.as_str().unwrap_or("").to_string();
-                    *content = json!([{
-                        "type": "text",
-                        "text": text,
-                        "cache_control": cc
-                    }]);
-                } else if let Some(arr) = content.as_array_mut() {
-                    if let Some(last) = arr.last_mut() {
-                        last["cache_control"] = json!(cc);
-                    }
-                }
-            }
+    if let Some(messages) = body.get_mut("messages").and_then(|v| v.as_array_mut())
+        && let Some(msg) = messages.get_mut(index)
+        && let Some(content) = msg.get_mut("content")
+    {
+        if content.is_string() {
+            let text = content.as_str().unwrap_or("").to_string();
+            *content = json!([{
+                "type": "text",
+                "text": text,
+                "cache_control": cc
+            }]);
+        } else if let Some(arr) = content.as_array_mut()
+            && let Some(last) = arr.last_mut()
+        {
+            last["cache_control"] = json!(cc);
         }
     }
 }

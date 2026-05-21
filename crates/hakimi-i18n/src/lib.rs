@@ -100,19 +100,18 @@ impl I18n {
     /// Translate a key using the current locale, falling back to the default locale.
     pub fn t(&self, key: &str) -> String {
         // Try current locale first.
-        if let Some(catalog) = self.catalogs.get(&self.current_locale) {
-            if let Some(value) = catalog.get(key) {
-                return value.to_string();
-            }
+        if let Some(catalog) = self.catalogs.get(&self.current_locale)
+            && let Some(value) = catalog.get(key)
+        {
+            return value.to_string();
         }
 
         // Fall back to fallback locale.
-        if self.current_locale != self.fallback_locale {
-            if let Some(catalog) = self.catalogs.get(&self.fallback_locale) {
-                if let Some(value) = catalog.get(key) {
-                    return value.to_string();
-                }
-            }
+        if self.current_locale != self.fallback_locale
+            && let Some(catalog) = self.catalogs.get(&self.fallback_locale)
+            && let Some(value) = catalog.get(key)
+        {
+            return value.to_string();
         }
 
         // Return the key itself as a last resort.

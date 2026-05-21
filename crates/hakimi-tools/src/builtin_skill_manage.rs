@@ -188,10 +188,10 @@ impl Tool for SkillManageTool {
                     HakimiError::Tool(format!("failed to read directory entry: {e}"))
                 })? {
                     let path = entry.path();
-                    if path.extension().map_or(false, |ext| ext == "md") {
-                        if let Some(stem) = path.file_stem() {
-                            skills.push(stem.to_string_lossy().to_string());
-                        }
+                    if path.extension().is_some_and(|ext| ext == "md")
+                        && let Some(stem) = path.file_stem()
+                    {
+                        skills.push(stem.to_string_lossy().to_string());
                     }
                 }
 

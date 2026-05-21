@@ -333,7 +333,7 @@ impl Default for MemoryConfig {
 ///
 /// All fields have sensible defaults via `serde(default)` so partial config
 /// files work seamlessly.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HakimiConfig {
     #[serde(default)]
     pub model: ModelConfig,
@@ -434,24 +434,6 @@ pub struct RoleGatewaysConfig {
 pub struct RoleTelegramConfig {
     #[serde(default)]
     pub bot_token: String,
-}
-
-impl Default for HakimiConfig {
-    fn default() -> Self {
-        Self {
-            model: ModelConfig::default(),
-            terminal: TerminalConfig::default(),
-            agent: AgentConfig::default(),
-            compression: CompressionConfig::default(),
-            display: DisplayConfig::default(),
-            delegation: DelegationConfig::default(),
-            mcp_servers: HashMap::new(),
-            credential_pools: HashMap::new(),
-            gateways: GatewaysConfig::default(),
-            memory: MemoryConfig::default(),
-            roles: HashMap::new(),
-        }
-    }
 }
 
 #[cfg(test)]

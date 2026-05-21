@@ -109,27 +109,27 @@ fn parse_skill(raw: &str, path: &Path) -> Result<Skill> {
     let trimmed = raw.trim();
 
     // Look for frontmatter delimited by --- on their own lines
-    if trimmed.starts_with("---") {
-        if let Some(end) = trimmed[3..].find("\n---") {
-            let frontmatter_end = 3 + end;
-            let yaml_content = &trimmed[3..frontmatter_end].trim();
-            let body_start = frontmatter_end + 4; // skip past "\n---"
+    if trimmed.starts_with("---")
+        && let Some(end) = trimmed[3..].find("\n---")
+    {
+        let frontmatter_end = 3 + end;
+        let yaml_content = &trimmed[3..frontmatter_end].trim();
+        let body_start = frontmatter_end + 4; // skip past "\n---"
 
-            let mut skill: Skill = serde_yaml::from_str(yaml_content)
-                .with_context(|| format!("invalid YAML frontmatter in {}", path.display()))?;
+        let mut skill: Skill = serde_yaml::from_str(yaml_content)
+            .with_context(|| format!("invalid YAML frontmatter in {}", path.display()))?;
 
-            // Use filename as fallback name
-            if skill.name.is_empty() {
-                skill.name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unnamed")
-                    .to_string();
-            }
-
-            skill.content = trimmed[body_start..].trim().to_string();
-            return Ok(skill);
+        // Use filename as fallback name
+        if skill.name.is_empty() {
+            skill.name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unnamed")
+                .to_string();
         }
+
+        skill.content = trimmed[body_start..].trim().to_string();
+        return Ok(skill);
     }
 
     // No frontmatter — use filename as name, entire content as body

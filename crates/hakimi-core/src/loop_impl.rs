@@ -8,7 +8,7 @@ use tracing::{debug, info, warn};
 use crate::agent::AIAgent;
 use crate::budget::IterationBudget;
 use crate::conversation::ConversationResult;
-use crate::error_classifier::{ErrorClassification, ErrorClassifier, RecoveryAction};
+use crate::error_classifier::{ErrorClassifier, RecoveryAction};
 use crate::guardrails::{GuardrailDecision, ToolGuardrails};
 use crate::retry::{jittered_backoff, should_retry};
 use std::time::Duration;
@@ -247,10 +247,10 @@ fn build_send_messages(agent: &AIAgent) -> Vec<Message> {
     let mut send = Vec::with_capacity(agent.messages.len() + 1);
 
     // Prepend system prompt if configured.
-    if let Some(ref sp) = agent.system_prompt {
-        if !sp.is_empty() {
-            send.push(Message::system(sp.clone()));
-        }
+    if let Some(ref sp) = agent.system_prompt
+        && !sp.is_empty()
+    {
+        send.push(Message::system(sp.clone()));
     }
 
     send.extend(agent.messages.iter().cloned());

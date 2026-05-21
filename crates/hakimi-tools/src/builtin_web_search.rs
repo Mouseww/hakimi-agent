@@ -158,8 +158,8 @@ fn parse_ddg_html(html: &str, max_results: usize) -> Vec<SearchResult> {
             let mut snippet = String::new();
 
             // Look ahead for URL and snippet
-            for j in (i + 1)..(i + 10).min(lines.len()) {
-                let next = lines[j];
+            for next in lines.iter().take((i + 10).min(lines.len())).skip(i + 1) {
+                let next = *next;
                 if next.contains("result__url") && url.is_empty() {
                     url = extract_tag_content(next);
                     if !url.starts_with("http") {
