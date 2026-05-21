@@ -545,6 +545,7 @@ async fn build_agent(
         std::sync::Arc::new(hakimi_tools::SessionSearchTool),
         std::sync::Arc::new(hakimi_tools::SendMessageTool),
         std::sync::Arc::new(hakimi_tools::SkillManageTool),
+        std::sync::Arc::new(hakimi_tools::TextToSpeechTool),
     ];
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;

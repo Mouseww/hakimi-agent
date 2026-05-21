@@ -21,6 +21,7 @@ mod builtin_web_extract;
 mod builtin_vision_analyze;
 mod builtin_clarify;
 mod builtin_checkpoint;
+mod builtin_tts;
 
 pub use trait_def::*;
 pub use registry::*;
@@ -45,3 +46,4 @@ pub use builtin_web_extract::*;
 pub use builtin_vision_analyze::*;
 pub use builtin_clarify::*;
 pub use builtin_checkpoint::*;
+pub use builtin_tts::*;

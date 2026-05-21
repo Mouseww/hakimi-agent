@@ -189,6 +189,7 @@ async fn build_agent(
         Arc::new(hakimi_tools::SearchFilesTool),
         Arc::new(hakimi_tools::PatchTool),
         Arc::new(hakimi_tools::WebSearchTool),
+        Arc::new(hakimi_tools::WebExtractTool),
         Arc::new(hakimi_tools::MemoryTool::new()),
         Arc::new(hakimi_tools::TodoTool),
         Arc::new(hakimi_tools::ProcessTool),
@@ -198,6 +199,7 @@ async fn build_agent(
         Arc::new(hakimi_tools::SessionSearchTool),
         Arc::new(hakimi_tools::SendMessageTool),
         Arc::new(hakimi_tools::SkillManageTool),
+        Arc::new(hakimi_tools::TextToSpeechTool),
     ];
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;
