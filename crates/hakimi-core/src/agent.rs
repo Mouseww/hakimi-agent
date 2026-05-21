@@ -291,12 +291,26 @@ impl AIAgent {
     }
 
     /// Build a [`ToolContext`] from the agent's current state.
+    ///
+    /// Includes a [`CoreDelegateExecutor`] so that the `delegate_task` tool
+    /// can spawn child agents that share this agent's transport and resources.
     pub(crate) fn build_tool_context(&self) -> ToolContext {
+        let delegate_executor: Option<Arc<dyn hakimi_common::DelegateExecutor>> =
+            Some(Arc::new(crate::CoreDelegateExecutor::new(
+                self.transport.clone(),
+                self.context_engine.clone(),
+                self.model.clone(),
+                self.tool_registry.clone(),
+                self.workdir.clone(),
+            )));
+
         ToolContext {
             session_id: self.session_id.clone(),
             user_id: self.user_id.clone(),
             task_id: None,
             workdir: self.workdir.clone(),
+            model: Some(self.model.clone()),
+            delegate_executor,
         }
     }
 
@@ -348,6 +362,11 @@ impl AIAgent {
     /// Set or replace the system prompt.
     pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
         self.system_prompt = Some(prompt.into());
+    }
+
+    /// Change the model identifier at runtime.
+    pub fn set_model(&mut self, model: impl Into<String>) {
+        self.model = model.into();
     }
 
     /// Set the interrupt flag to stop the agent loop.

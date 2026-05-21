@@ -7,10 +7,20 @@
 mod discord;
 mod slack;
 mod telegram;
+mod webhook;
+mod signal;
+mod matrix;
+mod wecom;
+mod dingtalk;
 
 pub use discord::{DiscordAdapter, DiscordAdapterConfig, DiscordEmbed};
 pub use slack::{SlackAdapter, SlackAdapterConfig, SlackBlock, SlackTextObject};
 pub use telegram::TelegramAdapter;
+pub use webhook::{WebhookAdapter, WebhookAdapterConfig};
+pub use signal::{SignalAdapter, SignalAdapterConfig};
+pub use matrix::{MatrixAdapter, MatrixAdapterConfig};
+pub use wecom::{WeComAdapter, WeComAdapterConfig};
+pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

@@ -1,12 +1,29 @@
-use hakimi_common::ToolContext;
+use std::sync::Arc;
+
+use hakimi_common::{DelegateExecutor, ToolContext};
 
 /// Builder for constructing a [`ToolContext`].
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ToolContextBuilder {
     session_id: Option<String>,
     user_id: Option<String>,
     task_id: Option<String>,
     workdir: Option<String>,
+    model: Option<String>,
+    delegate_executor: Option<Arc<dyn DelegateExecutor>>,
+}
+
+impl std::fmt::Debug for ToolContextBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolContextBuilder")
+            .field("session_id", &self.session_id)
+            .field("user_id", &self.user_id)
+            .field("task_id", &self.task_id)
+            .field("workdir", &self.workdir)
+            .field("model", &self.model)
+            .field("delegate_executor", &self.delegate_executor.is_some())
+            .finish()
+    }
 }
 
 impl ToolContextBuilder {
@@ -39,6 +56,18 @@ impl ToolContextBuilder {
         self
     }
 
+    /// Set the model identifier for child agent spawning.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    /// Set the delegate executor for child agent spawning.
+    pub fn delegate_executor(mut self, executor: Arc<dyn DelegateExecutor>) -> Self {
+        self.delegate_executor = Some(executor);
+        self
+    }
+
     /// Build the [`ToolContext`].
     ///
     /// # Panics
@@ -53,6 +82,8 @@ impl ToolContextBuilder {
             workdir: self
                 .workdir
                 .expect("workdir is required for ToolContext"),
+            model: self.model,
+            delegate_executor: self.delegate_executor,
         }
     }
 
@@ -70,6 +101,8 @@ impl ToolContextBuilder {
             user_id: self.user_id,
             task_id: self.task_id,
             workdir,
+            model: self.model,
+            delegate_executor: self.delegate_executor,
         })
     }
 }

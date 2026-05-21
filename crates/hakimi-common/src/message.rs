@@ -150,3 +150,165 @@ impl fmt::Display for Message {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Constructor tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_message_system_constructor() {
+        let msg = Message::system("You are a helpful assistant.");
+        assert_eq!(msg.role, MessageRole::System);
+        assert_eq!(msg.content.as_deref(), Some("You are a helpful assistant."));
+        assert!(
+            msg.timestamp.is_some(),
+            "system messages should have a timestamp"
+        );
+        assert!(msg.tool_calls.is_none());
+        assert!(msg.tool_call_id.is_none());
+        assert!(msg.name.is_none());
+        assert!(msg.reasoning.is_none());
+        assert!(msg.reasoning_content.is_none());
+        assert!(msg.token_count.is_none());
+        assert!(msg.finish_reason.is_none());
+    }
+
+    #[test]
+    fn test_message_user_constructor() {
+        let msg = Message::user("Hello, world!");
+        assert_eq!(msg.role, MessageRole::User);
+        assert_eq!(msg.content.as_deref(), Some("Hello, world!"));
+        assert!(msg.timestamp.is_some());
+        assert!(msg.tool_calls.is_none());
+        assert!(msg.tool_call_id.is_none());
+        assert!(msg.name.is_none());
+    }
+
+    #[test]
+    fn test_message_assistant_constructor() {
+        let msg = Message::assistant("I can help with that.");
+        assert_eq!(msg.role, MessageRole::Assistant);
+        assert_eq!(msg.content.as_deref(), Some("I can help with that."));
+        assert!(msg.timestamp.is_some());
+        assert!(msg.tool_calls.is_none());
+        assert!(msg.tool_call_id.is_none());
+        assert!(msg.name.is_none());
+    }
+
+    #[test]
+    fn test_message_tool_result_constructor() {
+        let msg = Message::tool_result("call_123", "get_weather", "{\"temp\":72}");
+        assert_eq!(msg.role, MessageRole::Tool);
+        assert_eq!(msg.content.as_deref(), Some("{\"temp\":72}"));
+        assert_eq!(msg.tool_call_id.as_deref(), Some("call_123"));
+        assert_eq!(msg.name.as_deref(), Some("get_weather"));
+        assert!(msg.timestamp.is_some());
+        assert!(msg.tool_calls.is_none());
+    }
+
+    // ── Display tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_message_display_short() {
+        let msg = Message::user("short message");
+        let display = format!("{msg}");
+        assert_eq!(display, "[user] short message");
+        // Should not contain the ellipsis character
+        assert!(!display.contains('…'));
+    }
+
+    #[test]
+    fn test_message_display_long() {
+        let long_content: String = "a".repeat(200);
+        let msg = Message::user(&long_content);
+        let display = format!("{msg}");
+        // Should be truncated with ellipsis
+        assert!(display.starts_with("[user] "));
+        assert!(display.ends_with('…'));
+        // The visible content portion should be at most 120 chars
+        let content_part = &display["[user] ".len()..display.len() - '…'.len_utf8()];
+        assert_eq!(content_part.chars().count(), 120);
+    }
+
+    #[test]
+    fn test_message_display_no_content() {
+        let msg = Message {
+            role: MessageRole::Assistant,
+            content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning: None,
+            reasoning_content: None,
+            timestamp: None,
+            token_count: None,
+            finish_reason: None,
+        };
+        let display = format!("{msg}");
+        assert_eq!(display, "[assistant] (no content)");
+    }
+
+    // ── MessageRole Display tests ────────────────────────────────────────
+
+    #[test]
+    fn test_message_role_display() {
+        assert_eq!(format!("{}", MessageRole::System), "system");
+        assert_eq!(format!("{}", MessageRole::User), "user");
+        assert_eq!(format!("{}", MessageRole::Assistant), "assistant");
+        assert_eq!(format!("{}", MessageRole::Tool), "tool");
+    }
+
+    // ── Serialization roundtrip tests ────────────────────────────────────
+
+    #[test]
+    fn test_message_serialization_roundtrip() {
+        let messages = vec![
+            Message::system("You are helpful."),
+            Message::user("Hi there"),
+            Message::assistant("Hello!"),
+            Message::tool_result("tc_1", "search", "results here"),
+        ];
+
+        for msg in &messages {
+            let json = serde_json::to_string(msg).expect("serialization should succeed");
+            let deserialized: Message =
+                serde_json::from_str(&json).expect("deserialization should succeed");
+            assert_eq!(deserialized.role, msg.role);
+            assert_eq!(deserialized.content, msg.content);
+            assert_eq!(deserialized.tool_call_id, msg.tool_call_id);
+            assert_eq!(deserialized.name, msg.name);
+            // Timestamps survive the roundtrip (compared to the millisecond)
+            assert_eq!(deserialized.timestamp, msg.timestamp);
+        }
+    }
+
+    #[test]
+    fn test_message_no_content() {
+        let msg = Message {
+            role: MessageRole::Assistant,
+            content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            reasoning: None,
+            reasoning_content: None,
+            timestamp: None,
+            token_count: None,
+            finish_reason: None,
+        };
+
+        let json = serde_json::to_string(&msg).expect("serialization should succeed");
+        // content should be skipped (skip_serializing_if = "Option::is_none")
+        assert!(
+            !json.contains("\"content\""),
+            "None content should not appear in JSON: {json}"
+        );
+
+        let deserialized: Message =
+            serde_json::from_str(&json).expect("deserialization should succeed");
+        assert_eq!(deserialized.role, MessageRole::Assistant);
+        assert!(deserialized.content.is_none());
+    }
+}

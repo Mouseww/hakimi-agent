@@ -33,3 +33,61 @@ impl IterationBudget {
         self.used.load(Ordering::Relaxed) >= self.max
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_budget_new() {
+        let budget = IterationBudget::new(5);
+        assert_eq!(budget.remaining(), 5);
+        assert!(!budget.is_exhausted());
+    }
+
+    #[test]
+    fn test_budget_use_one() {
+        let budget = IterationBudget::new(3);
+        assert_eq!(budget.remaining(), 3);
+        budget.use_one();
+        assert_eq!(budget.remaining(), 2);
+        budget.use_one();
+        assert_eq!(budget.remaining(), 1);
+    }
+
+    #[test]
+    fn test_budget_exhausted() {
+        let budget = IterationBudget::new(2);
+        assert!(!budget.is_exhausted());
+        budget.use_one();
+        assert!(!budget.is_exhausted());
+        budget.use_one();
+        assert!(budget.is_exhausted());
+    }
+
+    #[test]
+    fn test_budget_use_one_returns_false_when_exhausted() {
+        let budget = IterationBudget::new(1);
+        assert!(budget.use_one());
+        assert!(!budget.use_one());
+        assert!(!budget.use_one());
+    }
+
+    #[test]
+    fn test_budget_zero_max() {
+        let budget = IterationBudget::new(0);
+        assert_eq!(budget.remaining(), 0);
+        assert!(budget.is_exhausted());
+        assert!(!budget.use_one());
+    }
+
+    #[test]
+    fn test_budget_remaining_saturates_at_zero() {
+        let budget = IterationBudget::new(2);
+        budget.use_one();
+        budget.use_one();
+        budget.use_one(); // over budget
+        budget.use_one(); // over budget
+        assert_eq!(budget.remaining(), 0);
+    }
+}

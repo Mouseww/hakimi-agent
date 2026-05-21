@@ -163,3 +163,282 @@ impl MessageOps for SessionDB {
         Ok(results)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_db;
+    use crate::session_ops::SessionOps;
+    use chrono::{TimeZone, Utc};
+
+    /// Helper: create a session and return its ID.
+    fn create_test_session(db: &crate::db::SessionDB) -> String {
+        db.create_session("test", None, None, None).unwrap()
+    }
+
+    #[test]
+    fn test_save_and_get_message() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        let msg = Message::user("Hello, world!");
+        db.save_message(&sid, &msg).unwrap();
+
+        let messages = db.get_messages(&sid).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, MessageRole::User);
+        assert_eq!(messages[0].content.as_deref(), Some("Hello, world!"));
+    }
+
+    #[test]
+    fn test_save_multiple_messages() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::system("You are helpful.")).unwrap();
+        db.save_message(&sid, &Message::user("Hi")).unwrap();
+        db.save_message(&sid, &Message::assistant("Hello!")).unwrap();
+
+        let messages = db.get_messages(&sid).unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].role, MessageRole::System);
+        assert_eq!(messages[1].role, MessageRole::User);
+        assert_eq!(messages[2].role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn test_save_message_increments_count() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("msg1")).unwrap();
+        db.save_message(&sid, &Message::user("msg2")).unwrap();
+
+        let meta = db.get_session(&sid).unwrap().unwrap();
+        assert_eq!(meta.message_count, 2);
+    }
+
+    #[test]
+    fn test_get_messages_empty_session() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        let messages = db.get_messages(&sid).unwrap();
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn test_message_ordering() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        // Insert messages with explicit timestamps in order
+        let mut msg1 = Message::user("first");
+        msg1.timestamp = Some(Utc.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap());
+        let mut msg2 = Message::assistant("second");
+        msg2.timestamp = Some(Utc.with_ymd_and_hms(2024, 1, 1, 10, 0, 1).unwrap());
+        let mut msg3 = Message::user("third");
+        msg3.timestamp = Some(Utc.with_ymd_and_hms(2024, 1, 1, 10, 0, 2).unwrap());
+
+        db.save_message(&sid, &msg3).unwrap(); // Insert in reverse order
+        db.save_message(&sid, &msg1).unwrap();
+        db.save_message(&sid, &msg2).unwrap();
+
+        let messages = db.get_messages(&sid).unwrap();
+        assert_eq!(messages.len(), 3);
+        // Messages are ordered by id (insertion order), not timestamp
+        assert_eq!(messages[0].content.as_deref(), Some("third"));
+        assert_eq!(messages[1].content.as_deref(), Some("first"));
+        assert_eq!(messages[2].content.as_deref(), Some("second"));
+    }
+
+    #[test]
+    fn test_save_tool_result_message() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        let msg = Message::tool_result("call_123", "get_weather", "{\"temp\":72}");
+        db.save_message(&sid, &msg).unwrap();
+
+        let messages = db.get_messages(&sid).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, MessageRole::Tool);
+        assert_eq!(messages[0].tool_call_id.as_deref(), Some("call_123"));
+        assert_eq!(messages[0].name.as_deref(), Some("get_weather"));
+        assert_eq!(messages[0].content.as_deref(), Some("{\"temp\":72}"));
+    }
+
+    #[test]
+    fn test_message_timestamp_preserved() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        let ts = Utc.with_ymd_and_hms(2025, 6, 15, 12, 30, 0).unwrap();
+        let mut msg = Message::user("test");
+        msg.timestamp = Some(ts);
+
+        db.save_message(&sid, &msg).unwrap();
+
+        let messages = db.get_messages(&sid).unwrap();
+        let recovered = messages[0].timestamp.unwrap();
+        // Compare to second precision (RFC3339 stores seconds)
+        assert_eq!(recovered.format("%Y-%m-%dT%H:%M:%S").to_string(), "2025-06-15T12:30:00");
+    }
+
+    #[test]
+    fn test_message_with_reasoning() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        let mut msg = Message::assistant("The answer is 42.");
+        msg.reasoning = Some("Let me think step by step...".to_string());
+
+        db.save_message(&sid, &msg).unwrap();
+
+        let messages = db.get_messages(&sid).unwrap();
+        assert_eq!(
+            messages[0].reasoning.as_deref(),
+            Some("Let me think step by step...")
+        );
+    }
+
+    // ── FTS5 Search Tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_fts_search_basic() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("The quick brown fox")).unwrap();
+        db.save_message(&sid, &Message::assistant("The lazy dog")).unwrap();
+        db.save_message(&sid, &Message::user("Foxes are clever animals")).unwrap();
+
+        let results = db.search_messages("fox", 10).unwrap();
+        assert!(!results.is_empty());
+        // "fox" appears in "The quick brown fox"
+        assert!(results.iter().any(|r| r.content.as_deref() == Some("The quick brown fox")));
+    }
+
+    #[test]
+    fn test_fts_search_multiple_keywords() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("Rust is a systems programming language")).unwrap();
+        db.save_message(&sid, &Message::assistant("Python is great for scripting")).unwrap();
+        db.save_message(&sid, &Message::user("I love Rust programming")).unwrap();
+
+        let results = db.search_messages("Rust", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.session_id == sid));
+    }
+
+    #[test]
+    fn test_fts_search_no_results() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("Hello world")).unwrap();
+
+        let results = db.search_messages("nonexistent", 10).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_fts_search_limit() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        for i in 0..5 {
+            db.save_message(&sid, &Message::user(format!("test message number {i}"))).unwrap();
+        }
+
+        let results = db.search_messages("test", 2).unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_fts_search_across_sessions() {
+        let db = test_db();
+        let sid1 = create_test_session(&db);
+        let sid2 = create_test_session(&db);
+
+        db.save_message(&sid1, &Message::user("Rust is amazing")).unwrap();
+        db.save_message(&sid2, &Message::user("Rust memory safety")).unwrap();
+
+        let results = db.search_messages("Rust", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        let session_ids: Vec<&str> = results.iter().map(|r| r.session_id.as_str()).collect();
+        assert!(session_ids.contains(&sid1.as_str()));
+        assert!(session_ids.contains(&sid2.as_str()));
+    }
+
+    #[test]
+    fn test_fts_search_phrase() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("machine learning algorithms")).unwrap();
+        db.save_message(&sid, &Message::user("deep learning models")).unwrap();
+        db.save_message(&sid, &Message::user("learning to code")).unwrap();
+
+        // FTS5 phrase search with double quotes
+        let results = db.search_messages("\"deep learning\"", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].content.as_deref(),
+            Some("deep learning models")
+        );
+    }
+
+    #[test]
+    fn test_fts_search_has_rank() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("rust programming language")).unwrap();
+
+        let results = db.search_messages("rust", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        // Rank is a negative number (closer to 0 = better)
+        assert!(results[0].rank < 0.0);
+    }
+
+    #[test]
+    fn test_fts_search_message_id_is_correct() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("alpha")).unwrap();
+        db.save_message(&sid, &Message::user("beta")).unwrap();
+        db.save_message(&sid, &Message::user("alpha gamma")).unwrap();
+
+        let results = db.search_messages("alpha", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        // Each result should have a valid message_id (positive)
+        for r in &results {
+            assert!(r.message_id > 0);
+        }
+    }
+
+    #[test]
+    fn test_fts_search_deleted_message() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("findable keyword")).unwrap();
+
+        let results = db.search_messages("findable", 10).unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Delete the message
+        {
+            let conn = db.conn().lock().unwrap();
+            conn.execute("DELETE FROM messages WHERE content = ?1", rusqlite::params!["findable keyword"]).unwrap();
+        }
+
+        // After deletion, FTS should also reflect the removal (via trigger)
+        let results = db.search_messages("findable", 10).unwrap();
+        assert!(results.is_empty());
+    }
+}

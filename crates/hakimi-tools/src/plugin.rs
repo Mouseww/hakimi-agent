@@ -443,11 +443,13 @@ echo "{\"result\": \"echo: $INPUT\"}"
         };
 
         let tool = CommandPluginTool::new(manifest, script_path.to_string_lossy().to_string());
-        let ctx = ToolContext {
+let ctx = ToolContext {
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,
-            workdir: dir.path().to_string_lossy().to_string(),
+            workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
         };
 
         let result = tool

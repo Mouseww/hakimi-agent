@@ -12,6 +12,8 @@ pub enum ApiMode {
     AnthropicMessages,
     /// AWS Bedrock Converse API.
     BedrockConverse,
+    /// Google Gemini GenerateContent API.
+    GeminiGenerateContent,
 }
 
 /// Configuration for an LLM provider.

@@ -133,11 +133,13 @@ mod tests {
     use hakimi_common::ToolContext;
 
     fn test_ctx() -> ToolContext {
-        ToolContext {
-            session_id: "test-session".to_string(),
-            user_id: Some("user-1".to_string()),
+ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
             task_id: None,
             workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
         }
     }
 
@@ -184,7 +186,7 @@ mod tests {
         let msg = pop_message().expect("expected a queued message");
         assert_eq!(msg.target, "telegram:123456789");
         assert_eq!(msg.message, "Hello from the agent!");
-        assert_eq!(msg.session_id, "test-session");
+        assert_eq!(msg.session_id, "test");
 
         drain_queue();
     }

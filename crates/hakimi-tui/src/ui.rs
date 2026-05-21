@@ -319,3 +319,123 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 
     frame.render_widget(status_bar, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use ratatui::{backend::TestBackend, Terminal};
+    use tokio::sync::mpsc;
+
+    fn make_app() -> App {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+        App::new(cmd_tx, event_rx, "test-model".to_string(), "test-session-id-1234".to_string())
+    }
+
+    #[test]
+    fn render_does_not_panic_with_default_state() {
+        let app = make_app();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_does_not_panic_with_no_tools_panel() {
+        let mut app = make_app();
+        app.show_tools_panel = false;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_does_not_panic_while_thinking() {
+        let mut app = make_app();
+        app.is_thinking = true;
+        app.input = "typing something...".to_string();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_handles_long_messages() {
+        let mut app = make_app();
+        let long_content = "a".repeat(1000);
+        app.messages.push(crate::ChatMessage::user(&long_content));
+        app.messages.push(crate::ChatMessage::assistant(&long_content));
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_handles_multiline_messages() {
+        let mut app = make_app();
+        app.messages.push(crate::ChatMessage::assistant("line1\nline2\nline3"));
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_handles_many_messages() {
+        let mut app = make_app();
+        for i in 0..100 {
+            app.messages.push(crate::ChatMessage::user(format!("message {i}")));
+        }
+        app.scroll_offset = 50;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_handles_tool_activity() {
+        let mut app = make_app();
+        app.tool_activity.push(crate::ToolActivity {
+            name: "bash".to_string(),
+            arguments_summary: "ls -la".to_string(),
+            status: crate::ToolStatus::Running,
+            timestamp: chrono::Utc::now(),
+        });
+        app.tool_activity.push(crate::ToolActivity {
+            name: "read_file".to_string(),
+            arguments_summary: "/tmp/test.txt".to_string(),
+            status: crate::ToolStatus::Success,
+            timestamp: chrono::Utc::now(),
+        });
+        app.tool_activity.push(crate::ToolActivity {
+            name: "web_search".to_string(),
+            arguments_summary: "rust testing".to_string(),
+            status: crate::ToolStatus::Error,
+            timestamp: chrono::Utc::now(),
+        });
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_handles_small_terminal() {
+        let app = make_app();
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_all_role_types() {
+        let mut app = make_app();
+        app.messages.push(crate::ChatMessage::user("user msg"));
+        app.messages.push(crate::ChatMessage::assistant("assistant msg"));
+        app.messages.push(crate::ChatMessage::tool("bash", "tool output"));
+        app.messages.push(crate::ChatMessage::system("system info"));
+        app.messages.push(crate::ChatMessage::error("error occurred"));
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+}

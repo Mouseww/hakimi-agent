@@ -14,6 +14,10 @@ members = [
     "crates/hakimi-mcp",
     "crates/hakimi-plugin",
     "crates/hakimi-tui",
+    "crates/hakimi-skills",
+    "crates/hakimi-server",
+    "crates/hakimi-i18n",
+    "crates/hakimi-batch",
 ]
 
 [workspace.package]
@@ -77,3 +81,6 @@ pin-project = "1"
 
 # Regex for streaming
 fancy-regex = "0.14"
+
+# Base64
+base64 = "0.22"

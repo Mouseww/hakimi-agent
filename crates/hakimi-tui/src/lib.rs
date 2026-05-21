@@ -130,3 +130,91 @@ pub enum AgentEvent {
 // ---------------------------------------------------------------------------
 
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spinner_frames_non_empty() {
+        assert!(!SPINNER_FRAMES.is_empty());
+    }
+
+    #[test]
+    fn role_variants_exist() {
+        let roles = [Role::User, Role::Assistant, Role::Tool, Role::System, Role::Error];
+        assert_eq!(roles.len(), 5);
+        // Ensure they are all distinct
+        for i in 0..roles.len() {
+            for j in (i + 1)..roles.len() {
+                assert_ne!(roles[i], roles[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn chat_message_user() {
+        let msg = ChatMessage::user("hello");
+        assert_eq!(msg.role, Role::User);
+        assert_eq!(msg.content, "hello");
+    }
+
+    #[test]
+    fn chat_message_user_from_string() {
+        let msg = ChatMessage::user(String::from("hello"));
+        assert_eq!(msg.role, Role::User);
+        assert_eq!(msg.content, "hello");
+    }
+
+    #[test]
+    fn chat_message_assistant() {
+        let msg = ChatMessage::assistant("response");
+        assert_eq!(msg.role, Role::Assistant);
+        assert_eq!(msg.content, "response");
+    }
+
+    #[test]
+    fn chat_message_tool() {
+        let msg = ChatMessage::tool("bash", "ls output");
+        assert_eq!(msg.role, Role::Tool);
+        assert_eq!(msg.content, "[bash] ls output");
+    }
+
+    #[test]
+    fn chat_message_system() {
+        let msg = ChatMessage::system("info");
+        assert_eq!(msg.role, Role::System);
+        assert_eq!(msg.content, "info");
+    }
+
+    #[test]
+    fn chat_message_error() {
+        let msg = ChatMessage::error("something broke");
+        assert_eq!(msg.role, Role::Error);
+        assert_eq!(msg.content, "something broke");
+    }
+
+    #[test]
+    fn tool_status_variants() {
+        let statuses = [ToolStatus::Running, ToolStatus::Success, ToolStatus::Error];
+        assert_eq!(statuses.len(), 3);
+        for i in 0..statuses.len() {
+            for j in (i + 1)..statuses.len() {
+                assert_ne!(statuses[i], statuses[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn tool_activity_creation() {
+        let activity = ToolActivity {
+            name: "bash".to_string(),
+            arguments_summary: "ls -la".to_string(),
+            status: ToolStatus::Running,
+            timestamp: Utc::now(),
+        };
+        assert_eq!(activity.name, "bash");
+        assert_eq!(activity.arguments_summary, "ls -la");
+        assert_eq!(activity.status, ToolStatus::Running);
+    }
+}

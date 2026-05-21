@@ -10,6 +10,7 @@ use tracing::{debug, warn};
 
 use crate::error::classify_error;
 use crate::params::RequestParams;
+use crate::prompt_caching::{apply_caching, CacheLayout, CACHE_BETA_HEADER_VALUE};
 use crate::trait_def::ProviderTransport;
 use crate::streaming::{SseEventStream, StreamEvent};
 use futures::stream::Stream;
@@ -27,6 +28,8 @@ pub struct AnthropicTransport {
     base_url: String,
     api_key: String,
     client: Client,
+    enable_caching: bool,
+    cache_layout: CacheLayout,
 }
 
 impl AnthropicTransport {
@@ -35,6 +38,29 @@ impl AnthropicTransport {
             base_url,
             api_key,
             client,
+            enable_caching: false,
+            cache_layout: CacheLayout::SystemAnd3,
+        }
+    }
+
+    /// Enable prompt caching with the given layout strategy.
+    pub fn with_caching(mut self, layout: CacheLayout) -> Self {
+        self.enable_caching = true;
+        self.cache_layout = layout;
+        self
+    }
+
+    /// Returns `true` if prompt caching is enabled.
+    pub fn is_caching_enabled(&self) -> bool {
+        self.enable_caching
+    }
+
+    /// Returns the `anthropic-beta` header value if caching is enabled.
+    pub fn beta_header(&self) -> Option<&'static str> {
+        if self.enable_caching {
+            Some(CACHE_BETA_HEADER_VALUE)
+        } else {
+            None
         }
     }
 
@@ -218,6 +244,10 @@ impl AnthropicTransport {
             body["stream"] = json!(true);
         }
 
+        if self.enable_caching {
+            apply_caching(&mut body, self.cache_layout);
+        }
+
         body
     }
 
@@ -317,12 +347,18 @@ impl AnthropicTransport {
 
         debug!(url = %url, model = model, "sending streaming Anthropic messages request");
 
-        let response = self
+        let mut request = self
             .client
             .post(&url)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+
+        if self.enable_caching {
+            request = request.header("anthropic-beta", CACHE_BETA_HEADER_VALUE);
+        }
+
+        let response = request
             .json(&body)
             .send()
             .await
@@ -431,12 +467,18 @@ impl ProviderTransport for AnthropicTransport {
 
         debug!(url = %url, model = model, "sending Anthropic messages request");
 
-        let response = self
+        let mut request = self
             .client
             .post(&url)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+
+        if self.enable_caching {
+            request = request.header("anthropic-beta", CACHE_BETA_HEADER_VALUE);
+        }
+
+        let response = request
             .json(&body)
             .send()
             .await
@@ -672,5 +714,86 @@ mod tests {
         assert_eq!(merged[0]["role"], "user");
         let content = merged[0]["content"].as_array().unwrap();
         assert_eq!(content.len(), 2);
+    }
+
+    // ── Caching integration tests ───────────────────────────────────────
+
+    #[test]
+    fn test_beta_header_included_when_caching_enabled() {
+        let transport = AnthropicTransport::new(
+            "https://api.anthropic.com".to_string(),
+            "test-key".to_string(),
+            reqwest::Client::new(),
+        )
+        .with_caching(CacheLayout::SystemAnd3);
+
+        assert!(transport.is_caching_enabled());
+        assert_eq!(transport.beta_header(), Some(CACHE_BETA_HEADER_VALUE));
+    }
+
+    #[test]
+    fn test_beta_header_excluded_when_caching_disabled() {
+        let transport = AnthropicTransport::new(
+            "https://api.anthropic.com".to_string(),
+            "test-key".to_string(),
+            reqwest::Client::new(),
+        );
+
+        assert!(!transport.is_caching_enabled());
+        assert_eq!(transport.beta_header(), None);
+    }
+
+    #[test]
+    fn test_cache_usage_parsing() {
+        let resp = AnthropicResponse {
+            content: vec![AnthropicContentBlock {
+                block_type: "text".to_string(),
+                text: Some("Hi".to_string()),
+                id: None,
+                name: None,
+                input: None,
+            }],
+            stop_reason: Some("end_turn".to_string()),
+            usage: AnthropicUsage {
+                input_tokens: 100,
+                output_tokens: 50,
+                cache_creation_input_tokens: Some(80),
+                cache_read_input_tokens: Some(60),
+            },
+        };
+
+        let result = AnthropicTransport::parse_response(&resp).unwrap();
+        let usage = result.usage.unwrap();
+
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 50);
+        assert_eq!(usage.total_tokens, 150);
+        assert_eq!(usage.cached_tokens, 60);
+        assert_eq!(usage.reasoning_tokens, 80);
+    }
+
+    #[test]
+    fn test_no_caching_by_default() {
+        let transport = AnthropicTransport::new(
+            "https://api.anthropic.com".to_string(),
+            "test-key".to_string(),
+            reqwest::Client::new(),
+        );
+
+        assert!(!transport.is_caching_enabled());
+        assert_eq!(transport.beta_header(), None);
+    }
+
+    #[test]
+    fn test_caching_enabled_on_transport() {
+        let transport = AnthropicTransport::new(
+            "https://api.anthropic.com".to_string(),
+            "test-key".to_string(),
+            reqwest::Client::new(),
+        )
+        .with_caching(CacheLayout::PrefixAnd2);
+
+        assert!(transport.is_caching_enabled());
+        assert_eq!(transport.beta_header(), Some(CACHE_BETA_HEADER_VALUE));
     }
 }

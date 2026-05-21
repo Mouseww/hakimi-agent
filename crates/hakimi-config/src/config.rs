@@ -2,6 +2,32 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Per-credential configuration entry (used in config files).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CredentialConfig {
+    /// Optional identifier; auto-generated if omitted.
+    pub id: Option<String>,
+    /// The API key.
+    pub api_key: String,
+    /// Provider-specific base URL override.
+    pub base_url: Option<String>,
+    /// Organization ID.
+    pub org_id: Option<String>,
+    /// Selection priority (higher = preferred).
+    pub priority: Option<i32>,
+    /// Max concurrent requests for this credential.
+    pub max_concurrent: Option<usize>,
+}
+
+/// Configuration for a credential pool (one per provider).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CredentialPoolConfig {
+    /// Rotation strategy name: "round_robin", "fill_first", "random", "least_used".
+    pub strategy: Option<String>,
+    /// Credentials in this pool.
+    pub credentials: Vec<CredentialConfig>,
+}
+
 /// Model configuration section.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
@@ -144,6 +170,14 @@ pub struct CompressionConfig {
     /// Target compression ratio.
     #[serde(default = "default_target_ratio")]
     pub target_ratio: f64,
+
+    /// Compression engine type: "smart" (3-tier) or "simple" (truncation).
+    #[serde(default = "default_compression_engine")]
+    pub engine: String,
+
+    /// Maximum context length in tokens.
+    #[serde(default = "default_context_length")]
+    pub context_length: usize,
 }
 
 fn default_true() -> bool {
@@ -158,12 +192,22 @@ fn default_target_ratio() -> f64 {
     0.20
 }
 
+fn default_compression_engine() -> String {
+    "smart".to_string()
+}
+
+fn default_context_length() -> usize {
+    128_000
+}
+
 impl Default for CompressionConfig {
     fn default() -> Self {
         Self {
             enabled: true,
             threshold: 0.50,
             target_ratio: 0.20,
+            engine: default_compression_engine(),
+            context_length: default_context_length(),
         }
     }
 }
@@ -281,6 +325,10 @@ pub struct HakimiConfig {
     /// Key is the server name, value is the server config.
     #[serde(default)]
     pub mcp_servers: HashMap<String, McpServerConfig>,
+
+    /// Credential pools keyed by provider name.
+    #[serde(default)]
+    pub credential_pools: HashMap<String, CredentialPoolConfig>,
 }
 
 impl Default for HakimiConfig {
@@ -293,6 +341,7 @@ impl Default for HakimiConfig {
             display: DisplayConfig::default(),
             delegation: DelegationConfig::default(),
             mcp_servers: HashMap::new(),
+            credential_pools: HashMap::new(),
         }
     }
 }
@@ -310,10 +359,13 @@ mod tests {
         assert_eq!(config.terminal.cwd, ".");
         assert!(config.compression.enabled);
         assert_eq!(config.compression.threshold, 0.50);
+        assert_eq!(config.compression.engine, "smart");
+        assert_eq!(config.compression.context_length, 128_000);
         assert!(config.display.streaming);
         assert_eq!(config.display.skin, "default");
         assert_eq!(config.delegation.max_iterations, 45);
         assert!(config.mcp_servers.is_empty());
+        assert!(config.credential_pools.is_empty());
     }
 
     #[test]
@@ -402,6 +454,8 @@ delegation:
   provider: "openai"
 
 compression:
+  engine: simple
+  context_length: 64000
   enabled: false
   threshold: 0.70
   target_ratio: 0.30
@@ -420,5 +474,7 @@ compression:
         assert_eq!(config.display.skin, "dark");
         assert_eq!(config.delegation.model, "gpt-4o-mini");
         assert!(!config.compression.enabled);
+        assert_eq!(config.compression.engine, "simple");
+        assert_eq!(config.compression.context_length, 64_000);
     }
 }

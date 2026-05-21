@@ -156,6 +156,80 @@ pub fn parse_openai_chunk(json_str: &str) -> Vec<StreamEvent> {
 
 // ── Anthropic SSE parsing ───────────────────────────────────────────────────
 
+
+// ── Gemini SSE parsing ──────────────────────────────────────────────────────
+
+/// Parse a Gemini-format streaming chunk JSON into a list of `StreamEvent`s.
+///
+/// Gemini format: `candidates[0].content.parts[].{text, functionCall}`,
+/// `usageMetadata.{promptTokenCount, candidatesTokenCount}`.
+pub fn parse_gemini_chunk(json_str: &str) -> Vec<StreamEvent> {
+    let parsed: Result<JsonValue, _> = serde_json::from_str(json_str);
+    let Ok(val) = parsed else {
+        return vec![];
+    };
+
+    let mut events = Vec::new();
+
+    if let Some(candidates) = val["candidates"].as_array() {
+        for candidate in candidates {
+            if let Some(parts) = candidate["content"]["parts"].as_array() {
+                for part in parts {
+                    // Text content delta.
+                    if let Some(text) = part["text"].as_str() {
+                        if !text.is_empty() {
+                            events.push(StreamEvent::ContentDelta(text.to_string()));
+                        }
+                    }
+
+                    // Function call deltas.
+                    if let Some(fc) = part.get("functionCall") {
+                        let name = fc["name"].as_str().map(String::from);
+                        let args = fc.get("args").cloned().unwrap_or(JsonValue::Object(serde_json::Map::new()));
+                        let arguments_str = serde_json::to_string(&args).unwrap_or_else(|_| "{}".to_string());
+                        events.push(StreamEvent::ToolCallDelta {
+                            index: 0, // Gemini sends complete function calls, not streamed deltas
+                            id: None,
+                            name,
+                            arguments_delta: arguments_str,
+                        });
+                    }
+                }
+            }
+
+            // Check for finish reason - emit Done when we see STOP or similar terminal states.
+            if let Some(finish_reason) = candidate["finishReason"].as_str() {
+                match finish_reason {
+                    "STOP" | "MAX_TOKENS" | "SAFETY" | "RECITATION" | "OTHER" => {
+                        events.push(StreamEvent::Done);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Usage metadata.
+    if let Some(usage) = val.get("usageMetadata") {
+        let prompt_tokens = usage["promptTokenCount"].as_u64().unwrap_or(0) as u32;
+        let completion_tokens = usage["candidatesTokenCount"].as_u64().unwrap_or(0) as u32;
+        if prompt_tokens > 0 || completion_tokens > 0 {
+            events.push(StreamEvent::Usage {
+                prompt_tokens,
+                completion_tokens,
+            });
+        }
+    }
+
+    events
+}
+
+/// Parse a Gemini SSE event. Gemini doesn't use typed event lines,
+/// so the event_type is ignored and we delegate to `parse_gemini_chunk`.
+pub fn parse_gemini_event(_event_type: &str, json_str: &str) -> Vec<StreamEvent> {
+    parse_gemini_chunk(json_str)
+}
+
 /// Parse an Anthropic SSE event by event type and JSON data.
 ///
 /// Anthropic uses typed events: `message_start`, `content_block_start`,
@@ -317,7 +391,15 @@ pub struct SseEventStream {
     buffer: SseFullBuffer,
     done: bool,
     pending: Vec<StreamEvent>,
-    anthropic_mode: bool,
+    mode: SseMode,
+}
+
+/// Which provider format the SSE stream should parse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SseMode {
+    OpenAi,
+    Anthropic,
+    Gemini,
 }
 
 impl SseEventStream {
@@ -330,7 +412,7 @@ impl SseEventStream {
             buffer: SseFullBuffer::new(),
             done: false,
             pending: Vec::new(),
-            anthropic_mode: false,
+            mode: SseMode::OpenAi,
         }
     }
 
@@ -343,7 +425,20 @@ impl SseEventStream {
             buffer: SseFullBuffer::new(),
             done: false,
             pending: Vec::new(),
-            anthropic_mode: true,
+            mode: SseMode::Anthropic,
+        }
+    }
+
+    /// Create a new SSE event stream in Gemini mode.
+    pub fn gemini(
+        inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+    ) -> Self {
+        Self {
+            inner,
+            buffer: SseFullBuffer::new(),
+            done: false,
+            pending: Vec::new(),
+            mode: SseMode::Gemini,
         }
     }
 
@@ -356,19 +451,27 @@ impl SseEventStream {
                     let pairs = self.buffer.feed(&chunk);
 
                     for (event_type, payload) in pairs {
-                        if !self.anthropic_mode && payload == "[DONE]" {
+                        if self.mode != SseMode::Anthropic && payload == "[DONE]" {
                             self.done = true;
                             self.pending.push(StreamEvent::Done);
                             break;
                         }
 
-                        if self.anthropic_mode {
-                            let et = event_type.as_deref().unwrap_or("");
-                            let events = parse_anthropic_event(et, &payload);
-                            self.pending.extend(events);
-                        } else {
-                            let events = parse_openai_chunk(&payload);
-                            self.pending.extend(events);
+                        match self.mode {
+                            SseMode::Anthropic => {
+                                let et = event_type.as_deref().unwrap_or("");
+                                let events = parse_anthropic_event(et, &payload);
+                                self.pending.extend(events);
+                            }
+                            SseMode::Gemini => {
+                                let et = event_type.as_deref().unwrap_or("");
+                                let events = parse_gemini_event(et, &payload);
+                                self.pending.extend(events);
+                            }
+                            SseMode::OpenAi => {
+                                let events = parse_openai_chunk(&payload);
+                                self.pending.extend(events);
+                            }
                         }
                     }
 
@@ -657,5 +760,129 @@ mod tests {
         assert_eq!(acc.tool_calls[0].id, "call_1");
         assert_eq!(acc.tool_calls[1].id, "call_2");
         assert_eq!(acc.tool_calls[2].id, "call_3");
+    }
+
+    // ── Gemini SSE parsing tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_gemini_text_delta() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}"#;
+        let events = parse_gemini_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ContentDelta(s) => assert_eq!(s, "Hello"),
+            _ => panic!("expected ContentDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_gemini_function_call() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"/tmp/test.txt"}}}]}}]}"#;
+        let events = parse_gemini_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCallDelta {
+                name,
+                arguments_delta,
+                ..
+            } => {
+                assert_eq!(name.as_deref(), Some("read_file"));
+                assert!(arguments_delta.contains("/tmp/test.txt"));
+            }
+            _ => panic!("expected ToolCallDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_gemini_usage() {
+        let json = r#"{"candidates":[],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":20,"totalTokenCount":30}}"#;
+        let events = parse_gemini_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Usage {
+                prompt_tokens,
+                completion_tokens,
+            } => {
+                assert_eq!(*prompt_tokens, 10);
+                assert_eq!(*completion_tokens, 20);
+            }
+            _ => panic!("expected Usage"),
+        }
+    }
+
+    #[test]
+    fn test_parse_gemini_finish_reason_stop() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Done"}]},"finishReason":"STOP"}]}"#;
+        let events = parse_gemini_chunk(json);
+        assert_eq!(events.len(), 2);
+        assert!(matches!(events[0], StreamEvent::ContentDelta(_)));
+        assert!(matches!(events[1], StreamEvent::Done));
+    }
+
+    #[test]
+    fn test_parse_gemini_finish_reason_max_tokens() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Truncated"}]},"finishReason":"MAX_TOKENS"}]}"#;
+        let events = parse_gemini_chunk(json);
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::Done)));
+    }
+
+    #[test]
+    fn test_parse_gemini_mixed_content_and_usage() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hello world"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3}}"#;
+        let events = parse_gemini_chunk(json);
+        assert_eq!(events.len(), 3); // ContentDelta, Done, Usage
+        assert!(matches!(events[0], StreamEvent::ContentDelta(_)));
+        assert!(matches!(events[1], StreamEvent::Done));
+        assert!(matches!(events[2], StreamEvent::Usage { .. }));
+    }
+
+    #[test]
+    fn test_parse_gemini_empty_content_ignored() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":""}]}}]}"#;
+        let events = parse_gemini_chunk(json);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_parse_gemini_invalid_json() {
+        let events = parse_gemini_chunk("not valid json");
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_parse_gemini_no_candidates() {
+        let json = r#"{"candidates":[]}"#;
+        let events = parse_gemini_chunk(json);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_parse_gemini_function_call_no_args() {
+        let json =
+            r#"{"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_time"}}]}}]}"#;
+        let events = parse_gemini_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCallDelta {
+                name,
+                arguments_delta,
+                ..
+            } => {
+                assert_eq!(name.as_deref(), Some("get_time"));
+                assert_eq!(arguments_delta, "{}");
+            }
+            _ => panic!("expected ToolCallDelta"),
+        }
+    }
+
+    #[test]
+    fn test_parse_gemini_event_delegates_to_chunk() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hi"}]}}]}"#;
+        let events = parse_gemini_event("ignored", json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ContentDelta(s) => assert_eq!(s, "Hi"),
+            _ => panic!("expected ContentDelta"),
+        }
     }
 }

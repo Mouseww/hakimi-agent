@@ -270,6 +270,8 @@ mod tests {
             user_id: None,
             task_id: None,
             workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
         }
     }
 

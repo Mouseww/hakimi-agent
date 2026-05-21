@@ -1,0 +1,38 @@
+[package]
+name = "hakimi-server"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "hakimi_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hakimi-server"
+path = "src/main.rs"
+
+[dependencies]
+hakimi-core = { path = "../hakimi-core" }
+hakimi-config = { path = "../hakimi-config" }
+hakimi-session = { path = "../hakimi-session" }
+hakimi-tools = { path = "../hakimi-tools" }
+hakimi-common = { path = "../hakimi-common" }
+hakimi-context = { path = "../hakimi-context" }
+hakimi-transports = { path = "../hakimi-transports" }
+axum = { version = "0.8", features = ["json"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dirs = { workspace = true }
+reqwest = { workspace = true }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+clap = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+reqwest = { workspace = true }

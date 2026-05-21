@@ -16,6 +16,9 @@ hakimi-tools = { path = "../hakimi-tools" }
 hakimi-transports = { path = "../hakimi-transports" }
 hakimi-context = { path = "../hakimi-context" }
 hakimi-mcp = { path = "../hakimi-mcp" }
+hakimi-plugin = { path = "../hakimi-plugin" }
+hakimi-skills = { path = "../hakimi-skills" }
+hakimi-server = { path = "../hakimi-server" }
 clap = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
@@ -29,3 +32,8 @@ tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 dirs = { workspace = true }
 reqwest = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+chrono = { workspace = true }

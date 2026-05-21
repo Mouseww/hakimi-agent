@@ -230,6 +230,8 @@ mod tests {
             user_id: None,
             task_id: None,
             workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
         };
 
         let result = registry.dispatch("mock1", &json!({}), &ctx).await.unwrap();
@@ -244,6 +246,8 @@ mod tests {
             user_id: None,
             task_id: None,
             workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
         };
 
         let err = registry.dispatch("nonexistent", &json!({}), &ctx).await.unwrap_err();

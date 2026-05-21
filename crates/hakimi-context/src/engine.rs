@@ -1,6 +1,15 @@
 use async_trait::async_trait;
 use hakimi_common::{Message, Result, Usage};
 
+/// Cumulative compression statistics for a session.
+#[derive(Debug, Clone)]
+pub struct CompressionStats {
+    /// Total number of compression passes performed.
+    pub compression_count: usize,
+    /// Total estimated tokens saved across all compressions.
+    pub total_tokens_saved: usize,
+}
+
 /// Trait for managing conversation context (token tracking, compression, lifecycle).
 #[async_trait]
 pub trait ContextEngine: Send + Sync {
@@ -24,4 +33,12 @@ pub trait ContextEngine: Send + Sync {
 
     /// The maximum context length (in tokens) this engine supports.
     fn context_length(&self) -> usize;
+
+    /// Returns cumulative compression statistics, if available.
+    ///
+    /// Engines that track compression stats should override this.
+    /// The default implementation returns `None`.
+    fn compression_stats(&self) -> Option<CompressionStats> {
+        None
+    }
 }

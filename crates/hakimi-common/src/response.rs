@@ -56,3 +56,101 @@ impl NormalizedResponse {
         self.content.as_deref().unwrap_or("")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_tool_calls_with_calls() {
+        let resp = NormalizedResponse {
+            content: Some("text".into()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".into(),
+                name: "search".into(),
+                arguments: "{}".into(),
+                index: Some(0),
+            }]),
+            finish_reason: Some(FinishReason::ToolCalls),
+            usage: None,
+            reasoning: None,
+        };
+        assert!(resp.has_tool_calls());
+    }
+
+    #[test]
+    fn test_has_tool_calls_empty_vec() {
+        let resp = NormalizedResponse {
+            content: None,
+            tool_calls: Some(vec![]),
+            finish_reason: None,
+            usage: None,
+            reasoning: None,
+        };
+        assert!(!resp.has_tool_calls());
+    }
+
+    #[test]
+    fn test_has_tool_calls_none() {
+        let resp = NormalizedResponse {
+            content: None,
+            tool_calls: None,
+            finish_reason: None,
+            usage: None,
+            reasoning: None,
+        };
+        assert!(!resp.has_tool_calls());
+    }
+
+    #[test]
+    fn test_content_or_empty_some() {
+        let resp = NormalizedResponse {
+            content: Some("hello world".into()),
+            tool_calls: None,
+            finish_reason: None,
+            usage: None,
+            reasoning: None,
+        };
+        assert_eq!(resp.content_or_empty(), "hello world");
+    }
+
+    #[test]
+    fn test_content_or_empty_none() {
+        let resp = NormalizedResponse {
+            content: None,
+            tool_calls: None,
+            finish_reason: None,
+            usage: None,
+            reasoning: None,
+        };
+        assert_eq!(resp.content_or_empty(), "");
+    }
+
+    #[test]
+    fn test_finish_reason_equality() {
+        assert_eq!(FinishReason::Stop, FinishReason::Stop);
+        assert_eq!(FinishReason::ToolCalls, FinishReason::ToolCalls);
+        assert_eq!(FinishReason::Length, FinishReason::Length);
+        assert_ne!(FinishReason::Stop, FinishReason::Length);
+        assert_ne!(FinishReason::ToolCalls, FinishReason::Error);
+        assert_ne!(FinishReason::ContentFilter, FinishReason::Error);
+    }
+
+    #[test]
+    fn test_normalized_response_serialization() {
+        let resp = NormalizedResponse {
+            content: Some("hi".into()),
+            tool_calls: None,
+            finish_reason: Some(FinishReason::Stop),
+            usage: Some(Usage::default()),
+            reasoning: Some("thinking".into()),
+        };
+        let json = serde_json::to_string(&resp).expect("serialize");
+        let deserialized: NormalizedResponse = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.content, Some("hi".into()));
+        assert!(deserialized.tool_calls.is_none());
+        assert_eq!(deserialized.finish_reason, Some(FinishReason::Stop));
+        assert!(deserialized.usage.is_some());
+        assert_eq!(deserialized.reasoning, Some("thinking".into()));
+    }
+}

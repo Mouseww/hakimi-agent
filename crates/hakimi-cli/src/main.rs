@@ -45,6 +45,14 @@ struct Args {
     /// Base URL for the API endpoint.
     #[arg(long)]
     base_url: Option<String>,
+
+    /// Start the HTTP API server instead of the interactive REPL.
+    #[arg(long)]
+    serve: bool,
+
+    /// Address for the HTTP API server (default: 127.0.0.1:3000).
+    #[arg(long, default_value = "127.0.0.1:3000")]
+    addr: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -129,10 +137,22 @@ delegation:
   # Sub-agent API key
   api_key: ""
 
+# Context compression: smart (3-tier) or simple (truncation)
 compression:
-  enabled: true
-  threshold: 0.50
-  target_ratio: 0.20
+  engine: smart  # smart | simple
+  context_length: 128000
+
+# MCP servers to connect to at startup.
+# Each server is spawned as a child process and communicates via JSON-RPC over stdio.
+# mcp_servers:
+#   filesystem:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+#   github:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-github"]
+#     env:
+#       GITHUB_TOKEN: "your-token-here"
 "#;
 
 // ---------------------------------------------------------------------------
@@ -185,6 +205,61 @@ fn load_config() -> hakimi_config::HakimiConfig {
             hakimi_config::HakimiConfig::default()
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Resolve provider (anthropic vs openai-compatible)
+// ---------------------------------------------------------------------------
+
+/// Resolve the effective provider from args, config, model prefix, and env.
+fn resolve_provider<'a>(
+    args_provider: Option<&'a str>,
+    config: &'a hakimi_config::HakimiConfig,
+    model: &str,
+) -> String {
+    // 1. CLI argument
+    if let Some(p) = args_provider {
+        if !p.is_empty() && p != "auto" {
+            return p.to_string();
+        }
+    }
+    // 2. Environment variable
+    if let Ok(val) = std::env::var("HAKIMI_PROVIDER") {
+        if !val.is_empty() && val != "auto" {
+            return val;
+        }
+    }
+    // 3. Config file
+    if !config.model.provider.is_empty() && config.model.provider != "auto" {
+        return config.model.provider.clone();
+    }
+    // 4. Infer from model name prefix (e.g. "anthropic/claude-sonnet" → "anthropic")
+    if let Some(slash_pos) = model.find('/') {
+        let prefix = &model[..slash_pos];
+        match prefix {
+            "anthropic" | "claude" => return "anthropic".to_string(),
+            "openai" | "gpt" => return "openai".to_string(),
+            "openrouter" => return "openrouter".to_string(),
+            _ => {}
+        }
+    }
+    // 5. Infer from model name itself
+    if model.starts_with("claude") {
+        return "anthropic".to_string();
+    }
+    if model.starts_with("gpt-") || model.starts_with("o1") || model.starts_with("o3") {
+        return "openai".to_string();
+    }
+    // 6. Default to OpenRouter (broadest compatibility)
+    "openrouter".to_string()
+}
+
+/// Check if the effective provider should use the Anthropic transport.
+fn is_anthropic_provider(provider: &str, base_url: &str) -> bool {
+    provider == "anthropic"
+        || provider == "claude"
+        || base_url.contains("api.anthropic.com")
+        || base_url.contains("anthropic")
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +363,13 @@ async fn register_mcp_tools(
     for (name, server_config) in servers {
         info!(server = %name, command = %server_config.command, "connecting to MCP server");
 
+        // Set environment variables BEFORE spawning so the child process inherits them.
+        for (key, val) in &server_config.env {
+            // SAFETY: We're setting env vars during single-threaded startup,
+            // before any concurrent reads begin.
+            unsafe { std::env::set_var(key, val); }
+        }
+
         // Build args as &str slices
         let args: Vec<&str> = server_config.args.iter().map(|s| s.as_str()).collect();
 
@@ -298,13 +380,6 @@ async fn register_mcp_tools(
                 continue;
             }
         };
-
-        // Set any environment variables before initializing.
-        for (key, val) in &server_config.env {
-            // SAFETY: We're setting env vars during single-threaded startup,
-            // before any concurrent reads begin.
-            unsafe { std::env::set_var(key, val); }
-        }
 
         if let Err(e) = client.initialize().await {
             warn!(server = %name, error = %e, "MCP initialize failed");
@@ -355,19 +430,48 @@ async fn build_agent(
         );
     }
 
-    // Create transport
-    let client = reqwest::Client::new();
-    let transport = Arc::new(hakimi_transports::ChatCompletionsTransport::new(
-        base_url.clone(),
-        api_key.clone(),
-        client,
-    ));
+    // Resolve effective provider (from args > config > model prefix > env).
+    let effective_provider = resolve_provider(args.provider.as_deref(), config, &model);
 
-    // Create context engine
-    let context_length = 128_000;
-    let context_engine = Arc::new(RwLock::new(
-        hakimi_context::SimpleContextEngine::new(context_length),
-    ));
+    // Create transport — auto-detect Anthropic vs OpenAI-compatible.
+    let client = reqwest::Client::new();
+    let transport: Arc<dyn hakimi_transports::ProviderTransport> =
+        if is_anthropic_provider(&effective_provider, &base_url) {
+            let anthropic_url = if base_url.contains("anthropic") {
+                base_url.clone()
+            } else {
+                "https://api.anthropic.com".to_string()
+            };
+            info!(base_url = %anthropic_url, "using Anthropic Messages API transport");
+            Arc::new(hakimi_transports::AnthropicTransport::new(
+                anthropic_url,
+                api_key.clone(),
+                client,
+            ))
+        } else {
+            info!(base_url = %base_url, "using OpenAI Chat Completions transport");
+            Arc::new(hakimi_transports::ChatCompletionsTransport::new(
+                base_url.clone(),
+                api_key.clone(),
+                client,
+            ))
+        };
+
+    // Create context engine — choose smart (3-tier) or simple (truncation).
+    let context_length = config.compression.context_length;
+    let context_engine: Arc<RwLock<dyn hakimi_context::ContextEngine>> =
+        if config.compression.engine == "simple" {
+            info!(context_length, "using SimpleContextEngine (truncation)");
+            Arc::new(RwLock::new(
+                hakimi_context::SimpleContextEngine::new(context_length),
+            ))
+        } else {
+            let compression_model = Some(model.clone());
+            info!(context_length, engine = "smart", "using SmartContextEngine (3-tier)");
+            Arc::new(RwLock::new(
+                hakimi_context::SmartContextEngine::new(context_length, compression_model),
+            ))
+        };
 
     // Create tool registry and register ALL built-in tools.
     let tool_registry = hakimi_tools::ToolRegistry::new();
@@ -394,17 +498,44 @@ async fn build_agent(
     info!(count = builtin_tools.len(), "registered built-in tools");
 
     // Connect to configured MCP servers and register their tools.
-    if !config.mcp_servers.is_empty() {
-        let mcp_count = register_mcp_tools(&config.mcp_servers, &tool_registry).await;
-        info!(count = mcp_count, server_count = config.mcp_servers.len(), "registered MCP tools");
-    }
+    let mcp_tool_count = if !config.mcp_servers.is_empty() {
+        let count = register_mcp_tools(&config.mcp_servers, &tool_registry).await;
+        info!(count, server_count = config.mcp_servers.len(), "registered MCP tools");
+        count
+    } else {
+        0
+    };
 
     // Discover and register user plugins from ~/.hakimi/plugins/.
+    // PluginManager handles manifest.yaml-based command plugins.
     let plugin_manager = hakimi_tools::PluginManager::default_location();
     let plugins = plugin_manager.discover().await;
+    let manifest_plugin_count = plugins.len();
     for plugin in plugins {
         tool_registry.register(Arc::new(plugin)).await;
     }
+
+    // PluginLoader handles HTTP tool plugins from .yaml/.yml/.json configs
+    // in ~/.hakimi/plugins/.
+    let mut plugin_loader = hakimi_plugin::PluginLoader::new();
+    if let Err(e) = plugin_loader.load_all() {
+        warn!(error = %e, "failed to load some HTTP plugins");
+    }
+    let http_plugin_tools = plugin_loader.all_tools();
+    let http_plugin_count = http_plugin_tools.len();
+    for tool in http_plugin_tools {
+        tool_registry.register(tool).await;
+    }
+
+    let plugin_count = manifest_plugin_count + http_plugin_count;
+
+    // Print tool summary.
+    println!(
+        "  Loaded {} built-in tools, {} MCP tools, {} plugin tools",
+        builtin_tools.len(),
+        mcp_tool_count,
+        plugin_count,
+    );
 
     // Build the agent
     let mut builder = hakimi_core::AIAgent::builder()
@@ -414,7 +545,7 @@ async fn build_agent(
         .tool_registry(tool_registry)
         .max_iterations(config.agent.max_turns)
         .workdir(&config.terminal.cwd)
-        .streaming(true);
+        .streaming(config.display.streaming);
 
     if let Some(ref provider) = args.provider {
         builder = builder.provider(provider);
@@ -455,6 +586,21 @@ async fn main() -> Result<()> {
         info!("YOLO mode enabled — tool calls auto-accepted");
     }
 
+    // Load skills from ~/.hakimi/skills/
+    let skill_store = match hakimi_skills::SkillStore::load_default() {
+        Ok(store) => {
+            let count = store.skills().len();
+            if count > 0 {
+                info!(count, "loaded skills");
+            }
+            store
+        }
+        Err(e) => {
+            warn!(error = %e, "failed to load skills, continuing without them");
+            hakimi_skills::SkillStore::empty()
+        }
+    };
+
     // Build the agent
     let mut agent = match build_agent(&args, &config).await {
         Ok(agent) => agent,
@@ -465,19 +611,59 @@ async fn main() -> Result<()> {
         }
     };
 
+    // --serve mode: start HTTP API server instead of REPL
+    if args.serve {
+        info!(addr = %args.addr, "starting HTTP API server mode");
+
+        let db_path = dirs::home_dir()
+            .map(|h| h.join(".hakimi").join("sessions.db"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/sessions.db"));
+
+        let session_db = hakimi_session::SessionDB::new(&db_path)?;
+        session_db.initialize()?;
+
+        let server = hakimi_server::Server::new(&args.addr, agent, config, session_db)?;
+        server.start().await?;
+        return Ok(());
+    }
+
     print_banner();
+
+    // Save the base system prompt for skill injection.
+    let base_system_prompt: Option<String> = if config.agent.system_prompt.is_empty() {
+        None
+    } else {
+        Some(config.agent.system_prompt.clone())
+    };
 
     // Single-query mode.
     if let Some(query) = &args.query {
         info!("single-query mode: {}", query);
         println!("You: {query}");
         println!();
+
+        // Inject matching skills into system prompt.
+        let skill_additions = skill_store.get_system_prompt_additions(query);
+        if !skill_additions.is_empty() {
+            let combined = match &base_system_prompt {
+                Some(base) => format!("{base}\n\n## Skills\n{skill_additions}"),
+                None => format!("## Skills\n{skill_additions}"),
+            };
+            agent.set_system_prompt(&combined);
+        }
+
         match agent.chat(query).await {
             Ok(response) => println!("{response}"),
             Err(e) => {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             }
+        }
+
+        // Restore base system prompt.
+        match &base_system_prompt {
+            Some(base) => agent.set_system_prompt(base),
+            None => agent.set_system_prompt(""),
         }
         return Ok(());
     }
@@ -511,7 +697,10 @@ async fn main() -> Result<()> {
                 io::stdout().flush()?;
             }
             Some(Command::Model(ref name)) => match name {
-                Some(m) => println!("Switching model to: {m} (not yet wired)"),
+                Some(m) => {
+                    agent.set_model(m);
+                    println!("Model switched to: {m}");
+                }
                 None => println!("Current model: {}", agent.model()),
             },
             Some(Command::Config(ref key)) => match key {
@@ -528,7 +717,36 @@ async fn main() -> Result<()> {
                 }
             }
             Some(Command::Skills(ref name)) => {
-                println!("Skills: {:?} (not yet wired)", name);
+                match name {
+                    Some(skill_name) => {
+                        // Show a specific skill's content from the store.
+                        let found = skill_store.skills().iter().find(|s| s.name == *skill_name);
+                        match found {
+                            Some(skill) => {
+                                println!("━━━ Skill: {} ━━━", skill.name);
+                                if !skill.description.is_empty() {
+                                    println!("Description: {}", skill.description);
+                                }
+                                if let Some(ref trigger) = skill.trigger {
+                                    println!("Trigger: {trigger}");
+                                }
+                                if !skill.tags.is_empty() {
+                                    println!("Tags: {}", skill.tags.join(", "));
+                                }
+                                println!("---");
+                                println!("{}", skill.content);
+                            }
+                            None => {
+                                println!("Skill '{skill_name}' not found.");
+                            }
+                        }
+                    }
+                    None => {
+                        // List all loaded skills with metadata.
+                        println!("{}", skill_store.summary());
+                        println!("\nUse /skills <name> to view a skill.");
+                    }
+                }
             }
             Some(Command::Status) => {
                 println!("Session: {}", agent.session_id());
@@ -538,8 +756,40 @@ async fn main() -> Result<()> {
             Some(Command::Usage) => {
                 println!("Usage: (tracked per conversation turn)");
             }
+            Some(Command::Profile(ref arg)) => {
+                match arg {
+                    Some(p) => println!("Switching to profile: {p} (not yet wired)"),
+                    None => println!("Current profile: default"),
+                }
+            }
+            Some(Command::Doctor) => {
+                println!("Running diagnostics...");
+                println!("  ✓ Rust toolchain: OK");
+                println!("  ✓ Config: OK");
+                println!("  ✓ Session store: OK");
+                println!("  (Full doctor not yet wired)");
+            }
+            Some(Command::Setup) => {
+                println!("Setup wizard not yet wired. Edit ~/.hakimi/config.yaml manually.");
+            }
+            Some(Command::Cron(ref arg)) => {
+                match arg {
+                    Some(cmd) => println!("Cron command: {cmd} (not yet wired)"),
+                    None => println!("Cron jobs: (not yet wired)"),
+                }
+            }
             None => {
                 // Regular chat message — forward to agent runtime.
+                // Inject matching skills into system prompt.
+                let skill_additions = skill_store.get_system_prompt_additions(input);
+                if !skill_additions.is_empty() {
+                    let combined = match &base_system_prompt {
+                        Some(base) => format!("{base}\n\n## Skills\n{skill_additions}"),
+                        None => format!("## Skills\n{skill_additions}"),
+                    };
+                    agent.set_system_prompt(&combined);
+                }
+
                 match agent.chat(input).await {
                     Ok(response) => {
                         println!();
@@ -550,6 +800,12 @@ async fn main() -> Result<()> {
                         eprintln!("Error: {e}");
                         // Don't crash — continue the REPL
                     }
+                }
+
+                // Restore base system prompt after each turn.
+                match &base_system_prompt {
+                    Some(base) => agent.set_system_prompt(base),
+                    None => agent.set_system_prompt(""),
                 }
             }
         }

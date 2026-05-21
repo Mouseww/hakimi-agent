@@ -2,6 +2,9 @@
 //!
 //! Provides recurring task scheduling with simple interval expressions
 //! (e.g. "30m", "2h") and standard cron syntax.
+//! Supports SQLite persistent storage with file-based locking.
+
+pub mod persistence;
 
 use std::collections::HashMap;
 

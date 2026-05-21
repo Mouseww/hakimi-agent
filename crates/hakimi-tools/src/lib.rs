@@ -17,6 +17,9 @@ mod builtin_session_search;
 mod builtin_delegate_task;
 mod builtin_skill_manage;
 mod builtin_send_message;
+mod builtin_vision_analyze;
+mod builtin_clarify;
+mod builtin_checkpoint;
 
 pub use trait_def::*;
 pub use registry::*;

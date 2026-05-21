@@ -246,3 +246,206 @@ fn row_to_session_meta(row: &rusqlite::Row) -> rusqlite::Result<SessionMeta> {
         api_call_count: row.get(17)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_db;
+    use hakimi_common::Usage;
+
+    #[test]
+    fn test_create_and_get_session() {
+        let db = test_db();
+        let id = db
+            .create_session("telegram", Some("user1"), Some("gpt-4"), Some("Be helpful"))
+            .unwrap();
+
+        assert!(!id.is_empty());
+
+        let meta = db.get_session(&id).unwrap().expect("session should exist");
+        assert_eq!(meta.id, id);
+        assert_eq!(meta.source.as_deref(), Some("telegram"));
+        assert_eq!(meta.user_id.as_deref(), Some("user1"));
+        assert_eq!(meta.model.as_deref(), Some("gpt-4"));
+        assert_eq!(meta.system_prompt.as_deref(), Some("Be helpful"));
+        assert!(meta.started_at.is_some());
+        assert!(meta.ended_at.is_none());
+        assert_eq!(meta.message_count, 0);
+        assert_eq!(meta.api_call_count, 0);
+    }
+
+    #[test]
+    fn test_create_session_with_none_fields() {
+        let db = test_db();
+        let id = db.create_session("web", None, None, None).unwrap();
+
+        let meta = db.get_session(&id).unwrap().unwrap();
+        assert_eq!(meta.source.as_deref(), Some("web"));
+        assert!(meta.user_id.is_none());
+        assert!(meta.model.is_none());
+        assert!(meta.system_prompt.is_none());
+    }
+
+    #[test]
+    fn test_get_session_not_found() {
+        let db = test_db();
+        let result = db.get_session("nonexistent-id").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_create_multiple_sessions() {
+        let db = test_db();
+        let id1 = db.create_session("telegram", None, None, None).unwrap();
+        let id2 = db.create_session("web", None, None, None).unwrap();
+        assert_ne!(id1, id2);
+
+        let meta1 = db.get_session(&id1).unwrap().unwrap();
+        let meta2 = db.get_session(&id2).unwrap().unwrap();
+        assert_eq!(meta1.source.as_deref(), Some("telegram"));
+        assert_eq!(meta2.source.as_deref(), Some("web"));
+    }
+
+    #[test]
+    fn test_get_recent_sessions_unfiltered() {
+        let db = test_db();
+        db.create_session("telegram", None, None, None).unwrap();
+        db.create_session("web", None, None, None).unwrap();
+        db.create_session("telegram", None, None, None).unwrap();
+
+        let all = db.get_recent_sessions(None, 10).unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn test_get_recent_sessions_filtered_by_source() {
+        let db = test_db();
+        db.create_session("telegram", None, None, None).unwrap();
+        db.create_session("web", None, None, None).unwrap();
+        db.create_session("telegram", None, None, None).unwrap();
+
+        let tg = db.get_recent_sessions(Some("telegram"), 10).unwrap();
+        assert_eq!(tg.len(), 2);
+        for s in &tg {
+            assert_eq!(s.source.as_deref(), Some("telegram"));
+        }
+    }
+
+    #[test]
+    fn test_get_recent_sessions_limit() {
+        let db = test_db();
+        for _ in 0..5 {
+            db.create_session("telegram", None, None, None).unwrap();
+        }
+
+        let limited = db.get_recent_sessions(None, 2).unwrap();
+        assert_eq!(limited.len(), 2);
+    }
+
+    #[test]
+    fn test_get_recent_sessions_empty() {
+        let db = test_db();
+        let sessions = db.get_recent_sessions(None, 10).unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_end_session() {
+        let db = test_db();
+        let id = db.create_session("telegram", None, None, None).unwrap();
+
+        db.end_session(&id, "user_disconnect").unwrap();
+
+        let meta = db.get_session(&id).unwrap().unwrap();
+        assert!(meta.ended_at.is_some());
+        assert_eq!(meta.end_reason.as_deref(), Some("user_disconnect"));
+    }
+
+    #[test]
+    fn test_end_session_not_found() {
+        let db = test_db();
+        let result = db.end_session("nonexistent", "reason");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_session_totals() {
+        let db = test_db();
+        let id = db.create_session("telegram", None, None, None).unwrap();
+
+        let usage = Usage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            cached_tokens: 20,
+            reasoning_tokens: 10,
+        };
+        db.update_session_totals(&id, &usage, 1).unwrap();
+
+        let meta = db.get_session(&id).unwrap().unwrap();
+        assert_eq!(meta.input_tokens, 100);
+        assert_eq!(meta.output_tokens, 50);
+        assert_eq!(meta.cache_read_tokens, 20);
+        assert_eq!(meta.reasoning_tokens, 10);
+        assert_eq!(meta.api_call_count, 1);
+    }
+
+    #[test]
+    fn test_update_session_totals_accumulates() {
+        let db = test_db();
+        let id = db.create_session("telegram", None, None, None).unwrap();
+
+        let usage1 = Usage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            cached_tokens: 20,
+            reasoning_tokens: 10,
+        };
+        let usage2 = Usage {
+            prompt_tokens: 200,
+            completion_tokens: 100,
+            total_tokens: 300,
+            cached_tokens: 40,
+            reasoning_tokens: 30,
+        };
+
+        db.update_session_totals(&id, &usage1, 1).unwrap();
+        db.update_session_totals(&id, &usage2, 2).unwrap();
+
+        let meta = db.get_session(&id).unwrap().unwrap();
+        assert_eq!(meta.input_tokens, 300);
+        assert_eq!(meta.output_tokens, 150);
+        assert_eq!(meta.cache_read_tokens, 60);
+        assert_eq!(meta.reasoning_tokens, 40);
+        assert_eq!(meta.api_call_count, 3);
+    }
+
+    #[test]
+    fn test_update_session_totals_not_found() {
+        let db = test_db();
+        let usage = Usage::default();
+        let result = db.update_session_totals("nonexistent", &usage, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_session_with_parent() {
+        let db = test_db();
+        let parent_id = db.create_session("telegram", None, None, None).unwrap();
+
+        // Manually create a child session referencing the parent
+        let child_id = db.create_session("telegram", None, None, None).unwrap();
+        {
+            let conn = db.conn().lock().unwrap();
+            conn.execute(
+                "UPDATE sessions SET parent_session_id = ?1 WHERE id = ?2",
+                rusqlite::params![parent_id, child_id],
+            )
+            .unwrap();
+        }
+
+        let child = db.get_session(&child_id).unwrap().unwrap();
+        assert_eq!(child.parent_session_id.as_deref(), Some(parent_id.as_str()));
+    }
+}

@@ -1,12 +1,15 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{json, Value as JsonValue};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::Tool;
 
 /// Built-in meta-tool for delegating sub-tasks to child agents.
-/// Currently a placeholder that returns a structured execution plan.
+///
+/// When the parent agent's `ToolContext` includes a `DelegateExecutor`, this
+/// tool spawns a real child agent to accomplish the goal. Otherwise, it returns
+/// a structured plan describing what would happen.
 pub struct DelegateTaskTool;
 
 #[async_trait]
@@ -20,7 +23,9 @@ impl Tool for DelegateTaskTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate a sub-task to a child agent. Provides a structured plan for task decomposition and parallel execution. Currently returns an execution plan; future versions will spawn child agents."
+        "Delegate a sub-task to a child agent. The child agent runs independently with its own \
+         conversation loop, tool access, and timeout. Use this to parallelize work or isolate \
+         sub-tasks."
     }
 
     fn emoji(&self) -> &str {
@@ -44,7 +49,7 @@ impl Tool for DelegateTaskTool {
                     "items": {
                         "type": "string"
                     },
-                    "description": "Optional list of toolset names the child agent should have access to (e.g., ['file', 'shell', 'web']). If omitted, uses default toolsets."
+                    "description": "Optional list of toolset names the child agent should have access to (e.g., ['file', 'shell', 'web']). If omitted, the child agent gets access to all tools."
                 }
             },
             "required": ["goal"]
@@ -67,7 +72,7 @@ impl Tool for DelegateTaskTool {
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect()
             })
-            .unwrap_or_else(|| vec!["file".into(), "shell".into(), "web".into()]);
+            .unwrap_or_default();
 
         debug!(
             goal = %goal,
@@ -77,49 +82,49 @@ impl Tool for DelegateTaskTool {
             "delegating task"
         );
 
-        // Generate a structured execution plan
+        // Attempt to use the delegate executor for real delegation.
+        if let Some(ref executor) = ctx.delegate_executor {
+            match executor.execute_delegation(goal, context, &toolsets).await {
+                Ok(result) => {
+                    let response = json!({
+                        "status": "completed",
+                        "goal": goal,
+                        "result": result,
+                        "parent_session": ctx.session_id,
+                    });
+                    return serde_json::to_string_pretty(&response).map_err(|e| {
+                        HakimiError::Tool(format!("failed to serialize result: {e}"))
+                    });
+                }
+                Err(e) => {
+                    warn!(error = %e, "Child agent delegation failed");
+                    let response = json!({
+                        "status": "failed",
+                        "goal": goal,
+                        "error": format!("{e}"),
+                        "parent_session": ctx.session_id,
+                    });
+                    return serde_json::to_string_pretty(&response).map_err(|e| {
+                        HakimiError::Tool(format!("failed to serialize error: {e}"))
+                    });
+                }
+            }
+        }
+
+        // Fallback: no delegate executor available (e.g., in tests or standalone tools).
+        warn!("No delegate executor available, returning execution plan");
         let plan = json!({
             "status": "planned",
-            "message": "Task delegation is not yet fully implemented. This is a structured plan for future child-agent execution.",
+            "message": "No delegate executor is configured. This is a structured plan for the delegation.",
             "task": {
                 "goal": goal,
                 "context": if context.is_empty() { None } else { Some(context) },
                 "parent_session": ctx.session_id,
                 "assigned_toolsets": toolsets,
             },
-            "execution_plan": {
-                "steps": [
-                    {
-                        "step": 1,
-                        "action": "analyze",
-                        "description": "Analyze the goal and decompose into atomic sub-tasks"
-                    },
-                    {
-                        "step": 2,
-                        "action": "prepare",
-                        "description": "Set up a child agent session with the assigned toolsets"
-                    },
-                    {
-                        "step": 3,
-                        "action": "execute",
-                        "description": "Run the child agent with the goal and context as system instructions"
-                    },
-                    {
-                        "step": 4,
-                        "action": "collect",
-                        "description": "Collect the child agent's result and report back to the parent session"
-                    }
-                ]
-            },
-            "limitations": [
-                "Child agent spawning is not yet implemented",
-                "This tool currently returns a plan only",
-                "Future versions will support actual sub-task execution"
-            ]
         });
 
-        serde_json::to_string_pretty(&plan).map_err(|e| {
-            HakimiError::Tool(format!("failed to serialize plan: {e}"))
-        })
+        serde_json::to_string_pretty(&plan)
+            .map_err(|e| HakimiError::Tool(format!("failed to serialize plan: {e}")))
     }
 }

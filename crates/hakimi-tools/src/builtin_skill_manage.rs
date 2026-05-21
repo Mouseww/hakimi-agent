@@ -224,11 +224,13 @@ mod tests {
     use hakimi_common::ToolContext;
 
     fn test_ctx() -> ToolContext {
-        ToolContext {
-            session_id: "test-session".to_string(),
+ToolContext {
+            session_id: "test".to_string(),
             user_id: None,
             task_id: None,
             workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
         }
     }
 

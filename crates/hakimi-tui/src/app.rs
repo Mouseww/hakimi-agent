@@ -349,3 +349,564 @@ impl App {
         SPINNER_FRAMES[self.spinner_index]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEventKind, KeyEventState};
+
+    /// Helper: create an App with dummy channels. Returns (app, cmd_rx, event_tx)
+    /// so the receivers stay alive for the duration of the test.
+    fn make_app() -> (App, mpsc::UnboundedReceiver<crate::AgentCommand>, mpsc::UnboundedSender<crate::AgentEvent>) {
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        (App::new(cmd_tx, event_rx, "test-model".to_string(), "test-session-123".to_string()), cmd_rx, event_tx)
+    }
+
+    /// Convenience: create just an App (for tests that don't need the channels alive).
+    fn make_app_simple() -> App {
+        make_app().0
+    }
+
+    /// Helper: build a KeyEvent from a KeyCode with no modifiers.
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    /// Helper: build a KeyEvent with a modifier.
+    fn key_with_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // App::new initial state
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn new_app_has_welcome_message() {
+        let app = make_app_simple();
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].role, crate::Role::System);
+        assert!(app.messages[0].content.contains("Welcome"));
+    }
+
+    #[test]
+    fn new_app_has_empty_input() {
+        let (app, _cmd_rx, _event_tx) = make_app();
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    #[test]
+    fn new_app_defaults() {
+        let (app, _cmd_rx, _event_tx) = make_app();
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.show_tools_panel);
+        assert!(!app.is_thinking);
+        assert_eq!(app.spinner_index, 0);
+        assert!(!app.should_quit);
+        assert!(app.tool_activity.is_empty());
+        assert_eq!(app.model_name, "test-model");
+        assert_eq!(app.session_id, "test-session-123");
+        assert_eq!(app.total_tokens, 0);
+        assert_eq!(app.api_calls, 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Character input
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn handle_char_adds_to_input() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('h')));
+        app.handle_key_event(key(KeyCode::Char('i')));
+        assert_eq!(app.input, "hi");
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    #[test]
+    fn handle_char_at_cursor_position() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('c')));
+        // Move cursor left
+        app.handle_key_event(key(KeyCode::Left));
+        // Insert 'b' between 'a' and 'c'
+        app.handle_key_event(key(KeyCode::Char('b')));
+        assert_eq!(app.input, "abc");
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    // ---------------------------------------------------------------
+    // Backspace
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn handle_backspace_removes_char() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('b')));
+        app.handle_key_event(key(KeyCode::Backspace));
+        assert_eq!(app.input, "a");
+        assert_eq!(app.cursor_position, 1);
+    }
+
+    #[test]
+    fn handle_backspace_at_start_is_noop() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Backspace));
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Enter — empty input is ignored
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn empty_input_enter_is_ignored() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        let initial_msg_count = app.messages.len();
+        app.handle_key_event(key(KeyCode::Enter));
+        assert_eq!(app.messages.len(), initial_msg_count);
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn whitespace_only_input_enter_is_ignored() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        let initial_msg_count = app.messages.len();
+        app.handle_key_event(key(KeyCode::Char(' ')));
+        app.handle_key_event(key(KeyCode::Char(' ')));
+        app.handle_key_event(key(KeyCode::Enter));
+        // No new messages should be added (whitespace-only input is ignored)
+        assert_eq!(app.messages.len(), initial_msg_count);
+    }
+
+    // ---------------------------------------------------------------
+    // Enter — sends message and clears input
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn handle_enter_sends_message_and_clears() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('h')));
+        app.handle_key_event(key(KeyCode::Char('i')));
+        app.handle_key_event(key(KeyCode::Enter));
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_position, 0);
+        // Should now have welcome + user message = 2
+        assert_eq!(app.messages.len(), 2);
+        assert_eq!(app.messages[1].role, crate::Role::User);
+        assert_eq!(app.messages[1].content, "hi");
+        assert!(app.is_thinking);
+    }
+
+    // ---------------------------------------------------------------
+    // Scroll
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn scroll_up_increments_offset() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        // Add a few messages so we can scroll
+        app.messages.push(crate::ChatMessage::user("msg1"));
+        app.messages.push(crate::ChatMessage::assistant("msg2"));
+        app.messages.push(crate::ChatMessage::user("msg3"));
+        app.handle_key_event(key(KeyCode::Up));
+        assert_eq!(app.scroll_offset, 1);
+        app.handle_key_event(key(KeyCode::Up));
+        assert_eq!(app.scroll_offset, 2);
+    }
+
+    #[test]
+    fn scroll_up_clamped_at_max() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("msg1"));
+        // Only 2 messages, max_scroll = 1
+        for _ in 0..10 {
+            app.handle_key_event(key(KeyCode::Up));
+        }
+        assert_eq!(app.scroll_offset, 1); // messages.len() - 1
+    }
+
+    #[test]
+    fn scroll_down_decrements_offset() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("msg1"));
+        app.messages.push(crate::ChatMessage::assistant("msg2"));
+        app.messages.push(crate::ChatMessage::user("msg3"));
+        app.scroll_offset = 2;
+        app.handle_key_event(key(KeyCode::Down));
+        assert_eq!(app.scroll_offset, 1);
+        app.handle_key_event(key(KeyCode::Down));
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    #[test]
+    fn scroll_down_floor_at_zero() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.scroll_offset = 0;
+        app.handle_key_event(key(KeyCode::Down));
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Tab — toggle tools panel
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn toggle_tools_panel() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        assert!(app.show_tools_panel);
+        app.handle_key_event(key(KeyCode::Tab));
+        assert!(!app.show_tools_panel);
+        app.handle_key_event(key(KeyCode::Tab));
+        assert!(app.show_tools_panel);
+    }
+
+    // ---------------------------------------------------------------
+    // Slash commands
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn slash_clear_resets_messages() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("hello"));
+        app.messages.push(crate::ChatMessage::assistant("world"));
+        // Type /clear
+        for c in "/clear".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        // Should only have the "Chat history cleared." message
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].role, crate::Role::System);
+        assert!(app.messages[0].content.contains("cleared"));
+        assert!(app.input.is_empty());
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    #[test]
+    fn slash_quit_sets_should_quit() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/quit".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        assert!(app.should_quit);
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn slash_exit_sets_should_quit() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/exit".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn slash_help_shows_help() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/help".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        // welcome + help
+        assert_eq!(app.messages.len(), 2);
+        assert!(app.messages[1].content.contains("/help"));
+    }
+
+    #[test]
+    fn slash_tools_toggles_panel() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        assert!(app.show_tools_panel);
+        for c in "/tools".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        assert!(!app.show_tools_panel);
+    }
+
+    #[test]
+    fn unknown_slash_command_shows_error() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/foobar".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        assert_eq!(app.messages.len(), 2);
+        assert_eq!(app.messages[1].role, crate::Role::Error);
+        assert!(app.messages[1].content.contains("Unknown command"));
+    }
+
+    // ---------------------------------------------------------------
+    // Ctrl+C quits
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn ctrl_c_quits() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key_with_mod(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert!(app.should_quit);
+    }
+
+    // ---------------------------------------------------------------
+    // Ctrl+L resets scroll
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn ctrl_l_resets_scroll() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.scroll_offset = 5;
+        app.handle_key_event(key_with_mod(KeyCode::Char('l'), KeyModifiers::CONTROL));
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Input blocked while thinking
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn input_blocked_while_thinking() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.is_thinking = true;
+        let initial_input = app.input.clone();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        assert_eq!(app.input, initial_input);
+    }
+
+    // ---------------------------------------------------------------
+    // Cursor movement
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn home_moves_cursor_to_start() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('b')));
+        app.handle_key_event(key(KeyCode::Home));
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    #[test]
+    fn end_moves_cursor_to_end() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('b')));
+        app.handle_key_event(key(KeyCode::Home));
+        app.handle_key_event(key(KeyCode::End));
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    #[test]
+    fn left_right_arrow_movement() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('b')));
+        app.handle_key_event(key(KeyCode::Left));
+        assert_eq!(app.cursor_position, 1);
+        app.handle_key_event(key(KeyCode::Right));
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    #[test]
+    fn left_arrow_at_start_is_noop() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Left));
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Delete key
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn delete_removes_char_after_cursor() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('b')));
+        app.handle_key_event(key(KeyCode::Char('c')));
+        app.handle_key_event(key(KeyCode::Home));
+        app.handle_key_event(key(KeyCode::Delete));
+        assert_eq!(app.input, "bc");
+    }
+
+    #[test]
+    fn delete_at_end_is_noop() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Delete));
+        assert_eq!(app.input, "a");
+    }
+
+    // ---------------------------------------------------------------
+    // PageUp / PageDown
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn page_up_scrolls_by_10() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for i in 0..20 {
+            app.messages.push(crate::ChatMessage::user(format!("msg{i}")));
+        }
+        app.handle_key_event(key(KeyCode::PageUp));
+        assert_eq!(app.scroll_offset, 10);
+    }
+
+    #[test]
+    fn page_down_unscrolls_by_10() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.scroll_offset = 15;
+        app.handle_key_event(key(KeyCode::PageDown));
+        assert_eq!(app.scroll_offset, 5);
+    }
+
+    // ---------------------------------------------------------------
+    // Spinner / tick
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn tick_advances_spinner_when_thinking() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.is_thinking = true;
+        let initial = app.spinner_index;
+        app.tick();
+        assert_eq!(app.spinner_index, (initial + 1) % crate::SPINNER_FRAMES.len());
+    }
+
+    #[test]
+    fn tick_noop_when_not_thinking() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.tick();
+        assert_eq!(app.spinner_index, 0);
+    }
+
+    #[test]
+    fn spinner_frame_returns_valid_frame() {
+        let (app, _cmd_rx, _event_tx) = make_app();
+        let frame = app.spinner_frame();
+        assert!(crate::SPINNER_FRAMES.contains(&frame));
+    }
+
+    // ---------------------------------------------------------------
+    // poll_agent_events
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn poll_response_stops_thinking_and_adds_message() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.is_thinking = true;
+
+        event_tx.send(crate::AgentEvent::Response("hello".to_string())).unwrap();
+        app.poll_agent_events();
+
+        assert!(!app.is_thinking);
+        assert_eq!(app.messages.last().unwrap().content, "hello");
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Assistant);
+        assert_eq!(app.api_calls, 1);
+    }
+
+    #[test]
+    fn poll_error_stops_thinking_and_adds_error() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.is_thinking = true;
+
+        event_tx.send(crate::AgentEvent::Error("oops".to_string())).unwrap();
+        app.poll_agent_events();
+
+        assert!(!app.is_thinking);
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Error);
+        assert!(app.messages.last().unwrap().content.contains("oops"));
+    }
+
+    #[test]
+    fn poll_done_stops_thinking() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.is_thinking = true;
+
+        event_tx.send(crate::AgentEvent::Done).unwrap();
+        app.poll_agent_events();
+
+        assert!(!app.is_thinking);
+    }
+
+    #[test]
+    fn poll_tool_call_adds_activity() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+
+        event_tx.send(crate::AgentEvent::ToolCall {
+            name: "bash".to_string(),
+            arguments: "ls -la".to_string(),
+        }).unwrap();
+        app.poll_agent_events();
+
+        assert_eq!(app.tool_activity.len(), 1);
+        assert_eq!(app.tool_activity[0].name, "bash");
+        assert_eq!(app.tool_activity[0].status, crate::ToolStatus::Running);
+    }
+
+    #[test]
+    fn poll_tool_result_updates_activity_status() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+
+        event_tx.send(crate::AgentEvent::ToolCall {
+            name: "bash".to_string(),
+            arguments: "ls".to_string(),
+        }).unwrap();
+        event_tx.send(crate::AgentEvent::ToolResult {
+            name: "bash".to_string(),
+            content: "file.txt".to_string(),
+            is_error: false,
+        }).unwrap();
+        app.poll_agent_events();
+
+        assert_eq!(app.tool_activity.len(), 1);
+        assert_eq!(app.tool_activity[0].status, crate::ToolStatus::Success);
+    }
+
+    #[test]
+    fn poll_tool_result_error_updates_activity_status() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+
+        event_tx.send(crate::AgentEvent::ToolCall {
+            name: "bash".to_string(),
+            arguments: "ls".to_string(),
+        }).unwrap();
+        event_tx.send(crate::AgentEvent::ToolResult {
+            name: "bash".to_string(),
+            content: "permission denied".to_string(),
+            is_error: true,
+        }).unwrap();
+        app.poll_agent_events();
+
+        assert_eq!(app.tool_activity.len(), 1);
+        assert_eq!(app.tool_activity[0].status, crate::ToolStatus::Error);
+    }
+}

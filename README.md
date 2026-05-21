@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-212-passing?style=for-the-badge&color=brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/lines-16K+-orange?style=for-the-badge" alt="Lines">
+  <img src="https://img.shields.io/badge/tests-391-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/lines-21.3K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
 <h1 align="center">🐙 Hakimi Agent</h1>
@@ -36,6 +36,8 @@ Hakimi is a Rust rewrite of the [Hermes Agent](https://github.com/NousResearch/h
 - **Plugin system** for HTTP-based and native tool extensions
 - **ratatui TUI** for a rich terminal experience
 - **SQLite** session storage with full-text search
+- **SmartContextEngine** with 3-tier compression (summarize, truncate, sliding window)
+- **MCP & Plugin systems** wired into CLI for extensibility
 
 ## Quick Start
 
@@ -62,7 +64,10 @@ On first run, Hakimi creates `~/.hakimi/config.yaml` with sensible defaults. Edi
 
 ## Architecture
 
-Hakimi is a **Cargo workspace** with 13 crates, each with a single responsibility:
+Hakimi is a **Cargo workspace** with 13 crates, each with a single responsibility.
+The context engine (`hakimi-context`) features a **SmartContextEngine** with 3-tier
+compression — summarization, truncation, and sliding window — to keep conversations
+within token limits without losing critical information.
 
 ```
 hakimi-agent/
@@ -97,6 +102,7 @@ User Message
 │  4. If text response → return               │
 │  5. Retry on transient errors (backoff)     │
 │  6. Compress context if near limit          │
+│     └─ SmartContextEngine 3-tier compression │
 └─────────────────────────────────────────────┘
     │
     ▼
@@ -283,7 +289,7 @@ Load `.so`/`.dylib` dynamic libraries that implement the `Plugin` trait.
 # Build everything
 cargo build --workspace
 
-# Run all tests (212 tests)
+# Run all tests (310 tests)
 cargo test --workspace
 
 # Run with debug logging
@@ -299,20 +305,20 @@ cargo clippy --workspace
 ### Test Coverage
 
 ```
-212 tests passing across 13 crates
-├── hakimi-common:     3 tests
-├── hakimi-config:     0 tests
-├── hakimi-context:   12 tests
-├── hakimi-core:       0 tests
-├── hakimi-cron:       4 tests
-├── hakimi-gateway:   24 tests (Telegram: 9, Discord: 6, Slack: 9)
-├── hakimi-mcp:       13 tests
-├── hakimi-plugin:     4 tests
-├── hakimi-session:    0 tests
-├── hakimi-tools:     42+ tests
-├── hakimi-transports: 40+ tests (ChatCompletions, Anthropic, Streaming)
-├── hakimi-cli:        1 test
-└── hakimi-tui:        0 tests
+310 tests passing across 13 crates
+├── hakimi-common:      22 tests
+├── hakimi-config:       6 tests
+├── hakimi-context:     25 tests (SmartContextEngine)
+├── hakimi-core:         16 tests + 21 integration tests
+├── hakimi-cron:          4 tests
+├── hakimi-gateway:      24 tests (Telegram, Discord, Slack)
+├── hakimi-mcp:          13 tests
+├── hakimi-plugin:        4 tests
+├── hakimi-session:      36 tests (SQLite WAL + FTS5)
+├── hakimi-tools:         95 tests
+├── hakimi-transports:    43 tests (ChatCompletions, Anthropic, Streaming)
+├── hakimi-cli:            1 test
+└── hakimi-tui:            0 tests
 ```
 
 ## Roadmap
@@ -326,13 +332,24 @@ cargo clippy --workspace
 - [x] Plugin system (HTTP tools)
 - [x] ratatui TUI
 - [x] SQLite session storage with FTS5
-- [ ] Context compression (summarization-based)
+- [x] Context compression (SmartContextEngine — 3-tier)
+- [x] MCP & Plugin systems wired into CLI
 - [ ] Skill system (load SKILL.md files)
 - [ ] Delegated sub-agents
 - [ ] WASM plugin runtime
 - [ ] Web UI dashboard
 - [ ] Voice input/output
 - [ ] Multi-agent orchestration
+
+## Recent Changes
+
+- **SmartContextEngine** — 3-tier context compression (summarize, truncate, sliding window)
+- **hakimi-session** — jumped from 0 to 36 tests with full SQLite/FTS5 coverage
+- **MCP & Plugin systems** — now wired into CLI (`hakimi-cli`)
+- **hakimi-tools** — expanded to 95 tests (up from 42+)
+- **hakimi-common** — expanded to 22 tests (up from 3)
+- **Total tests** — 310 passing (up from 212)
+- **Total lines** — 18,700+ Rust LOC (up from 16,478)
 
 ## Comparison with Hermes (Python)
 
