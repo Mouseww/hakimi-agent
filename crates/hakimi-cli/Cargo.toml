@@ -39,6 +39,8 @@ dialoguer = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = "3"
 uuid = { workspace = true }
+flate2 = "1"
+tar = "0.4"
 
 [dev-dependencies]
 chrono = { workspace = true }

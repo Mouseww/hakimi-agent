@@ -65,6 +65,10 @@ pub struct Args {
     /// Run the interactive setup wizard.
     #[arg(long)]
     pub setup: bool,
+
+    /// Self-update: download and install the latest release from GitHub.
+    #[arg(long)]
+    pub update: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -790,6 +794,113 @@ fn handle_plugins_command(arg: Option<&str>) {
 // Public entry point
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Self-update
+// ---------------------------------------------------------------------------
+
+const REPO: &str = "Mouseww/hakimi-agent";
+
+async fn self_update() -> Result<()> {
+    use std::env;
+    use std::fs;
+
+    let current_version = env!("CARGO_PKG_VERSION");
+    println!("Current version: v{current_version}");
+    println!("Checking for updates...");
+
+    // Detect platform
+    let os = env::consts::OS;
+    let arch = env::consts::ARCH;
+    let (platform, ext) = match os {
+        "linux" => ("unknown-linux-musl", "tar.gz"),
+        "macos" => ("apple-darwin", "tar.gz"),
+        _ => anyhow::bail!("Self-update not supported on this OS. Use the install script."),
+    };
+    let arch_str = match arch {
+        "x86_64" => "x86_64",
+        "aarch64" => "aarch64",
+        _ => anyhow::bail!("Unsupported architecture: {arch}"),
+    };
+
+    let url = format!(
+        "https://github.com/{REPO}/releases/latest/download/hakimi-{arch_str}-{platform}.{ext}"
+    );
+    println!("Downloading: {url}");
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()?;
+
+    let resp = client.get(&url).send().await?;
+    if !resp.status().is_success() {
+        anyhow::bail!("Download failed: HTTP {}", resp.status());
+    }
+
+    let bytes = resp.bytes().await?;
+    println!("Downloaded {} bytes", bytes.len());
+
+    // Extract tar.gz in memory
+    let tar_bytes = bytes.clone();
+    let decoder = flate2::read::GzDecoder::new(&tar_bytes[..]);
+    let mut archive = tar::Archive::new(decoder);
+
+    // Find the hakimi binary in the archive
+    let mut binary_data: Option<Vec<u8>> = None;
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?;
+        if path.file_name().map(|n| n == "hakimi").unwrap_or(false) {
+            let mut buf = Vec::new();
+            use std::io::Read;
+            entry.read_to_end(&mut buf)?;
+            binary_data = Some(buf);
+            break;
+        }
+    }
+
+    let binary_data = binary_data.ok_or_else(|| anyhow::anyhow!("Binary 'hakimi' not found in archive"))?;
+
+    // Determine current binary path
+    let current_exe = env::current_exe()?;
+    let backup_path = format!("{}.bak", current_exe.display());
+
+    // Backup current binary
+    fs::copy(&current_exe, &backup_path)?;
+    println!("Backed up current binary to {backup_path}");
+
+    // Write new binary
+    fs::write(&current_exe, &binary_data)?;
+
+    // Set executable permissions (Unix)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&current_exe, fs::Permissions::from_mode(0o755))?;
+    }
+
+    // Verify new binary works
+    let output = std::process::Command::new(&current_exe)
+        .arg("--version")
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let version = String::from_utf8_lossy(&o.stdout);
+            println!("✅ Updated successfully! {version}");
+            // Clean up backup
+            let _ = fs::remove_file(&backup_path);
+        }
+        _ => {
+            // Restore backup
+            eprintln!("⚠️  New binary failed verification. Restoring backup...");
+            fs::copy(&backup_path, &current_exe)?;
+            anyhow::bail!("Update failed — previous version restored.");
+        }
+    }
+
+    Ok(())
+}
+
 /// Main entry point for the Hakimi Agent CLI.
 ///
 /// Parses CLI arguments, loads configuration, builds the agent, and enters
@@ -825,6 +936,11 @@ pub async fn run() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // --update mode: self-update from GitHub releases and exit.
+    if args.update {
+        return self_update().await;
     }
 
     // Load skills from ~/.hakimi/skills/
