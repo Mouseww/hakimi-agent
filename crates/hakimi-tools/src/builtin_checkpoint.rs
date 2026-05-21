@@ -706,7 +706,7 @@ mod tests {
         let schema = tool.schema();
         let action_prop = &schema["properties"]["action"];
         assert_eq!(action_prop["type"], "string");
-        assert!(action_prop["description"].as_str().unwrap().len() > 0);
+        assert!(!action_prop["description"].as_str().unwrap().is_empty());
     }
 
     #[tokio::test]
