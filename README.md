@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-391-passing?style=for-the-badge&color=brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/lines-21.3K+-orange?style=for-the-badge" alt="Lines">
+  <img src="https://img.shields.io/badge/lines-29.1K++-orange?style=for-the-badge" alt="Lines">
 </p>
 
 <h1 align="center">🐙 Hakimi Agent</h1>
