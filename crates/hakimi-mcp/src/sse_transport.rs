@@ -14,7 +14,7 @@ use crate::protocol::*;
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 const CLIENT_NAME: &str = "hakimi-agent";
-const CLIENT_VERSION: &str = "0.1.0";
+const CLIENT_VERSION: &str = "0.2.1";
 
 /// Configuration for reconnection behavior.
 #[derive(Debug, Clone)]

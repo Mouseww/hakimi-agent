@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_response_deserialization() {
-        let json_str = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{},"serverInfo":{"name":"test","version":"0.1.0"}}}"#;
+        let json_str = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{},"serverInfo":{"name":"test","version":"0.2.1"}}}"#;
         let resp: JsonRpcResponse = serde_json::from_str(json_str).unwrap();
         assert_eq!(resp.id, 1);
         assert!(resp.error.is_none());

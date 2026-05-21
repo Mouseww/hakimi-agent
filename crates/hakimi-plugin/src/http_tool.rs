@@ -184,7 +184,7 @@ impl Plugin for HttpToolPlugin {
     }
 
     fn version(&self) -> &str {
-        "0.1.0"
+        "0.2.1"
     }
 
     fn description(&self) -> &str {

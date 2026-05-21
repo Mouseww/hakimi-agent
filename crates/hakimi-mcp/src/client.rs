@@ -19,7 +19,7 @@ const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
 /// Client name advertised to MCP servers.
 const CLIENT_NAME: &str = "hakimi-agent";
-const CLIENT_VERSION: &str = "0.1.0";
+const CLIENT_VERSION: &str = "0.2.1";
 
 /// An MCP client that communicates with an MCP server over stdio.
 pub struct McpClient {
@@ -335,7 +335,7 @@ mod tests {
             capabilities: ClientCapabilities { roots: None },
             client_info: ClientInfo {
                 name: "test".to_string(),
-                version: "0.1.0".to_string(),
+                version: "0.2.1".to_string(),
             },
         };
         let v = json!(params);
