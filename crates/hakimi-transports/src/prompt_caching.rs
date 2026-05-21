@@ -6,7 +6,7 @@
 //! See: <https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching>
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 
 /// Cache control directive for Anthropic prompt caching.
 ///

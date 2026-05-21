@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::fs;
 use tracing::debug;
 
@@ -34,7 +34,9 @@ impl MemoryTool {
             return dir.clone();
         }
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-        std::path::PathBuf::from(home).join(".hakimi").join("memory")
+        std::path::PathBuf::from(home)
+            .join(".hakimi")
+            .join("memory")
     }
 
     /// Resolve the file path for a given target.
@@ -128,7 +130,10 @@ impl Tool for MemoryTool {
         // Ensure memory directory exists
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent).await.map_err(|e| {
-                HakimiError::Tool(format!("failed to create memory directory '{}': {e}", parent.display()))
+                HakimiError::Tool(format!(
+                    "failed to create memory directory '{}': {e}",
+                    parent.display()
+                ))
             })?;
         }
 
@@ -147,9 +152,9 @@ impl Tool for MemoryTool {
                     format!("{existing}\n{content}\n")
                 };
 
-                fs::write(&file_path, &new_content).await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to write memory file: {e}"))
-                })?;
+                fs::write(&file_path, &new_content)
+                    .await
+                    .map_err(|e| HakimiError::Tool(format!("failed to write memory file: {e}")))?;
 
                 Ok(format!(
                     "Added content to {target} memory ({}).",
@@ -161,9 +166,9 @@ impl Tool for MemoryTool {
                     HakimiError::Tool("'content' is required for the 'replace' action".into())
                 })?;
 
-                fs::write(&file_path, format!("{content}\n")).await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to write memory file: {e}"))
-                })?;
+                fs::write(&file_path, format!("{content}\n"))
+                    .await
+                    .map_err(|e| HakimiError::Tool(format!("failed to write memory file: {e}")))?;
 
                 Ok(format!(
                     "Replaced {target} memory content ({}).",
@@ -193,9 +198,9 @@ impl Tool for MemoryTool {
                 }
 
                 let new_content = existing.replace(old_text, "");
-                fs::write(&file_path, &new_content).await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to write memory file: {e}"))
-                })?;
+                fs::write(&file_path, &new_content)
+                    .await
+                    .map_err(|e| HakimiError::Tool(format!("failed to write memory file: {e}")))?;
 
                 Ok(format!(
                     "Removed matching text from {target} memory ({}).",

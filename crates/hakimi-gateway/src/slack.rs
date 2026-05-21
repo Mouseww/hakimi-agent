@@ -67,27 +67,19 @@ struct SlackMessage {
 pub enum SlackBlock {
     /// A simple section with Markdown text.
     #[serde(rename = "section")]
-    Section {
-        text: SlackTextObject,
-    },
+    Section { text: SlackTextObject },
     /// A divider line.
     #[serde(rename = "divider")]
     Divider,
     /// A header block.
     #[serde(rename = "header")]
-    Header {
-        text: SlackPlainTextObject,
-    },
+    Header { text: SlackPlainTextObject },
     /// A context block (small muted text / images).
     #[serde(rename = "context")]
-    Context {
-        elements: Vec<SlackTextObject>,
-    },
+    Context { elements: Vec<SlackTextObject> },
     /// A markdown-formatted rich text block.
     #[serde(rename = "rich_text")]
-    RichText {
-        elements: Vec<serde_json::Value>,
-    },
+    RichText { elements: Vec<serde_json::Value> },
 }
 
 /// A Slack text object (mrkdwn or plain_text).
@@ -174,9 +166,7 @@ impl SlackAdapter {
     /// Create a new Slack adapter from a config.
     pub fn new(config: SlackAdapterConfig) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let base_url = config
-            .base_url
-            .unwrap_or_else(|| SLACK_API_BASE.to_owned());
+        let base_url = config.base_url.unwrap_or_else(|| SLACK_API_BASE.to_owned());
         Self {
             token: config.token,
             bot_id: config.bot_id,

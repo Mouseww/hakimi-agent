@@ -4,7 +4,7 @@
 
 use crate::{CronJob, CronSchedule, CronScheduler};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
 use std::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -92,12 +92,10 @@ impl PersistentCronStore {
                 let next_run: Option<String> = row.get(7)?;
 
                 let schedule = match schedule_type.as_str() {
-                    "minutes" => CronSchedule::IntervalMinutes(
-                        schedule_value.parse().unwrap_or(60),
-                    ),
-                    "hours" => CronSchedule::IntervalHours(
-                        schedule_value.parse().unwrap_or(1),
-                    ),
+                    "minutes" => {
+                        CronSchedule::IntervalMinutes(schedule_value.parse().unwrap_or(60))
+                    }
+                    "hours" => CronSchedule::IntervalHours(schedule_value.parse().unwrap_or(1)),
                     _ => CronSchedule::CronExpr(schedule_value),
                 };
 
@@ -107,8 +105,16 @@ impl PersistentCronStore {
                     schedule,
                     prompt,
                     enabled: enabled != 0,
-                    last_run: last_run.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
-                    next_run: next_run.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+                    last_run: last_run.and_then(|s| {
+                        DateTime::parse_from_rfc3339(&s)
+                            .ok()
+                            .map(|dt| dt.with_timezone(&Utc))
+                    }),
+                    next_run: next_run.and_then(|s| {
+                        DateTime::parse_from_rfc3339(&s)
+                            .ok()
+                            .map(|dt| dt.with_timezone(&Utc))
+                    }),
                 })
             })?
             .filter_map(|r| r.ok())
@@ -221,7 +227,11 @@ mod tests {
         let db_path = tmp.path().join("test_cron.db");
         let store = PersistentCronStore::open(&db_path).unwrap();
 
-        let job = CronJob::new("test-job", CronSchedule::IntervalMinutes(30), "do something");
+        let job = CronJob::new(
+            "test-job",
+            CronSchedule::IntervalMinutes(30),
+            "do something",
+        );
         let id = job.id.clone();
         store.save_job(&job).unwrap();
 
@@ -266,8 +276,12 @@ mod tests {
         let db_path = tmp.path().join("test_cron.db");
         let store = PersistentCronStore::open(&db_path).unwrap();
 
-        store.save_job(&CronJob::new("j1", CronSchedule::IntervalMinutes(10), "p1")).unwrap();
-        store.save_job(&CronJob::new("j2", CronSchedule::IntervalHours(2), "p2")).unwrap();
+        store
+            .save_job(&CronJob::new("j1", CronSchedule::IntervalMinutes(10), "p1"))
+            .unwrap();
+        store
+            .save_job(&CronJob::new("j2", CronSchedule::IntervalHours(2), "p2"))
+            .unwrap();
 
         let scheduler = store.load_into_scheduler().unwrap();
         assert_eq!(scheduler.list().len(), 2);
@@ -282,13 +296,25 @@ mod tests {
         {
             let store = PersistentCronStore::open(&db_path).unwrap();
             store
-                .save_job(&CronJob::new("job-a", CronSchedule::IntervalMinutes(15), "prompt-a"))
+                .save_job(&CronJob::new(
+                    "job-a",
+                    CronSchedule::IntervalMinutes(15),
+                    "prompt-a",
+                ))
                 .unwrap();
             store
-                .save_job(&CronJob::new("job-b", CronSchedule::IntervalHours(3), "prompt-b"))
+                .save_job(&CronJob::new(
+                    "job-b",
+                    CronSchedule::IntervalHours(3),
+                    "prompt-b",
+                ))
                 .unwrap();
             store
-                .save_job(&CronJob::new("job-c", CronSchedule::CronExpr("*/5 * * * *".into()), "prompt-c"))
+                .save_job(&CronJob::new(
+                    "job-c",
+                    CronSchedule::CronExpr("*/5 * * * *".into()),
+                    "prompt-c",
+                ))
                 .unwrap();
         }
 
@@ -550,7 +576,11 @@ mod tests {
         std::fs::create_dir_all(&nested_dir).unwrap();
         let db_path = nested_dir.join("cron.db");
         let store = PersistentCronStore::open(&db_path);
-        assert!(store.is_ok(), "should open in nested dirs: {:?}", store.err());
+        assert!(
+            store.is_ok(),
+            "should open in nested dirs: {:?}",
+            store.err()
+        );
         assert!(db_path.exists());
     }
 

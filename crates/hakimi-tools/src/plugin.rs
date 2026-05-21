@@ -21,7 +21,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::process::Command;
 use tracing::{debug, info, warn};
 
@@ -177,9 +177,10 @@ impl Tool for CommandPluginTool {
         // Write arguments to stdin.
         if let Some(ref mut stdin) = child.stdin {
             use tokio::io::AsyncWriteExt;
-            stdin.write_all(args_json.as_bytes()).await.map_err(|e| {
-                HakimiError::Tool(format!("failed to write to plugin stdin: {e}"))
-            })?;
+            stdin
+                .write_all(args_json.as_bytes())
+                .await
+                .map_err(|e| HakimiError::Tool(format!("failed to write to plugin stdin: {e}")))?;
             // Close stdin to signal end of input.
             drop(child.stdin.take());
         }
@@ -194,7 +195,10 @@ impl Tool for CommandPluginTool {
                 ))
             })?
             .map_err(|e| {
-                HakimiError::Tool(format!("plugin '{}' execution failed: {e}", self.manifest.name))
+                HakimiError::Tool(format!(
+                    "plugin '{}' execution failed: {e}",
+                    self.manifest.name
+                ))
             })?;
 
         if !output.status.success() {
@@ -327,10 +331,7 @@ impl PluginManager {
 
         // Verify the command exists.
         if !std::path::Path::new(&command_path).exists() {
-            return Err(format!(
-                "plugin command does not exist: {}",
-                command_path
-            ));
+            return Err(format!("plugin command does not exist: {}", command_path));
         }
 
         info!(
@@ -443,7 +444,7 @@ echo "{\"result\": \"echo: $INPUT\"}"
         };
 
         let tool = CommandPluginTool::new(manifest, script_path.to_string_lossy().to_string());
-let ctx = ToolContext {
+        let ctx = ToolContext {
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,
@@ -452,10 +453,7 @@ let ctx = ToolContext {
             delegate_executor: None,
         };
 
-        let result = tool
-            .execute(&json!({"msg": "hello"}), &ctx)
-            .await
-            .unwrap();
+        let result = tool.execute(&json!({"msg": "hello"}), &ctx).await.unwrap();
         assert!(result.contains("echo:"));
     }
 }

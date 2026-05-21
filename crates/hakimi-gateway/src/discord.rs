@@ -126,7 +126,11 @@ impl DiscordAdapter {
     }
 
     /// Convenience constructor — create an adapter with just a token and channel.
-    pub fn from_token_and_channel(bot_id: impl Into<String>, token: impl Into<String>, channel_id: impl Into<String>) -> Self {
+    pub fn from_token_and_channel(
+        bot_id: impl Into<String>,
+        token: impl Into<String>,
+        channel_id: impl Into<String>,
+    ) -> Self {
         Self::new(DiscordAdapterConfig {
             token: token.into(),
             bot_id: bot_id.into(),
@@ -193,7 +197,10 @@ impl DiscordAdapter {
                 anyhow::bail!("Discord API error {}: {}", status, text);
             }
 
-            return resp.json().await.context("failed to parse Discord response");
+            return resp
+                .json()
+                .await
+                .context("failed to parse Discord response");
         }
     }
 
@@ -244,7 +251,10 @@ impl DiscordAdapter {
                 anyhow::bail!("Discord API error {}: {}", status, text);
             }
 
-            return resp.json().await.context("failed to parse Discord response");
+            return resp
+                .json()
+                .await
+                .context("failed to parse Discord response");
         }
     }
 
@@ -265,10 +275,7 @@ impl DiscordAdapter {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
 
-                let url = format!(
-                    "{}/channels/{}/messages?limit=50",
-                    base_url, channel_id
-                );
+                let url = format!("{}/channels/{}/messages?limit=50", base_url, channel_id);
 
                 let resp = match client
                     .get(&url)

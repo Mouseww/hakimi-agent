@@ -4,23 +4,23 @@
 //! Telegram, etc.) and a central [`Gateway`] that routes inbound messages
 //! to the agent runtime.
 
+mod dingtalk;
 mod discord;
+mod matrix;
+mod signal;
 mod slack;
 mod telegram;
 mod webhook;
-mod signal;
-mod matrix;
 mod wecom;
-mod dingtalk;
 
+pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 pub use discord::{DiscordAdapter, DiscordAdapterConfig, DiscordEmbed};
+pub use matrix::{MatrixAdapter, MatrixAdapterConfig};
+pub use signal::{SignalAdapter, SignalAdapterConfig};
 pub use slack::{SlackAdapter, SlackAdapterConfig, SlackBlock, SlackTextObject};
 pub use telegram::TelegramAdapter;
 pub use webhook::{WebhookAdapter, WebhookAdapterConfig};
-pub use signal::{SignalAdapter, SignalAdapterConfig};
-pub use matrix::{MatrixAdapter, MatrixAdapterConfig};
 pub use wecom::{WeComAdapter, WeComAdapterConfig};
-pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -76,7 +76,12 @@ pub trait PlatformAdapter: Send + Sync {
 
     /// Edit an existing message (for streaming progressive updates).
     /// Returns Ok(message_id) on success, Err if not supported.
-    async fn edit_message(&self, _chat_id: &str, _message_id: i64, _text: &str) -> anyhow::Result<()> {
+    async fn edit_message(
+        &self,
+        _chat_id: &str,
+        _message_id: i64,
+        _text: &str,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -153,13 +158,24 @@ impl Gateway {
             .adapters
             .iter()
             .find(|a| a.name() == msg.platform && a.bot_id() == msg.bot_id)
-            .ok_or_else(|| anyhow::anyhow!("no adapter for platform '{}' with bot_id '{}'", msg.platform, msg.bot_id))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no adapter for platform '{}' with bot_id '{}'",
+                    msg.platform,
+                    msg.bot_id
+                )
+            })?;
 
         adapter.send_message(&msg.chat_id, &msg.text).await
     }
 
     /// Send a chat action (e.g. "typing") to the correct adapter by bot_id.
-    pub async fn send_chat_action(&self, bot_id: &str, chat_id: &str, action: &str) -> anyhow::Result<()> {
+    pub async fn send_chat_action(
+        &self,
+        bot_id: &str,
+        chat_id: &str,
+        action: &str,
+    ) -> anyhow::Result<()> {
         for adapter in &self.adapters {
             if adapter.bot_id() == bot_id {
                 return adapter.send_chat_action(chat_id, action).await;
@@ -181,7 +197,11 @@ impl Gateway {
     /// taken and merged into a single stream.
     pub fn take_all_receivers(
         &mut self,
-    ) -> Vec<(String, String, tokio::sync::mpsc::UnboundedReceiver<GatewayMessage>)> {
+    ) -> Vec<(
+        String,
+        String,
+        tokio::sync::mpsc::UnboundedReceiver<GatewayMessage>,
+    )> {
         let mut receivers = Vec::new();
         for adapter in &mut self.adapters {
             let name = adapter.name().to_owned();

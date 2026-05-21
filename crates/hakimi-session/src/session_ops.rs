@@ -45,20 +45,50 @@ pub trait SessionOps {
 
     fn get_session(&self, id: &str) -> Result<Option<SessionMeta>>;
 
-    fn update_session_totals(
-        &self,
-        id: &str,
-        usage: &Usage,
-        api_calls: i32,
-    ) -> Result<()>;
+    fn update_session_totals(&self, id: &str, usage: &Usage, api_calls: i32) -> Result<()>;
 
     fn end_session(&self, id: &str, reason: &str) -> Result<()>;
 
-    fn get_recent_sessions(
+    fn set_title(&self, session_id: &str, title: &str) -> Result<()>;
+
+    fn get_session_with_messages(
         &self,
-        source: Option<&str>,
-        limit: i64,
-    ) -> Result<Vec<SessionMeta>>;
+        session_id: &str,
+        max_messages: Option<usize>,
+    ) -> Result<Option<(SessionMeta, Vec<hakimi_common::Message>)>>;
+
+    fn get_recent_sessions(&self, source: Option<&str>, limit: i64) -> Result<Vec<SessionMeta>>;
+}
+
+/// Generate a concise session title from the conversation messages.
+///
+/// Strategy: take the first user message, clean it up, truncate to ~60 chars.
+pub fn generate_session_title(messages: &[hakimi_common::Message]) -> String {
+    const MAX_LEN: usize = 60;
+
+    let first_user = messages
+        .iter()
+        .find(|m| m.role == hakimi_common::MessageRole::User);
+
+    let content = match first_user.and_then(|m| m.content.as_deref()) {
+        Some(c) => c,
+        None => return "Untitled session".to_string(),
+    };
+
+    // Collapse whitespace and newlines
+    let cleaned: String = content.split_whitespace().collect::<Vec<&str>>().join(" ");
+
+    if cleaned.len() <= MAX_LEN {
+        cleaned
+    } else {
+        // Truncate at word boundary
+        let truncated = &cleaned[..MAX_LEN];
+        if let Some(last_space) = truncated.rfind(' ') {
+            format!("{}...", &truncated[..last_space])
+        } else {
+            format!("{}...", truncated)
+        }
+    }
 }
 
 impl SessionOps for SessionDB {
@@ -129,12 +159,7 @@ impl SessionOps for SessionDB {
     }
 
     /// Increment token usage and API call counters for a session.
-    fn update_session_totals(
-        &self,
-        id: &str,
-        usage: &Usage,
-        api_calls: i32,
-    ) -> Result<()> {
+    fn update_session_totals(&self, id: &str, usage: &Usage, api_calls: i32) -> Result<()> {
         let conn = self.conn().lock().unwrap();
         let updated = conn
             .execute(
@@ -180,12 +205,40 @@ impl SessionOps for SessionDB {
         Ok(())
     }
 
-    /// List recent sessions, optionally filtered by source.
-    fn get_recent_sessions(
+    fn set_title(&self, session_id: &str, title: &str) -> Result<()> {
+        let conn = self.conn().lock().unwrap();
+        let updated = conn
+            .execute(
+                "UPDATE sessions SET title = ?2 WHERE id = ?1",
+                params![session_id, title],
+            )
+            .context("Failed to set session title")?;
+
+        if updated == 0 {
+            anyhow::bail!("Session {session_id} not found for set_title");
+        }
+        Ok(())
+    }
+
+    fn get_session_with_messages(
         &self,
-        source: Option<&str>,
-        limit: i64,
-    ) -> Result<Vec<SessionMeta>> {
+        session_id: &str,
+        max_messages: Option<usize>,
+    ) -> Result<Option<(SessionMeta, Vec<hakimi_common::Message>)>> {
+        use crate::message_ops::MessageOps;
+
+        let meta = self.get_session(session_id)?;
+        let meta = match meta {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+
+        let messages = self.restore_session(session_id, max_messages)?;
+        Ok(Some((meta, messages)))
+    }
+
+    /// List recent sessions, optionally filtered by source.
+    fn get_recent_sessions(&self, source: Option<&str>, limit: i64) -> Result<Vec<SessionMeta>> {
         let conn = self.conn().lock().unwrap();
 
         let sql = match source {
@@ -205,7 +258,9 @@ impl SessionOps for SessionDB {
             }
         };
 
-        let mut stmt = conn.prepare(sql).context("Failed to prepare get_recent_sessions")?;
+        let mut stmt = conn
+            .prepare(sql)
+            .context("Failed to prepare get_recent_sessions")?;
 
         let rows = if source.is_some() {
             stmt.query_map(params![source.unwrap(), limit], row_to_session_meta)
@@ -447,5 +502,93 @@ mod tests {
 
         let child = db.get_session(&child_id).unwrap().unwrap();
         assert_eq!(child.parent_session_id.as_deref(), Some(parent_id.as_str()));
+    }
+
+    #[test]
+    fn test_set_title() {
+        let db = test_db();
+        let id = db.create_session("telegram", None, None, None).unwrap();
+
+        db.set_title(&id, "My Chat Session").unwrap();
+
+        let meta = db.get_session(&id).unwrap().unwrap();
+        assert_eq!(meta.title.as_deref(), Some("My Chat Session"));
+    }
+
+    #[test]
+    fn test_set_title_not_found() {
+        let db = test_db();
+        let result = db.set_title("nonexistent", "title");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_generate_title_short_message() {
+        let messages = vec![
+            hakimi_common::Message::system("You are helpful."),
+            hakimi_common::Message::user("Hello, how are you?"),
+        ];
+        let title = super::generate_session_title(&messages);
+        assert_eq!(title, "Hello, how are you?");
+    }
+
+    #[test]
+    fn test_generate_title_long_message() {
+        let long = "What is the meaning of life and everything in the universe and beyond the stars and galaxies far away";
+        let messages = vec![hakimi_common::Message::user(long)];
+        let title = super::generate_session_title(&messages);
+        assert!(title.len() <= 63); // 60 + "..."
+        assert!(title.ends_with("..."));
+    }
+
+    #[test]
+    fn test_generate_title_multiline() {
+        let messages = vec![hakimi_common::Message::user(
+            "Hello\nworld\nhow\nare\nyou\ndoing\ntoday\nin\nthis\nbeautiful\nworld",
+        )];
+        let title = super::generate_session_title(&messages);
+        assert!(!title.contains('\n'));
+        assert_eq!(
+            title,
+            "Hello world how are you doing today in this beautiful world"
+        );
+    }
+
+    #[test]
+    fn test_generate_title_empty_messages() {
+        let messages: Vec<hakimi_common::Message> = vec![];
+        let title = super::generate_session_title(&messages);
+        assert_eq!(title, "Untitled session");
+    }
+
+    #[test]
+    fn test_get_session_with_messages() {
+        use crate::message_ops::MessageOps;
+
+        let db = test_db();
+        let id = db.create_session("telegram", None, None, None).unwrap();
+
+        db.save_message(&id, &hakimi_common::Message::user("Hello"))
+            .unwrap();
+        db.save_message(&id, &hakimi_common::Message::assistant("Hi there!"))
+            .unwrap();
+        db.save_message(&id, &hakimi_common::Message::user("How are you?"))
+            .unwrap();
+
+        let result = db.get_session_with_messages(&id, None).unwrap();
+        assert!(result.is_some());
+
+        let (meta, messages) = result.unwrap();
+        assert_eq!(meta.id, id);
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].content.as_deref(), Some("Hello"));
+        assert_eq!(messages[2].content.as_deref(), Some("How are you?"));
+    }
+
+    #[test]
+    fn test_get_session_with_messages_not_found() {
+        let db = test_db();
+        let result = db.get_session_with_messages("nonexistent", None).unwrap();
+        assert!(result.is_none());
     }
 }

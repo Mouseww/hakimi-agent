@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::{debug, warn};
 
 use crate::Tool;
@@ -64,11 +64,12 @@ impl Tool for VisionAnalyzeTool {
         debug!(image_url = %image_url, question = %question, "vision_analyze request");
 
         // Determine if this is a URL or a local file path.
-        let (image_bytes, mime_type) = if image_url.starts_with("http://") || image_url.starts_with("https://") {
-            download_image(image_url).await?
-        } else {
-            load_local_image(image_url)?
-        };
+        let (image_bytes, mime_type) =
+            if image_url.starts_with("http://") || image_url.starts_with("https://") {
+                download_image(image_url).await?
+            } else {
+                load_local_image(image_url)?
+            };
 
         // Encode as base64.
         use base64::Engine;
@@ -95,7 +96,8 @@ impl Tool for VisionAnalyzeTool {
                 "Image loaded ({} bytes, {}). Ask the vision model: {}",
                 image_bytes.len(), mime_type, question
             )
-        }).to_string())
+        })
+        .to_string())
     }
 }
 
@@ -123,7 +125,13 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String)> {
         .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(';').next().unwrap_or("image/jpeg").trim().to_string())
+        .map(|s| {
+            s.split(';')
+                .next()
+                .unwrap_or("image/jpeg")
+                .trim()
+                .to_string()
+        })
         .unwrap_or_else(|| guess_mime_type(url));
 
     let bytes = response
@@ -136,9 +144,8 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String)> {
 
 /// Load a local image file and return (bytes, mime_type).
 fn load_local_image(path: &str) -> Result<(Vec<u8>, String)> {
-    let bytes = std::fs::read(path).map_err(|e| {
-        HakimiError::Tool(format!("Failed to read local image file '{path}': {e}"))
-    })?;
+    let bytes = std::fs::read(path)
+        .map_err(|e| HakimiError::Tool(format!("Failed to read local image file '{path}': {e}")))?;
 
     let mime_type = guess_mime_type(path);
     Ok((bytes, mime_type))
@@ -263,9 +270,17 @@ mod tests {
     fn test_schema_has_correct_properties() {
         let tool = VisionAnalyzeTool;
         let schema = tool.schema();
-        let props = schema["properties"].as_object().expect("properties should be an object");
-        assert!(props.contains_key("image_url"), "schema must have image_url property");
-        assert!(props.contains_key("question"), "schema must have question property");
+        let props = schema["properties"]
+            .as_object()
+            .expect("properties should be an object");
+        assert!(
+            props.contains_key("image_url"),
+            "schema must have image_url property"
+        );
+        assert!(
+            props.contains_key("question"),
+            "schema must have question property"
+        );
         assert_eq!(props["image_url"]["type"], "string");
         assert_eq!(props["question"]["type"], "string");
     }
@@ -273,10 +288,19 @@ mod tests {
     #[test]
     fn test_guess_mime_type_from_url() {
         // guess_mime_type does simple ends_with matching on the full path
-        assert_eq!(guess_mime_type("https://example.com/image.png"), "image/png");
-        assert_eq!(guess_mime_type("http://cdn.example.com/photo.jpg"), "image/jpeg");
+        assert_eq!(
+            guess_mime_type("https://example.com/image.png"),
+            "image/png"
+        );
+        assert_eq!(
+            guess_mime_type("http://cdn.example.com/photo.jpg"),
+            "image/jpeg"
+        );
         // URLs with query strings won't match (ends_with sees the query, not extension)
-        assert_eq!(guess_mime_type("https://example.com/image.png?v=1"), "image/jpeg");
+        assert_eq!(
+            guess_mime_type("https://example.com/image.png?v=1"),
+            "image/jpeg"
+        );
     }
 
     #[test]

@@ -89,14 +89,13 @@ impl SkillExtractor {
         // Filter by thresholds
         patterns
             .into_iter()
-            .filter(|p| p.frequency >= self.min_pattern_frequency && p.confidence >= self.min_confidence)
+            .filter(|p| {
+                p.frequency >= self.min_pattern_frequency && p.confidence >= self.min_confidence
+            })
             .collect()
     }
 
-    fn detect_tool_sequences(
-        &self,
-        tool_sequences: &[Vec<String>],
-    ) -> Option<ExtractedPattern> {
+    fn detect_tool_sequences(&self, tool_sequences: &[Vec<String>]) -> Option<ExtractedPattern> {
         if tool_sequences.len() < 2 {
             return None;
         }
@@ -116,9 +115,7 @@ impl SkillExtractor {
             }
         }
 
-        let best = seq_counts
-            .iter()
-            .max_by_key(|(_, count)| *count)?;
+        let best = seq_counts.iter().max_by_key(|(_, count)| *count)?;
 
         if *best.1 < self.min_pattern_frequency {
             return None;
@@ -126,10 +123,7 @@ impl SkillExtractor {
 
         Some(ExtractedPattern {
             pattern_type: PatternType::ToolSequence,
-            description: format!(
-                "Repeated tool call sequence: {:?}",
-                best.0
-            ),
+            description: format!("Repeated tool call sequence: {:?}", best.0),
             tool_sequence: best.0.clone(),
             frequency: *best.1,
             confidence: self.score_from_frequency(*best.1, tool_sequences.len()),
@@ -181,10 +175,7 @@ impl SkillExtractor {
                     .cloned()
                     .collect();
                 if examples.len() < 3 {
-                    examples.push(format!(
-                        "{:?} -> {:?} -> {:?}",
-                        tools_a, tools_b, tools_c
-                    ));
+                    examples.push(format!("{:?} -> {:?} -> {:?}", tools_a, tools_b, tools_c));
                 }
             }
         }
@@ -203,10 +194,7 @@ impl SkillExtractor {
         })
     }
 
-    fn detect_search_refine(
-        &self,
-        messages: &[(String, Vec<String>)],
-    ) -> Option<ExtractedPattern> {
+    fn detect_search_refine(&self, messages: &[(String, Vec<String>)]) -> Option<ExtractedPattern> {
         let mut cycles = 0;
         let mut examples = Vec::new();
 
@@ -296,10 +284,7 @@ impl SkillExtractor {
             if has_read && has_edit && has_test {
                 cycles += 1;
                 if examples.len() < 3 {
-                    examples.push(format!(
-                        "{:?} -> {:?} -> {:?}",
-                        tools_a, tools_b, tools_c
-                    ));
+                    examples.push(format!("{:?} -> {:?} -> {:?}", tools_a, tools_b, tools_c));
                 }
             }
         }
@@ -372,7 +357,9 @@ impl SkillExtractor {
             let has_read_config = tools_a.iter().any(|t| {
                 let lower = t.to_lowercase();
                 (lower.contains("read") || lower.contains("cat"))
-                    && (lower.contains("config") || lower.contains("toml") || lower.contains("yaml"))
+                    && (lower.contains("config")
+                        || lower.contains("toml")
+                        || lower.contains("yaml"))
             });
             let has_modify = tools_b.iter().any(|t| {
                 let lower = t.to_lowercase();
@@ -436,10 +423,7 @@ impl SkillExtractor {
         yaml.push_str(&format!("# {}\n\n", name));
         yaml.push_str(&format!("**Pattern Type:** {:?}\n\n", pattern.pattern_type));
         yaml.push_str(&format!("**Frequency:** {}\n\n", pattern.frequency));
-        yaml.push_str(&format!(
-            "**Confidence:** {:.2}\n\n",
-            pattern.confidence
-        ));
+        yaml.push_str(&format!("**Confidence:** {:.2}\n\n", pattern.confidence));
         yaml.push_str("## Tool Sequence\n\n");
         yaml.push_str("```\n");
         yaml.push_str(&pattern.tool_sequence.join(" -> "));
@@ -489,10 +473,8 @@ impl SkillExtractor {
                     group.iter().map(|p| p.confidence).sum::<f32>() / group.len() as f32;
                 let all_examples: Vec<String> =
                     group.iter().flat_map(|p| p.examples.clone()).collect();
-                let all_tools: Vec<String> = group
-                    .iter()
-                    .flat_map(|p| p.tool_sequence.clone())
-                    .collect();
+                let all_tools: Vec<String> =
+                    group.iter().flat_map(|p| p.tool_sequence.clone()).collect();
 
                 ExtractedPattern {
                     pattern_type: first.pattern_type.clone(),

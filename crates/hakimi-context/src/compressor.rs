@@ -374,8 +374,7 @@ impl LlmCompressor {
 
                     if is_question {
                         // Avoid duplicates by checking if we already track this question.
-                        let already_tracked =
-                            self.questions.iter().any(|q| q.text == trimmed);
+                        let already_tracked = self.questions.iter().any(|q| q.text == trimmed);
                         if !already_tracked {
                             self.questions.push(TrackedQuestion {
                                 text: trimmed.to_string(),
@@ -394,7 +393,11 @@ impl LlmCompressor {
             if msg.role == MessageRole::User {
                 if let Some(ref content) = msg.content {
                     let trimmed = content.trim();
-                    if self.questions.iter().any(|q| q.text == trimmed && !q.resolved) {
+                    if self
+                        .questions
+                        .iter()
+                        .any(|q| q.text == trimmed && !q.resolved)
+                    {
                         question_indices.push(i);
                     }
                 }
@@ -501,11 +504,7 @@ impl LlmCompressor {
 
     /// Attempt LLM-based summarization. Falls back to local summarization
     /// on any error or if no transport is configured.
-    async fn summarize_messages(
-        &self,
-        messages: &[Message],
-        question_status: &str,
-    ) -> String {
+    async fn summarize_messages(&self, messages: &[Message], question_status: &str) -> String {
         if let Some(ref transport) = self.llm_transport {
             // Build a summarization prompt.
             let mut conversation_text = String::new();
@@ -867,12 +866,20 @@ mod tests {
         // The message at PROTECT_FIRST should be the summary.
         let summary = &messages[PROTECT_FIRST];
         assert_eq!(summary.role, MessageRole::System);
-        assert!(summary.content.as_ref().unwrap().contains("context-compression"));
-        assert!(summary
-            .content
-            .as_ref()
-            .unwrap()
-            .contains("Question tracking"));
+        assert!(
+            summary
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("context-compression")
+        );
+        assert!(
+            summary
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("Question tracking")
+        );
     }
 
     // ── LlmCompressor: tool output pruning ──────────────────────────────
@@ -892,16 +899,8 @@ mod tests {
         // Only tc1 (1000 chars) and tc2 (100 chars) are tool messages;
         // tc1 > 500, tc2 < 500, tc3 < 500. So only tc1 should be pruned.
         assert_eq!(pruned, 1);
-        assert!(messages[1]
-            .content
-            .as_ref()
-            .unwrap()
-            .contains("pruned"));
-        assert!(!messages[3]
-            .content
-            .as_ref()
-            .unwrap()
-            .contains("pruned"));
+        assert!(messages[1].content.as_ref().unwrap().contains("pruned"));
+        assert!(!messages[3].content.as_ref().unwrap().contains("pruned"));
     }
 
     #[test]
@@ -918,10 +917,7 @@ mod tests {
 
     #[test]
     fn test_tool_output_pruning_no_tool_messages() {
-        let mut messages = vec![
-            Message::user("Hello"),
-            Message::assistant("Hi there"),
-        ];
+        let mut messages = vec![Message::user("Hello"), Message::assistant("Hi there")];
         let pruned = LlmCompressor::prune_tool_outputs(&mut messages);
         assert_eq!(pruned, 0);
     }

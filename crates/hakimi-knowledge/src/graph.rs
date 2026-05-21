@@ -106,12 +106,7 @@ impl KnowledgeGraph {
     }
 
     /// Add a directed edge between two nodes identified by their keys.
-    pub fn add_edge(
-        &mut self,
-        from_key: &str,
-        to_key: &str,
-        edge: EdgeType,
-    ) -> anyhow::Result<()> {
+    pub fn add_edge(&mut self, from_key: &str, to_key: &str, edge: EdgeType) -> anyhow::Result<()> {
         let from_idx = self
             .key_to_idx
             .get(from_key)
@@ -231,11 +226,7 @@ impl KnowledgeGraph {
     }
 
     /// Extract a subgraph around the given query keys up to `depth` hops.
-    pub fn get_context_subgraph(
-        &self,
-        query_keys: &[String],
-        depth: usize,
-    ) -> KnowledgeGraph {
+    pub fn get_context_subgraph(&self, query_keys: &[String], depth: usize) -> KnowledgeGraph {
         let mut included_keys = HashSet::new();
 
         for key in query_keys {
@@ -644,7 +635,8 @@ mod tests {
             .unwrap();
         }
         // Cross edge: 0->5
-        kg.add_edge("node_0", "node_5", EdgeType::DependsOn).unwrap();
+        kg.add_edge("node_0", "node_5", EdgeType::DependsOn)
+            .unwrap();
 
         assert_eq!(kg.node_count(), 10);
         assert_eq!(kg.edge_count(), 10);

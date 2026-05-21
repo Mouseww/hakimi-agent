@@ -5,14 +5,14 @@ use hakimi_common::{
 };
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::{debug, warn};
 
 use crate::error::classify_error;
 use crate::params::RequestParams;
-use crate::prompt_caching::{apply_caching, CacheLayout, CACHE_BETA_HEADER_VALUE};
-use crate::trait_def::ProviderTransport;
+use crate::prompt_caching::{CACHE_BETA_HEADER_VALUE, CacheLayout, apply_caching};
 use crate::streaming::{SseEventStream, StreamEvent};
+use crate::trait_def::ProviderTransport;
 use futures::stream::Stream;
 use std::pin::Pin;
 
@@ -140,9 +140,7 @@ impl AnthropicTransport {
                         for tc in tool_calls {
                             // Anthropic expects the input as a JSON object, not a string.
                             let input: JsonValue =
-                                serde_json::from_str(&tc.arguments).unwrap_or_else(|_| {
-                                    json!({})
-                                });
+                                serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!({}));
                             content_blocks.push(json!({
                                 "type": "tool_use",
                                 "id": tc.id,
@@ -282,7 +280,8 @@ impl AnthropicTransport {
                     let id = block.id.clone().unwrap_or_default();
                     let name = block.name.clone().unwrap_or_default();
                     let input = block.input.clone().unwrap_or(JsonValue::Null);
-                    let arguments = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
+                    let arguments =
+                        serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
                     tool_calls.push(ToolCall {
                         id,
                         name,
@@ -291,7 +290,10 @@ impl AnthropicTransport {
                     });
                 }
                 other => {
-                    warn!(block_type = other, "unexpected content block type from Anthropic");
+                    warn!(
+                        block_type = other,
+                        "unexpected content block type from Anthropic"
+                    );
                 }
             }
         }
@@ -362,14 +364,10 @@ impl AnthropicTransport {
             request = request.header("anthropic-beta", CACHE_BETA_HEADER_VALUE);
         }
 
-        let response = request
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                warn!(error = %e, "HTTP streaming request failed");
-                crate::error::TransportError::Http(format!("HTTP request failed: {e}"))
-            })?;
+        let response = request.json(&body).send().await.map_err(|e| {
+            warn!(error = %e, "HTTP streaming request failed");
+            crate::error::TransportError::Http(format!("HTTP request failed: {e}"))
+        })?;
 
         let status = response.status();
         if !status.is_success() {
@@ -482,19 +480,16 @@ impl ProviderTransport for AnthropicTransport {
             request = request.header("anthropic-beta", CACHE_BETA_HEADER_VALUE);
         }
 
-        let response = request
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                warn!(error = %e, "HTTP request failed");
-                HakimiError::Transport(format!("HTTP request failed: {e}"))
-            })?;
+        let response = request.json(&body).send().await.map_err(|e| {
+            warn!(error = %e, "HTTP request failed");
+            HakimiError::Transport(format!("HTTP request failed: {e}"))
+        })?;
 
         let status = response.status();
-        let response_text = response.text().await.map_err(|e| {
-            HakimiError::Transport(format!("failed to read response body: {e}"))
-        })?;
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| HakimiError::Transport(format!("failed to read response body: {e}")))?;
 
         if !status.is_success() {
             let code = status.as_u16();
@@ -572,10 +567,7 @@ mod tests {
 
     #[test]
     fn test_split_system_prompt_none() {
-        let messages = vec![
-            Message::user("hello"),
-            Message::assistant("hi"),
-        ];
+        let messages = vec![Message::user("hello"), Message::assistant("hi")];
         let (system, remaining) = AnthropicTransport::split_system_prompt(&messages);
         assert!(system.is_none());
         assert_eq!(remaining.len(), 2);
@@ -583,10 +575,7 @@ mod tests {
 
     #[test]
     fn test_split_system_prompt_single() {
-        let messages = vec![
-            Message::system("You are helpful."),
-            Message::user("hello"),
-        ];
+        let messages = vec![Message::system("You are helpful."), Message::user("hello")];
         let (system, remaining) = AnthropicTransport::split_system_prompt(&messages);
         assert_eq!(system.as_deref(), Some("You are helpful."));
         assert_eq!(remaining.len(), 1);

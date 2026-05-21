@@ -129,12 +129,8 @@ mod tests {
             let mut store = KnowledgeStore::new(path.clone());
             assert!(store.auto_save());
 
-            store
-                .add_node(NodeType::Entity("e1".to_string()))
-                .unwrap();
-            store
-                .add_node(NodeType::Entity("e2".to_string()))
-                .unwrap();
+            store.add_node(NodeType::Entity("e1".to_string())).unwrap();
+            store.add_node(NodeType::Entity("e2".to_string())).unwrap();
             store.add_edge("e1", "e2", EdgeType::RelatesTo).unwrap();
         }
 
@@ -154,12 +150,8 @@ mod tests {
         let path = tmp.path().join("remove.json");
 
         let mut store = KnowledgeStore::new(path.clone());
-        store
-            .add_node(NodeType::Entity("a".to_string()))
-            .unwrap();
-        store
-            .add_node(NodeType::Entity("b".to_string()))
-            .unwrap();
+        store.add_node(NodeType::Entity("a".to_string())).unwrap();
+        store.add_node(NodeType::Entity("b".to_string())).unwrap();
         store.add_edge("a", "b", EdgeType::RelatesTo).unwrap();
 
         store.remove_node("a").unwrap();

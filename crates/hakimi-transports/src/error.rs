@@ -72,7 +72,11 @@ mod tests {
     fn test_classify_server_errors() {
         for code in [500, 502, 503, 504, 599] {
             let (reason, retryable) = classify_error(code, "server error");
-            assert_eq!(reason, FailoverReason::ServerError, "expected ServerError for {code}");
+            assert_eq!(
+                reason,
+                FailoverReason::ServerError,
+                "expected ServerError for {code}"
+            );
             assert!(retryable, "expected retryable for {code}");
         }
     }
@@ -81,7 +85,11 @@ mod tests {
     fn test_classify_auth_errors() {
         for code in [401, 403] {
             let (reason, retryable) = classify_error(code, "unauthorized");
-            assert_eq!(reason, FailoverReason::AuthError, "expected AuthError for {code}");
+            assert_eq!(
+                reason,
+                FailoverReason::AuthError,
+                "expected AuthError for {code}"
+            );
             assert!(!retryable, "expected not retryable for {code}");
         }
     }

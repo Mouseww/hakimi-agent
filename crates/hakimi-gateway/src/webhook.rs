@@ -83,7 +83,11 @@ impl PlatformAdapter for WebhookAdapter {
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> anyhow::Result<()> {
-        debug!(chat_id, text_len = text.len(), "Webhook: would send message");
+        debug!(
+            chat_id,
+            text_len = text.len(),
+            "Webhook: would send message"
+        );
         // In a real implementation, this would POST to a callback URL.
         Ok(())
     }

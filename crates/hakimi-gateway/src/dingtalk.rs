@@ -86,7 +86,11 @@ impl PlatformAdapter for DingTalkAdapter {
             );
         }
 
-        info!(chat_id = _chat_id, text_len = text.len(), "DingTalk: message sent");
+        info!(
+            chat_id = _chat_id,
+            text_len = text.len(),
+            "DingTalk: message sent"
+        );
         Ok(())
     }
 

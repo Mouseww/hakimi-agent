@@ -208,7 +208,10 @@ mod tests {
     fn test_find_partial_match() {
         assert_eq!(find_partial_match("hello<memory-", "<memory-context>"), 8);
         assert_eq!(find_partial_match("no match", "<memory-context>"), 0);
-        assert_eq!(find_partial_match("<memory-context", "<memory-context>"), 15);
+        assert_eq!(
+            find_partial_match("<memory-context", "<memory-context>"),
+            15
+        );
     }
 
     #[test]

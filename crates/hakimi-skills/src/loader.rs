@@ -75,7 +75,10 @@ impl SkillLoader {
 
     /// Find skills that match the given query.
     pub fn find_matching(&self, query: &str) -> Vec<&Skill> {
-        self.skills.iter().filter(|s| s.matches_query(query)).collect()
+        self.skills
+            .iter()
+            .filter(|s| s.matches_query(query))
+            .collect()
     }
 }
 

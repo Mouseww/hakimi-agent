@@ -188,9 +188,7 @@ impl TelegramAdapter {
                                     // Handle bot commands: reply directly via
                                     // the sender's channel instead of forwarding
                                     // upstream (commands are not agent queries).
-                                    if let Some(_reply_text) =
-                                        Self::handle_command(&gw_msg.text)
-                                    {
+                                    if let Some(_reply_text) = Self::handle_command(&gw_msg.text) {
                                         // We send the *command* GatewayMessage
                                         // through as well so the upstream can
                                         // decide what to do, but we also mark
@@ -436,11 +434,7 @@ impl PlatformAdapter for TelegramAdapter {
 // ---------------------------------------------------------------------------
 
 /// Perform a single `getUpdates` long-poll request.
-async fn poll_once(
-    client: &reqwest::Client,
-    api_url: &str,
-    offset: i64,
-) -> Result<Vec<TgUpdate>> {
+async fn poll_once(client: &reqwest::Client, api_url: &str, offset: i64) -> Result<Vec<TgUpdate>> {
     let resp: TgResponse<Vec<TgUpdate>> = client
         .get(api_url)
         .query(&[
@@ -480,9 +474,7 @@ fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
     let text = msg
         .text
         .clone()
-        .or_else(|| {
-            msg.photo.as_ref().map(|_| "[photo]".to_owned())
-        })
+        .or_else(|| msg.photo.as_ref().map(|_| "[photo]".to_owned()))
         .unwrap_or_default();
 
     if text.is_empty() {

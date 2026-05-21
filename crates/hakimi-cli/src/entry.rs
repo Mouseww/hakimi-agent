@@ -20,7 +20,11 @@ use crate::Command;
 // ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
-#[command(name = "hakimi", version, about = "Hakimi Agent — AI-powered coding assistant")]
+#[command(
+    name = "hakimi",
+    version,
+    about = "Hakimi Agent — AI-powered coding assistant"
+)]
 pub struct Args {
     /// Model identifier override (e.g. "gpt-4o", "claude-sonnet-4-20250514").
     #[arg(long)]
@@ -388,19 +392,22 @@ async fn register_mcp_tools(
         for (key, val) in &server_config.env {
             // SAFETY: We're setting env vars during single-threaded startup,
             // before any concurrent reads begin.
-            unsafe { std::env::set_var(key, val); }
+            unsafe {
+                std::env::set_var(key, val);
+            }
         }
 
         // Build args as &str slices
         let args: Vec<&str> = server_config.args.iter().map(|s| s.as_str()).collect();
 
-        let mut client = match hakimi_mcp::McpClient::connect_stdio(&server_config.command, &args).await {
-            Ok(c) => c,
-            Err(e) => {
-                warn!(server = %name, error = %e, "failed to spawn MCP server");
-                continue;
-            }
-        };
+        let mut client =
+            match hakimi_mcp::McpClient::connect_stdio(&server_config.command, &args).await {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(server = %name, error = %e, "failed to spawn MCP server");
+                    continue;
+                }
+            };
 
         if let Err(e) = client.initialize().await {
             warn!(server = %name, error = %e, "MCP initialize failed");
@@ -516,19 +523,24 @@ async fn build_agent(
     let context_engine: std::sync::Arc<tokio::sync::RwLock<dyn hakimi_context::ContextEngine>> =
         if config.compression.engine == "simple" {
             info!(context_length, "using SimpleContextEngine (truncation)");
-            std::sync::Arc::new(RwLock::new(
-                hakimi_context::SimpleContextEngine::new(context_length),
-            ))
+            std::sync::Arc::new(RwLock::new(hakimi_context::SimpleContextEngine::new(
+                context_length,
+            )))
         } else {
             let compression_model = Some(model.clone());
-            info!(context_length, engine = "smart", "using SmartContextEngine (3-tier)");
-            std::sync::Arc::new(RwLock::new(
-                hakimi_context::SmartContextEngine::new(context_length, compression_model),
-            ))
+            info!(
+                context_length,
+                engine = "smart",
+                "using SmartContextEngine (3-tier)"
+            );
+            std::sync::Arc::new(RwLock::new(hakimi_context::SmartContextEngine::new(
+                context_length,
+                compression_model,
+            )))
         };
     // Create tool registry and register ALL built-in tools.
     let tool_registry = hakimi_tools::ToolRegistry::new();
-    let builtin_tools: Vec<std::sync::Arc<dyn hakimi_tools::Tool>> = vec![
+    let mut builtin_tools: Vec<std::sync::Arc<dyn hakimi_tools::Tool>> = vec![
         std::sync::Arc::new(hakimi_tools::ReadFileTool),
         std::sync::Arc::new(hakimi_tools::WriteFileTool),
         std::sync::Arc::new(hakimi_tools::TerminalTool),
@@ -548,6 +560,23 @@ async fn build_agent(
         std::sync::Arc::new(hakimi_tools::TextToSpeechTool),
         std::sync::Arc::new(hakimi_tools::ImageGenerateTool),
     ];
+    // Browser tools (shared browser instance)
+    let browser_manager = hakimi_tools::BrowserManager::new();
+    builtin_tools.push(std::sync::Arc::new(hakimi_tools::BrowserNavigateTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(std::sync::Arc::new(hakimi_tools::BrowserSnapshotTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(std::sync::Arc::new(hakimi_tools::BrowserClickTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(std::sync::Arc::new(hakimi_tools::BrowserTypeTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(std::sync::Arc::new(
+        hakimi_tools::BrowserScreenshotTool::new(browser_manager),
+    ));
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;
     }
@@ -556,7 +585,11 @@ async fn build_agent(
     // Connect to configured MCP servers and register their tools.
     let mcp_tool_count = if !config.mcp_servers.is_empty() {
         let count = register_mcp_tools(&config.mcp_servers, &tool_registry).await;
-        info!(count, server_count = config.mcp_servers.len(), "registered MCP tools");
+        info!(
+            count,
+            server_count = config.mcp_servers.len(),
+            "registered MCP tools"
+        );
         count
     } else {
         0
@@ -679,7 +712,10 @@ fn handle_plugins_command(arg: Option<&str>) {
             let catalog = hakimi_mcp::catalog::default_catalog();
             for entry in &catalog {
                 let star = if entry.popular { " ★" } else { "" };
-                println!("  • {} [{}] — {}{}", entry.name, entry.category, entry.description, star);
+                println!(
+                    "  • {} [{}] — {}{}",
+                    entry.name, entry.category, entry.description, star
+                );
             }
             println!();
             println!("Use /plugins enable <name> to enable an MCP server.");
@@ -691,98 +727,100 @@ fn handle_plugins_command(arg: Option<&str>) {
                 None => (rest, None),
             };
             match subcmd {
-                "catalog" => {
-                    match name {
-                        Some(query) if query.starts_with("search ") => {
-                            let q = query.strip_prefix("search ").unwrap().trim();
-                            let results = hakimi_mcp::catalog::search(q);
-                            println!("Search results for \"{q}\":");
-                            for entry in &results {
-                                println!("  • {} — {}", entry.name, entry.description);
-                            }
-                            if results.is_empty() {
-                                println!("  (no results)");
-                            }
+                "catalog" => match name {
+                    Some(query) if query.starts_with("search ") => {
+                        let q = query.strip_prefix("search ").unwrap().trim();
+                        let results = hakimi_mcp::catalog::search(q);
+                        println!("Search results for \"{q}\":");
+                        for entry in &results {
+                            println!("  • {} — {}", entry.name, entry.description);
                         }
-                        Some(query) if query.starts_with("category ") => {
-                            let cat = query.strip_prefix("category ").unwrap().trim();
-                            let entries = hakimi_mcp::catalog::by_category(cat);
-                            println!("MCP servers in category \"{cat}\":");
-                            for entry in &entries {
-                                println!("  • {} — {}", entry.name, entry.description);
-                            }
-                            if entries.is_empty() {
-                                println!("  (none)");
-                            }
+                        if results.is_empty() {
+                            println!("  (no results)");
                         }
-                        _ => {
-                            let cats = hakimi_mcp::catalog::categories();
-                            println!("Available MCP server categories: {}", cats.join(", "));
+                    }
+                    Some(query) if query.starts_with("category ") => {
+                        let cat = query.strip_prefix("category ").unwrap().trim();
+                        let entries = hakimi_mcp::catalog::by_category(cat);
+                        println!("MCP servers in category \"{cat}\":");
+                        for entry in &entries {
+                            println!("  • {} — {}", entry.name, entry.description);
+                        }
+                        if entries.is_empty() {
+                            println!("  (none)");
+                        }
+                    }
+                    _ => {
+                        let cats = hakimi_mcp::catalog::categories();
+                        println!("Available MCP server categories: {}", cats.join(", "));
+                        println!();
+                        let catalog = hakimi_mcp::catalog::default_catalog();
+                        for entry in &catalog {
+                            let star = if entry.popular { " ★" } else { "" };
+                            println!(
+                                "  • {} [{}] — {}{}",
+                                entry.name, entry.category, entry.description, star
+                            );
+                        }
+                    }
+                },
+                "enable" => match name {
+                    Some(server_name) => match hakimi_mcp::catalog::get(server_name) {
+                        Some(entry) => {
+                            println!(
+                                "To enable {}, add this to ~/.hakimi/config.yaml:",
+                                entry.name
+                            );
                             println!();
-                            let catalog = hakimi_mcp::catalog::default_catalog();
-                            for entry in &catalog {
-                                let star = if entry.popular { " ★" } else { "" };
-                                println!("  • {} [{}] — {}{}", entry.name, entry.category, entry.description, star);
-                            }
+                            let yaml = hakimi_mcp::catalog::to_config_yaml(&[entry]);
+                            println!("{}", yaml);
+                        }
+                        None => {
+                            println!("Unknown MCP server: {server_name}");
+                            println!("Use /plugins catalog to see available servers.");
+                        }
+                    },
+                    None => println!("Usage: /plugins enable <server-name>"),
+                },
+                "init" => match name {
+                    Some(template_name) => {
+                        let templates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .parent()
+                            .and_then(|p| p.parent())
+                            .map(|p| p.join("templates"))
+                            .unwrap_or_else(|| std::path::PathBuf::from("templates"));
+                        let template_path = templates_dir.join(template_name);
+                        let template_path = if template_path.exists() {
+                            template_path
+                        } else {
+                            templates_dir.join(format!("{template_name}.yaml"))
+                        };
+
+                        if !template_path.exists() {
+                            println!("Template not found: {template_name}");
+                            return;
+                        }
+
+                        let plugins_dir = dirs::home_dir()
+                            .map(|h| h.join(".hakimi").join("plugins"))
+                            .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/plugins"));
+                        if let Err(e) = std::fs::create_dir_all(&plugins_dir) {
+                            println!("Failed to create plugins dir: {e}");
+                            return;
+                        }
+
+                        let dest = plugins_dir.join(template_path.file_name().unwrap());
+                        match std::fs::copy(&template_path, &dest) {
+                            Ok(_) => println!(
+                                "Copied {} to {}",
+                                template_path.file_name().unwrap().to_string_lossy(),
+                                dest.display()
+                            ),
+                            Err(e) => println!("Failed to copy: {e}"),
                         }
                     }
-                }
-                "enable" => {
-                    match name {
-                        Some(server_name) => {
-                            match hakimi_mcp::catalog::get(server_name) {
-                                Some(entry) => {
-                                    println!("To enable {}, add this to ~/.hakimi/config.yaml:", entry.name);
-                                    println!();
-                                    let yaml = hakimi_mcp::catalog::to_config_yaml(&[entry]);
-                                    println!("{}", yaml);
-                                }
-                                None => {
-                                    println!("Unknown MCP server: {server_name}");
-                                    println!("Use /plugins catalog to see available servers.");
-                                }
-                            }
-                        }
-                        None => println!("Usage: /plugins enable <server-name>"),
-                    }
-                }
-                "init" => {
-                    match name {
-                        Some(template_name) => {
-                            let templates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                                .parent()
-                                .and_then(|p| p.parent())
-                                .map(|p| p.join("templates"))
-                                .unwrap_or_else(|| std::path::PathBuf::from("templates"));
-                            let template_path = templates_dir.join(template_name);
-                            let template_path = if template_path.exists() {
-                                template_path
-                            } else {
-                                templates_dir.join(format!("{template_name}.yaml"))
-                            };
-
-                            if !template_path.exists() {
-                                println!("Template not found: {template_name}");
-                                return;
-                            }
-
-                            let plugins_dir = dirs::home_dir()
-                                .map(|h| h.join(".hakimi").join("plugins"))
-                                .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/plugins"));
-                            if let Err(e) = std::fs::create_dir_all(&plugins_dir) {
-                                println!("Failed to create plugins dir: {e}");
-                                return;
-                            }
-
-                            let dest = plugins_dir.join(template_path.file_name().unwrap());
-                            match std::fs::copy(&template_path, &dest) {
-                                Ok(_) => println!("Copied {} to {}", template_path.file_name().unwrap().to_string_lossy(), dest.display()),
-                                Err(e) => println!("Failed to copy: {e}"),
-                            }
-                        }
-                        None => println!("Usage: /plugins init <template-name>"),
-                    }
-                }
+                    None => println!("Usage: /plugins init <template-name>"),
+                },
                 _ => {
                     println!("Unknown plugins subcommand: {subcmd}");
                     println!("Available: list, catalog, enable, init");
@@ -791,7 +829,6 @@ fn handle_plugins_command(arg: Option<&str>) {
         }
     }
 }
-
 
 // Public entry point
 // ---------------------------------------------------------------------------
@@ -860,7 +897,8 @@ async fn self_update() -> Result<()> {
         }
     }
 
-    let binary_data = binary_data.ok_or_else(|| anyhow::anyhow!("Binary 'hakimi' not found in archive"))?;
+    let binary_data =
+        binary_data.ok_or_else(|| anyhow::anyhow!("Binary 'hakimi' not found in archive"))?;
 
     // Determine current binary path
     let current_exe = env::current_exe()?;
@@ -1005,9 +1043,7 @@ pub async fn run() -> Result<()> {
         struct AgentState {
             agent: std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
             chat_histories: std::sync::Arc<
-                tokio::sync::Mutex<
-                    std::collections::HashMap<String, Vec<hakimi_common::Message>>,
-                >,
+                tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>,
             >,
             base_system_prompt: String,
             bot_token: String,
@@ -1089,10 +1125,8 @@ pub async fn run() -> Result<()> {
                 };
 
                 // Create a TelegramAdapter for this role.
-                let adapter = hakimi_gateway::TelegramAdapter::from_token(
-                    role_name,
-                    &tg_binding.bot_token,
-                );
+                let adapter =
+                    hakimi_gateway::TelegramAdapter::from_token(role_name, &tg_binding.bot_token);
                 gateway.add_adapter(Box::new(adapter));
 
                 // Build a fresh agent for this role.
@@ -1188,7 +1222,9 @@ pub async fn run() -> Result<()> {
         }
 
         if agent_states.is_empty() {
-            error!("No agent states created (no roles with telegram bindings and no default bot token)");
+            error!(
+                "No agent states created (no roles with telegram bindings and no default bot token)"
+            );
             std::process::exit(1);
         }
 
@@ -1409,18 +1445,16 @@ pub async fn run() -> Result<()> {
     let cron_db_path = hakimi_home.join("cron.db");
     let mut cron_scheduler = if cron_db_path.exists() {
         match hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
-            Ok(store) => {
-                match store.load_into_scheduler() {
-                    Ok(sched) => {
-                        info!(jobs = sched.list().len(), "loaded persisted cron jobs");
-                        sched
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "failed to load persisted cron jobs");
-                        hakimi_cron::CronScheduler::new()
-                    }
+            Ok(store) => match store.load_into_scheduler() {
+                Ok(sched) => {
+                    info!(jobs = sched.list().len(), "loaded persisted cron jobs");
+                    sched
                 }
-            }
+                Err(e) => {
+                    warn!(error = %e, "failed to load persisted cron jobs");
+                    hakimi_cron::CronScheduler::new()
+                }
+            },
             Err(e) => {
                 warn!(error = %e, "failed to open cron database");
                 hakimi_cron::CronScheduler::new()
@@ -1520,69 +1554,73 @@ pub async fn run() -> Result<()> {
             }
             Some(Command::Profile(ref arg)) => {
                 match arg.as_deref() {
-                    Some("list") | None => {
-                        match profile_manager.list() {
-                            Ok(profiles) => {
-                                if profiles.is_empty() {
-                                    println!("No profiles found. Use /profile create <name> to create one.");
-                                } else {
-                                    println!("━━━ Profiles ━━━");
-                                    let active = profile_manager.active().unwrap_or("default");
-                                    for p in &profiles {
-                                        let marker = if p.name == active { " (active)" } else { "" };
-                                        println!("  • {}{}", p.name, marker);
-                                        if let Some(ref desc) = p.description {
-                                            println!("    {}", desc);
-                                        }
+                    Some("list") | None => match profile_manager.list() {
+                        Ok(profiles) => {
+                            if profiles.is_empty() {
+                                println!(
+                                    "No profiles found. Use /profile create <name> to create one."
+                                );
+                            } else {
+                                println!("━━━ Profiles ━━━");
+                                let active = profile_manager.active().unwrap_or("default");
+                                for p in &profiles {
+                                    let marker = if p.name == active { " (active)" } else { "" };
+                                    println!("  • {}{}", p.name, marker);
+                                    if let Some(ref desc) = p.description {
+                                        println!("    {}", desc);
                                     }
                                 }
                             }
-                            Err(e) => eprintln!("Error listing profiles: {e}"),
                         }
-                    }
+                        Err(e) => eprintln!("Error listing profiles: {e}"),
+                    },
                     Some(rest) => {
                         let (subcmd, name) = match rest.split_once(char::is_whitespace) {
                             Some((c, n)) => (c, Some(n.trim())),
                             None => (rest, None),
                         };
                         match subcmd {
-                            "create" => {
-                                match name {
-                                    Some(profile_name) => {
-                                        match profile_manager.create(profile_name, None) {
-                                            Ok(dir) => println!("Profile '{}' created at {}", profile_name, dir.display()),
-                                            Err(e) => eprintln!("Error: {e}"),
-                                        }
+                            "create" => match name {
+                                Some(profile_name) => {
+                                    match profile_manager.create(profile_name, None) {
+                                        Ok(dir) => println!(
+                                            "Profile '{}' created at {}",
+                                            profile_name,
+                                            dir.display()
+                                        ),
+                                        Err(e) => eprintln!("Error: {e}"),
                                     }
-                                    None => println!("Usage: /profile create <name>"),
                                 }
-                            }
-                            "delete" => {
-                                match name {
-                                    Some(profile_name) => {
-                                        match profile_manager.delete(profile_name) {
-                                            Ok(()) => println!("Profile '{}' deleted.", profile_name),
-                                            Err(e) => eprintln!("Error: {e}"),
-                                        }
+                                None => println!("Usage: /profile create <name>"),
+                            },
+                            "delete" => match name {
+                                Some(profile_name) => match profile_manager.delete(profile_name) {
+                                    Ok(()) => println!("Profile '{}' deleted.", profile_name),
+                                    Err(e) => eprintln!("Error: {e}"),
+                                },
+                                None => println!("Usage: /profile delete <name>"),
+                            },
+                            "use" => match name {
+                                Some(profile_name) => {
+                                    match profile_manager.use_profile(profile_name) {
+                                        Ok(dir) => println!(
+                                            "Switched to profile '{}' ({})",
+                                            profile_name,
+                                            dir.display()
+                                        ),
+                                        Err(e) => eprintln!("Error: {e}"),
                                     }
-                                    None => println!("Usage: /profile delete <name>"),
                                 }
-                            }
-                            "use" => {
-                                match name {
-                                    Some(profile_name) => {
-                                        match profile_manager.use_profile(profile_name) {
-                                            Ok(dir) => println!("Switched to profile '{}' ({})", profile_name, dir.display()),
-                                            Err(e) => eprintln!("Error: {e}"),
-                                        }
-                                    }
-                                    None => println!("Usage: /profile use <name>"),
-                                }
-                            }
+                                None => println!("Usage: /profile use <name>"),
+                            },
                             other => {
                                 // Treat as a profile name to switch to.
                                 match profile_manager.use_profile(other) {
-                                    Ok(dir) => println!("Switched to profile '{}' ({})", other, dir.display()),
+                                    Ok(dir) => println!(
+                                        "Switched to profile '{}' ({})",
+                                        other,
+                                        dir.display()
+                                    ),
                                     Err(e) => eprintln!("Error: {e}"),
                                 }
                             }
@@ -1593,35 +1631,46 @@ pub async fn run() -> Result<()> {
             Some(Command::Doctor) => {
                 crate::doctor::run_and_print_diagnostics();
             }
-            Some(Command::Setup) => {
-                match crate::setup_wizard::run_setup_wizard(false) {
-                    Ok(_config) => {}
-                    Err(e) => eprintln!("Setup wizard error: {e}"),
-                }
-            }
+            Some(Command::Setup) => match crate::setup_wizard::run_setup_wizard(false) {
+                Ok(_config) => {}
+                Err(e) => eprintln!("Setup wizard error: {e}"),
+            },
             Some(Command::Cron(ref arg)) => {
                 match arg.as_deref() {
                     Some("list") | None => {
                         let jobs = cron_scheduler.list();
                         if jobs.is_empty() {
-                            println!("No cron jobs. Use /cron add <schedule> <prompt> to create one.");
+                            println!(
+                                "No cron jobs. Use /cron add <schedule> <prompt> to create one."
+                            );
                         } else {
                             println!("━━━ Cron Jobs ━━━");
                             for job in &jobs {
                                 let status = if job.enabled { "●" } else { "○" };
                                 let schedule_str = match &job.schedule {
-                                    hakimi_cron::CronSchedule::IntervalMinutes(m) => format!("{m}m"),
+                                    hakimi_cron::CronSchedule::IntervalMinutes(m) => {
+                                        format!("{m}m")
+                                    }
                                     hakimi_cron::CronSchedule::IntervalHours(h) => format!("{h}h"),
                                     hakimi_cron::CronSchedule::CronExpr(e) => e.clone(),
                                 };
-                                let last = job.last_run
+                                let last = job
+                                    .last_run
                                     .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
                                     .unwrap_or_else(|| "never".to_string());
-                                let next = job.next_run
+                                let next = job
+                                    .next_run
                                     .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
                                     .unwrap_or_else(|| "—".to_string());
-                                println!("  {} [{}] {} (schedule: {}, last: {}, next: {})",
-                                    status, &job.id[..8], job.name, schedule_str, last, next);
+                                println!(
+                                    "  {} [{}] {} (schedule: {}, last: {}, next: {})",
+                                    status,
+                                    &job.id[..8],
+                                    job.name,
+                                    schedule_str,
+                                    last,
+                                    next
+                                );
                                 println!("    prompt: {}", job.prompt);
                             }
                         }
@@ -1636,14 +1685,18 @@ pub async fn run() -> Result<()> {
                                 match payload {
                                     Some(p) => {
                                         // Format: <schedule> <prompt>
-                                        let (schedule_str, prompt) = match p.split_once(char::is_whitespace) {
-                                            Some((s, pr)) => (s.trim(), pr.trim()),
-                                            None => (p, "No prompt specified"),
-                                        };
+                                        let (schedule_str, prompt) =
+                                            match p.split_once(char::is_whitespace) {
+                                                Some((s, pr)) => (s.trim(), pr.trim()),
+                                                None => (p, "No prompt specified"),
+                                            };
                                         match hakimi_cron::parse_schedule(schedule_str) {
                                             Ok(schedule) => {
                                                 let job = hakimi_cron::CronJob::new(
-                                                    format!("job-{}", &Uuid::new_v4().to_string()[..8]),
+                                                    format!(
+                                                        "job-{}",
+                                                        &Uuid::new_v4().to_string()[..8]
+                                                    ),
                                                     schedule,
                                                     prompt,
                                                 );
@@ -1656,10 +1709,14 @@ pub async fn run() -> Result<()> {
                                                 }
                                                 println!("Cron job created: {}", &id[..8]);
                                             }
-                                            Err(e) => eprintln!("Invalid schedule '{schedule_str}': {e}"),
+                                            Err(e) => {
+                                                eprintln!("Invalid schedule '{schedule_str}': {e}")
+                                            }
                                         }
                                     }
-                                    None => println!("Usage: /cron add <schedule> <prompt>  (e.g. /cron add 30m check status)"),
+                                    None => println!(
+                                        "Usage: /cron add <schedule> <prompt>  (e.g. /cron add 30m check status)"
+                                    ),
                                 }
                             }
                             "remove" | "rm" => {
@@ -1667,7 +1724,8 @@ pub async fn run() -> Result<()> {
                                     Some(id_prefix) => {
                                         // Find job by ID prefix.
                                         let jobs = cron_scheduler.list();
-                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix));
+                                        let found =
+                                            jobs.iter().find(|j| j.id.starts_with(id_prefix));
                                         match found {
                                             Some(job) => {
                                                 let full_id = job.id.clone();
@@ -1689,7 +1747,10 @@ pub async fn run() -> Result<()> {
                                 match payload {
                                     Some(id_prefix) => {
                                         let jobs = cron_scheduler.list();
-                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix)).map(|j| j.id.clone());
+                                        let found = jobs
+                                            .iter()
+                                            .find(|j| j.id.starts_with(id_prefix))
+                                            .map(|j| j.id.clone());
                                         match found {
                                             Some(id) => {
                                                 if let Some(job) = cron_scheduler.get_mut(&id) {
@@ -1708,53 +1769,57 @@ pub async fn run() -> Result<()> {
                                     None => println!("Usage: /cron pause <id-prefix>"),
                                 }
                             }
-                            "resume" => {
-                                match payload {
-                                    Some(id_prefix) => {
-                                        let jobs = cron_scheduler.list();
-                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix)).map(|j| j.id.clone());
-                                        match found {
-                                            Some(id) => {
-                                                if let Some(job) = cron_scheduler.get_mut(&id) {
-                                                    job.enabled = true;
-                                                    job.next_run = Some(job.schedule.next_after(chrono::Utc::now()));
-                                                    println!("Resumed job: {}", job.name);
-                                                    let job_clone = job.clone();
-                                                    if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                            "resume" => match payload {
+                                Some(id_prefix) => {
+                                    let jobs = cron_scheduler.list();
+                                    let found = jobs
+                                        .iter()
+                                        .find(|j| j.id.starts_with(id_prefix))
+                                        .map(|j| j.id.clone());
+                                    match found {
+                                        Some(id) => {
+                                            if let Some(job) = cron_scheduler.get_mut(&id) {
+                                                job.enabled = true;
+                                                job.next_run = Some(
+                                                    job.schedule.next_after(chrono::Utc::now()),
+                                                );
+                                                println!("Resumed job: {}", job.name);
+                                                let job_clone = job.clone();
+                                                if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
                                                         let _ = store.save_job(&job_clone);
                                                     }
-                                                }
                                             }
-                                            None => println!("No job found matching '{id_prefix}'"),
                                         }
+                                        None => println!("No job found matching '{id_prefix}'"),
                                     }
-                                    None => println!("Usage: /cron resume <id-prefix>"),
                                 }
-                            }
-                            "run" => {
-                                match payload {
-                                    Some(id_prefix) => {
-                                        let jobs = cron_scheduler.list();
-                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix)).map(|j| (j.id.clone(), j.prompt.clone()));
-                                        match found {
-                                            Some((id, prompt)) => {
-                                                println!("Running cron job manually: {}", prompt);
-                                                match agent.chat(&prompt).await {
-                                                    Ok(response) => {
-                                                        println!();
-                                                        println!("{response}");
-                                                        println!();
-                                                    }
-                                                    Err(e) => eprintln!("Error: {e}"),
+                                None => println!("Usage: /cron resume <id-prefix>"),
+                            },
+                            "run" => match payload {
+                                Some(id_prefix) => {
+                                    let jobs = cron_scheduler.list();
+                                    let found = jobs
+                                        .iter()
+                                        .find(|j| j.id.starts_with(id_prefix))
+                                        .map(|j| (j.id.clone(), j.prompt.clone()));
+                                    match found {
+                                        Some((id, prompt)) => {
+                                            println!("Running cron job manually: {}", prompt);
+                                            match agent.chat(&prompt).await {
+                                                Ok(response) => {
+                                                    println!();
+                                                    println!("{response}");
+                                                    println!();
                                                 }
-                                                cron_scheduler.mark_executed(&id);
+                                                Err(e) => eprintln!("Error: {e}"),
                                             }
-                                            None => println!("No job found matching '{id_prefix}'"),
+                                            cron_scheduler.mark_executed(&id);
                                         }
+                                        None => println!("No job found matching '{id_prefix}'"),
                                     }
-                                    None => println!("Usage: /cron run <id-prefix>"),
                                 }
-                            }
+                                None => println!("Usage: /cron run <id-prefix>"),
+                            },
                             other => {
                                 println!("Unknown cron subcommand: {other}");
                                 println!("Available: list, add, remove, pause, resume, run");

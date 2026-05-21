@@ -41,10 +41,7 @@ impl IntentClassifier {
 
         // InformationSeeking keywords
         for kw in &["how", "what", "why", "where", "when", "who"] {
-            keyword_rules.insert(
-                kw.to_string(),
-                vec![(Intent::InformationSeeking, 0.6)],
-            );
+            keyword_rules.insert(kw.to_string(), vec![(Intent::InformationSeeking, 0.6)]);
         }
 
         // Debugging keywords
@@ -54,10 +51,7 @@ impl IntentClassifier {
 
         // CreativeGeneration keywords
         for kw in &["write", "create", "generate", "compose", "draft"] {
-            keyword_rules.insert(
-                kw.to_string(),
-                vec![(Intent::CreativeGeneration, 0.7)],
-            );
+            keyword_rules.insert(kw.to_string(), vec![(Intent::CreativeGeneration, 0.7)]);
         }
 
         // Planning keywords
@@ -66,7 +60,15 @@ impl IntentClassifier {
         }
 
         // SocialChat keywords
-        for kw in &["hello", "hi", "hey", "thanks", "thank you", "bye", "goodbye"] {
+        for kw in &[
+            "hello",
+            "hi",
+            "hey",
+            "thanks",
+            "thank you",
+            "bye",
+            "goodbye",
+        ] {
             keyword_rules.insert(kw.to_string(), vec![(Intent::SocialChat, 0.9)]);
         }
 
@@ -145,7 +147,9 @@ impl IntentClassifier {
                 }
             } else {
                 // Single-word keywords: word-boundary match
-                let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric() && c != '\'').collect();
+                let words: Vec<&str> = lower
+                    .split(|c: char| !c.is_alphanumeric() && c != '\'')
+                    .collect();
                 if words.contains(&keyword.as_str()) {
                     for (intent, weight) in *intents {
                         let entry = scores.entry(intent.clone()).or_insert(0.0);
@@ -165,16 +169,14 @@ impl IntentClassifier {
 
         // Question marks -> InformationSeeking boost
         if message.contains('?') {
-            let entry = scores
-                .entry(Intent::InformationSeeking)
-                .or_insert(0.0);
+            let entry = scores.entry(Intent::InformationSeeking).or_insert(0.0);
             *entry += 0.2;
         }
 
         // Imperative verbs at start -> TaskExecution boost
         let imperative_verbs = [
-            "run", "do", "execute", "install", "build", "make", "set", "get",
-            "create", "delete", "remove", "move", "copy", "start", "stop",
+            "run", "do", "execute", "install", "build", "make", "set", "get", "create", "delete",
+            "remove", "move", "copy", "start", "stop",
         ];
         let first_word = lower.split_whitespace().next().unwrap_or("");
         if imperative_verbs.contains(&first_word) {

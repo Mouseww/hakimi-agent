@@ -79,11 +79,7 @@ impl McpClient {
         let resp = self.send_request("initialize", Some(json!(params))).await?;
 
         if let Some(err) = resp.error {
-            anyhow::bail!(
-                "initialize failed (code {}): {}",
-                err.code,
-                err.message
-            );
+            anyhow::bail!("initialize failed (code {}): {}", err.code, err.message);
         }
 
         let result: InitializeResult =
@@ -100,7 +96,8 @@ impl McpClient {
         self.initialized = true;
 
         // Send the `notifications/initialized` notification (fire-and-forget).
-        self.send_notification("notifications/initialized", None).await?;
+        self.send_notification("notifications/initialized", None)
+            .await?;
 
         Ok(())
     }
@@ -165,7 +162,11 @@ impl McpClient {
         let result: CallToolResult =
             serde_json::from_value(resp.result.context("tools/call: missing result")?)?;
 
-        debug!(tool = name, is_error = result.is_error, "tool call completed");
+        debug!(
+            tool = name,
+            is_error = result.is_error,
+            "tool call completed"
+        );
         Ok(result)
     }
 
@@ -225,7 +226,10 @@ impl McpClient {
 
         {
             let mut stdin = self.stdin.lock().await;
-            stdin.write_all(payload.as_bytes()).await.context("writing to MCP stdin")?;
+            stdin
+                .write_all(payload.as_bytes())
+                .await
+                .context("writing to MCP stdin")?;
             stdin.flush().await.context("flushing MCP stdin")?;
         }
 
@@ -242,7 +246,10 @@ impl McpClient {
         payload.push('\n');
 
         let mut stdin = self.stdin.lock().await;
-        stdin.write_all(payload.as_bytes()).await.context("writing notification")?;
+        stdin
+            .write_all(payload.as_bytes())
+            .await
+            .context("writing notification")?;
         stdin.flush().await.context("flushing notification")?;
 
         debug!(method, "sent notification");
@@ -278,7 +285,11 @@ impl McpClient {
                 }
                 Ok(resp) => {
                     // Response for a different id — shouldn't happen in our serial model.
-                    warn!(got = resp.id, expected = expected_id, "unexpected response id, skipping");
+                    warn!(
+                        got = resp.id,
+                        expected = expected_id,
+                        "unexpected response id, skipping"
+                    );
                     continue;
                 }
                 Err(_) => {

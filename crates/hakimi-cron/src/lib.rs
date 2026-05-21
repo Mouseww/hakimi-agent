@@ -31,12 +31,8 @@ impl CronSchedule {
     /// Compute the next tick time given a reference instant.
     pub fn next_after(&self, after: DateTime<Utc>) -> DateTime<Utc> {
         match self {
-            CronSchedule::IntervalMinutes(m) => {
-                after + chrono::Duration::minutes(*m as i64)
-            }
-            CronSchedule::IntervalHours(h) => {
-                after + chrono::Duration::hours(*h as i64)
-            }
+            CronSchedule::IntervalMinutes(m) => after + chrono::Duration::minutes(*m as i64),
+            CronSchedule::IntervalHours(h) => after + chrono::Duration::hours(*h as i64),
             CronSchedule::CronExpr(_expr) => {
                 // TODO: integrate a proper cron parser crate.
                 // For now, fall back to a 1-hour default.
@@ -104,11 +100,7 @@ pub struct CronJob {
 
 impl CronJob {
     /// Create a new job with a parsed schedule and computed `next_run`.
-    pub fn new(
-        name: impl Into<String>,
-        schedule: CronSchedule,
-        prompt: impl Into<String>,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, schedule: CronSchedule, prompt: impl Into<String>) -> Self {
         let now = Utc::now();
         let next = schedule.next_after(now);
         Self {
@@ -163,11 +155,7 @@ impl CronScheduler {
         self.jobs
             .values()
             .filter(|j| j.enabled)
-            .filter_map(|j| {
-                j.next_run
-                    .filter(|nr| *nr <= now)
-                    .map(|_| j.id.clone())
-            })
+            .filter_map(|j| j.next_run.filter(|nr| *nr <= now).map(|_| j.id.clone()))
             .collect()
     }
 
@@ -264,11 +252,7 @@ mod tests {
 
     #[test]
     fn test_cron_job_new_sets_fields() {
-        let job = CronJob::new(
-            "my-job",
-            CronSchedule::IntervalMinutes(5),
-            "do something",
-        );
+        let job = CronJob::new("my-job", CronSchedule::IntervalMinutes(5), "do something");
         assert_eq!(job.name, "my-job");
         assert_eq!(job.prompt, "do something");
         assert!(job.enabled);

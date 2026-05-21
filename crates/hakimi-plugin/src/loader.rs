@@ -5,8 +5,8 @@ use hakimi_common::{HakimiError, Result};
 use hakimi_tools::Tool;
 use tracing::{debug, info, warn};
 
-use crate::http_tool::{HttpPluginConfig, HttpToolPlugin};
 use crate::Plugin;
+use crate::http_tool::{HttpPluginConfig, HttpToolPlugin};
 
 /// Default plugin directory: ~/.hakimi/plugins/
 fn default_plugin_dir() -> PathBuf {
@@ -89,10 +89,7 @@ impl PluginLoader {
 
     /// Get all tools from all loaded plugins.
     pub fn all_tools(&self) -> Vec<Arc<dyn Tool>> {
-        self.plugins
-            .iter()
-            .flat_map(|p| p.tools())
-            .collect()
+        self.plugins.iter().flat_map(|p| p.tools()).collect()
     }
 
     /// Get a reference to all loaded plugins.
@@ -128,8 +125,7 @@ impl PluginLoader {
 
     /// Load a single HTTP plugin config file.
     fn load_http_plugin_file(&mut self, path: &Path) -> Result<()> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| HakimiError::Io(e))?;
+        let content = std::fs::read_to_string(path).map_err(|e| HakimiError::Io(e))?;
 
         let config: HttpPluginConfig = if path.extension().map_or(false, |e| e == "json") {
             serde_json::from_str(&content)

@@ -10,10 +10,10 @@
 //! - `POST /config`          — Update config
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use tracing::info;

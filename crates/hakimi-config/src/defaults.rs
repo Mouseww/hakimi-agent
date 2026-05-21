@@ -60,4 +60,3 @@ pub static DEFAULT_FLAT: LazyLock<HashMap<String, serde_json::Value>> = LazyLock
     }
     map
 });
-

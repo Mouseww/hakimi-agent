@@ -97,10 +97,26 @@ async fn build_agent(
     let api_key = args
         .api_key
         .clone()
-        .or_else(|| std::env::var("HAKIMI_API_KEY").ok().filter(|s| !s.is_empty()))
-        .or_else(|| std::env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty()))
-        .or_else(|| std::env::var("OPENROUTER_API_KEY").ok().filter(|s| !s.is_empty()))
-        .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok().filter(|s| !s.is_empty()))
+        .or_else(|| {
+            std::env::var("HAKIMI_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+        })
+        .or_else(|| {
+            std::env::var("OPENAI_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+        })
+        .or_else(|| {
+            std::env::var("OPENROUTER_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+        })
+        .or_else(|| {
+            std::env::var("ANTHROPIC_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+        })
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
 
@@ -116,7 +132,11 @@ async fn build_agent(
     let base_url = args
         .base_url
         .clone()
-        .or_else(|| std::env::var("HAKIMI_BASE_URL").ok().filter(|s| !s.is_empty()))
+        .or_else(|| {
+            std::env::var("HAKIMI_BASE_URL")
+                .ok()
+                .filter(|s| !s.is_empty())
+        })
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| {
             if !config.model.base_url.is_empty() {
@@ -134,7 +154,10 @@ async fn build_agent(
         .unwrap_or_else(|| {
             if model.starts_with("claude") || model.contains("anthropic") {
                 "anthropic".to_string()
-            } else if model.starts_with("gpt-") || model.starts_with("o1") || model.starts_with("o3") {
+            } else if model.starts_with("gpt-")
+                || model.starts_with("o1")
+                || model.starts_with("o3")
+            {
                 "openai".to_string()
             } else {
                 "openrouter".to_string()
@@ -143,9 +166,8 @@ async fn build_agent(
 
     // Create transport
     let client = reqwest::Client::new();
-    let is_anthropic = provider == "anthropic"
-        || provider == "claude"
-        || base_url.contains("api.anthropic.com");
+    let is_anthropic =
+        provider == "anthropic" || provider == "claude" || base_url.contains("api.anthropic.com");
 
     let transport: Arc<dyn hakimi_transports::ProviderTransport> = if is_anthropic {
         let anthropic_url = if base_url.contains("anthropic") {
@@ -170,9 +192,9 @@ async fn build_agent(
     let context_length = config.compression.context_length;
     let context_engine: Arc<RwLock<dyn hakimi_context::ContextEngine>> =
         if config.compression.engine == "simple" {
-            Arc::new(RwLock::new(
-                hakimi_context::SimpleContextEngine::new(context_length),
-            ))
+            Arc::new(RwLock::new(hakimi_context::SimpleContextEngine::new(
+                context_length,
+            )))
         } else {
             Arc::new(RwLock::new(hakimi_context::SmartContextEngine::new(
                 context_length,
@@ -182,7 +204,7 @@ async fn build_agent(
 
     // Tool registry with built-in tools
     let tool_registry = hakimi_tools::ToolRegistry::new();
-    let builtin_tools: Vec<Arc<dyn hakimi_tools::Tool>> = vec![
+    let mut builtin_tools: Vec<Arc<dyn hakimi_tools::Tool>> = vec![
         Arc::new(hakimi_tools::ReadFileTool),
         Arc::new(hakimi_tools::WriteFileTool),
         Arc::new(hakimi_tools::TerminalTool),
@@ -202,6 +224,23 @@ async fn build_agent(
         Arc::new(hakimi_tools::TextToSpeechTool),
         Arc::new(hakimi_tools::ImageGenerateTool),
     ];
+    // Browser tools (shared browser instance)
+    let browser_manager = hakimi_tools::BrowserManager::new();
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserNavigateTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserSnapshotTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserClickTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserTypeTool::new(
+        browser_manager.clone(),
+    )));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserScreenshotTool::new(
+        browser_manager,
+    )));
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;
     }

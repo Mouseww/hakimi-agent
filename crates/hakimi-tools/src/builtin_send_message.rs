@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::collections::VecDeque;
 use std::sync::{LazyLock, Mutex};
 use tracing::debug;
@@ -28,10 +28,7 @@ pub static MESSAGE_QUEUE: LazyLock<Mutex<VecDeque<QueuedMessage>>> =
 /// Pop the next message from the outbound queue (non-blocking).
 /// Returns `None` if the queue is empty.
 pub fn pop_message() -> Option<QueuedMessage> {
-    MESSAGE_QUEUE
-        .lock()
-        .ok()
-        .and_then(|mut q| q.pop_front())
+    MESSAGE_QUEUE.lock().ok().and_then(|mut q| q.pop_front())
 }
 
 /// Get the current number of queued messages.
@@ -112,9 +109,9 @@ impl Tool for SendMessageTool {
             "queuing outbound message"
         );
 
-        let mut queue = MESSAGE_QUEUE.lock().map_err(|e| {
-            HakimiError::Tool(format!("failed to lock message queue: {e}"))
-        })?;
+        let mut queue = MESSAGE_QUEUE
+            .lock()
+            .map_err(|e| HakimiError::Tool(format!("failed to lock message queue: {e}")))?;
 
         let queue_size = queue.len();
         queue.push_back(queued);
@@ -133,7 +130,7 @@ mod tests {
     use hakimi_common::ToolContext;
 
     fn test_ctx() -> ToolContext {
-ToolContext {
+        ToolContext {
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,
@@ -197,10 +194,7 @@ ToolContext {
 
         let ctx = test_ctx();
         SendMessageTool
-            .execute(
-                &json!({"target": "discord:abc", "message": "test"}),
-                &ctx,
-            )
+            .execute(&json!({"target": "discord:abc", "message": "test"}), &ctx)
             .await
             .unwrap();
 

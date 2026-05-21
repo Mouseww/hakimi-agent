@@ -325,9 +325,7 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
             2 => {
                 // Slack
                 println!();
-                let token: String = Password::new()
-                    .with_prompt("Slack bot token")
-                    .interact()?;
+                let token: String = Password::new().with_prompt("Slack bot token").interact()?;
                 let channel: String = Input::new()
                     .with_prompt("Slack channel ID")
                     .interact_text()?;
@@ -382,20 +380,32 @@ fn print_summary(config: &SetupConfig) {
     println!("  Provider:       {}", config.provider);
     println!("  Base URL:       {}", config.base_url);
     println!("  Model:          {}", config.model);
-    println!("  API Key:        {}...{}",
+    println!(
+        "  API Key:        {}...{}",
         &config.api_key[..4.min(config.api_key.len())],
-        if config.api_key.len() > 4 { &config.api_key[config.api_key.len()-4..] } else { "" }
+        if config.api_key.len() > 4 {
+            &config.api_key[config.api_key.len() - 4..]
+        } else {
+            ""
+        }
     );
     println!("  Max Turns:      {}", config.max_turns);
     println!("  Max Retries:    {}", config.max_retries);
-    println!("  Streaming:      {}", if config.streaming { "yes" } else { "no" });
-    println!("  YOLO Mode:      {}", if config.yolo { "yes ⚠" } else { "no" });
+    println!(
+        "  Streaming:      {}",
+        if config.streaming { "yes" } else { "no" }
+    );
+    println!(
+        "  YOLO Mode:      {}",
+        if config.yolo { "yes ⚠" } else { "no" }
+    );
 
     if config.platforms.is_empty() {
         println!("  Platforms:      (none)");
     } else {
         for p in &config.platforms {
-            println!("  Platform:       {} (token: {}...)",
+            println!(
+                "  Platform:       {} (token: {}...)",
                 p.platform,
                 &p.token[..4.min(p.token.len())]
             );
@@ -458,7 +468,9 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
                 "filesystem" => {
                     yaml.push_str("  filesystem:\n");
                     yaml.push_str("    command: \"npx\"\n");
-                    yaml.push_str("    args: [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"]\n");
+                    yaml.push_str(
+                        "    args: [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"]\n",
+                    );
                 }
                 "github" => {
                     yaml.push_str("  github:\n");
@@ -470,14 +482,18 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
                 "brave-search" => {
                     yaml.push_str("  brave-search:\n");
                     yaml.push_str("    command: \"npx\"\n");
-                    yaml.push_str("    args: [\"-y\", \"@modelcontextprotocol/server-brave-search\"]\n");
+                    yaml.push_str(
+                        "    args: [\"-y\", \"@modelcontextprotocol/server-brave-search\"]\n",
+                    );
                     yaml.push_str("    env:\n");
                     yaml.push_str("      BRAVE_API_KEY: \"${BRAVE_API_KEY}\"\n");
                 }
                 "postgres" => {
                     yaml.push_str("  postgres:\n");
                     yaml.push_str("    command: \"npx\"\n");
-                    yaml.push_str("    args: [\"-y\", \"@modelcontextprotocol/server-postgres\"]\n");
+                    yaml.push_str(
+                        "    args: [\"-y\", \"@modelcontextprotocol/server-postgres\"]\n",
+                    );
                     yaml.push_str("    env:\n");
                     yaml.push_str("      DATABASE_URL: \"${DATABASE_URL}\"\n");
                 }
@@ -488,9 +504,12 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
 
     // Platform adapter hints as comments
     if !config.platforms.is_empty() {
-        yaml.push_str("\n# Platform adapters (configure via environment variables or dedicated config)\n");
+        yaml.push_str(
+            "\n# Platform adapters (configure via environment variables or dedicated config)\n",
+        );
         for p in &config.platforms {
-            yaml.push_str(&format!("# {}: token=\"{}...\"\n",
+            yaml.push_str(&format!(
+                "# {}: token=\"{}...\"\n",
                 p.platform,
                 &p.token[..4.min(p.token.len())]
             ));
@@ -717,10 +736,7 @@ mod tests {
     #[test]
     fn test_generate_config_yaml_with_mcp_servers() {
         let config = SetupConfig {
-            mcp_servers: vec![
-                "github".to_string(),
-                "brave-search".to_string(),
-            ],
+            mcp_servers: vec!["github".to_string(), "brave-search".to_string()],
             ..Default::default()
         };
         let yaml = generate_config_yaml(&config);

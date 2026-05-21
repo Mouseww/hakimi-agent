@@ -113,10 +113,23 @@ fn check_config_file() -> DiagnosticResult {
 
 fn check_api_key() -> DiagnosticResult {
     // Check env vars first
-    for var in &["HAKIMI_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY"] {
+    for var in &[
+        "HAKIMI_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ] {
         if let Ok(val) = std::env::var(var) {
             if !val.is_empty() {
-                let masked = format!("{}...{}", &val[..4.min(val.len())], if val.len() > 4 { &val[val.len()-4..] } else { "" });
+                let masked = format!(
+                    "{}...{}",
+                    &val[..4.min(val.len())],
+                    if val.len() > 4 {
+                        &val[val.len() - 4..]
+                    } else {
+                        ""
+                    }
+                );
                 return DiagnosticResult {
                     name: "API key".to_string(),
                     status: CheckStatus::Pass,
@@ -134,7 +147,15 @@ fn check_api_key() -> DiagnosticResult {
             if let Ok(config) = serde_yaml::from_str::<hakimi_config::HakimiConfig>(&contents) {
                 if !config.delegation.api_key.is_empty() {
                     let key = &config.delegation.api_key;
-                    let masked = format!("{}...{}", &key[..4.min(key.len())], if key.len() > 4 { &key[key.len()-4..] } else { "" });
+                    let masked = format!(
+                        "{}...{}",
+                        &key[..4.min(key.len())],
+                        if key.len() > 4 {
+                            &key[key.len() - 4..]
+                        } else {
+                            ""
+                        }
+                    );
                     return DiagnosticResult {
                         name: "API key".to_string(),
                         status: CheckStatus::Pass,
@@ -241,7 +262,10 @@ fn check_api_connectivity() -> DiagnosticResult {
 }
 
 fn check_rust_toolchain() -> DiagnosticResult {
-    match std::process::Command::new("rustc").arg("--version").output() {
+    match std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+    {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
             DiagnosticResult {
@@ -327,7 +351,8 @@ fn check_sqlite() -> DiagnosticResult {
     // Use the session DB crate to verify SQLite works
     match rusqlite::Connection::open(&db_path) {
         Ok(conn) => {
-            match conn.execute_batch("CREATE TABLE test (id INTEGER PRIMARY KEY); DROP TABLE test;") {
+            match conn.execute_batch("CREATE TABLE test (id INTEGER PRIMARY KEY); DROP TABLE test;")
+            {
                 Ok(_) => {
                     let _ = std::fs::remove_file(&db_path);
                     DiagnosticResult {
@@ -348,14 +373,12 @@ fn check_sqlite() -> DiagnosticResult {
                 }
             }
         }
-        Err(e) => {
-            DiagnosticResult {
-                name: "SQLite".to_string(),
-                status: CheckStatus::Fail,
-                message: format!("Cannot open SQLite: {}", e),
-                fix: Some("Install SQLite: https://sqlite.org/".to_string()),
-            }
-        }
+        Err(e) => DiagnosticResult {
+            name: "SQLite".to_string(),
+            status: CheckStatus::Fail,
+            message: format!("Cannot open SQLite: {}", e),
+            fix: Some("Install SQLite: https://sqlite.org/".to_string()),
+        },
     }
 }
 
@@ -426,9 +449,9 @@ pub fn format_report(results: &[DiagnosticResult]) -> String {
 
     for result in results {
         let (icon, color) = match result.status {
-            CheckStatus::Pass => ("✓", "\x1b[32m"),   // green
-            CheckStatus::Fail => ("✗", "\x1b[31m"),   // red
-            CheckStatus::Warn => ("⚠", "\x1b[33m"),   // yellow
+            CheckStatus::Pass => ("✓", "\x1b[32m"), // green
+            CheckStatus::Fail => ("✗", "\x1b[31m"), // red
+            CheckStatus::Warn => ("⚠", "\x1b[33m"), // yellow
         };
         let reset = "\x1b[0m";
 
@@ -444,9 +467,18 @@ pub fn format_report(results: &[DiagnosticResult]) -> String {
         }
     }
 
-    let passed = results.iter().filter(|r| r.status == CheckStatus::Pass).count();
-    let failed = results.iter().filter(|r| r.status == CheckStatus::Fail).count();
-    let warned = results.iter().filter(|r| r.status == CheckStatus::Warn).count();
+    let passed = results
+        .iter()
+        .filter(|r| r.status == CheckStatus::Pass)
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| r.status == CheckStatus::Fail)
+        .count();
+    let warned = results
+        .iter()
+        .filter(|r| r.status == CheckStatus::Warn)
+        .count();
 
     report.push_str(&format!(
         "\n  Summary: {} passed, {} failed, {} warnings\n",
@@ -600,14 +632,12 @@ mod tests {
 
     #[test]
     fn test_format_report_shows_fixes() {
-        let results = vec![
-            DiagnosticResult {
-                name: "broken".to_string(),
-                status: CheckStatus::Fail,
-                message: "Missing".to_string(),
-                fix: Some("Install it".to_string()),
-            },
-        ];
+        let results = vec![DiagnosticResult {
+            name: "broken".to_string(),
+            status: CheckStatus::Fail,
+            message: "Missing".to_string(),
+            fix: Some("Install it".to_string()),
+        }];
         let report = format_report(&results);
         assert!(report.contains("→ Install it"));
         assert!(report.contains("Some checks failed"));

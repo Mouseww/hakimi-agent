@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -79,7 +79,8 @@ impl HttpTransport {
         self.initialized = true;
 
         // Send initialized notification.
-        self.send_notification("notifications/initialized", None).await?;
+        self.send_notification("notifications/initialized", None)
+            .await?;
 
         Ok(())
     }
@@ -133,13 +134,22 @@ impl HttpTransport {
         let resp = self.send_request("tools/call", Some(json!(params))).await?;
 
         if let Some(err) = resp.error {
-            anyhow::bail!("tools/call '{}' failed (code {}): {}", name, err.code, err.message);
+            anyhow::bail!(
+                "tools/call '{}' failed (code {}): {}",
+                name,
+                err.code,
+                err.message
+            );
         }
 
         let result: CallToolResult =
             serde_json::from_value(resp.result.context("tools/call: missing result")?)?;
 
-        debug!(tool = name, is_error = result.is_error, "HTTP tool call completed");
+        debug!(
+            tool = name,
+            is_error = result.is_error,
+            "HTTP tool call completed"
+        );
         Ok(result)
     }
 
@@ -167,15 +177,22 @@ impl HttpTransport {
             .context("HTTP request failed")?;
 
         let status = response.status();
-        let body = response.text().await.context("failed to read response body")?;
+        let body = response
+            .text()
+            .await
+            .context("failed to read response body")?;
 
         if !status.is_success() {
             anyhow::bail!("HTTP error {}: {}", status, &body[..body.len().min(200)]);
         }
 
         // Try to parse as JSON-RPC response.
-        serde_json::from_str::<JsonRpcResponse>(&body)
-            .with_context(|| format!("failed to parse JSON-RPC response: {}", &body[..body.len().min(200)]))
+        serde_json::from_str::<JsonRpcResponse>(&body).with_context(|| {
+            format!(
+                "failed to parse JSON-RPC response: {}",
+                &body[..body.len().min(200)]
+            )
+        })
     }
 
     /// Send a JSON-RPC notification (fire-and-forget).
@@ -221,11 +238,8 @@ mod tests {
 
     #[test]
     fn test_http_transport_new() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         assert_eq!(transport.url, "http://localhost:3000/mcp");
         assert!(!transport.initialized);
     }
@@ -242,32 +256,23 @@ mod tests {
 
     #[test]
     fn test_ensure_initialized_fails() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         assert!(transport.ensure_initialized().is_err());
     }
 
     #[tokio::test]
     async fn test_list_tools_before_init() {
-        let mut transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let mut transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         let result = transport.list_tools().await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_call_tool_before_init() {
-        let mut transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let mut transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         let result = transport.call_tool("test", None).await;
         assert!(result.is_err());
     }
@@ -284,31 +289,22 @@ mod tests {
 
     #[test]
     fn test_http_transport_timeout_stored() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(60),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(60));
         assert_eq!(transport.timeout, Duration::from_secs(60));
     }
 
     #[test]
     fn test_http_transport_server_info_none_initially() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         assert!(transport.server_info.is_none());
     }
 
     #[tokio::test]
     async fn test_http_transport_next_id_increments() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         let id1 = transport.next_id().await;
         let id2 = transport.next_id().await;
         let id3 = transport.next_id().await;
@@ -319,11 +315,8 @@ mod tests {
 
     #[test]
     fn test_http_transport_no_auth_header() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         assert!(transport.auth_header.is_none());
     }
 
@@ -339,11 +332,8 @@ mod tests {
 
     #[test]
     fn test_ensure_initialized_error_message() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         let err = transport.ensure_initialized().unwrap_err();
         let msg = format!("{}", err);
         assert!(msg.contains("not initialized"));
@@ -351,11 +341,8 @@ mod tests {
 
     #[test]
     fn test_http_transport_default_next_id_is_one() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         // next_id is behind a Mutex so we can't read it directly, but
         // the first call to next_id().await should return 1 (tested in async test below).
         // Here we just verify the transport was constructed.
@@ -378,11 +365,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_transport_next_id_starts_at_one() {
-        let transport = HttpTransport::new(
-            "http://localhost:3000/mcp",
-            None,
-            Duration::from_secs(30),
-        );
+        let transport =
+            HttpTransport::new("http://localhost:3000/mcp", None, Duration::from_secs(30));
         let first_id = transport.next_id().await;
         assert_eq!(first_id, 1, "first next_id should be 1");
     }

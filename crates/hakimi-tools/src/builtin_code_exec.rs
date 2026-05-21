@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::process::Command;
 use tracing::debug;
 
@@ -88,9 +88,9 @@ impl Tool for CodeExecTool {
 
         // Write code to a temp file
         let temp_dir = std::path::PathBuf::from(&ctx.workdir).join(".hakimi_tmp");
-        tokio::fs::create_dir_all(&temp_dir).await.map_err(|e| {
-            HakimiError::Tool(format!("failed to create temp directory: {e}"))
-        })?;
+        tokio::fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(|e| HakimiError::Tool(format!("failed to create temp directory: {e}")))?;
 
         let temp_file = temp_dir.join(format!(
             "snippet_{}_{}_{}",
@@ -101,9 +101,9 @@ impl Tool for CodeExecTool {
                 .as_nanos(),
             extension
         ));
-        tokio::fs::write(&temp_file, code).await.map_err(|e| {
-            HakimiError::Tool(format!("failed to write temp file: {e}"))
-        })?;
+        tokio::fs::write(&temp_file, code)
+            .await
+            .map_err(|e| HakimiError::Tool(format!("failed to write temp file: {e}")))?;
 
         // Execute the code
         let result = tokio::time::timeout(
@@ -125,9 +125,7 @@ impl Tool for CodeExecTool {
                     timeout_secs, language
                 ))
             })?
-            .map_err(|e| {
-                HakimiError::Tool(format!("failed to execute {} code: {e}", language))
-            })?;
+            .map_err(|e| HakimiError::Tool(format!("failed to execute {} code: {e}", language)))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -172,7 +170,7 @@ mod tests {
     use hakimi_common::ToolContext;
 
     fn test_ctx(workdir: &str) -> ToolContext {
-ToolContext {
+        ToolContext {
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,

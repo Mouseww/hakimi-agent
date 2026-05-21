@@ -1,13 +1,13 @@
 pub mod adapter;
 pub mod catalog;
 pub mod client;
-pub mod protocol;
 pub mod http_transport;
+pub mod protocol;
 pub mod sse_transport;
 
 pub use adapter::McpToolAdapter;
-pub use catalog::{McpServerEntry, EnvVar};
+pub use catalog::{EnvVar, McpServerEntry};
 pub use client::McpClient;
-pub use protocol::*;
 pub use http_transport::HttpTransport;
-pub use sse_transport::{SseTransport, ReconnectConfig};
+pub use protocol::*;
+pub use sse_transport::{ReconnectConfig, SseTransport};

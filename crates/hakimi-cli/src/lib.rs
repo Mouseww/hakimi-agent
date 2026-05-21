@@ -2,10 +2,10 @@
 //!
 //! Provides the [`Command`] enum for REPL-level commands that start with `/`.
 
-pub mod profiles;
-pub mod setup_wizard;
 pub mod doctor;
 pub mod entry;
+pub mod profiles;
+pub mod setup_wizard;
 
 use std::fmt;
 
@@ -123,7 +123,10 @@ mod tests {
         assert_eq!(Command::parse("/help"), Some(Command::Help));
         assert_eq!(Command::parse("/quit"), Some(Command::Quit));
         assert_eq!(Command::parse("/clear"), Some(Command::Clear));
-        assert_eq!(Command::parse("/model gpt-4o"), Some(Command::Model(Some("gpt-4o".into()))));
+        assert_eq!(
+            Command::parse("/model gpt-4o"),
+            Some(Command::Model(Some("gpt-4o".into())))
+        );
         assert_eq!(Command::parse("/status"), Some(Command::Status));
         assert_eq!(Command::parse("hello world"), None);
     }
@@ -131,10 +134,16 @@ mod tests {
     #[test]
     fn test_parse_new_commands() {
         assert_eq!(Command::parse("/profile"), Some(Command::Profile(None)));
-        assert_eq!(Command::parse("/profile work"), Some(Command::Profile(Some("work".into()))));
+        assert_eq!(
+            Command::parse("/profile work"),
+            Some(Command::Profile(Some("work".into())))
+        );
         assert_eq!(Command::parse("/doctor"), Some(Command::Doctor));
         assert_eq!(Command::parse("/setup"), Some(Command::Setup));
         assert_eq!(Command::parse("/cron"), Some(Command::Cron(None)));
-        assert_eq!(Command::parse("/cron list"), Some(Command::Cron(Some("list".into()))));
+        assert_eq!(
+            Command::parse("/cron list"),
+            Some(Command::Cron(Some("list".into())))
+        );
     }
 }

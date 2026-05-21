@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
@@ -70,10 +70,7 @@ impl Tool for CheckpointTool {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        let label = args
-            .get("label")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let label = args.get("label").and_then(|v| v.as_str()).unwrap_or("");
 
         let workdir = Path::new(&ctx.workdir);
 
@@ -107,9 +104,7 @@ impl Tool for CheckpointTool {
 fn ensure_shadow_git(workdir: &Path) -> Result<PathBuf> {
     let git_dir = workdir.join(SHADOW_GIT_DIR);
     if !git_dir.join("HEAD").exists() {
-        std::fs::create_dir_all(&git_dir).map_err(|e| {
-            HakimiError::Io(e)
-        })?;
+        std::fs::create_dir_all(&git_dir).map_err(|e| HakimiError::Io(e))?;
         // Initialize a bare-ish git repo.
         run_git(workdir, &["init", "--bare", &git_dir.to_string_lossy()])?;
         // Configure the shadow git repo.
@@ -164,10 +159,7 @@ async fn list_checkpoints(workdir: &Path) -> Result<String> {
         .to_string());
     }
 
-    let output = run_git_raw(
-        workdir,
-        &["log", "--format=%H|%s|%ai", "--all"],
-    )?;
+    let output = run_git_raw(workdir, &["log", "--format=%H|%s|%ai", "--all"])?;
 
     let checkpoints: Vec<JsonValue> = output
         .lines()
@@ -345,9 +337,15 @@ mod tests {
             .as_array()
             .expect("action enum should be an array");
         let action_strs: Vec<&str> = actions.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(action_strs.contains(&"create"), "enum must contain 'create'");
+        assert!(
+            action_strs.contains(&"create"),
+            "enum must contain 'create'"
+        );
         assert!(action_strs.contains(&"list"), "enum must contain 'list'");
-        assert!(action_strs.contains(&"rollback"), "enum must contain 'rollback'");
+        assert!(
+            action_strs.contains(&"rollback"),
+            "enum must contain 'rollback'"
+        );
         assert!(action_strs.contains(&"diff"), "enum must contain 'diff'");
     }
 
@@ -473,9 +471,16 @@ mod tests {
             delegate_executor: None,
         };
         let result = tool
-            .execute(&json!({"action": "create", "label": "before-refactor"}), &ctx)
+            .execute(
+                &json!({"action": "create", "label": "before-refactor"}),
+                &ctx,
+            )
             .await;
-        assert!(result.is_ok(), "create with label failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "create with label failed: {:?}",
+            result.err()
+        );
         let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
         assert_eq!(body["label"], "before-refactor");
         let msg = body["message"].as_str().unwrap();
@@ -515,7 +520,11 @@ mod tests {
         };
         // No shadow git dir exists — list should return empty
         let result = tool.execute(&json!({"action": "list"}), &ctx).await;
-        assert!(result.is_ok(), "list on empty dir should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "list on empty dir should succeed: {:?}",
+            result.err()
+        );
         let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
         let checkpoints = body["checkpoints"].as_array().unwrap();
         assert!(checkpoints.is_empty(), "should have no checkpoints");
@@ -535,7 +544,10 @@ mod tests {
         };
         // No shadow git dir — rollback should fail
         let result = tool
-            .execute(&json!({"action": "rollback", "checkpoint_id": "abc123"}), &ctx)
+            .execute(
+                &json!({"action": "rollback", "checkpoint_id": "abc123"}),
+                &ctx,
+            )
             .await;
         assert!(result.is_err(), "rollback with no checkpoints should fail");
     }
@@ -615,8 +627,14 @@ mod tests {
             .iter()
             .map(|cp| cp["message"].as_str().unwrap())
             .collect();
-        assert!(messages.iter().any(|m| m.contains("v1")), "should have v1 checkpoint");
-        assert!(messages.iter().any(|m| m.contains("v2")), "should have v2 checkpoint");
+        assert!(
+            messages.iter().any(|m| m.contains("v1")),
+            "should have v1 checkpoint"
+        );
+        assert!(
+            messages.iter().any(|m| m.contains("v2")),
+            "should have v2 checkpoint"
+        );
     }
 
     #[tokio::test]
@@ -664,12 +682,22 @@ mod tests {
         let diff_res = tool
             .execute(&json!({"action": "diff", "checkpoint_id": cp_id}), &ctx)
             .await;
-        assert!(diff_res.is_ok(), "diff should succeed: {:?}", diff_res.err());
+        assert!(
+            diff_res.is_ok(),
+            "diff should succeed: {:?}",
+            diff_res.err()
+        );
         let diff_body: serde_json::Value = serde_json::from_str(&diff_res.unwrap()).unwrap();
         assert_eq!(diff_body["has_changes"], true, "should detect changes");
         let diff_text = diff_body["diff"].as_str().unwrap();
-        assert!(diff_text.contains("original"), "diff should mention original content");
-        assert!(diff_text.contains("modified"), "diff should mention modified content");
+        assert!(
+            diff_text.contains("original"),
+            "diff should mention original content"
+        );
+        assert!(
+            diff_text.contains("modified"),
+            "diff should mention modified content"
+        );
     }
 
     #[tokio::test]

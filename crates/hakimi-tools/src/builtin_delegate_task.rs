@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::{debug, warn};
 
 use crate::Tool;
@@ -104,9 +104,8 @@ impl Tool for DelegateTaskTool {
                         "error": format!("{e}"),
                         "parent_session": ctx.session_id,
                     });
-                    return serde_json::to_string_pretty(&response).map_err(|e| {
-                        HakimiError::Tool(format!("failed to serialize error: {e}"))
-                    });
+                    return serde_json::to_string_pretty(&response)
+                        .map_err(|e| HakimiError::Tool(format!("failed to serialize error: {e}")));
                 }
             }
         }

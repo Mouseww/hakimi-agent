@@ -80,10 +80,13 @@ impl PlatformAdapter for MatrixAdapter {
             chat_id
         };
 
-        let txn_id = format!("txn_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis());
+        let txn_id = format!(
+            "txn_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
         let url = self.build_send_url(room, &txn_id);
 
         let body = serde_json::json!({
@@ -95,7 +98,10 @@ impl PlatformAdapter for MatrixAdapter {
             .client
             .put(&url)
             .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", self.config.access_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.access_token),
+            )
             .json(&body)
             .send()
             .await?;

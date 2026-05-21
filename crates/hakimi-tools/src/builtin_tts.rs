@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
-use tracing::{debug, info, warn};
+use serde_json::{Value as JsonValue, json};
 use std::path::PathBuf;
+use tracing::{debug, info, warn};
 
 use crate::Tool;
 
@@ -112,10 +112,7 @@ impl Tool for TextToSpeechTool {
         };
 
         info!(path = %result_path.display(), provider = %provider, "TTS audio generated");
-        Ok(format!(
-            "MEDIA:{}",
-            result_path.display()
-        ))
+        Ok(format!("MEDIA:{}", result_path.display()))
     }
 }
 
@@ -135,7 +132,10 @@ fn get_output_dir(custom: Option<&str>) -> PathBuf {
 fn generate_filename(prefix: &str, ext: &str) -> String {
     let uuid = uuid::Uuid::new_v4();
     let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-    format!("{prefix}_{ts}_{:.8}.{ext}", uuid.to_string().replace('-', ""))
+    format!(
+        "{prefix}_{ts}_{:.8}.{ext}",
+        uuid.to_string().replace('-', "")
+    )
 }
 
 /// Generate TTS audio using OpenAI-compatible API.
@@ -196,9 +196,7 @@ async fn generate_openai_tts(
         .map_err(|e| HakimiError::Tool(format!("failed to read TTS response: {e}")))?;
 
     if audio_bytes.is_empty() {
-        return Err(HakimiError::Tool(
-            "TTS API returned empty response".into(),
-        ));
+        return Err(HakimiError::Tool("TTS API returned empty response".into()));
     }
 
     // Determine output path
@@ -250,7 +248,10 @@ async fn generate_edge_tts(
     // Validate that the voice exists by checking the voice list
     let voices_response = client
         .get(config_url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        )
         .send()
         .await;
 
@@ -299,11 +300,7 @@ async fn generate_edge_tts(
 ///
 /// Uses the Google Translate TTS endpoint as a free, stable, HTTP-based
 /// text-to-speech backend that requires no API key.
-async fn edge_tts_synthesize(
-    text: &str,
-    voice: &str,
-    client: &reqwest::Client,
-) -> Result<Vec<u8>> {
+async fn edge_tts_synthesize(text: &str, voice: &str, client: &reqwest::Client) -> Result<Vec<u8>> {
     // Extract language code from voice name (e.g. "en-US-AriaNeural" -> "en")
     let lang = voice.split('-').next().unwrap_or("en");
 
@@ -343,7 +340,6 @@ async fn edge_tts_synthesize(
     Ok(audio.to_vec())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,9 +373,7 @@ mod tests {
         let tool = TextToSpeechTool;
         let schema = tool.schema();
 
-        let providers = schema["properties"]["provider"]["enum"]
-            .as_array()
-            .unwrap();
+        let providers = schema["properties"]["provider"]["enum"].as_array().unwrap();
         assert!(providers.contains(&JsonValue::String("openai".to_string())));
         assert!(providers.contains(&JsonValue::String("edge".to_string())));
     }
@@ -388,7 +382,9 @@ mod tests {
     fn test_get_output_dir_default() {
         // Clear any env var
         // SAFETY: tests run single-threaded for env var manipulation
-        unsafe { std::env::remove_var("HAKIMI_TTS_OUTPUT_DIR"); }
+        unsafe {
+            std::env::remove_var("HAKIMI_TTS_OUTPUT_DIR");
+        }
         let dir = get_output_dir(None);
         assert!(dir.ends_with(".hakimi/audio_cache"));
     }
@@ -402,10 +398,14 @@ mod tests {
     #[test]
     fn test_get_output_dir_env() {
         // SAFETY: tests run single-threaded for env var manipulation
-        unsafe { std::env::set_var("HAKIMI_TTS_OUTPUT_DIR", "/custom/tts/dir"); }
+        unsafe {
+            std::env::set_var("HAKIMI_TTS_OUTPUT_DIR", "/custom/tts/dir");
+        }
         let dir = get_output_dir(None);
         assert_eq!(dir, PathBuf::from("/custom/tts/dir"));
-        unsafe { std::env::remove_var("HAKIMI_TTS_OUTPUT_DIR"); }
+        unsafe {
+            std::env::remove_var("HAKIMI_TTS_OUTPUT_DIR");
+        }
     }
 
     #[test]
@@ -490,7 +490,9 @@ mod tests {
     async fn test_openai_missing_api_key() {
         // Ensure no API key is set
         // SAFETY: tests run single-threaded for env var manipulation
-        unsafe { std::env::remove_var("HAKIMI_TTS_API_KEY"); }
+        unsafe {
+            std::env::remove_var("HAKIMI_TTS_API_KEY");
+        }
         let tool = TextToSpeechTool;
         let ctx = hakimi_common::ToolContext {
             session_id: "test".to_string(),

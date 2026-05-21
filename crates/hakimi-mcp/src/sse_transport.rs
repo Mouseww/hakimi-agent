@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -114,7 +114,8 @@ impl SseTransport {
         self.initialized = true;
         self.reconnect_attempts = 0;
 
-        self.send_notification("notifications/initialized", None).await?;
+        self.send_notification("notifications/initialized", None)
+            .await?;
 
         Ok(())
     }
@@ -137,14 +138,14 @@ impl SseTransport {
             .context("failed to connect to SSE endpoint")?;
 
         if !response.status().is_success() {
-            anyhow::bail!(
-                "SSE connection failed: HTTP {}",
-                response.status()
-            );
+            anyhow::bail!("SSE connection failed: HTTP {}", response.status());
         }
 
         // Read the first SSE event to get the endpoint URL.
-        let body = response.text().await.context("failed to read SSE response")?;
+        let body = response
+            .text()
+            .await
+            .context("failed to read SSE response")?;
 
         // Parse SSE events to find the "endpoint" event.
         for line in body.lines() {
@@ -200,7 +201,11 @@ impl SseTransport {
     }
 
     /// Call a tool on the MCP server.
-    pub async fn call_tool(&mut self, name: &str, arguments: Option<Value>) -> Result<CallToolResult> {
+    pub async fn call_tool(
+        &mut self,
+        name: &str,
+        arguments: Option<Value>,
+    ) -> Result<CallToolResult> {
         self.ensure_initialized()?;
 
         let params = CallToolParams {
@@ -211,13 +216,22 @@ impl SseTransport {
         let resp = self.send_request("tools/call", Some(json!(params))).await?;
 
         if let Some(err) = resp.error {
-            anyhow::bail!("tools/call '{}' failed (code {}): {}", name, err.code, err.message);
+            anyhow::bail!(
+                "tools/call '{}' failed (code {}): {}",
+                name,
+                err.code,
+                err.message
+            );
         }
 
         let result: CallToolResult =
             serde_json::from_value(resp.result.context("tools/call: missing result")?)?;
 
-        debug!(tool = name, is_error = result.is_error, "SSE tool call completed");
+        debug!(
+            tool = name,
+            is_error = result.is_error,
+            "SSE tool call completed"
+        );
         Ok(result)
     }
 
@@ -249,22 +263,30 @@ impl SseTransport {
             .context("SSE POST request failed")?;
 
         let status = response.status();
-        let body = response.text().await.context("failed to read response body")?;
+        let body = response
+            .text()
+            .await
+            .context("failed to read response body")?;
 
         if !status.is_success() {
-            anyhow::bail!("SSE POST error {}: {}", status, &body[..body.len().min(200)]);
+            anyhow::bail!(
+                "SSE POST error {}: {}",
+                status,
+                &body[..body.len().min(200)]
+            );
         }
 
-        serde_json::from_str::<JsonRpcResponse>(&body)
-            .with_context(|| format!("failed to parse JSON-RPC response: {}", &body[..body.len().min(200)]))
+        serde_json::from_str::<JsonRpcResponse>(&body).with_context(|| {
+            format!(
+                "failed to parse JSON-RPC response: {}",
+                &body[..body.len().min(200)]
+            )
+        })
     }
 
     /// Send a JSON-RPC notification via HTTP POST.
     async fn send_notification(&self, method: &str, params: Option<Value>) -> Result<()> {
-        let post_url = self
-            .post_url
-            .as_ref()
-            .context("no POST URL available")?;
+        let post_url = self.post_url.as_ref().context("no POST URL available")?;
 
         let notification = JsonRpcNotification::new(method, params);
 
@@ -338,11 +360,7 @@ mod tests {
 
     #[test]
     fn test_sse_transport_new() {
-        let transport = SseTransport::new(
-            "http://localhost:3000/sse",
-            None,
-            None,
-        );
+        let transport = SseTransport::new("http://localhost:3000/sse", None, None);
         assert_eq!(transport.sse_url, "http://localhost:3000/sse");
         assert!(!transport.initialized);
         assert_eq!(transport.reconnect_attempts, 0);
@@ -411,14 +429,16 @@ mod tests {
             base_delay: Duration::from_millis(500),
             max_delay: Duration::from_secs(60),
         };
-        let transport = SseTransport::new(
-            "http://localhost/sse",
-            None,
-            Some(config.clone()),
-        );
+        let transport = SseTransport::new("http://localhost/sse", None, Some(config.clone()));
         assert_eq!(transport.reconnect_config.max_attempts, 10);
-        assert_eq!(transport.reconnect_config.base_delay, Duration::from_millis(500));
-        assert_eq!(transport.reconnect_config.max_delay, Duration::from_secs(60));
+        assert_eq!(
+            transport.reconnect_config.base_delay,
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            transport.reconnect_config.max_delay,
+            Duration::from_secs(60)
+        );
     }
 
     #[test]

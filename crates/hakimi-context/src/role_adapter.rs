@@ -40,9 +40,10 @@ impl RoleAdapter {
                 role: Role::Coder,
                 name: "Coder".to_string(),
                 description: "Focused on writing, refactoring, and debugging code".to_string(),
-                system_prompt_suffix: "You are in coding mode. Focus on writing clean, efficient code. \
+                system_prompt_suffix:
+                    "You are in coding mode. Focus on writing clean, efficient code. \
                      Show complete implementations. Use appropriate error handling."
-                    .to_string(),
+                        .to_string(),
                 preferred_tools: vec![
                     "terminal".to_string(),
                     "write_file".to_string(),
@@ -60,9 +61,10 @@ impl RoleAdapter {
                 role: Role::Researcher,
                 name: "Researcher".to_string(),
                 description: "Focused on gathering and analyzing information".to_string(),
-                system_prompt_suffix: "You are in research mode. Provide thorough, well-sourced analysis. \
+                system_prompt_suffix:
+                    "You are in research mode. Provide thorough, well-sourced analysis. \
                      Compare options and present balanced viewpoints."
-                    .to_string(),
+                        .to_string(),
                 preferred_tools: vec![
                     "web_search".to_string(),
                     "read_file".to_string(),
@@ -113,9 +115,10 @@ impl RoleAdapter {
                 role: Role::Tutor,
                 name: "Tutor".to_string(),
                 description: "Focused on teaching and explaining concepts".to_string(),
-                system_prompt_suffix: "You are in tutor mode. Explain concepts clearly with examples. \
+                system_prompt_suffix:
+                    "You are in tutor mode. Explain concepts clearly with examples. \
                      Build understanding step by step. Encourage learning."
-                    .to_string(),
+                        .to_string(),
                 preferred_tools: vec!["read_file".to_string(), "web_search".to_string()],
                 tone: "encouraging".to_string(),
                 verbosity: "verbose".to_string(),
@@ -143,9 +146,10 @@ impl RoleAdapter {
                 role: Role::DevOps,
                 name: "DevOps".to_string(),
                 description: "Focused on infrastructure, deployment, and operations".to_string(),
-                system_prompt_suffix: "You are in DevOps mode. Focus on reliable, secure infrastructure. \
+                system_prompt_suffix:
+                    "You are in DevOps mode. Focus on reliable, secure infrastructure. \
                      Consider scalability and maintainability. Show commands clearly."
-                    .to_string(),
+                        .to_string(),
                 preferred_tools: vec![
                     "terminal".to_string(),
                     "read_file".to_string(),
@@ -188,7 +192,13 @@ impl RoleAdapter {
 
         // Coder keywords
         let coder_kws = [
-            "implement", "function", "code", "refactor", "compile", "cargo", "npm",
+            "implement",
+            "function",
+            "code",
+            "refactor",
+            "compile",
+            "cargo",
+            "npm",
         ];
         for kw in &coder_kws {
             if lower.contains(kw) {
@@ -197,7 +207,13 @@ impl RoleAdapter {
         }
 
         // Researcher keywords
-        let researcher_kws = ["compare", "what are", "analyze", "pros and cons", "evaluate"];
+        let researcher_kws = [
+            "compare",
+            "what are",
+            "analyze",
+            "pros and cons",
+            "evaluate",
+        ];
         for kw in &researcher_kws {
             if lower.contains(kw) {
                 *scores.entry(Role::Researcher).or_insert(0.0) += 0.3;
@@ -340,8 +356,8 @@ impl RoleAdapter {
             transition_history: Vec<(Role, String, String)>,
         }
 
-        let data: RoleAdapterData =
-            serde_json::from_str(json).map_err(|e| hakimi_common::HakimiError::Other(e.to_string()))?;
+        let data: RoleAdapterData = serde_json::from_str(json)
+            .map_err(|e| hakimi_common::HakimiError::Other(e.to_string()))?;
 
         let mut profiles = HashMap::new();
         for profile in data.profiles {
@@ -407,7 +423,9 @@ mod tests {
     fn test_transition_updates_role() {
         let mut adapter = RoleAdapter::new();
         assert_eq!(adapter.current_role, Role::Assistant);
-        adapter.transition(Role::Coder, "user asked for code").unwrap();
+        adapter
+            .transition(Role::Coder, "user asked for code")
+            .unwrap();
         assert_eq!(adapter.current_role, Role::Coder);
     }
 
@@ -415,7 +433,9 @@ mod tests {
     fn test_transition_history() {
         let mut adapter = RoleAdapter::new();
         adapter.transition(Role::Coder, "coding task").unwrap();
-        adapter.transition(Role::Researcher, "research task").unwrap();
+        adapter
+            .transition(Role::Researcher, "research task")
+            .unwrap();
         assert_eq!(adapter.transition_history.len(), 2);
         assert_eq!(adapter.transition_history[0].0, Role::Coder);
         assert_eq!(adapter.transition_history[1].0, Role::Researcher);

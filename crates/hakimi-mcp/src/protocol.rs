@@ -209,7 +209,11 @@ mod tests {
 
     #[test]
     fn test_request_serialization() {
-        let req = JsonRpcRequest::new(1, "initialize", Some(json!({"protocolVersion": "2024-11-05"})));
+        let req = JsonRpcRequest::new(
+            1,
+            "initialize",
+            Some(json!({"protocolVersion": "2024-11-05"})),
+        );
         let s = serde_json::to_string(&req).unwrap();
         assert!(s.contains("\"jsonrpc\":\"2.0\""));
         assert!(s.contains("\"method\":\"initialize\""));
@@ -241,8 +245,12 @@ mod tests {
     fn test_call_tool_result_text_content() {
         let result = CallToolResult {
             content: vec![
-                ContentBlock::Text { text: "line1".to_string() },
-                ContentBlock::Text { text: "line2".to_string() },
+                ContentBlock::Text {
+                    text: "line1".to_string(),
+                },
+                ContentBlock::Text {
+                    text: "line2".to_string(),
+                },
             ],
             is_error: false,
         };
@@ -251,7 +259,9 @@ mod tests {
 
     #[test]
     fn test_content_block_serde() {
-        let block = ContentBlock::Text { text: "hello".to_string() };
+        let block = ContentBlock::Text {
+            text: "hello".to_string(),
+        };
         let s = serde_json::to_string(&block).unwrap();
         assert!(s.contains("\"type\":\"text\""));
         assert!(s.contains("\"text\":\"hello\""));
@@ -270,7 +280,8 @@ mod tests {
 
     #[test]
     fn test_error_response() {
-        let json_str = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
+        let json_str =
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
         let resp: JsonRpcResponse = serde_json::from_str(json_str).unwrap();
         assert!(resp.result.is_none());
         assert!(resp.error.is_some());

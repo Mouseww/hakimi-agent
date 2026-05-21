@@ -1,6 +1,6 @@
 pub mod graph;
-pub mod store;
 pub mod provider;
+pub mod store;
 
 pub use graph::{EdgeType, KnowledgeGraph, NodeType};
 pub use provider::KnowledgeProvider;

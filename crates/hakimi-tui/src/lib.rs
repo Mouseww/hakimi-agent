@@ -107,10 +107,7 @@ pub enum AgentEvent {
     /// Agent is processing (thinking/tool-calling).
     Thinking,
     /// A tool is being called.
-    ToolCall {
-        name: String,
-        arguments: String,
-    },
+    ToolCall { name: String, arguments: String },
     /// A tool call completed.
     ToolResult {
         name: String,
@@ -142,7 +139,13 @@ mod tests {
 
     #[test]
     fn role_variants_exist() {
-        let roles = [Role::User, Role::Assistant, Role::Tool, Role::System, Role::Error];
+        let roles = [
+            Role::User,
+            Role::Assistant,
+            Role::Tool,
+            Role::System,
+            Role::Error,
+        ];
         assert_eq!(roles.len(), 5);
         // Ensure they are all distinct
         for i in 0..roles.len() {

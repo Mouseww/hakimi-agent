@@ -5,15 +5,15 @@
 //! structure and streaming event types.
 
 use async_trait::async_trait;
-use futures::stream::Stream;
 use futures::StreamExt;
+use futures::stream::Stream;
 use hakimi_common::{
     ApiMode, FinishReason, HakimiError, Message, MessageRole, NormalizedResponse, Result, ToolCall,
     ToolDefinition, Usage,
 };
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::pin::Pin;
 use tracing::{debug, warn};
 
@@ -352,9 +352,10 @@ impl ProviderTransport for ResponsesTransport {
             })?;
 
         let status = response.status();
-        let response_text = response.text().await.map_err(|e| {
-            HakimiError::Transport(format!("failed to read response body: {e}"))
-        })?;
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| HakimiError::Transport(format!("failed to read response body: {e}")))?;
 
         if !status.is_success() {
             let code = status.as_u16();
@@ -371,11 +372,10 @@ impl ProviderTransport for ResponsesTransport {
             )));
         }
 
-        let parsed: ResponsesOutput =
-            serde_json::from_str(&response_text).map_err(|e| {
-                warn!(error = %e, "failed to parse response JSON");
-                HakimiError::Transport(format!("failed to parse response: {e}"))
-            })?;
+        let parsed: ResponsesOutput = serde_json::from_str(&response_text).map_err(|e| {
+            warn!(error = %e, "failed to parse response JSON");
+            HakimiError::Transport(format!("failed to parse response: {e}"))
+        })?;
 
         Self::parse_response(&parsed)
     }
@@ -459,7 +459,9 @@ struct ResponsesSseEventStream {
 
 impl ResponsesSseEventStream {
     fn new(
-        inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+        inner: Pin<
+            Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>,
+        >,
     ) -> Self {
         Self {
             inner,
@@ -555,7 +557,8 @@ impl ResponsesSseEventStream {
 
                     for (event_type, payload) in pairs {
                         let et = event_type.as_deref().unwrap_or("");
-                        let events = Self::process_event(et, &payload, &mut self.current_tool_index);
+                        let events =
+                            Self::process_event(et, &payload, &mut self.current_tool_index);
                         self.pending.extend(events);
 
                         // Check if we got a Done event.
@@ -570,9 +573,7 @@ impl ResponsesSseEventStream {
                     }
                 }
                 std::task::Poll::Ready(Some(Err(e))) => {
-                    return std::task::Poll::Ready(Some(Err(format!(
-                        "SSE stream error: {e}"
-                    ))))
+                    return std::task::Poll::Ready(Some(Err(format!("SSE stream error: {e}"))));
                 }
                 std::task::Poll::Ready(None) => {
                     self.done = true;
@@ -611,9 +612,7 @@ impl Stream for ResponsesSseEventStream {
                     std::task::Poll::Ready(None)
                 }
             }
-            std::task::Poll::Ready(Some(Err(e))) => {
-                std::task::Poll::Ready(Some(Err(e)))
-            }
+            std::task::Poll::Ready(Some(Err(e))) => std::task::Poll::Ready(Some(Err(e))),
             std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
             std::task::Poll::Pending => std::task::Poll::Pending,
         }
@@ -888,11 +887,8 @@ mod tests {
     fn test_sse_event_completed() {
         let json_str = r#"{"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":5}}}"#;
         let mut idx = 0;
-        let events = ResponsesSseEventStream::process_event(
-            "response.completed",
-            json_str,
-            &mut idx,
-        );
+        let events =
+            ResponsesSseEventStream::process_event("response.completed", json_str, &mut idx);
         assert_eq!(events.len(), 2); // Usage + Done
         match &events[0] {
             StreamEvent::Usage {
@@ -939,11 +935,7 @@ mod tests {
 
         // First function call item added.
         let json_str = r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"call_1","type":"function_call","name":"bash","arguments":""}}"#;
-        ResponsesSseEventStream::process_event(
-            "response.output_item.added",
-            json_str,
-            &mut idx,
-        );
+        ResponsesSseEventStream::process_event("response.output_item.added", json_str, &mut idx);
         assert_eq!(idx, 0);
 
         // Function call arguments delta.
@@ -956,13 +948,8 @@ mod tests {
         assert_eq!(idx, 0);
 
         // Item done — should advance the index.
-        let json_str =
-            r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call"}}"#;
-        ResponsesSseEventStream::process_event(
-            "response.output_item.done",
-            json_str,
-            &mut idx,
-        );
+        let json_str = r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call"}}"#;
+        ResponsesSseEventStream::process_event("response.output_item.done", json_str, &mut idx);
         assert_eq!(idx, 1);
     }
 
@@ -991,11 +978,8 @@ mod tests {
     fn test_sse_event_incomplete() {
         let json_str = r#"{"type":"response.incomplete","response":{"id":"resp_1","status":"incomplete","output":[],"usage":{"input_tokens":10,"output_tokens":3}}}"#;
         let mut idx = 0;
-        let events = ResponsesSseEventStream::process_event(
-            "response.incomplete",
-            json_str,
-            &mut idx,
-        );
+        let events =
+            ResponsesSseEventStream::process_event("response.incomplete", json_str, &mut idx);
         assert_eq!(events.len(), 2); // Usage + Done
         assert!(matches!(events[0], StreamEvent::Usage { .. }));
         assert!(matches!(events[1], StreamEvent::Done));
@@ -1155,7 +1139,10 @@ mod tests {
             "sk-test".to_string(),
             client,
         );
-        assert_eq!(transport.endpoint(), "https://api.openai.com/v1/v1/responses");
+        assert_eq!(
+            transport.endpoint(),
+            "https://api.openai.com/v1/v1/responses"
+        );
     }
 
     #[test]
@@ -1178,10 +1165,7 @@ mod tests {
             Message::user("Hello"),
         ];
         let instructions = ResponsesTransport::extract_instructions(&messages);
-        assert_eq!(
-            instructions.as_deref(),
-            Some("You are a coding assistant.")
-        );
+        assert_eq!(instructions.as_deref(), Some("You are a coding assistant."));
     }
 
     #[test]

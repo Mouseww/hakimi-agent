@@ -81,7 +81,12 @@ impl ToolRegistry {
     }
 
     /// Dispatch a tool call by name.
-    pub async fn dispatch(&self, name: &str, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
+    pub async fn dispatch(
+        &self,
+        name: &str,
+        args: &JsonValue,
+        ctx: &ToolContext,
+    ) -> Result<String> {
         let tool = {
             let inner = self.inner.read().await;
             inner.tools.get(name).cloned()
@@ -165,7 +170,11 @@ mod tests {
             json!({"type": "object", "properties": {}})
         }
 
-        async fn execute(&self, _args: &JsonValue, _ctx: &hakimi_common::ToolContext) -> hakimi_common::Result<String> {
+        async fn execute(
+            &self,
+            _args: &JsonValue,
+            _ctx: &hakimi_common::ToolContext,
+        ) -> hakimi_common::Result<String> {
             Ok(format!("{}: executed", self.tool_name))
         }
     }
@@ -250,7 +259,10 @@ mod tests {
             delegate_executor: None,
         };
 
-        let err = registry.dispatch("nonexistent", &json!({}), &ctx).await.unwrap_err();
+        let err = registry
+            .dispatch("nonexistent", &json!({}), &ctx)
+            .await
+            .unwrap_err();
         assert!(format!("{err}").contains("unknown tool"));
     }
 

@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
-use tracing::{debug, info};
+use serde_json::{Value as JsonValue, json};
 use std::path::PathBuf;
+use tracing::{debug, info};
 
 use crate::Tool;
 
@@ -100,10 +100,7 @@ impl Tool for ImageGenerateTool {
             .and_then(|v| v.as_str())
             .unwrap_or("landscape");
 
-        let model = args
-            .get("model")
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        let model = args.get("model").and_then(|v| v.as_str()).map(String::from);
 
         let output_path = args
             .get("output_path")
@@ -118,8 +115,12 @@ impl Tool for ImageGenerateTool {
         );
 
         let result_path = match provider.as_str() {
-            "fal" => generate_fal_image(prompt, aspect_ratio, model.as_deref(), output_path).await?,
-            "openai" => generate_openai_image(prompt, aspect_ratio, model.as_deref(), output_path).await?,
+            "fal" => {
+                generate_fal_image(prompt, aspect_ratio, model.as_deref(), output_path).await?
+            }
+            "openai" => {
+                generate_openai_image(prompt, aspect_ratio, model.as_deref(), output_path).await?
+            }
             _ => {
                 return Err(HakimiError::Tool(format!(
                     "unsupported image generation provider: '{provider}'. Use 'fal' or 'openai'."
@@ -148,14 +149,17 @@ fn get_output_dir(custom: Option<&str>) -> PathBuf {
 fn generate_filename(prefix: &str, ext: &str) -> String {
     let uuid = uuid::Uuid::new_v4();
     let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-    format!("{prefix}_{ts}_{:.8}.{ext}", uuid.to_string().replace('-', ""))
+    format!(
+        "{prefix}_{ts}_{:.8}.{ext}",
+        uuid.to_string().replace('-', "")
+    )
 }
 
 /// Map aspect ratio strings to resolution dimensions.
 fn aspect_ratio_to_dimensions(aspect_ratio: &str) -> (u32, u32) {
     match aspect_ratio {
-        "landscape" => (1024, 576),  // 16:9
-        "portrait" => (576, 1024),   // 9:16
+        "landscape" => (1024, 576),   // 16:9
+        "portrait" => (576, 1024),    // 9:16
         "square" | _ => (1024, 1024), // 1:1
     }
 }
@@ -274,9 +278,7 @@ async fn generate_fal_image(
         .map_err(|e| HakimiError::Tool(format!("failed to read image data: {e}")))?;
 
     if image_bytes.is_empty() {
-        return Err(HakimiError::Tool(
-            "downloaded image is empty".into(),
-        ));
+        return Err(HakimiError::Tool("downloaded image is empty".into()));
     }
 
     // Determine output path
@@ -381,9 +383,7 @@ async fn generate_openai_image(
         .map_err(|e| HakimiError::Tool(format!("failed to read image data: {e}")))?;
 
     if image_bytes.is_empty() {
-        return Err(HakimiError::Tool(
-            "downloaded image is empty".into(),
-        ));
+        return Err(HakimiError::Tool("downloaded image is empty".into()));
     }
 
     // Determine output path
@@ -404,7 +404,6 @@ async fn generate_openai_image(
 
     Ok(out_path)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -453,9 +452,7 @@ mod tests {
         let tool = ImageGenerateTool;
         let schema = tool.schema();
 
-        let providers = schema["properties"]["provider"]["enum"]
-            .as_array()
-            .unwrap();
+        let providers = schema["properties"]["provider"]["enum"].as_array().unwrap();
         assert!(providers.contains(&JsonValue::String("fal".to_string())));
         assert!(providers.contains(&JsonValue::String("openai".to_string())));
     }
@@ -486,7 +483,9 @@ mod tests {
     #[test]
     fn test_get_output_dir_default() {
         // SAFETY: tests run single-threaded for env var manipulation
-        unsafe { std::env::remove_var("HAKIMI_IMAGE_GEN_OUTPUT_DIR"); }
+        unsafe {
+            std::env::remove_var("HAKIMI_IMAGE_GEN_OUTPUT_DIR");
+        }
         let dir = get_output_dir(None);
         assert!(dir.ends_with(".hakimi/image_cache"));
     }
@@ -500,10 +499,14 @@ mod tests {
     #[test]
     fn test_get_output_dir_env() {
         // SAFETY: tests run single-threaded for env var manipulation
-        unsafe { std::env::set_var("HAKIMI_IMAGE_GEN_OUTPUT_DIR", "/custom/img/dir"); }
+        unsafe {
+            std::env::set_var("HAKIMI_IMAGE_GEN_OUTPUT_DIR", "/custom/img/dir");
+        }
         let dir = get_output_dir(None);
         assert_eq!(dir, PathBuf::from("/custom/img/dir"));
-        unsafe { std::env::remove_var("HAKIMI_IMAGE_GEN_OUTPUT_DIR"); }
+        unsafe {
+            std::env::remove_var("HAKIMI_IMAGE_GEN_OUTPUT_DIR");
+        }
     }
 
     #[test]
@@ -588,7 +591,9 @@ mod tests {
     async fn test_fal_missing_api_key() {
         // Ensure no API key is set
         // SAFETY: tests run single-threaded for env var manipulation
-        unsafe { std::env::remove_var("HAKIMI_IMAGE_GEN_API_KEY"); }
+        unsafe {
+            std::env::remove_var("HAKIMI_IMAGE_GEN_API_KEY");
+        }
         let tool = ImageGenerateTool;
         let ctx = hakimi_common::ToolContext {
             session_id: "test".to_string(),
@@ -610,7 +615,9 @@ mod tests {
     async fn test_openai_missing_api_key() {
         // Ensure no API key is set
         // SAFETY: tests run single-threaded for env var manipulation
-        unsafe { std::env::remove_var("HAKIMI_IMAGE_GEN_API_KEY"); }
+        unsafe {
+            std::env::remove_var("HAKIMI_IMAGE_GEN_API_KEY");
+        }
         let tool = ImageGenerateTool;
         let ctx = hakimi_common::ToolContext {
             session_id: "test".to_string(),

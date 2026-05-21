@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::debug;
 
 use crate::Tool;
@@ -110,12 +110,21 @@ async fn search_ddg_html(query: &str, max_results: usize) -> Result<String> {
     let results = parse_ddg_html(&body, max_results);
 
     if results.is_empty() {
-        return Ok("No search results found. Web search may be unavailable from this environment.".to_string());
+        return Ok(
+            "No search results found. Web search may be unavailable from this environment."
+                .to_string(),
+        );
     }
 
     let mut output = String::new();
     for (i, result) in results.iter().enumerate() {
-        output.push_str(&format!("{}. {}\n   {}\n   {}\n\n", i + 1, result.title, result.url, result.snippet));
+        output.push_str(&format!(
+            "{}. {}\n   {}\n   {}\n\n",
+            i + 1,
+            result.title,
+            result.url,
+            result.snippet
+        ));
     }
 
     Ok(output)
@@ -165,7 +174,11 @@ fn parse_ddg_html(html: &str, max_results: usize) -> Vec<SearchResult> {
             if !title.is_empty() {
                 results.push(SearchResult {
                     title: clean_html(&title),
-                    url: if url.is_empty() { "(no url)".to_string() } else { url },
+                    url: if url.is_empty() {
+                        "(no url)".to_string()
+                    } else {
+                        url
+                    },
                     snippet: clean_html(&snippet),
                 });
             }

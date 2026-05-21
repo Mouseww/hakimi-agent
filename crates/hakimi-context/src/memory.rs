@@ -123,9 +123,9 @@ impl MemoryProvider for FileMemoryProvider {
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
                     let content_lower = content.to_lowercase();
-                    let matched = words.iter().any(|w| {
-                        !w.is_empty() && (name.contains(w) || content_lower.contains(w))
-                    });
+                    let matched = words
+                        .iter()
+                        .any(|w| !w.is_empty() && (name.contains(w) || content_lower.contains(w)));
                     if matched {
                         matches.push(format!(
                             "[{}]\n{}",
@@ -191,12 +191,9 @@ impl MemoryProvider for FileMemoryProvider {
     async fn handle_tool_call(&self, name: &str, args: &JsonValue) -> Result<String> {
         match name {
             "memory_save" => {
-                let entry_name = args
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        hakimi_common::HakimiError::Tool("missing 'name' argument".into())
-                    })?;
+                let entry_name = args.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
+                    hakimi_common::HakimiError::Tool("missing 'name' argument".into())
+                })?;
                 let content = args
                     .get("content")
                     .and_then(|v| v.as_str())
@@ -216,7 +213,13 @@ impl MemoryProvider for FileMemoryProvider {
                 // Sanitize filename
                 let safe_name: String = entry_name
                     .chars()
-                    .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+                    .map(|c| {
+                        if c.is_alphanumeric() || c == '-' || c == '_' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
                     .collect();
                 let path = self.memory_dir.join(format!("{safe_name}.md"));
                 std::fs::write(&path, content).map_err(|e| {
@@ -227,12 +230,9 @@ impl MemoryProvider for FileMemoryProvider {
                 Ok(format!("Saved memory entry '{}'", entry_name))
             }
             "memory_search" => {
-                let query = args
-                    .get("query")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        hakimi_common::HakimiError::Tool("missing 'query' argument".into())
-                    })?;
+                let query = args.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
+                    hakimi_common::HakimiError::Tool("missing 'query' argument".into())
+                })?;
                 let result = self.prefetch(query).await;
                 if result.is_empty() {
                     Ok("No matching memory entries found.".to_string())

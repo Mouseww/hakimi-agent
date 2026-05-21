@@ -189,7 +189,11 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
         ]
     }
 
-    async fn handle_tool_call(&self, name: &str, args: &JsonValue) -> hakimi_common::Result<String> {
+    async fn handle_tool_call(
+        &self,
+        name: &str,
+        args: &JsonValue,
+    ) -> hakimi_common::Result<String> {
         match name {
             "knowledge_add_entity" => {
                 let key = args
@@ -259,7 +263,9 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                 store
                     .save()
                     .map_err(|e| HakimiError::Tool(format!("save failed: {e}")))?;
-                Ok(format!("Added relation '{relation}' from '{from}' to '{to}'"))
+                Ok(format!(
+                    "Added relation '{relation}' from '{from}' to '{to}'"
+                ))
             }
             "knowledge_search" => {
                 let query = args
@@ -284,10 +290,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     .get("key")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| HakimiError::Tool("missing 'key' argument".into()))?;
-                let depth = args
-                    .get("depth")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(2) as usize;
+                let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
 
                 let store = self.store.lock().unwrap();
                 let neighbors = store.graph().query_neighbors(key, depth);
@@ -319,10 +322,15 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                 let stats = store.graph().stats();
                 Ok(format!(
                     "Knowledge graph stats:\n- Nodes: {}\n- Edges: {}\n- Connected components: {}\n- Avg degree: {:.2}",
-                    stats.node_count, stats.edge_count, stats.connected_components, stats.avg_degree
+                    stats.node_count,
+                    stats.edge_count,
+                    stats.connected_components,
+                    stats.avg_degree
                 ))
             }
-            other => Err(HakimiError::Tool(format!("Unknown knowledge tool: {other}"))),
+            other => Err(HakimiError::Tool(format!(
+                "Unknown knowledge tool: {other}"
+            ))),
         }
     }
 }

@@ -3,11 +3,11 @@
 use crate::app::App;
 use crate::{Role, ToolStatus};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
-    Frame,
 };
 
 /// Color scheme constants
@@ -28,7 +28,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // Header
-            Constraint::Min(10),  // Main area (chat + tools panel)
+            Constraint::Min(10),   // Main area (chat + tools panel)
             Constraint::Length(3), // Input area
             Constraint::Length(1), // Status bar
         ])
@@ -107,9 +107,7 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect) {
             let prefix = match msg.role {
                 Role::User => Span::styled(
                     "You │ ",
-                    Style::default()
-                        .fg(COLOR_USER)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(COLOR_USER).add_modifier(Modifier::BOLD),
                 ),
                 Role::Assistant => Span::styled(
                     "AI  │ ",
@@ -119,9 +117,7 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect) {
                 ),
                 Role::Tool => Span::styled(
                     "Tool│ ",
-                    Style::default()
-                        .fg(COLOR_TOOL)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(COLOR_TOOL).add_modifier(Modifier::BOLD),
                 ),
                 Role::System => Span::styled(
                     "Sys │ ",
@@ -240,9 +236,7 @@ fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect) {
         Block::default()
             .title(Span::styled(
                 panel_title,
-                Style::default()
-                    .fg(COLOR_TOOL)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(COLOR_TOOL).add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray))
@@ -282,10 +276,7 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect) {
     let input_paragraph = Paragraph::new(input_text)
         .block(
             Block::default()
-                .title(Span::styled(
-                    " Input ",
-                    Style::default().fg(COLOR_SYSTEM),
-                ))
+                .title(Span::styled(" Input ", Style::default().fg(COLOR_SYSTEM)))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
                 .style(Style::default().bg(COLOR_INPUT_BG)),
@@ -311,11 +302,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         tools_hint,
     );
 
-    let status_bar = Paragraph::new(Span::styled(
-        status_text,
-        Style::default().fg(COLOR_SYSTEM),
-    ))
-    .style(Style::default().bg(COLOR_STATUS_BG));
+    let status_bar = Paragraph::new(Span::styled(status_text, Style::default().fg(COLOR_SYSTEM)))
+        .style(Style::default().bg(COLOR_STATUS_BG));
 
     frame.render_widget(status_bar, area);
 }
@@ -324,13 +312,18 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 mod tests {
     use super::*;
     use crate::app::App;
-    use ratatui::{backend::TestBackend, Terminal};
+    use ratatui::{Terminal, backend::TestBackend};
     use tokio::sync::mpsc;
 
     fn make_app() -> App {
         let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
         let (_event_tx, event_rx) = mpsc::unbounded_channel();
-        App::new(cmd_tx, event_rx, "test-model".to_string(), "test-session-id-1234".to_string())
+        App::new(
+            cmd_tx,
+            event_rx,
+            "test-model".to_string(),
+            "test-session-id-1234".to_string(),
+        )
     }
 
     #[test]
@@ -365,7 +358,8 @@ mod tests {
         let mut app = make_app();
         let long_content = "a".repeat(1000);
         app.messages.push(crate::ChatMessage::user(&long_content));
-        app.messages.push(crate::ChatMessage::assistant(&long_content));
+        app.messages
+            .push(crate::ChatMessage::assistant(&long_content));
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();
@@ -374,7 +368,8 @@ mod tests {
     #[test]
     fn render_handles_multiline_messages() {
         let mut app = make_app();
-        app.messages.push(crate::ChatMessage::assistant("line1\nline2\nline3"));
+        app.messages
+            .push(crate::ChatMessage::assistant("line1\nline2\nline3"));
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();
@@ -384,7 +379,8 @@ mod tests {
     fn render_handles_many_messages() {
         let mut app = make_app();
         for i in 0..100 {
-            app.messages.push(crate::ChatMessage::user(format!("message {i}")));
+            app.messages
+                .push(crate::ChatMessage::user(format!("message {i}")));
         }
         app.scroll_offset = 50;
         let backend = TestBackend::new(80, 24);
@@ -430,10 +426,13 @@ mod tests {
     fn render_all_role_types() {
         let mut app = make_app();
         app.messages.push(crate::ChatMessage::user("user msg"));
-        app.messages.push(crate::ChatMessage::assistant("assistant msg"));
-        app.messages.push(crate::ChatMessage::tool("bash", "tool output"));
+        app.messages
+            .push(crate::ChatMessage::assistant("assistant msg"));
+        app.messages
+            .push(crate::ChatMessage::tool("bash", "tool output"));
         app.messages.push(crate::ChatMessage::system("system info"));
-        app.messages.push(crate::ChatMessage::error("error occurred"));
+        app.messages
+            .push(crate::ChatMessage::error("error occurred"));
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();

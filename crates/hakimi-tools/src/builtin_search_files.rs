@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use regex::Regex;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::fs;
 use tokio::process::Command;
 use tracing::debug;
@@ -100,10 +100,7 @@ impl Tool for SearchFilesTool {
             .unwrap_or(50)
             .min(500) as usize;
 
-        let offset = args
-            .get("offset")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
+        let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
         let context = args
             .get("context")
@@ -138,7 +135,18 @@ impl Tool for SearchFilesTool {
 
         match target {
             "files" => search_files_by_name(&full_path, pattern, file_glob, limit, offset).await,
-            _ => search_file_contents(&full_path, pattern, file_glob, limit, offset, context, output_mode).await,
+            _ => {
+                search_file_contents(
+                    &full_path,
+                    pattern,
+                    file_glob,
+                    limit,
+                    offset,
+                    context,
+                    output_mode,
+                )
+                .await
+            }
         }
     }
 }
@@ -162,9 +170,27 @@ async fn search_file_contents(
         .unwrap_or(false);
 
     let result = if rg_available {
-        run_ripgrep(path, pattern, file_glob, limit, offset, context, output_mode).await?
+        run_ripgrep(
+            path,
+            pattern,
+            file_glob,
+            limit,
+            offset,
+            context,
+            output_mode,
+        )
+        .await?
     } else {
-        run_grep(path, pattern, file_glob, limit, offset, context, output_mode).await?
+        run_grep(
+            path,
+            pattern,
+            file_glob,
+            limit,
+            offset,
+            context,
+            output_mode,
+        )
+        .await?
     };
 
     Ok(result)
@@ -210,19 +236,16 @@ async fn run_ripgrep(
     // Pattern and path
     cmd.arg(pattern).arg(path);
 
-    let output = cmd.output().await.map_err(|e| {
-        HakimiError::Tool(format!("failed to run ripgrep: {e}"))
-    })?;
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to run ripgrep: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
 
     // Apply offset
-    let result_lines: Vec<&str> = lines
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let result_lines: Vec<&str> = lines.into_iter().skip(offset).take(limit).collect();
 
     if result_lines.is_empty() {
         return Ok("No matches found.".to_string());
@@ -268,18 +291,15 @@ async fn run_grep(
     cmd.arg("-E"); // extended regex
     cmd.arg(pattern).arg(path);
 
-    let output = cmd.output().await.map_err(|e| {
-        HakimiError::Tool(format!("failed to run grep: {e}"))
-    })?;
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to run grep: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
 
-    let result_lines: Vec<&str> = lines
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let result_lines: Vec<&str> = lines.into_iter().skip(offset).take(limit).collect();
 
     if result_lines.is_empty() {
         return Ok("No matches found.".to_string());
@@ -296,18 +316,13 @@ async fn search_files_by_name(
     limit: usize,
     offset: usize,
 ) -> Result<String> {
-    let re = Regex::new(pattern).map_err(|e| {
-        HakimiError::Tool(format!("invalid regex pattern: {e}"))
-    })?;
+    let re = Regex::new(pattern)
+        .map_err(|e| HakimiError::Tool(format!("invalid regex pattern: {e}")))?;
 
     let mut results = Vec::new();
     collect_files(path, &re, file_glob, &mut results, limit + offset).await?;
 
-    let result_files: Vec<&std::path::PathBuf> = results
-        .iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let result_files: Vec<&std::path::PathBuf> = results.iter().skip(offset).take(limit).collect();
 
     if result_files.is_empty() {
         return Ok("No files found matching pattern.".to_string());
@@ -338,9 +353,11 @@ fn collect_files<'a>(
             HakimiError::Tool(format!("failed to read directory '{}': {e}", dir.display()))
         })?;
 
-        while let Some(entry) = entries.next_entry().await.map_err(|e| {
-            HakimiError::Tool(format!("failed to read directory entry: {e}"))
-        })? {
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| HakimiError::Tool(format!("failed to read directory entry: {e}")))?
+        {
             if results.len() >= max {
                 break;
             }
@@ -397,7 +414,7 @@ mod tests {
     use hakimi_common::ToolContext;
 
     fn test_ctx(workdir: &str) -> ToolContext {
-ToolContext {
+        ToolContext {
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,
@@ -446,9 +463,7 @@ ToolContext {
         fs::write(dir.join("a.txt"), "hello world\nfoo bar\nhello again")
             .await
             .unwrap();
-        fs::write(dir.join("b.txt"), "nothing here")
-            .await
-            .unwrap();
+        fs::write(dir.join("b.txt"), "nothing here").await.unwrap();
 
         let ctx = test_ctx(&dir.to_string_lossy());
         let args = json!({
@@ -467,9 +482,7 @@ ToolContext {
     async fn test_search_content_no_matches() {
         let dir = std::env::temp_dir().join("hakimi_test_search_nomatch");
         let _ = fs::create_dir_all(&dir).await;
-        fs::write(dir.join("a.txt"), "hello world")
-            .await
-            .unwrap();
+        fs::write(dir.join("a.txt"), "hello world").await.unwrap();
 
         let ctx = test_ctx(&dir.to_string_lossy());
         let args = json!({
@@ -487,9 +500,7 @@ ToolContext {
     async fn test_search_files_by_name() {
         let dir = std::env::temp_dir().join("hakimi_test_search_files");
         let _ = fs::create_dir_all(&dir).await;
-        fs::write(dir.join("readme.md"), "# Hello")
-            .await
-            .unwrap();
+        fs::write(dir.join("readme.md"), "# Hello").await.unwrap();
         fs::write(dir.join("code.rs"), "fn main() {}")
             .await
             .unwrap();
@@ -516,12 +527,8 @@ ToolContext {
     async fn test_search_with_glob_filter() {
         let dir = std::env::temp_dir().join("hakimi_test_search_glob");
         let _ = fs::create_dir_all(&dir).await;
-        fs::write(dir.join("a.rs"), "hello")
-            .await
-            .unwrap();
-        fs::write(dir.join("a.py"), "hello")
-            .await
-            .unwrap();
+        fs::write(dir.join("a.rs"), "hello").await.unwrap();
+        fs::write(dir.join("a.py"), "hello").await.unwrap();
 
         let ctx = test_ctx(&dir.to_string_lossy());
         let args = json!({

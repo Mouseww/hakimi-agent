@@ -2,8 +2,8 @@
 //!
 //! Each profile has its own config, memory, sessions, and skills directory.
 
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 /// Profile metadata stored in the profile directory.

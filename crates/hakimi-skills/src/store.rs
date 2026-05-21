@@ -51,14 +51,14 @@ impl SkillStore {
             return String::new();
         }
 
-        debug!(count = matching.len(), "Found matching skills for user message");
+        debug!(
+            count = matching.len(),
+            "Found matching skills for user message"
+        );
 
         let mut output = String::new();
         for skill in &matching {
-            output.push_str(&format!(
-                "### Skill: {}\n{}\n\n",
-                skill.name, skill.content
-            ));
+            output.push_str(&format!("### Skill: {}\n{}\n\n", skill.name, skill.content));
         }
 
         output

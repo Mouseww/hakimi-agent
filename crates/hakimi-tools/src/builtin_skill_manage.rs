@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::fs;
 use tracing::debug;
 
@@ -12,7 +12,9 @@ pub struct SkillManageTool;
 /// Get the skills directory path (~/.hakimi/skills/).
 fn skills_dir() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    std::path::PathBuf::from(home).join(".hakimi").join("skills")
+    std::path::PathBuf::from(home)
+        .join(".hakimi")
+        .join("skills")
 }
 
 /// Get the file path for a given skill name.
@@ -89,7 +91,10 @@ impl Tool for SkillManageTool {
         // Ensure skills directory exists
         let dir = skills_dir();
         fs::create_dir_all(&dir).await.map_err(|e| {
-            HakimiError::Tool(format!("failed to create skills directory '{}': {e}", dir.display()))
+            HakimiError::Tool(format!(
+                "failed to create skills directory '{}': {e}",
+                dir.display()
+            ))
         })?;
 
         match action {
@@ -110,14 +115,11 @@ impl Tool for SkillManageTool {
                     )));
                 }
 
-                fs::write(&path, format!("{content}\n")).await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to write skill file: {e}"))
-                })?;
+                fs::write(&path, format!("{content}\n"))
+                    .await
+                    .map_err(|e| HakimiError::Tool(format!("failed to write skill file: {e}")))?;
 
-                Ok(format!(
-                    "Created skill '{name}' ({}).",
-                    path.display()
-                ))
+                Ok(format!("Created skill '{name}' ({}).", path.display()))
             }
             "read" => {
                 let name = name.ok_or_else(|| {
@@ -153,14 +155,11 @@ impl Tool for SkillManageTool {
                     )));
                 }
 
-                fs::write(&path, format!("{content}\n")).await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to write skill file: {e}"))
-                })?;
+                fs::write(&path, format!("{content}\n"))
+                    .await
+                    .map_err(|e| HakimiError::Tool(format!("failed to write skill file: {e}")))?;
 
-                Ok(format!(
-                    "Updated skill '{name}' ({}).",
-                    path.display()
-                ))
+                Ok(format!("Updated skill '{name}' ({}).", path.display()))
             }
             "delete" => {
                 let name = name.ok_or_else(|| {
@@ -170,14 +169,12 @@ impl Tool for SkillManageTool {
                 let path = skill_file(name)?;
 
                 if !path.exists() {
-                    return Err(HakimiError::Tool(format!(
-                        "skill '{name}' not found."
-                    )));
+                    return Err(HakimiError::Tool(format!("skill '{name}' not found.")));
                 }
 
-                fs::remove_file(&path).await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to delete skill file: {e}"))
-                })?;
+                fs::remove_file(&path)
+                    .await
+                    .map_err(|e| HakimiError::Tool(format!("failed to delete skill file: {e}")))?;
 
                 Ok(format!("Deleted skill '{name}'."))
             }
@@ -224,7 +221,7 @@ mod tests {
     use hakimi_common::ToolContext;
 
     fn test_ctx() -> ToolContext {
-ToolContext {
+        ToolContext {
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,
@@ -502,10 +499,7 @@ ToolContext {
     #[tokio::test]
     async fn test_missing_action_error() {
         let ctx = test_ctx();
-        let err = SkillManageTool
-            .execute(&json!({}), &ctx)
-            .await
-            .unwrap_err();
+        let err = SkillManageTool.execute(&json!({}), &ctx).await.unwrap_err();
         assert!(format!("{err}").contains("action"));
     }
 

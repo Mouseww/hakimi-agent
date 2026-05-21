@@ -10,13 +10,13 @@ use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
-use tokio::sync::{mpsc, RwLock};
+use ratatui::{Terminal, backend::CrosstermBackend};
+use tokio::sync::{RwLock, mpsc};
 use tracing::{error, info, warn};
 
-use hakimi_tui::{app::App, ui, AgentCommand, AgentEvent};
+use hakimi_tui::{AgentCommand, AgentEvent, app::App, ui};
 
 // ---------------------------------------------------------------------------
 // Default config YAML (mirrors hakimi-cli)

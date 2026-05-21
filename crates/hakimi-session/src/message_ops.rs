@@ -22,6 +22,11 @@ pub struct SearchResult {
 pub trait MessageOps {
     fn save_message(&self, session_id: &str, msg: &Message) -> Result<()>;
     fn get_messages(&self, session_id: &str) -> Result<Vec<Message>>;
+    fn restore_session(
+        &self,
+        session_id: &str,
+        max_messages: Option<usize>,
+    ) -> Result<Vec<Message>>;
     fn search_messages(&self, query: &str, limit: i64) -> Result<Vec<SearchResult>>;
 }
 
@@ -85,43 +90,7 @@ impl MessageOps for SessionDB {
             .context("Failed to prepare get_messages statement")?;
 
         let rows = stmt
-            .query_map(params![session_id], |row| {
-                let role_str: String = row.get(0)?;
-                let tool_calls_json: Option<String> = row.get(3)?;
-                let timestamp_str: Option<String> = row.get(5)?;
-                let token_count: Option<i64> = row.get(6)?;
-
-                let role = match role_str.as_str() {
-                    "system" => MessageRole::System,
-                    "user" => MessageRole::User,
-                    "assistant" => MessageRole::Assistant,
-                    "tool" => MessageRole::Tool,
-                    _ => MessageRole::User, // fallback
-                };
-
-                let tool_calls = tool_calls_json.and_then(|json| {
-                    serde_json::from_str(&json).ok()
-                });
-
-                let timestamp = timestamp_str.and_then(|s| {
-                    chrono::DateTime::parse_from_rfc3339(&s)
-                        .ok()
-                        .map(|dt| dt.with_timezone(&Utc))
-                });
-
-                Ok(Message {
-                    role,
-                    content: row.get(1)?,
-                    tool_calls,
-                    tool_call_id: row.get(2)?,
-                    name: row.get(4)?,
-                    reasoning: row.get(8)?,
-                    reasoning_content: None,
-                    timestamp,
-                    token_count: token_count.map(|v| v as u32),
-                    finish_reason: row.get(7)?,
-                })
-            })
+            .query_map(params![session_id], row_to_message)
             .context("Failed to query messages")?;
 
         let mut messages = Vec::new();
@@ -129,6 +98,41 @@ impl MessageOps for SessionDB {
             messages.push(row?);
         }
         Ok(messages)
+    }
+
+    fn restore_session(
+        &self,
+        session_id: &str,
+        max_messages: Option<usize>,
+    ) -> Result<Vec<Message>> {
+        match max_messages {
+            Some(limit) => {
+                let conn = self.conn().lock().unwrap();
+                // Get the last N messages, then re-order by id ASC
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT role, content, tool_call_id, tool_calls, tool_name,
+                                timestamp, token_count, finish_reason, reasoning
+                         FROM (
+                             SELECT role, content, tool_call_id, tool_calls, tool_name,
+                                    timestamp, token_count, finish_reason, reasoning, id
+                             FROM messages WHERE session_id = ?1 ORDER BY id DESC LIMIT ?2
+                         ) sub ORDER BY id ASC",
+                    )
+                    .context("Failed to prepare restore_session statement")?;
+
+                let rows = stmt
+                    .query_map(params![session_id, limit as i64], |row| row_to_message(row))
+                    .context("Failed to query restore_session")?;
+
+                let mut msgs = Vec::new();
+                for row in rows {
+                    msgs.push(row?);
+                }
+                Ok(msgs)
+            }
+            None => self.get_messages(session_id),
+        }
     }
 
     /// Full-text search across message content, tool names, and tool calls.
@@ -164,6 +168,43 @@ impl MessageOps for SessionDB {
     }
 }
 
+/// Helper to map a rusqlite Row to Message.
+fn row_to_message(row: &rusqlite::Row) -> rusqlite::Result<Message> {
+    let role_str: String = row.get(0)?;
+    let tool_calls_json: Option<String> = row.get(3)?;
+    let timestamp_str: Option<String> = row.get(5)?;
+    let token_count: Option<i64> = row.get(6)?;
+
+    let role = match role_str.as_str() {
+        "system" => MessageRole::System,
+        "user" => MessageRole::User,
+        "assistant" => MessageRole::Assistant,
+        "tool" => MessageRole::Tool,
+        _ => MessageRole::User, // fallback
+    };
+
+    let tool_calls = tool_calls_json.and_then(|json| serde_json::from_str(&json).ok());
+
+    let timestamp = timestamp_str.and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(&s)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    });
+
+    Ok(Message {
+        role,
+        content: row.get(1)?,
+        tool_calls,
+        tool_call_id: row.get(2)?,
+        name: row.get(4)?,
+        reasoning: row.get(8)?,
+        reasoning_content: None,
+        timestamp,
+        token_count: token_count.map(|v| v as u32),
+        finish_reason: row.get(7)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,9 +236,11 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        db.save_message(&sid, &Message::system("You are helpful.")).unwrap();
+        db.save_message(&sid, &Message::system("You are helpful."))
+            .unwrap();
         db.save_message(&sid, &Message::user("Hi")).unwrap();
-        db.save_message(&sid, &Message::assistant("Hello!")).unwrap();
+        db.save_message(&sid, &Message::assistant("Hello!"))
+            .unwrap();
 
         let messages = db.get_messages(&sid).unwrap();
         assert_eq!(messages.len(), 3);
@@ -282,7 +325,10 @@ mod tests {
         let messages = db.get_messages(&sid).unwrap();
         let recovered = messages[0].timestamp.unwrap();
         // Compare to second precision (RFC3339 stores seconds)
-        assert_eq!(recovered.format("%Y-%m-%dT%H:%M:%S").to_string(), "2025-06-15T12:30:00");
+        assert_eq!(
+            recovered.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            "2025-06-15T12:30:00"
+        );
     }
 
     #[test]
@@ -309,14 +355,21 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        db.save_message(&sid, &Message::user("The quick brown fox")).unwrap();
-        db.save_message(&sid, &Message::assistant("The lazy dog")).unwrap();
-        db.save_message(&sid, &Message::user("Foxes are clever animals")).unwrap();
+        db.save_message(&sid, &Message::user("The quick brown fox"))
+            .unwrap();
+        db.save_message(&sid, &Message::assistant("The lazy dog"))
+            .unwrap();
+        db.save_message(&sid, &Message::user("Foxes are clever animals"))
+            .unwrap();
 
         let results = db.search_messages("fox", 10).unwrap();
         assert!(!results.is_empty());
         // "fox" appears in "The quick brown fox"
-        assert!(results.iter().any(|r| r.content.as_deref() == Some("The quick brown fox")));
+        assert!(
+            results
+                .iter()
+                .any(|r| r.content.as_deref() == Some("The quick brown fox"))
+        );
     }
 
     #[test]
@@ -324,9 +377,15 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        db.save_message(&sid, &Message::user("Rust is a systems programming language")).unwrap();
-        db.save_message(&sid, &Message::assistant("Python is great for scripting")).unwrap();
-        db.save_message(&sid, &Message::user("I love Rust programming")).unwrap();
+        db.save_message(
+            &sid,
+            &Message::user("Rust is a systems programming language"),
+        )
+        .unwrap();
+        db.save_message(&sid, &Message::assistant("Python is great for scripting"))
+            .unwrap();
+        db.save_message(&sid, &Message::user("I love Rust programming"))
+            .unwrap();
 
         let results = db.search_messages("Rust", 10).unwrap();
         assert_eq!(results.len(), 2);
@@ -338,7 +397,8 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        db.save_message(&sid, &Message::user("Hello world")).unwrap();
+        db.save_message(&sid, &Message::user("Hello world"))
+            .unwrap();
 
         let results = db.search_messages("nonexistent", 10).unwrap();
         assert!(results.is_empty());
@@ -350,7 +410,8 @@ mod tests {
         let sid = create_test_session(&db);
 
         for i in 0..5 {
-            db.save_message(&sid, &Message::user(format!("test message number {i}"))).unwrap();
+            db.save_message(&sid, &Message::user(format!("test message number {i}")))
+                .unwrap();
         }
 
         let results = db.search_messages("test", 2).unwrap();
@@ -363,8 +424,10 @@ mod tests {
         let sid1 = create_test_session(&db);
         let sid2 = create_test_session(&db);
 
-        db.save_message(&sid1, &Message::user("Rust is amazing")).unwrap();
-        db.save_message(&sid2, &Message::user("Rust memory safety")).unwrap();
+        db.save_message(&sid1, &Message::user("Rust is amazing"))
+            .unwrap();
+        db.save_message(&sid2, &Message::user("Rust memory safety"))
+            .unwrap();
 
         let results = db.search_messages("Rust", 10).unwrap();
         assert_eq!(results.len(), 2);
@@ -378,17 +441,17 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        db.save_message(&sid, &Message::user("machine learning algorithms")).unwrap();
-        db.save_message(&sid, &Message::user("deep learning models")).unwrap();
-        db.save_message(&sid, &Message::user("learning to code")).unwrap();
+        db.save_message(&sid, &Message::user("machine learning algorithms"))
+            .unwrap();
+        db.save_message(&sid, &Message::user("deep learning models"))
+            .unwrap();
+        db.save_message(&sid, &Message::user("learning to code"))
+            .unwrap();
 
         // FTS5 phrase search with double quotes
         let results = db.search_messages("\"deep learning\"", 10).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(
-            results[0].content.as_deref(),
-            Some("deep learning models")
-        );
+        assert_eq!(results[0].content.as_deref(), Some("deep learning models"));
     }
 
     #[test]
@@ -396,7 +459,8 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        db.save_message(&sid, &Message::user("rust programming language")).unwrap();
+        db.save_message(&sid, &Message::user("rust programming language"))
+            .unwrap();
 
         let results = db.search_messages("rust", 10).unwrap();
         assert_eq!(results.len(), 1);
@@ -411,7 +475,8 @@ mod tests {
 
         db.save_message(&sid, &Message::user("alpha")).unwrap();
         db.save_message(&sid, &Message::user("beta")).unwrap();
-        db.save_message(&sid, &Message::user("alpha gamma")).unwrap();
+        db.save_message(&sid, &Message::user("alpha gamma"))
+            .unwrap();
 
         let results = db.search_messages("alpha", 10).unwrap();
         assert_eq!(results.len(), 2);
@@ -426,7 +491,8 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        db.save_message(&sid, &Message::user("findable keyword")).unwrap();
+        db.save_message(&sid, &Message::user("findable keyword"))
+            .unwrap();
 
         let results = db.search_messages("findable", 10).unwrap();
         assert_eq!(results.len(), 1);
@@ -434,11 +500,55 @@ mod tests {
         // Delete the message
         {
             let conn = db.conn().lock().unwrap();
-            conn.execute("DELETE FROM messages WHERE content = ?1", rusqlite::params!["findable keyword"]).unwrap();
+            conn.execute(
+                "DELETE FROM messages WHERE content = ?1",
+                rusqlite::params!["findable keyword"],
+            )
+            .unwrap();
         }
 
         // After deletion, FTS should also reflect the removal (via trigger)
         let results = db.search_messages("findable", 10).unwrap();
         assert!(results.is_empty());
+    }
+
+    // ── Restore Session Tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_restore_session_with_limit() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("msg1")).unwrap();
+        db.save_message(&sid, &Message::assistant("reply1"))
+            .unwrap();
+        db.save_message(&sid, &Message::user("msg2")).unwrap();
+        db.save_message(&sid, &Message::assistant("reply2"))
+            .unwrap();
+        db.save_message(&sid, &Message::user("msg3")).unwrap();
+
+        let messages = db.restore_session(&sid, Some(3)).unwrap();
+        assert_eq!(messages.len(), 3);
+        // Should be the last 3 messages, in original order
+        assert_eq!(messages[0].content.as_deref(), Some("msg2"));
+        assert_eq!(messages[1].content.as_deref(), Some("reply2"));
+        assert_eq!(messages[2].content.as_deref(), Some("msg3"));
+    }
+
+    #[test]
+    fn test_restore_session_no_limit() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("msg1")).unwrap();
+        db.save_message(&sid, &Message::assistant("reply1"))
+            .unwrap();
+        db.save_message(&sid, &Message::user("msg2")).unwrap();
+
+        let messages = db.restore_session(&sid, None).unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].content.as_deref(), Some("msg1"));
+        assert_eq!(messages[1].content.as_deref(), Some("reply1"));
+        assert_eq!(messages[2].content.as_deref(), Some("msg2"));
     }
 }

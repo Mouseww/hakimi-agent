@@ -72,7 +72,11 @@ impl WeComAdapter {
                     .get("errmsg")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown");
-                anyhow::bail!("WeCom gettoken error: errcode={}, errmsg={}", errcode, errmsg);
+                anyhow::bail!(
+                    "WeCom gettoken error: errcode={}, errmsg={}",
+                    errcode,
+                    errmsg
+                );
             }
         }
 

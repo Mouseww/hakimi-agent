@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use scraper::{Html, Selector};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::debug;
 
 use crate::Tool;
@@ -372,10 +372,7 @@ fn extract_scored_paragraphs(document: &Html) -> String {
     scored_blocks.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
     // Take blocks with good scores (above threshold)
-    let threshold = scored_blocks
-        .first()
-        .map(|(s, _)| s * 0.3)
-        .unwrap_or(0.0);
+    let threshold = scored_blocks.first().map(|(s, _)| s * 0.3).unwrap_or(0.0);
 
     let mut result_parts: Vec<(usize, &str)> = Vec::new();
     for (i, (score, text)) in scored_blocks.iter().enumerate() {
@@ -402,7 +399,8 @@ fn score_text_block(text: &str) -> f64 {
     }
 
     let word_count = text.split_whitespace().count() as f64;
-    let avg_word_len = text.chars().filter(|c| c.is_alphabetic()).count() as f64 / word_count.max(1.0);
+    let avg_word_len =
+        text.chars().filter(|c| c.is_alphabetic()).count() as f64 / word_count.max(1.0);
 
     // Penalize very short text
     let length_score = (len / 100.0).min(1.0);
@@ -418,7 +416,20 @@ fn score_text_block(text: &str) -> f64 {
 
     // Penalize text with too many links or special chars
     let link_chars = text.matches("http").count() as f64;
-    let special_ratio = text.chars().filter(|c| !c.is_alphanumeric() && !c.is_whitespace() && *c != '.' && *c != ',' && *c != ';' && *c != ':' && *c != '-' && *c != '\'').count() as f64 / len;
+    let special_ratio = text
+        .chars()
+        .filter(|c| {
+            !c.is_alphanumeric()
+                && !c.is_whitespace()
+                && *c != '.'
+                && *c != ','
+                && *c != ';'
+                && *c != ':'
+                && *c != '-'
+                && *c != '\''
+        })
+        .count() as f64
+        / len;
     let link_penalty = (1.0 - (link_chars as f64 / word_count.max(1.0))).max(0.1);
     let special_penalty = (1.0 - special_ratio * 2.0).max(0.3);
 
@@ -529,7 +540,8 @@ mod tests {
 
     #[test]
     fn test_remove_script_blocks() {
-        let html = r#"<html><body><p>Hello</p><script>alert('xss');</script><p>World</p></body></html>"#;
+        let html =
+            r#"<html><body><p>Hello</p><script>alert('xss');</script><p>World</p></body></html>"#;
         let result = remove_tag_block(html, "script");
         assert!(!result.contains("alert"));
         assert!(result.contains("Hello"));
@@ -552,7 +564,10 @@ mod tests {
         let good_score = score_text_block(good_text);
         let bad_score = score_text_block(bad_text);
 
-        assert!(good_score > bad_score, "Good text should score higher than navigation text");
+        assert!(
+            good_score > bad_score,
+            "Good text should score higher than navigation text"
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 
 use crate::Tool;
 
@@ -59,15 +59,14 @@ impl Tool for ClarifyTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| HakimiError::Tool("missing required parameter: question".into()))?;
 
-        let options: Option<Vec<String>> = args
-            .get("options")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+        let options: Option<Vec<String>> =
+            args.get("options").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            });
 
-        let context = args
-            .get("context")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("");
 
         // Build the structured clarify request.
         let request = ClarifyRequest {
@@ -83,9 +82,11 @@ impl Tool for ClarifyTool {
         // 3. Return the structured result
         //
         // For now, we return the structured request as JSON so the framework can handle it.
-        Ok(serde_json::to_string_pretty(&request.to_output()).unwrap_or_else(|_| {
-            json!({"error": "failed to serialize clarify request"}).to_string()
-        }))
+        Ok(
+            serde_json::to_string_pretty(&request.to_output()).unwrap_or_else(|_| {
+                json!({"error": "failed to serialize clarify request"}).to_string()
+            }),
+        )
     }
 }
 
@@ -217,7 +218,10 @@ mod tests {
             .await
             .unwrap();
         let parsed: JsonValue = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed["context"], "We need to choose a Python version for the project.");
+        assert_eq!(
+            parsed["context"],
+            "We need to choose a Python version for the project."
+        );
     }
 
     #[tokio::test]

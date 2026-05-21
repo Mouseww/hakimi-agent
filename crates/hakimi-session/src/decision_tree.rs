@@ -108,10 +108,7 @@ impl DecisionTree {
         };
 
         self.children.insert(id.clone(), Vec::new());
-        self.children
-            .entry(parent_id)
-            .or_default()
-            .push(id.clone());
+        self.children.entry(parent_id).or_default().push(id.clone());
         self.nodes.insert(id.clone(), node);
         self.current_id = id.clone();
         id
@@ -160,11 +157,7 @@ impl DecisionTree {
     pub fn get_children(&self, node_id: &str) -> Vec<&DecisionNode> {
         self.children
             .get(node_id)
-            .map(|kids| {
-                kids.iter()
-                    .filter_map(|id| self.nodes.get(id))
-                    .collect()
-            })
+            .map(|kids| kids.iter().filter_map(|id| self.nodes.get(id)).collect())
             .unwrap_or_default()
     }
 
@@ -193,10 +186,14 @@ impl DecisionTree {
             common_ancestor.clone()
         };
 
-        let path_a_summary: Vec<String> =
-            path_a[common_idx..].iter().map(|n| n.message.clone()).collect();
-        let path_b_summary: Vec<String> =
-            path_b[common_idx..].iter().map(|n| n.message.clone()).collect();
+        let path_a_summary: Vec<String> = path_a[common_idx..]
+            .iter()
+            .map(|n| n.message.clone())
+            .collect();
+        let path_b_summary: Vec<String> = path_b[common_idx..]
+            .iter()
+            .map(|n| n.message.clone())
+            .collect();
 
         PathComparison {
             common_ancestor,
@@ -275,7 +272,10 @@ impl DecisionTree {
 
     /// Number of nodes that have 2 or more children (branch points).
     pub fn branches(&self) -> usize {
-        self.children.values().filter(|kids| kids.len() >= 2).count()
+        self.children
+            .values()
+            .filter(|kids| kids.len() >= 2)
+            .count()
     }
 
     /// Get message summaries from root to current.
@@ -417,7 +417,8 @@ mod tests {
         tree.mark_outcome("n1", Outcome::Success).unwrap();
         assert_eq!(tree.get_node("n1").unwrap().outcome, Outcome::Success);
 
-        tree.mark_outcome("n1", Outcome::Failure("oops".into())).unwrap();
+        tree.mark_outcome("n1", Outcome::Failure("oops".into()))
+            .unwrap();
         assert_eq!(
             tree.get_node("n1").unwrap().outcome,
             Outcome::Failure("oops".into())
@@ -505,7 +506,12 @@ mod tests {
         let a_id = tree.get_current().id.clone();
 
         // Level 2 under A
-        tree.add_node("step A1", "assistant", vec!["read".into()], Outcome::Success);
+        tree.add_node(
+            "step A1",
+            "assistant",
+            vec!["read".into()],
+            Outcome::Success,
+        );
         let a1_id = tree.get_current().id.clone();
 
         tree.backtrack_to(&a_id).unwrap();
@@ -523,7 +529,12 @@ mod tests {
         let b_id = tree.get_current().id.clone();
 
         // Level 2 under B
-        tree.add_node("step B1", "assistant", vec!["search".into()], Outcome::Pending);
+        tree.add_node(
+            "step B1",
+            "assistant",
+            vec!["search".into()],
+            Outcome::Pending,
+        );
 
         // Verify structure
         assert_eq!(tree.total_nodes(), 6);

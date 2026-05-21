@@ -1,8 +1,6 @@
 //! Application state and event handling for the Hakimi TUI.
 
-use crate::{
-    AgentCommand, AgentEvent, ChatMessage, SPINNER_FRAMES, ToolActivity, ToolStatus,
-};
+use crate::{AgentCommand, AgentEvent, ChatMessage, SPINNER_FRAMES, ToolActivity, ToolStatus};
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
@@ -302,9 +300,8 @@ impl App {
                     let preview: String = content.chars().take(500).collect();
                     let suffix = if content.len() > 500 { "..." } else { "" };
                     if is_error {
-                        self.messages.push(ChatMessage::error(format!(
-                            "[{name}] {preview}{suffix}"
-                        )));
+                        self.messages
+                            .push(ChatMessage::error(format!("[{name}] {preview}{suffix}")));
                     } else {
                         self.messages.push(ChatMessage::tool(
                             &name,
@@ -357,10 +354,23 @@ mod tests {
 
     /// Helper: create an App with dummy channels. Returns (app, cmd_rx, event_tx)
     /// so the receivers stay alive for the duration of the test.
-    fn make_app() -> (App, mpsc::UnboundedReceiver<crate::AgentCommand>, mpsc::UnboundedSender<crate::AgentEvent>) {
+    fn make_app() -> (
+        App,
+        mpsc::UnboundedReceiver<crate::AgentCommand>,
+        mpsc::UnboundedSender<crate::AgentEvent>,
+    ) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::unbounded_channel();
-        (App::new(cmd_tx, event_rx, "test-model".to_string(), "test-session-123".to_string()), cmd_rx, event_tx)
+        (
+            App::new(
+                cmd_tx,
+                event_rx,
+                "test-model".to_string(),
+                "test-session-123".to_string(),
+            ),
+            cmd_rx,
+            event_tx,
+        )
     }
 
     /// Convenience: create just an App (for tests that don't need the channels alive).
@@ -762,7 +772,8 @@ mod tests {
     fn page_up_scrolls_by_10() {
         let (mut app, _cmd_rx, _event_tx) = make_app();
         for i in 0..20 {
-            app.messages.push(crate::ChatMessage::user(format!("msg{i}")));
+            app.messages
+                .push(crate::ChatMessage::user(format!("msg{i}")));
         }
         app.handle_key_event(key(KeyCode::PageUp));
         assert_eq!(app.scroll_offset, 10);
@@ -786,7 +797,10 @@ mod tests {
         app.is_thinking = true;
         let initial = app.spinner_index;
         app.tick();
-        assert_eq!(app.spinner_index, (initial + 1) % crate::SPINNER_FRAMES.len());
+        assert_eq!(
+            app.spinner_index,
+            (initial + 1) % crate::SPINNER_FRAMES.len()
+        );
     }
 
     #[test]
@@ -814,7 +828,9 @@ mod tests {
         let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
         app.is_thinking = true;
 
-        event_tx.send(crate::AgentEvent::Response("hello".to_string())).unwrap();
+        event_tx
+            .send(crate::AgentEvent::Response("hello".to_string()))
+            .unwrap();
         app.poll_agent_events();
 
         assert!(!app.is_thinking);
@@ -830,7 +846,9 @@ mod tests {
         let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
         app.is_thinking = true;
 
-        event_tx.send(crate::AgentEvent::Error("oops".to_string())).unwrap();
+        event_tx
+            .send(crate::AgentEvent::Error("oops".to_string()))
+            .unwrap();
         app.poll_agent_events();
 
         assert!(!app.is_thinking);
@@ -857,10 +875,12 @@ mod tests {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
 
-        event_tx.send(crate::AgentEvent::ToolCall {
-            name: "bash".to_string(),
-            arguments: "ls -la".to_string(),
-        }).unwrap();
+        event_tx
+            .send(crate::AgentEvent::ToolCall {
+                name: "bash".to_string(),
+                arguments: "ls -la".to_string(),
+            })
+            .unwrap();
         app.poll_agent_events();
 
         assert_eq!(app.tool_activity.len(), 1);
@@ -874,15 +894,19 @@ mod tests {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
 
-        event_tx.send(crate::AgentEvent::ToolCall {
-            name: "bash".to_string(),
-            arguments: "ls".to_string(),
-        }).unwrap();
-        event_tx.send(crate::AgentEvent::ToolResult {
-            name: "bash".to_string(),
-            content: "file.txt".to_string(),
-            is_error: false,
-        }).unwrap();
+        event_tx
+            .send(crate::AgentEvent::ToolCall {
+                name: "bash".to_string(),
+                arguments: "ls".to_string(),
+            })
+            .unwrap();
+        event_tx
+            .send(crate::AgentEvent::ToolResult {
+                name: "bash".to_string(),
+                content: "file.txt".to_string(),
+                is_error: false,
+            })
+            .unwrap();
         app.poll_agent_events();
 
         assert_eq!(app.tool_activity.len(), 1);
@@ -895,15 +919,19 @@ mod tests {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
 
-        event_tx.send(crate::AgentEvent::ToolCall {
-            name: "bash".to_string(),
-            arguments: "ls".to_string(),
-        }).unwrap();
-        event_tx.send(crate::AgentEvent::ToolResult {
-            name: "bash".to_string(),
-            content: "permission denied".to_string(),
-            is_error: true,
-        }).unwrap();
+        event_tx
+            .send(crate::AgentEvent::ToolCall {
+                name: "bash".to_string(),
+                arguments: "ls".to_string(),
+            })
+            .unwrap();
+        event_tx
+            .send(crate::AgentEvent::ToolResult {
+                name: "bash".to_string(),
+                content: "permission denied".to_string(),
+                is_error: true,
+            })
+            .unwrap();
         app.poll_agent_events();
 
         assert_eq!(app.tool_activity.len(), 1);

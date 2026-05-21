@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use hakimi_session::{MessageOps, SessionDB, SessionMeta, SessionOps};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::debug;
 
 use crate::Tool;
@@ -22,10 +22,7 @@ fn format_session_summary(session: &SessionMeta, snippet: Option<&str>) -> Strin
     let mut parts = vec![format!(
         "Session: {} ({})",
         session.id,
-        session
-            .title
-            .as_deref()
-            .unwrap_or("untitled")
+        session.title.as_deref().unwrap_or("untitled")
     )];
 
     if let Some(source) = &session.source {
@@ -110,9 +107,8 @@ impl Tool for SessionSearchTool {
             "session search"
         );
 
-        let db = SessionDB::new(&db_path).map_err(|e| {
-            HakimiError::Session(format!("failed to open session database: {e}"))
-        })?;
+        let db = SessionDB::new(&db_path)
+            .map_err(|e| HakimiError::Session(format!("failed to open session database: {e}")))?;
         db.initialize().map_err(|e| {
             HakimiError::Session(format!("failed to initialize session database: {e}"))
         })?;
@@ -143,9 +139,9 @@ impl Tool for SessionSearchTool {
             limit
         };
 
-        let results = db.search_messages(query, search_limit).map_err(|e| {
-            HakimiError::Session(format!("failed to search messages: {e}"))
-        })?;
+        let results = db
+            .search_messages(query, search_limit)
+            .map_err(|e| HakimiError::Session(format!("failed to search messages: {e}")))?;
 
         // Filter by role if requested
         let filtered: Vec<_> = if let Some(_role) = role_filter {
@@ -161,10 +157,7 @@ impl Tool for SessionSearchTool {
         }
 
         // Group results by session and get session metadata
-        let mut session_ids: Vec<String> = filtered
-            .iter()
-            .map(|r| r.session_id.clone())
-            .collect();
+        let mut session_ids: Vec<String> = filtered.iter().map(|r| r.session_id.clone()).collect();
         session_ids.dedup();
 
         let mut output = format!(
@@ -173,9 +166,9 @@ impl Tool for SessionSearchTool {
         );
 
         for sid in &session_ids {
-            let session = db.get_session(sid).map_err(|e| {
-                HakimiError::Session(format!("failed to get session: {e}"))
-            })?;
+            let session = db
+                .get_session(sid)
+                .map_err(|e| HakimiError::Session(format!("failed to get session: {e}")))?;
 
             if let Some(session) = session {
                 let session_matches: Vec<&hakimi_session::SearchResult> =
@@ -192,10 +185,7 @@ impl Tool for SessionSearchTool {
                         }
                     });
 
-                output.push_str(&format_session_summary(
-                    &session,
-                    snippet.as_deref(),
-                ));
+                output.push_str(&format_session_summary(&session, snippet.as_deref()));
                 output.push_str(&format!(
                     "\n  Matching messages: {}\n",
                     session_matches.len()

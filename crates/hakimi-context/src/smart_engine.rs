@@ -84,11 +84,7 @@ impl SmartContextEngine {
         messages
             .iter()
             .map(|m| {
-                let content_tokens = m
-                    .content
-                    .as_deref()
-                    .map(Self::estimate_tokens)
-                    .unwrap_or(0);
+                let content_tokens = m.content.as_deref().map(Self::estimate_tokens).unwrap_or(0);
                 let reasoning_tokens = m
                     .reasoning
                     .as_deref()
@@ -465,8 +461,7 @@ mod tests {
         ];
 
         // Apply tier 1, keeping only the last 4 messages with full tool results.
-        let (_, tokens_saved) =
-            SmartContextEngine::tier1_drop_tool_results(&mut messages, 4);
+        let (_, tokens_saved) = SmartContextEngine::tier1_drop_tool_results(&mut messages, 4);
 
         // The first tool result (index 3) should have been truncated.
         assert!(
@@ -497,17 +492,18 @@ mod tests {
             Message::user("Thanks"),
         ];
 
-        let (_, _tokens_saved) =
-            SmartContextEngine::tier2_summarize_old_turns(&mut messages, 2);
+        let (_, _tokens_saved) = SmartContextEngine::tier2_summarize_old_turns(&mut messages, 2);
 
         // Should have system + summary + last 2 messages = 4
-        assert_eq!(messages.len(), 4, "Expected 4 messages after tier 2, got {}", messages.len());
+        assert_eq!(
+            messages.len(),
+            4,
+            "Expected 4 messages after tier 2, got {}",
+            messages.len()
+        );
         // First message is the original system message.
         assert_eq!(messages[0].role, MessageRole::System);
-        assert_eq!(
-            messages[0].content.as_deref(),
-            Some("You are helpful.")
-        );
+        assert_eq!(messages[0].content.as_deref(), Some("You are helpful."));
         // Second message is the compression summary.
         assert!(
             messages[1]
@@ -584,7 +580,10 @@ mod tests {
         assert!(!engine.should_compress(), "69.9% should not trigger");
 
         engine.estimated_tokens = 700;
-        assert!(!engine.should_compress(), "70.0% should not trigger (not > 70%)");
+        assert!(
+            !engine.should_compress(),
+            "70.0% should not trigger (not > 70%)"
+        );
 
         engine.estimated_tokens = 701;
         assert!(engine.should_compress(), "70.1% should trigger");
@@ -694,7 +693,10 @@ mod tests {
     fn test_compression_stats_returns_some() {
         let engine = make_engine(1000);
         let stats = engine.compression_stats();
-        assert!(stats.is_some(), "SmartContextEngine should return Some(stats)");
+        assert!(
+            stats.is_some(),
+            "SmartContextEngine should return Some(stats)"
+        );
         let s = stats.unwrap();
         assert_eq!(s.compression_count, 0);
         assert_eq!(s.total_tokens_saved, 0);
@@ -706,16 +708,16 @@ mod tests {
     fn test_estimate_tokens() {
         // 4 chars = 1 token
         assert_eq!(SmartContextEngine::estimate_tokens("hello"), 2); // 5 chars -> ceil(5/4) = 2
-        assert_eq!(SmartContextEngine::estimate_tokens("test"), 1);  // 4 chars -> 1
+        assert_eq!(SmartContextEngine::estimate_tokens("test"), 1); // 4 chars -> 1
         assert_eq!(SmartContextEngine::estimate_tokens(""), 0);
-        assert_eq!(SmartContextEngine::estimate_tokens("a"), 1);      // 1 char -> ceil(1/4) = 1
+        assert_eq!(SmartContextEngine::estimate_tokens("a"), 1); // 1 char -> ceil(1/4) = 1
     }
 
     #[test]
     fn test_estimate_total_tokens() {
         let messages = vec![
-            Message::system("test"),  // 4 chars content + 4 overhead = 5
-            Message::user("hello"),   // 5 chars content + 4 overhead = 6
+            Message::system("test"), // 4 chars content + 4 overhead = 5
+            Message::user("hello"),  // 5 chars content + 4 overhead = 6
         ];
         let total = SmartContextEngine::estimate_total_tokens(&messages);
         assert!(total > 0);
@@ -748,10 +750,7 @@ mod tests {
 
     #[test]
     fn test_tier3_too_few_messages() {
-        let mut messages = vec![
-            Message::system("sys"),
-            Message::user("hello"),
-        ];
+        let mut messages = vec![Message::system("sys"), Message::user("hello")];
         let (count, saved) = SmartContextEngine::tier3_sliding_window(&mut messages, 10);
         assert_eq!(count, 2, "Should not compress if too few messages");
         assert_eq!(saved, 0);
@@ -832,7 +831,13 @@ mod tests {
         assert_eq!(messages[0].content.as_deref(), Some("System A"));
         assert_eq!(messages[1].content.as_deref(), Some("System B"));
         // Summary message follows
-        assert!(messages[2].content.as_ref().unwrap().contains("context-compression"));
+        assert!(
+            messages[2]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("context-compression")
+        );
     }
 
     // ── Tier 3 edge cases ───────────────────────────────────────────────
@@ -854,7 +859,13 @@ mod tests {
         assert_eq!(messages[0].content.as_deref(), Some("Sys1"));
         assert_eq!(messages[1].content.as_deref(), Some("Sys2"));
         // Then notice + last 2 messages
-        assert!(messages[2].content.as_ref().unwrap().contains("sliding window"));
+        assert!(
+            messages[2]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("sliding window")
+        );
         assert_eq!(messages[3].content.as_deref(), Some("msg3"));
         assert_eq!(messages[4].content.as_deref(), Some("r3"));
     }
@@ -863,14 +874,38 @@ mod tests {
 
     #[test]
     fn test_choose_tier_exact_boundaries() {
-        assert_eq!(SmartContextEngine::choose_tier(699, 1000), CompressionTier::None);
-        assert_eq!(SmartContextEngine::choose_tier(700, 1000), CompressionTier::None);
-        assert_eq!(SmartContextEngine::choose_tier(701, 1000), CompressionTier::DropToolResults);
-        assert_eq!(SmartContextEngine::choose_tier(850, 1000), CompressionTier::DropToolResults);
-        assert_eq!(SmartContextEngine::choose_tier(851, 1000), CompressionTier::SummarizeOldTurns);
-        assert_eq!(SmartContextEngine::choose_tier(950, 1000), CompressionTier::SummarizeOldTurns);
-        assert_eq!(SmartContextEngine::choose_tier(951, 1000), CompressionTier::SlidingWindow);
-        assert_eq!(SmartContextEngine::choose_tier(1000, 1000), CompressionTier::SlidingWindow);
+        assert_eq!(
+            SmartContextEngine::choose_tier(699, 1000),
+            CompressionTier::None
+        );
+        assert_eq!(
+            SmartContextEngine::choose_tier(700, 1000),
+            CompressionTier::None
+        );
+        assert_eq!(
+            SmartContextEngine::choose_tier(701, 1000),
+            CompressionTier::DropToolResults
+        );
+        assert_eq!(
+            SmartContextEngine::choose_tier(850, 1000),
+            CompressionTier::DropToolResults
+        );
+        assert_eq!(
+            SmartContextEngine::choose_tier(851, 1000),
+            CompressionTier::SummarizeOldTurns
+        );
+        assert_eq!(
+            SmartContextEngine::choose_tier(950, 1000),
+            CompressionTier::SummarizeOldTurns
+        );
+        assert_eq!(
+            SmartContextEngine::choose_tier(951, 1000),
+            CompressionTier::SlidingWindow
+        );
+        assert_eq!(
+            SmartContextEngine::choose_tier(1000, 1000),
+            CompressionTier::SlidingWindow
+        );
     }
 
     // ── Empty compress ──────────────────────────────────────────────────
@@ -899,7 +934,9 @@ mod tests {
             let mut msgs = vec![Message::system("System prompt.")];
             for i in 0..20 {
                 msgs.push(Message::user(format!("Question {i} about programming")));
-                msgs.push(Message::assistant(format!("Answer {i}: detailed explanation.")));
+                msgs.push(Message::assistant(format!(
+                    "Answer {i}: detailed explanation."
+                )));
             }
             msgs
         };
@@ -921,9 +958,15 @@ mod tests {
     #[test]
     fn test_compression_tier_equality() {
         assert_eq!(CompressionTier::None, CompressionTier::None);
-        assert_eq!(CompressionTier::DropToolResults, CompressionTier::DropToolResults);
+        assert_eq!(
+            CompressionTier::DropToolResults,
+            CompressionTier::DropToolResults
+        );
         assert_ne!(CompressionTier::None, CompressionTier::SlidingWindow);
-        assert_ne!(CompressionTier::DropToolResults, CompressionTier::SummarizeOldTurns);
+        assert_ne!(
+            CompressionTier::DropToolResults,
+            CompressionTier::SummarizeOldTurns
+        );
     }
 
     // ── Tier 1 with keep_recent covering all messages ───────────────────

@@ -167,7 +167,6 @@ pub fn parse_openai_chunk(json_str: &str) -> Vec<StreamEvent> {
 
 // ── Anthropic SSE parsing ───────────────────────────────────────────────────
 
-
 // ── Gemini SSE parsing ──────────────────────────────────────────────────────
 
 /// Parse a Gemini-format streaming chunk JSON into a list of `StreamEvent`s.
@@ -196,8 +195,12 @@ pub fn parse_gemini_chunk(json_str: &str) -> Vec<StreamEvent> {
                     // Function call deltas.
                     if let Some(fc) = part.get("functionCall") {
                         let name = fc["name"].as_str().map(String::from);
-                        let args = fc.get("args").cloned().unwrap_or(JsonValue::Object(serde_json::Map::new()));
-                        let arguments_str = serde_json::to_string(&args).unwrap_or_else(|_| "{}".to_string());
+                        let args = fc
+                            .get("args")
+                            .cloned()
+                            .unwrap_or(JsonValue::Object(serde_json::Map::new()));
+                        let arguments_str =
+                            serde_json::to_string(&args).unwrap_or_else(|_| "{}".to_string());
                         events.push(StreamEvent::ToolCallDelta {
                             index: 0, // Gemini sends complete function calls, not streamed deltas
                             id: None,
@@ -416,7 +419,9 @@ enum SseMode {
 impl SseEventStream {
     /// Create a new SSE event stream in OpenAI mode.
     pub fn openai(
-        inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+        inner: Pin<
+            Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>,
+        >,
     ) -> Self {
         Self {
             inner,
@@ -429,7 +434,9 @@ impl SseEventStream {
 
     /// Create a new SSE event stream in Anthropic mode.
     pub fn anthropic(
-        inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+        inner: Pin<
+            Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>,
+        >,
     ) -> Self {
         Self {
             inner,
@@ -442,7 +449,9 @@ impl SseEventStream {
 
     /// Create a new SSE event stream in Gemini mode.
     pub fn gemini(
-        inner: Pin<Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>>,
+        inner: Pin<
+            Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>,
+        >,
     ) -> Self {
         Self {
             inner,
@@ -453,7 +462,10 @@ impl SseEventStream {
         }
     }
 
-    fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<Option<std::result::Result<(), String>>> {
+    fn poll_inner(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<std::result::Result<(), String>>> {
         use futures::StreamExt;
 
         loop {
@@ -492,7 +504,7 @@ impl SseEventStream {
                     // No complete events yet — continue polling.
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    return Poll::Ready(Some(Err(format!("SSE stream error: {e}"))))
+                    return Poll::Ready(Some(Err(format!("SSE stream error: {e}"))));
                 }
                 Poll::Ready(None) => {
                     self.done = true;
@@ -592,7 +604,8 @@ mod tests {
     #[test]
     fn test_sse_full_buffer_ignores_comments() {
         let mut buf = SseFullBuffer::new();
-        let chunk = b": this is a comment\ndata: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n";
+        let chunk =
+            b": this is a comment\ndata: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n";
         let pairs = buf.feed(chunk);
         assert_eq!(pairs.len(), 1);
         assert!(pairs[0].1.contains("Hi"));
@@ -615,7 +628,9 @@ mod tests {
         let events = parse_openai_chunk(json);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            StreamEvent::ToolCallDelta { index, id, name, .. } => {
+            StreamEvent::ToolCallDelta {
+                index, id, name, ..
+            } => {
                 assert_eq!(*index, 0);
                 assert_eq!(id.as_deref(), Some("call_1"));
                 assert_eq!(name.as_deref(), Some("read_file"));
@@ -630,7 +645,10 @@ mod tests {
         let events = parse_openai_chunk(json);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            StreamEvent::Usage { prompt_tokens, completion_tokens } => {
+            StreamEvent::Usage {
+                prompt_tokens,
+                completion_tokens,
+            } => {
                 assert_eq!(*prompt_tokens, 10);
                 assert_eq!(*completion_tokens, 20);
             }
@@ -662,7 +680,9 @@ mod tests {
         let events = parse_anthropic_event("content_block_start", json);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            StreamEvent::ToolCallDelta { index, id, name, .. } => {
+            StreamEvent::ToolCallDelta {
+                index, id, name, ..
+            } => {
                 assert_eq!(*index, 1);
                 assert_eq!(id.as_deref(), Some("toolu_123"));
                 assert_eq!(name.as_deref(), Some("read_file"));
@@ -677,7 +697,11 @@ mod tests {
         let events = parse_anthropic_event("content_block_delta", json);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            StreamEvent::ToolCallDelta { index, arguments_delta, .. } => {
+            StreamEvent::ToolCallDelta {
+                index,
+                arguments_delta,
+                ..
+            } => {
                 assert_eq!(*index, 1);
                 assert_eq!(arguments_delta, "{\"path\":");
             }
@@ -823,7 +847,8 @@ mod tests {
 
     #[test]
     fn test_parse_gemini_finish_reason_stop() {
-        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Done"}]},"finishReason":"STOP"}]}"#;
+        let json =
+            r#"{"candidates":[{"content":{"parts":[{"text":"Done"}]},"finishReason":"STOP"}]}"#;
         let events = parse_gemini_chunk(json);
         assert_eq!(events.len(), 2);
         assert!(matches!(events[0], StreamEvent::ContentDelta(_)));

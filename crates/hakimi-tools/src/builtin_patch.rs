@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::fs;
 use tracing::debug;
 
@@ -88,9 +88,7 @@ impl Tool for PatchTool {
         })?;
 
         if old_string.is_empty() {
-            return Err(HakimiError::Tool(
-                "old_string cannot be empty".into(),
-            ));
+            return Err(HakimiError::Tool("old_string cannot be empty".into()));
         }
 
         if old_string == new_string {
@@ -141,7 +139,7 @@ mod tests {
     use tokio::fs;
 
     fn test_ctx(workdir: &str) -> ToolContext {
-ToolContext {
+        ToolContext {
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,

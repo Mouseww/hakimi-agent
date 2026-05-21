@@ -225,7 +225,10 @@ restart:
         en.set("welcome", "Hello, {0}! You have {1} messages.");
         i18n.add_catalog(en);
 
-        assert_eq!(i18n.tf("welcome", &["Alice", "5"]), "Hello, Alice! You have 5 messages.");
+        assert_eq!(
+            i18n.tf("welcome", &["Alice", "5"]),
+            "Hello, Alice! You have 5 messages."
+        );
     }
 
     #[test]

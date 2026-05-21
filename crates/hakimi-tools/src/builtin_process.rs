@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -113,12 +113,12 @@ impl Tool for ProcessTool {
                 ))
             }
             "status" => {
-                let session_id = args
-                    .get("session_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        HakimiError::Tool("'session_id' is required for 'status' action".into())
-                    })?;
+                let session_id =
+                    args.get("session_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            HakimiError::Tool("'session_id' is required for 'status' action".into())
+                        })?;
 
                 let mut processes = PROCESSES.lock().await;
                 let info = processes.get_mut(session_id).ok_or_else(|| {
@@ -140,18 +140,15 @@ impl Tool for ProcessTool {
                     "no child handle (already collected)".to_string()
                 };
 
-                Ok(format!(
-                    "Process '{}': {}",
-                    session_id, status
-                ))
+                Ok(format!("Process '{}': {}", session_id, status))
             }
             "log" => {
-                let session_id = args
-                    .get("session_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        HakimiError::Tool("'session_id' is required for 'log' action".into())
-                    })?;
+                let session_id =
+                    args.get("session_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            HakimiError::Tool("'session_id' is required for 'log' action".into())
+                        })?;
 
                 let mut processes = PROCESSES.lock().await;
                 let info = processes.get_mut(session_id).ok_or_else(|| {
@@ -191,10 +188,8 @@ impl Tool for ProcessTool {
                     // Check if still running
                     match child.try_wait() {
                         Ok(Some(status)) => {
-                            output.push_str(&format!(
-                                "\nEXIT CODE: {}",
-                                status.code().unwrap_or(-1)
-                            ));
+                            output
+                                .push_str(&format!("\nEXIT CODE: {}", status.code().unwrap_or(-1)));
                         }
                         Ok(None) => {
                             output.push_str("\nStatus: still running");
@@ -214,12 +209,12 @@ impl Tool for ProcessTool {
                 Ok(output)
             }
             "kill" => {
-                let session_id = args
-                    .get("session_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        HakimiError::Tool("'session_id' is required for 'kill' action".into())
-                    })?;
+                let session_id =
+                    args.get("session_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            HakimiError::Tool("'session_id' is required for 'kill' action".into())
+                        })?;
 
                 let mut processes = PROCESSES.lock().await;
                 let mut info = processes.remove(session_id).ok_or_else(|| {
@@ -230,9 +225,10 @@ impl Tool for ProcessTool {
                 })?;
 
                 if let Some(child) = &mut info.child {
-                    child.kill().await.map_err(|e| {
-                        HakimiError::Tool(format!("failed to kill process: {e}"))
-                    })?;
+                    child
+                        .kill()
+                        .await
+                        .map_err(|e| HakimiError::Tool(format!("failed to kill process: {e}")))?;
                     Ok(format!("Process '{}' killed.", session_id))
                 } else {
                     Ok(format!(
@@ -265,10 +261,7 @@ impl Tool for ProcessTool {
                         "unknown".to_string()
                     };
 
-                    result.push_str(&format!(
-                        "[{}] {} - {}\n",
-                        id, info.command, status
-                    ));
+                    result.push_str(&format!("[{}] {} - {}\n", id, info.command, status));
                 }
 
                 // Clean up exited processes

@@ -5,7 +5,7 @@ use hakimi_common::{
 };
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::{debug, warn};
 
 use crate::error::classify_error;
@@ -149,10 +149,8 @@ impl GeminiTransport {
                     let content_text = msg.content.as_deref().unwrap_or("");
 
                     // Try to parse content as JSON; fall back to wrapping in a string.
-                    let response_value: JsonValue =
-                        serde_json::from_str(content_text).unwrap_or_else(|_| {
-                            json!({"result": content_text})
-                        });
+                    let response_value: JsonValue = serde_json::from_str(content_text)
+                        .unwrap_or_else(|_| json!({"result": content_text}));
 
                     let obj = json!({
                         "role": "user",
@@ -461,9 +459,10 @@ impl ProviderTransport for GeminiTransport {
             })?;
 
         let status = response.status();
-        let response_text = response.text().await.map_err(|e| {
-            HakimiError::Transport(format!("failed to read response body: {e}"))
-        })?;
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| HakimiError::Transport(format!("failed to read response body: {e}")))?;
 
         if !status.is_success() {
             let code = status.as_u16();
@@ -692,10 +691,7 @@ mod tests {
         }];
         let result = GeminiTransport::convert_tools(&tools);
         assert_eq!(result.len(), 1);
-        assert_eq!(
-            result[0]["functionDeclarations"][0]["name"],
-            "read_file"
-        );
+        assert_eq!(result[0]["functionDeclarations"][0]["name"], "read_file");
         assert_eq!(
             result[0]["functionDeclarations"][0]["description"],
             "Read a file from disk"
@@ -706,10 +702,7 @@ mod tests {
 
     #[test]
     fn test_split_system_prompt_single() {
-        let messages = vec![
-            Message::system("Be helpful"),
-            Message::user("Hello"),
-        ];
+        let messages = vec![Message::system("Be helpful"), Message::user("Hello")];
         let (system, rest) = GeminiTransport::split_system_prompt(&messages);
         assert_eq!(system.as_deref(), Some("Be helpful"));
         assert_eq!(rest.len(), 1);
@@ -823,10 +816,7 @@ mod tests {
         };
 
         let result = GeminiTransport::parse_response(&resp).unwrap();
-        assert_eq!(
-            result.content.as_deref(),
-            Some("Let me read that file.")
-        );
+        assert_eq!(result.content.as_deref(), Some("Let me read that file."));
         let tool_calls = result.tool_calls.unwrap();
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].name, "read_file");
@@ -859,9 +849,7 @@ mod tests {
     fn test_parse_safety_finish_reason() {
         let resp = GeminiResponse {
             candidates: vec![GeminiCandidate {
-                content: GeminiContent {
-                    parts: vec![],
-                },
+                content: GeminiContent { parts: vec![] },
                 finish_reason: Some("SAFETY".to_string()),
             }],
             usage_metadata: None,
@@ -1058,10 +1046,7 @@ mod tests {
             resp.candidates[0].content.parts[0].text.as_deref(),
             Some("Hello!")
         );
-        assert_eq!(
-            resp.candidates[0].finish_reason.as_deref(),
-            Some("STOP")
-        );
+        assert_eq!(resp.candidates[0].finish_reason.as_deref(), Some("STOP"));
         let usage = resp.usage_metadata.unwrap();
         assert_eq!(usage.prompt_token_count, Some(5));
         assert_eq!(usage.candidates_token_count, Some(2));

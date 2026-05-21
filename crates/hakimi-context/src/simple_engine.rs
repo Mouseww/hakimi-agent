@@ -136,13 +136,23 @@ mod tests {
         // Each message ~50 chars = ~13 tokens. 10 messages ≈ 130 tokens.
         // Target = 50 tokens → should compress.
         let mut messages: Vec<Message> = (0..10)
-            .map(|i| Message::user(format!("This is a test message number {i} with some padding text.")))
+            .map(|i| {
+                Message::user(format!(
+                    "This is a test message number {i} with some padding text."
+                ))
+            })
             .collect();
         engine.compress(&mut messages).await.unwrap();
         // Should keep only some tail messages and a compression summary
         assert!(messages.len() < 11);
         assert!(messages.len() >= 2);
         // First message should be the compression summary
-        assert!(messages[0].content.as_ref().unwrap().contains("Context compressed"));
+        assert!(
+            messages[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("Context compressed")
+        );
     }
 }

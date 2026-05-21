@@ -226,7 +226,10 @@ pub fn inject_intent_context(prediction: &IntentPrediction) -> String {
 pub fn inject_role_context(profile: &RoleProfile) -> String {
     let mut parts = Vec::new();
 
-    parts.push(format!("Active role: {} — {}", profile.name, profile.description));
+    parts.push(format!(
+        "Active role: {} — {}",
+        profile.name, profile.description
+    ));
     parts.push(format!("Tone: {}", profile.tone));
     parts.push(format!("Verbosity: {}", profile.verbosity));
 

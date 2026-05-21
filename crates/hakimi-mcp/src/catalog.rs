@@ -130,7 +130,8 @@ pub fn default_catalog() -> Vec<McpServerEntry> {
                 "~/data.db".into(),
             ],
             env_vars: vec![],
-            install_hint: "pip install mcp-server-sqlite  (or: uv tool install mcp-server-sqlite)".into(),
+            install_hint: "pip install mcp-server-sqlite  (or: uv tool install mcp-server-sqlite)"
+                .into(),
             popular: false,
         },
         McpServerEntry {
@@ -322,22 +323,14 @@ mod tests {
         // Templates live at the workspace root /templates/
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let templates_dir = manifest_dir
-            .parent()  // crates/
-            .and_then(|p| p.parent())  // workspace root
+            .parent() // crates/
+            .and_then(|p| p.parent()) // workspace root
             .map(|p| p.join("templates"))
             .expect("could not resolve templates dir");
 
-        assert!(
-            templates_dir.join("plugin-http-api.yaml").exists(),
-        );
-        assert!(
-            templates_dir.join("plugin-weather.yaml").exists(),
-        );
-        assert!(
-            templates_dir.join("mcp-server-custom.yaml").exists(),
-        );
-        assert!(
-            templates_dir.join("gateway-webhook.yaml").exists(),
-        );
+        assert!(templates_dir.join("plugin-http-api.yaml").exists(),);
+        assert!(templates_dir.join("plugin-weather.yaml").exists(),);
+        assert!(templates_dir.join("mcp-server-custom.yaml").exists(),);
+        assert!(templates_dir.join("gateway-webhook.yaml").exists(),);
     }
 }

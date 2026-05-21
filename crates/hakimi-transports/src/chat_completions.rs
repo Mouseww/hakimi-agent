@@ -5,13 +5,13 @@ use hakimi_common::{
 };
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::{debug, warn};
 
 use crate::error::classify_error;
 use crate::params::RequestParams;
-use crate::trait_def::ProviderTransport;
 use crate::streaming::{SseEventStream, StreamEvent};
+use crate::trait_def::ProviderTransport;
 use futures::stream::Stream;
 use std::pin::Pin;
 
@@ -163,9 +163,10 @@ impl ChatCompletionsTransport {
 
     /// Parse an OpenAI Chat Completions response into a [`NormalizedResponse`].
     fn parse_response(resp: &ChatCompletionResponse) -> Result<NormalizedResponse> {
-        let choice = resp.choices.first().ok_or_else(|| {
-            HakimiError::Transport("response contained no choices".to_string())
-        })?;
+        let choice = resp
+            .choices
+            .first()
+            .ok_or_else(|| HakimiError::Transport("response contained no choices".to_string()))?;
 
         let content = choice.message.content.clone();
 
@@ -193,11 +194,13 @@ impl ChatCompletionsTransport {
             prompt_tokens: u.prompt_tokens,
             completion_tokens: u.completion_tokens,
             total_tokens: u.total_tokens,
-            cached_tokens: u.prompt_tokens_details
+            cached_tokens: u
+                .prompt_tokens_details
                 .as_ref()
                 .and_then(|d| d.cached_tokens)
                 .unwrap_or(0),
-            reasoning_tokens: u.completion_tokens_details
+            reasoning_tokens: u
+                .completion_tokens_details
                 .as_ref()
                 .and_then(|d| d.reasoning_tokens)
                 .unwrap_or(0),
@@ -305,9 +308,10 @@ impl ProviderTransport for ChatCompletionsTransport {
             })?;
 
         let status = response.status();
-        let response_text = response.text().await.map_err(|e| {
-            HakimiError::Transport(format!("failed to read response body: {e}"))
-        })?;
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| HakimiError::Transport(format!("failed to read response body: {e}")))?;
 
         if !status.is_success() {
             let code = status.as_u16();
@@ -324,11 +328,10 @@ impl ProviderTransport for ChatCompletionsTransport {
             )));
         }
 
-        let parsed: ChatCompletionResponse =
-            serde_json::from_str(&response_text).map_err(|e| {
-                warn!(error = %e, "failed to parse response JSON");
-                HakimiError::Transport(format!("failed to parse response: {e}"))
-            })?;
+        let parsed: ChatCompletionResponse = serde_json::from_str(&response_text).map_err(|e| {
+            warn!(error = %e, "failed to parse response JSON");
+            HakimiError::Transport(format!("failed to parse response: {e}"))
+        })?;
 
         Self::parse_response(&parsed)
     }

@@ -79,9 +79,7 @@ impl ToolContextBuilder {
                 .expect("session_id is required for ToolContext"),
             user_id: self.user_id,
             task_id: self.task_id,
-            workdir: self
-                .workdir
-                .expect("workdir is required for ToolContext"),
+            workdir: self.workdir.expect("workdir is required for ToolContext"),
             model: self.model,
             delegate_executor: self.delegate_executor,
         }
