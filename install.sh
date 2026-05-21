@@ -59,7 +59,11 @@ case "$ARCH" in
 esac
 
 case "$OS" in
-    linux)   PLATFORM="unknown-linux-gnu" ;;
+    linux)
+        # Prefer musl (statically linked, works on any Linux)
+        PLATFORM="unknown-linux-musl"
+        FALLBACK_PLATFORM="unknown-linux-gnu"
+        ;;
     darwin)  PLATFORM="apple-darwin" ;;
     mingw*|msys*|cygwin*)
         error "Windows detected. Please use the PowerShell installer instead:"
@@ -93,6 +97,16 @@ else
     DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/hakimi-${ARCH}-${PLATFORM}.tar.gz"
 fi
 
+# Fallback URL for Linux (musl → gnu)
+FALLBACK_URL=""
+if [ -n "${FALLBACK_PLATFORM:-}" ]; then
+    if [ "$VERSION" = "latest" ]; then
+        FALLBACK_URL="https://github.com/${REPO}/releases/latest/download/hakimi-${ARCH}-${FALLBACK_PLATFORM}.tar.gz"
+    else
+        FALLBACK_URL="https://github.com/${REPO}/releases/download/${VERSION}/hakimi-${ARCH}-${FALLBACK_PLATFORM}.tar.gz"
+    fi
+fi
+
 info "Download URL: ${DOWNLOAD_URL}"
 
 # ── Download and install ─────────────────────────────────────────────────────
@@ -106,6 +120,12 @@ mkdir -p "$INSTALL_DIR"
 
 info "Downloading binary..."
 HTTP_CODE=$(curl -sSL -w '%{http_code}' -o "$TMPDIR/hakimi.tar.gz" "$DOWNLOAD_URL" 2>/dev/null || true)
+
+# Try fallback URL if primary failed (musl → gnu on Linux)
+if [ "$HTTP_CODE" = "404" ] && [ -n "${FALLBACK_URL:-}" ]; then
+    info "Trying fallback: ${FALLBACK_URL}"
+    HTTP_CODE=$(curl -sSL -w '%{http_code}' -o "$TMPDIR/hakimi.tar.gz" "$FALLBACK_URL" 2>/dev/null || true)
+fi
 
 if [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "403" ] || [ ! -f "$TMPDIR/hakimi.tar.gz" ] || [ ! -s "$TMPDIR/hakimi.tar.gz" ]; then
     warn "No pre-built binary found for ${ARCH}-${PLATFORM} (HTTP ${HTTP_CODE:-unknown})."

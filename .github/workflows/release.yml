@@ -15,6 +15,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: hakimi-x86_64-unknown-linux-musl
+            ext: tar.gz
+            install_deps: musl-tools
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: hakimi-x86_64-unknown-linux-gnu
             ext: tar.gz
@@ -43,6 +48,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install system deps
+        if: matrix.install_deps
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.install_deps }}
 
       - name: Install cross
         if: matrix.cross
