@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="#为什么是-hakimi">为什么选它</a> •
+  <a href="#简介">简介</a> •
   <a href="#核心能力">核心能力</a> •
   <a href="#快速开始">快速开始</a> •
   <a href="#架构设计">架构</a> •
@@ -25,31 +25,21 @@
 
 ---
 
-## 为什么是 Hakimi？
+## 简介
 
-市面上的 AI Agent 框架（LangChain、AutoGen、CrewAI）全是 Python。**Hakimi 是第一个用 Rust 从零重写生产级 Agent 框架的项目。**
+Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust 重写——Nous Research 生产环境使用的 AI Agent 框架，服务数千用户。不是 demo，不是 wrapper，是从零用 Rust 重写的完整实现。
 
-这不是玩具——它忠实移植了 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的完整架构，而 Hermes 是 Nous Research 用于数千用户的真实生产系统。
+**与 Python Agent 框架的性能差异：**
 
-### 🚀 三个破圈理由
+| 指标 | Python Agent | Hakimi (Rust) |
+|------|-------------|---------------|
+| 启动时间 | ~2s | ~50ms |
+| 空闲内存 | ~150MB | ~15MB |
+| 并发模型 | asyncio + 线程桥接 | tokio 原生 async (无 GIL) |
+| 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
+| 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**1. 性能碾压：启动 50ms，空闲内存 15MB**
-
-| 指标 | Python Agent | Hakimi (Rust) | 提升 |
-|------|-------------|---------------|------|
-| 启动时间 | ~2s | ~50ms | **40x** |
-| 空闲内存 | ~150MB | ~15MB | **10x** |
-| 并发模型 | asyncio + 线程桥接 | tokio 原生 async | 无 GIL |
-| 工具注册 | 运行时 AST 扫描 | 编译期 trait 实现 | 零开销 |
-| 类型安全 | 运行时崩溃 | 编译期捕获 | 100% |
-
-**2. 生产级可靠性：420 个测试，20+ 错误恢复策略**
-
-不是 demo 项目。错误分类器覆盖 20+ API 错误类型（认证、限流、超载、上下文溢出……），每种都有对应的自动恢复策略。凭证池支持多密钥轮换和自动熔断。
-
-**3. 开箱即用：25 个内置工具，8 个平台适配器**
-
-文件操作、Shell、搜索、Web、内存、代码执行、Vision分析、Checkpoint回滚、任务委派……全部内置。Telegram、Discord、Slack、DingTalk、WeCom、Signal、Matrix、Webhook 开箱即用。
+**生产级特性：** 420 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 

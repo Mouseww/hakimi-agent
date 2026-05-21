@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="#why-hakimi">Why Hakimi</a> •
+  <a href="#overview">Overview</a> •
   <a href="#capabilities">Capabilities</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#architecture">Architecture</a> •
@@ -25,31 +25,21 @@
 
 ---
 
-## Why Hakimi
+## Overview
 
-Every major AI agent framework — LangChain, AutoGen, CrewAI, Hermes — is written in Python. **Hakimi is the first production-grade agent framework rewritten entirely in Rust.**
+Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/hermes-agent) — the production AI agent framework by Nous Research, serving thousands of users. Not a demo, not a wrapper — a ground-up Rust implementation of the complete architecture.
 
-This isn't a toy. It faithfully ports the complete architecture of [Hermes Agent](https://github.com/NousResearch/hermes-agent), a battle-tested system serving thousands of users at Nous Research.
+**Performance vs Python agent frameworks:**
 
-### 🔥 Three reasons to pay attention
+| Metric | Python Agent | Hakimi (Rust) |
+|--------|-------------|---------------|
+| Startup | ~2s | ~50ms |
+| Idle memory | ~150MB | ~15MB |
+| Concurrency | asyncio + thread bridge | tokio native async (no GIL) |
+| Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
+| Type safety | Runtime crashes | Compile-time guarantees |
 
-**1. Brutal performance: 50ms startup, 15MB idle memory**
-
-| Metric | Python Agent | Hakimi (Rust) | Improvement |
-|--------|-------------|---------------|-------------|
-| Startup | ~2s | ~50ms | **40x** |
-| Idle memory | ~150MB | ~15MB | **10x** |
-| Concurrency | asyncio + thread bridge | tokio native async | No GIL |
-| Tool registration | Runtime AST scanning | Compile-time trait impl | Zero overhead |
-| Type safety | Runtime crashes | Compile-time guarantees | 100% |
-
-**2. Production reliability: 420 tests, 20+ error recovery strategies**
-
-Not a demo project. The error classifier covers 20+ API error types (auth, rate-limit, overloaded, context overflow...) each with automatic recovery. Credential pools support multi-key rotation with circuit breakers.
-
-**3. Batteries included: 25 built-in tools, 8 platform adapters**
-
-File ops, Shell, Search, Web, Memory, Code execution, Vision analysis, Checkpoint rollback, Task delegation — all built-in. Telegram, Discord, Slack, DingTalk, WeCom, Signal, Matrix, Webhook — all ready to go.
+**Production features:** 420 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
