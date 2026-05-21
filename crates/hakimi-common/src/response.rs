@@ -48,7 +48,7 @@ impl NormalizedResponse {
     pub fn has_tool_calls(&self) -> bool {
         self.tool_calls
             .as_ref()
-            .map_or(false, |calls| !calls.is_empty())
+            .is_some_and(|calls| !calls.is_empty())
     }
 
     /// Returns the text content or an empty string.

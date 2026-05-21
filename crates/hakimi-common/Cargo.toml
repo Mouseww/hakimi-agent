@@ -10,5 +10,3 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
-regex = { workspace = true }
-tracing = { workspace = true }
