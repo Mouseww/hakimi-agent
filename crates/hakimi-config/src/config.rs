@@ -47,6 +47,10 @@ pub struct ModelConfig {
     /// Empty string = auto-detect from provider name
     #[serde(default)]
     pub api_mode: String,
+
+    /// API key for this provider.
+    #[serde(default)]
+    pub api_key: String,
 }
 
 fn default_provider() -> String {
@@ -60,6 +64,7 @@ impl Default for ModelConfig {
             provider: "auto".to_string(),
             base_url: String::new(),
             api_mode: String::new(),
+            api_key: String::new(),
         }
     }
 }

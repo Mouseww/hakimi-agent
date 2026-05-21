@@ -296,7 +296,11 @@ fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig)
             }
         }
     }
-    // 3. Config file delegation api_key (as fallback)
+    // 3. Config file model.api_key
+    if !config.model.api_key.is_empty() {
+        return config.model.api_key.clone();
+    }
+    // 4. Config file delegation api_key (as fallback)
     if !config.delegation.api_key.is_empty() {
         return config.delegation.api_key.clone();
     }

@@ -67,7 +67,11 @@ impl AnthropicTransport {
     /// Build the full request URL.
     fn endpoint(&self) -> String {
         let base = self.base_url.trim_end_matches('/');
-        format!("{}/v1/messages", base)
+        if base.ends_with("/v1") {
+            format!("{}/messages", base)
+        } else {
+            format!("{}/v1/messages", base)
+        }
     }
 
     /// Extract the system prompt from messages (if present) and return the remaining messages.

@@ -37,7 +37,12 @@ impl ChatCompletionsTransport {
     /// Build the full request URL.
     fn endpoint(&self) -> String {
         let base = self.base_url.trim_end_matches('/');
-        format!("{}/v1/chat/completions", base)
+        // Avoid doubling /v1 if the base_url already includes it
+        if base.ends_with("/v1") {
+            format!("{}/chat/completions", base)
+        } else {
+            format!("{}/v1/chat/completions", base)
+        }
     }
 
     /// Convert our internal [`Message`] slice into the OpenAI JSON wire format.
