@@ -1034,32 +1034,30 @@ mod tests {
     #[tokio::test]
     async fn test_llm_compress_full_pipeline() {
         let c = LlmCompressor::new(10000);
-        let mut messages = Vec::new();
-
-        // System messages (protected: indices 0-2)
-        messages.push(Message::system("You are a coding assistant."));
-        messages.push(Message::system("Be helpful."));
-        messages.push(Message::system("Use examples."));
-
-        // Middle messages (compressible: indices 3..13)
-        messages.push(Message::user("What is a vector in Rust?"));
-        messages.push(Message::assistant("A vector is a growable array."));
-        messages.push(Message::user("How do I create one?"));
-        messages.push(Message::assistant("Use Vec::new() or vec![] macro."));
-        messages.push(Message::user("Run this code"));
-        messages.push(make_large_tool_output_message("tc1", 2000));
-        messages.push(Message::user("What about HashMap?"));
-        messages.push(Message::assistant("HashMap is a key-value store."));
-        messages.push(Message::user("Show me an example"));
-        messages.push(make_large_tool_output_message("tc2", 800));
-
-        // Tail messages (protected: last 6)
-        messages.push(Message::assistant("Here is an example: ..."));
-        messages.push(Message::user("Thanks!"));
-        messages.push(Message::assistant("You're welcome!"));
-        messages.push(Message::user("One more thing?"));
-        messages.push(Message::assistant("Sure, what is it?"));
-        messages.push(Message::user("Never mind."));
+        let messages = vec![
+            // System messages (protected: indices 0-2)
+            Message::system("You are a coding assistant."),
+            Message::system("Be helpful."),
+            Message::system("Use examples."),
+            // Middle messages (compressible: indices 3..13)
+            Message::user("What is a vector in Rust?"),
+            Message::assistant("A vector is a growable array."),
+            Message::user("How do I create one?"),
+            Message::assistant("Use Vec::new() or vec![] macro."),
+            Message::user("Run this code"),
+            make_large_tool_output_message("tc1", 2000),
+            Message::user("What about HashMap?"),
+            Message::assistant("HashMap is a key-value store."),
+            Message::user("Show me an example"),
+            make_large_tool_output_message("tc2", 800),
+            // Tail messages (protected: last 6)
+            Message::assistant("Here is an example: ..."),
+            Message::user("Thanks!"),
+            Message::assistant("You're welcome!"),
+            Message::user("One more thing?"),
+            Message::assistant("Sure, what is it?"),
+            Message::user("Never mind."),
+        ];
 
         let original_len = messages.len();
         assert_eq!(original_len, 19);

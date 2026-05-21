@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_split_system_prompt_none() {
-        let messages = vec![Message::user("hello"), Message::assistant("hi")];
+        let messages = [Message::user("hello"), Message::assistant("hi")];
         let (system, remaining) = AnthropicTransport::split_system_prompt(&messages);
         assert!(system.is_none());
         assert_eq!(remaining.len(), 2);
@@ -604,7 +604,7 @@ mod tests {
 
     #[test]
     fn test_convert_messages_user_assistant() {
-        let messages = vec![Message::user("hello"), Message::assistant("hi")];
+        let messages = [Message::user("hello"), Message::assistant("hi")];
         let refs: Vec<&Message> = messages.iter().collect();
         let result = AnthropicTransport::convert_messages(&refs);
         assert_eq!(result.len(), 2);
@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn test_convert_messages_tool_result() {
         let msg = Message::tool_result("toolu_123", "read_file", "file contents");
-        let messages = vec![msg];
+        let messages = [msg];
         let refs: Vec<&Message> = messages.iter().collect();
         let result = AnthropicTransport::convert_messages(&refs);
         assert_eq!(result.len(), 1);

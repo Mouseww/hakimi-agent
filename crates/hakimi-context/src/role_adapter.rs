@@ -537,6 +537,6 @@ mod tests {
         let adapter = RoleAdapter::new();
         let (role, score) = adapter.detect_role("ok", &[]);
         assert_eq!(role, Role::Assistant);
-        assert!(score >= 0.0 && score <= 1.0);
+        assert!((0.0..=1.0).contains(&score));
     }
 }
