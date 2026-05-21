@@ -17,3 +17,7 @@ fancy-regex = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 pin-project = { workspace = true }
+
+[dev-dependencies]
+hakimi-config = { path = "../hakimi-config" }
+serde_yaml = { workspace = true }

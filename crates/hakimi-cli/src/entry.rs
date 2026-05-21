@@ -11,6 +11,7 @@ use anyhow::Result;
 use clap::Parser;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use crate::Command;
 
@@ -443,8 +444,25 @@ async fn build_agent(
 
     // Create transport — auto-detect Anthropic vs OpenAI-compatible.
     let client = reqwest::Client::new();
-    let transport: std::sync::Arc<dyn hakimi_transports::ProviderTransport> =
-        if is_anthropic_provider(&effective_provider, &base_url) {
+    let transport: std::sync::Arc<dyn hakimi_transports::ProviderTransport> = {
+        // Check explicit api_mode first.
+        let mode = config.model.api_mode.as_str();
+
+        if mode == "responses" || mode == "codex" {
+            info!(base_url = %base_url, "using OpenAI Responses API transport");
+            std::sync::Arc::new(hakimi_transports::ResponsesTransport::new(
+                base_url.clone(),
+                api_key.clone(),
+                client,
+            ))
+        } else if mode == "chat_completions" || mode == "openai" {
+            info!(base_url = %base_url, "using OpenAI Chat Completions transport");
+            std::sync::Arc::new(hakimi_transports::ChatCompletionsTransport::new(
+                base_url.clone(),
+                api_key.clone(),
+                client,
+            ))
+        } else if mode == "anthropic_messages" || mode == "anthropic" {
             let anthropic_url = if base_url.contains("anthropic") {
                 base_url.clone()
             } else {
@@ -457,13 +475,29 @@ async fn build_agent(
                 client,
             ))
         } else {
-            info!(base_url = %base_url, "using OpenAI Chat Completions transport");
-            std::sync::Arc::new(hakimi_transports::ChatCompletionsTransport::new(
-                base_url.clone(),
-                api_key.clone(),
-                client,
-            ))
-        };
+            // Auto-detect: Anthropic vs OpenAI-compatible.
+            if is_anthropic_provider(&effective_provider, &base_url) {
+                let anthropic_url = if base_url.contains("anthropic") {
+                    base_url.clone()
+                } else {
+                    "https://api.anthropic.com".to_string()
+                };
+                info!(base_url = %anthropic_url, "using Anthropic Messages API transport");
+                std::sync::Arc::new(hakimi_transports::AnthropicTransport::new(
+                    anthropic_url,
+                    api_key.clone(),
+                    client,
+                ))
+            } else {
+                info!(base_url = %base_url, "using OpenAI Chat Completions transport");
+                std::sync::Arc::new(hakimi_transports::ChatCompletionsTransport::new(
+                    base_url.clone(),
+                    api_key.clone(),
+                    client,
+                ))
+            }
+        }
+    };
 
     // Create context engine — choose smart (3-tier) or simple (truncation).
     let context_length = config.compression.context_length;
@@ -866,6 +900,35 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
+    // Initialize profile manager and cron scheduler.
+    let hakimi_home = dirs::home_dir()
+        .map(|h| h.join(".hakimi"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi"));
+    let mut profile_manager = crate::profiles::ProfileManager::new(&hakimi_home);
+    let cron_db_path = hakimi_home.join("cron.db");
+    let mut cron_scheduler = if cron_db_path.exists() {
+        match hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+            Ok(store) => {
+                match store.load_into_scheduler() {
+                    Ok(sched) => {
+                        info!(jobs = sched.list().len(), "loaded persisted cron jobs");
+                        sched
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "failed to load persisted cron jobs");
+                        hakimi_cron::CronScheduler::new()
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "failed to open cron database");
+                hakimi_cron::CronScheduler::new()
+            }
+        }
+    } else {
+        hakimi_cron::CronScheduler::new()
+    };
+
     // Interactive REPL.
     loop {
         print!("> ");
@@ -955,9 +1018,75 @@ pub async fn run() -> Result<()> {
                 println!("Usage: (tracked per conversation turn)");
             }
             Some(Command::Profile(ref arg)) => {
-                match arg {
-                    Some(p) => println!("Switching to profile: {p} (not yet wired)"),
-                    None => println!("Current profile: default"),
+                match arg.as_deref() {
+                    Some("list") | None => {
+                        match profile_manager.list() {
+                            Ok(profiles) => {
+                                if profiles.is_empty() {
+                                    println!("No profiles found. Use /profile create <name> to create one.");
+                                } else {
+                                    println!("━━━ Profiles ━━━");
+                                    let active = profile_manager.active().unwrap_or("default");
+                                    for p in &profiles {
+                                        let marker = if p.name == active { " (active)" } else { "" };
+                                        println!("  • {}{}", p.name, marker);
+                                        if let Some(ref desc) = p.description {
+                                            println!("    {}", desc);
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => eprintln!("Error listing profiles: {e}"),
+                        }
+                    }
+                    Some(rest) => {
+                        let (subcmd, name) = match rest.split_once(char::is_whitespace) {
+                            Some((c, n)) => (c, Some(n.trim())),
+                            None => (rest, None),
+                        };
+                        match subcmd {
+                            "create" => {
+                                match name {
+                                    Some(profile_name) => {
+                                        match profile_manager.create(profile_name, None) {
+                                            Ok(dir) => println!("Profile '{}' created at {}", profile_name, dir.display()),
+                                            Err(e) => eprintln!("Error: {e}"),
+                                        }
+                                    }
+                                    None => println!("Usage: /profile create <name>"),
+                                }
+                            }
+                            "delete" => {
+                                match name {
+                                    Some(profile_name) => {
+                                        match profile_manager.delete(profile_name) {
+                                            Ok(()) => println!("Profile '{}' deleted.", profile_name),
+                                            Err(e) => eprintln!("Error: {e}"),
+                                        }
+                                    }
+                                    None => println!("Usage: /profile delete <name>"),
+                                }
+                            }
+                            "use" => {
+                                match name {
+                                    Some(profile_name) => {
+                                        match profile_manager.use_profile(profile_name) {
+                                            Ok(dir) => println!("Switched to profile '{}' ({})", profile_name, dir.display()),
+                                            Err(e) => eprintln!("Error: {e}"),
+                                        }
+                                    }
+                                    None => println!("Usage: /profile use <name>"),
+                                }
+                            }
+                            other => {
+                                // Treat as a profile name to switch to.
+                                match profile_manager.use_profile(other) {
+                                    Ok(dir) => println!("Switched to profile '{}' ({})", other, dir.display()),
+                                    Err(e) => eprintln!("Error: {e}"),
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Some(Command::Doctor) => {
@@ -970,9 +1099,167 @@ pub async fn run() -> Result<()> {
                 }
             }
             Some(Command::Cron(ref arg)) => {
-                match arg {
-                    Some(cmd) => println!("Cron command: {cmd} (not yet wired)"),
-                    None => println!("Cron jobs: (not yet wired)"),
+                match arg.as_deref() {
+                    Some("list") | None => {
+                        let jobs = cron_scheduler.list();
+                        if jobs.is_empty() {
+                            println!("No cron jobs. Use /cron add <schedule> <prompt> to create one.");
+                        } else {
+                            println!("━━━ Cron Jobs ━━━");
+                            for job in &jobs {
+                                let status = if job.enabled { "●" } else { "○" };
+                                let schedule_str = match &job.schedule {
+                                    hakimi_cron::CronSchedule::IntervalMinutes(m) => format!("{m}m"),
+                                    hakimi_cron::CronSchedule::IntervalHours(h) => format!("{h}h"),
+                                    hakimi_cron::CronSchedule::CronExpr(e) => e.clone(),
+                                };
+                                let last = job.last_run
+                                    .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
+                                    .unwrap_or_else(|| "never".to_string());
+                                let next = job.next_run
+                                    .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
+                                    .unwrap_or_else(|| "—".to_string());
+                                println!("  {} [{}] {} (schedule: {}, last: {}, next: {})",
+                                    status, &job.id[..8], job.name, schedule_str, last, next);
+                                println!("    prompt: {}", job.prompt);
+                            }
+                        }
+                    }
+                    Some(rest) => {
+                        let (subcmd, payload) = match rest.split_once(char::is_whitespace) {
+                            Some((c, p)) => (c, Some(p.trim())),
+                            None => (rest, None),
+                        };
+                        match subcmd {
+                            "add" => {
+                                match payload {
+                                    Some(p) => {
+                                        // Format: <schedule> <prompt>
+                                        let (schedule_str, prompt) = match p.split_once(char::is_whitespace) {
+                                            Some((s, pr)) => (s.trim(), pr.trim()),
+                                            None => (p, "No prompt specified"),
+                                        };
+                                        match hakimi_cron::parse_schedule(schedule_str) {
+                                            Ok(schedule) => {
+                                                let job = hakimi_cron::CronJob::new(
+                                                    format!("job-{}", &Uuid::new_v4().to_string()[..8]),
+                                                    schedule,
+                                                    prompt,
+                                                );
+                                                let id = cron_scheduler.add(job.clone());
+                                                // Persist if DB available.
+                                                if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                                                    if let Err(e) = store.save_job(&job) {
+                                                        warn!(error = %e, "failed to persist cron job");
+                                                    }
+                                                }
+                                                println!("Cron job created: {}", &id[..8]);
+                                            }
+                                            Err(e) => eprintln!("Invalid schedule '{schedule_str}': {e}"),
+                                        }
+                                    }
+                                    None => println!("Usage: /cron add <schedule> <prompt>  (e.g. /cron add 30m check status)"),
+                                }
+                            }
+                            "remove" | "rm" => {
+                                match payload {
+                                    Some(id_prefix) => {
+                                        // Find job by ID prefix.
+                                        let jobs = cron_scheduler.list();
+                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix));
+                                        match found {
+                                            Some(job) => {
+                                                let full_id = job.id.clone();
+                                                let name = job.name.clone();
+                                                cron_scheduler.remove(&full_id);
+                                                // Remove from persistent store too.
+                                                if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                                                    let _ = store.remove_job(&full_id);
+                                                }
+                                                println!("Removed cron job: {name}");
+                                            }
+                                            None => println!("No job found matching '{id_prefix}'"),
+                                        }
+                                    }
+                                    None => println!("Usage: /cron remove <id-prefix>"),
+                                }
+                            }
+                            "pause" => {
+                                match payload {
+                                    Some(id_prefix) => {
+                                        let jobs = cron_scheduler.list();
+                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix)).map(|j| j.id.clone());
+                                        match found {
+                                            Some(id) => {
+                                                if let Some(job) = cron_scheduler.get_mut(&id) {
+                                                    job.enabled = false;
+                                                    println!("Paused job: {}", job.name);
+                                                    // Persist.
+                                                    let job_clone = job.clone();
+                                                    if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                                                        let _ = store.save_job(&job_clone);
+                                                    }
+                                                }
+                                            }
+                                            None => println!("No job found matching '{id_prefix}'"),
+                                        }
+                                    }
+                                    None => println!("Usage: /cron pause <id-prefix>"),
+                                }
+                            }
+                            "resume" => {
+                                match payload {
+                                    Some(id_prefix) => {
+                                        let jobs = cron_scheduler.list();
+                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix)).map(|j| j.id.clone());
+                                        match found {
+                                            Some(id) => {
+                                                if let Some(job) = cron_scheduler.get_mut(&id) {
+                                                    job.enabled = true;
+                                                    job.next_run = Some(job.schedule.next_after(chrono::Utc::now()));
+                                                    println!("Resumed job: {}", job.name);
+                                                    let job_clone = job.clone();
+                                                    if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                                                        let _ = store.save_job(&job_clone);
+                                                    }
+                                                }
+                                            }
+                                            None => println!("No job found matching '{id_prefix}'"),
+                                        }
+                                    }
+                                    None => println!("Usage: /cron resume <id-prefix>"),
+                                }
+                            }
+                            "run" => {
+                                match payload {
+                                    Some(id_prefix) => {
+                                        let jobs = cron_scheduler.list();
+                                        let found = jobs.iter().find(|j| j.id.starts_with(id_prefix)).map(|j| (j.id.clone(), j.prompt.clone()));
+                                        match found {
+                                            Some((id, prompt)) => {
+                                                println!("Running cron job manually: {}", prompt);
+                                                match agent.chat(&prompt).await {
+                                                    Ok(response) => {
+                                                        println!();
+                                                        println!("{response}");
+                                                        println!();
+                                                    }
+                                                    Err(e) => eprintln!("Error: {e}"),
+                                                }
+                                                cron_scheduler.mark_executed(&id);
+                                            }
+                                            None => println!("No job found matching '{id_prefix}'"),
+                                        }
+                                    }
+                                    None => println!("Usage: /cron run <id-prefix>"),
+                                }
+                            }
+                            other => {
+                                println!("Unknown cron subcommand: {other}");
+                                println!("Available: list, add, remove, pause, resume, run");
+                            }
+                        }
+                    }
                 }
             }
             Some(Command::Plugins(ref arg)) => {

@@ -42,6 +42,11 @@ pub struct ModelConfig {
     /// Base URL for the API endpoint.
     #[serde(default)]
     pub base_url: String,
+
+    /// API mode override: "chat_completions", "responses", "anthropic_messages"
+    /// Empty string = auto-detect from provider name
+    #[serde(default)]
+    pub api_mode: String,
 }
 
 fn default_provider() -> String {
@@ -54,6 +59,7 @@ impl Default for ModelConfig {
             default: String::new(),
             provider: "auto".to_string(),
             base_url: String::new(),
+            api_mode: String::new(),
         }
     }
 }

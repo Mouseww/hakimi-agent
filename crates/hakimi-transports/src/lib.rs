@@ -7,6 +7,7 @@ mod scrubber;
 mod error;
 mod streaming;
 pub mod prompt_caching;
+mod responses;
 
 pub use params::*;
 pub use trait_def::*;
@@ -16,3 +17,4 @@ pub use gemini::*;
 pub use scrubber::*;
 pub use error::*;
 pub use streaming::*;
+pub use responses::*;

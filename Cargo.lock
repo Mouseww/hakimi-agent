@@ -687,6 +687,7 @@ dependencies = [
  "hakimi-config",
  "hakimi-context",
  "hakimi-core",
+ "hakimi-cron",
  "hakimi-mcp",
  "hakimi-plugin",
  "hakimi-server",
@@ -705,6 +706,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -957,10 +959,12 @@ dependencies = [
  "fancy-regex",
  "futures",
  "hakimi-common",
+ "hakimi-config",
  "pin-project",
  "reqwest",
  "serde",
  "serde_json",
+ "serde_yaml",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

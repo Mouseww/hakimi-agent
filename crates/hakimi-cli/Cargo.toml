@@ -19,6 +19,7 @@ hakimi-mcp = { path = "../hakimi-mcp" }
 hakimi-plugin = { path = "../hakimi-plugin" }
 hakimi-skills = { path = "../hakimi-skills" }
 hakimi-server = { path = "../hakimi-server" }
+hakimi-cron = { path = "../hakimi-cron" }
 clap = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
@@ -36,6 +37,7 @@ chrono = { workspace = true }
 dialoguer = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = "3"
+uuid = { workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }
