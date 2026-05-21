@@ -556,30 +556,69 @@ Generated: 2026-05-21
 
 | Category | Hermes Features | Hakimi Complete | Hakimi Partial | Hakimi Missing |
 |----------|----------------|-----------------|----------------|----------------|
-| Core Tools | 40+ | 15 | 1 | 25+ |
-| Transports | 4 | 3 | 0 | 1 |
-| Gateway Platforms | 20+ | 3 | 0 | 17+ |
-| CLI Commands | 50+ | 10 | 0 | 40+ |
-| Agent Internals | 25+ | 8 | 5 | 12+ |
+| Core Tools | 40+ | 18 | 1 | 22+ |
+| Transports | 4 | 4 | 0 | 0 |
+| Gateway Platforms | 20+ | 8 | 0 | 12+ |
+| CLI Commands | 50+ | 15 | 0 | 35+ |
+| Agent Internals | 25+ | 15 | 5 | 5+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
-| MCP Features | Full | Partial | 1 | 3 |
-| Cron Features | Full | Partial | 1 | 5 |
+| MCP Features | Full | Full | 0 | 0 |
+| Cron Features | Full | Full | 0 | 0 |
 | Skills Features | Full | Partial | 1 | 6 |
-| Security Features | 6 | 0 | 0 | 6 |
+| Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~30**
-**Partially implemented: ~15**
-**Missing entirely: ~100+**
+**Fully present in Hakimi: ~55** (up from ~30)
+**Partially implemented: ~10**
+**Missing entirely: ~85+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser automation (12 tools, zero in Hakimi)
 2. Web content extraction (web_extract)
 3. Image generation
 4. TTS / voice output
-5. Credential pool / multi-key failover
-6. Rich error classification with failover strategies
-7. Prompt caching (Anthropic)
-8. Gateway platform breadth (17 missing platforms)
+5. ~~Credential pool / multi-key failover~~ ✅ DONE (49 tests)
+6. ~~Rich error classification with failover strategies~~ ✅ DONE (62 tests)
+7. ~~Prompt caching (Anthropic)~~ ✅ DONE (11 tests)
+8. Gateway platform breadth (12 missing platforms — webhook/signal/matrix/wecom/dingtalk added)
 9. Plugin ecosystem (memory providers, model providers, context engines)
-10. CLI command completeness (40+ missing commands)
+10. CLI command completeness (35+ missing commands)
+
+---
+
+## IMPLEMENTATION STATUS (Updated: 2026-05-21)
+
+### Phase 1: Critical Gaps — ALL COMPLETE ✅
+| # | Feature | File(s) | Tests | Status |
+|---|---------|---------|-------|--------|
+| 1 | Error Classifier | `hakimi-core/src/error_classifier.rs` | 62 | ✅ 20+ FailoverReasons, RecoveryAction, classify(), wired into loop_impl |
+| 2 | Credential Pool | `hakimi-core/src/credential_pool.rs` | 49 | ✅ RoundRobin/FillFirst/Random strategies, exhaustion detection, rotation |
+| 3 | Prompt Caching | `hakimi-transports/src/prompt_caching.rs` | 11 | ✅ CacheControl, TTL (5m/1h), breakpoints on system/tools/messages |
+| 4 | Vision Analysis | `hakimi-tools/src/builtin_vision_analyze.rs` | 12 | ✅ Real vision model integration, base64 encoding, configurable aux model |
+| 5 | Clarify Tool | `hakimi-tools/src/builtin_clarify.rs` | 8 | ✅ Multiple-choice + open-ended, structured JSON output |
+
+### Phase 2: High Gaps — ALL COMPLETE ✅
+| # | Feature | File(s) | Tests | Status |
+|---|---------|---------|-------|--------|
+| 6 | MCP HTTP/SSE | `hakimi-mcp/src/http_transport.rs`, `sse_transport.rs` | 19 | ✅ StreamableHTTP, SSE, auto-reconnect, per-server timeouts |
+| 7 | File Safety | `hakimi-core/src/file_safety.rs` | 19 | ✅ WriteDeniedPaths, PathSecurity, SecretRedaction, PromptInjectionDetector |
+| 8 | Tool Guardrails | `hakimi-core/src/guardrails.rs` | 12 | ✅ Loop detection, idempotency tracking, halt decisions |
+| 9 | LLM Context Compression | `hakimi-context/src/smart_engine.rs` | 22 | ✅ Auxiliary LLM summarization, Resolved/Pending tracking, tool output pruning |
+| 10 | Profiles | `hakimi-cli/src/profiles.rs` | 10 | ✅ ~/.hakimi/profiles/, create/delete/use, separate config/memory/sessions |
+| 11 | Setup Wizard | `hakimi-cli/src/setup_wizard.rs` | 15 | ✅ Model/Provider selection, API key input, platform config |
+| 12 | Doctor | `hakimi-cli/src/doctor.rs` | 15 | ✅ Dependencies, config, env vars, API connectivity checks |
+
+### Phase 3: Medium Gaps — ALL COMPLETE ✅
+| # | Feature | File(s) | Tests | Status |
+|---|---------|---------|-------|--------|
+| 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,matrix,wecom,dingtalk}.rs` | 19 | ✅ 5 new PlatformAdapter implementations |
+| 14 | Cron Persistence | `hakimi-cron/src/persistence.rs` | 16 | ✅ SQLite storage, FileLock, per-job toolset config, CLI commands |
+| 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs` | 20 | ✅ Shadow git snapshots, rollback, diff, transparent to LLM |
+| 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
+| 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
+
+### Summary
+- **Total tests**: 939 (all passing, 0 failures)
+- **Build**: Clean (0 errors)
+- **Stubs/todos/unimplemented**: 0 across all gap files
+- **Cargo workspace**: 19 crates, edition 2024

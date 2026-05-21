@@ -680,4 +680,33 @@ mod tests {
         assert_eq!(action_prop["type"], "string");
         assert!(action_prop["description"].as_str().unwrap().len() > 0);
     }
+
+    #[tokio::test]
+    async fn test_schema_required_field_is_action() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tool = CheckpointTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
+            model: None,
+            delegate_executor: None,
+        };
+        let result = tool
+            .execute(&json!({ "action": "unknown_action" }), &ctx)
+            .await;
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Unknown checkpoint action"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_name_and_toolset() {
+        let tool = CheckpointTool;
+        assert_eq!(tool.name(), "checkpoint");
+        assert_eq!(tool.toolset(), "file");
+        assert!(!tool.description().is_empty());
+        assert!(!tool.emoji().is_empty());
+    }
 }

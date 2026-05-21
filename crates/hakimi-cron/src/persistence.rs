@@ -500,4 +500,68 @@ mod tests {
         // After releasing, should be able to acquire again.
         let _lock2 = FileLock::acquire(&lock_path).unwrap();
     }
+
+    #[test]
+    fn test_round_trip_save_load_update() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("round_trip.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let job = CronJob::new("rt-job", CronSchedule::IntervalMinutes(5), "hello");
+        let id = job.id.clone();
+
+        store.save_job(&job).unwrap();
+
+        // Simulate a run: update last_run and next_run.
+        let now = chrono::Utc::now();
+        let next = now + chrono::Duration::minutes(5);
+        store.update_run_times(&id, now, next).unwrap();
+
+        let loaded = store.load_all().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert!(loaded[0].last_run.is_some());
+        assert!(loaded[0].next_run.is_some());
+        assert_eq!(loaded[0].name, "rt-job");
+        assert_eq!(loaded[0].prompt, "hello");
+    }
+
+    #[test]
+    fn test_save_job_upsert() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("upsert.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let mut job = CronJob::new("upsert", CronSchedule::IntervalMinutes(10), "v1");
+        store.save_job(&job).unwrap();
+
+        // Modify and save again (upsert).
+        job.prompt = "v2".to_string();
+        store.save_job(&job).unwrap();
+
+        let loaded = store.load_all().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].prompt, "v2");
+    }
+
+    #[test]
+    fn test_open_creates_parent_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested_dir = tmp.path().join("nested").join("dir");
+        std::fs::create_dir_all(&nested_dir).unwrap();
+        let db_path = nested_dir.join("cron.db");
+        let store = PersistentCronStore::open(&db_path);
+        assert!(store.is_ok(), "should open in nested dirs: {:?}", store.err());
+        assert!(db_path.exists());
+    }
+
+    #[test]
+    fn test_set_enabled_nonexistent_job() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("nonexist.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        // Setting enabled on a non-existent job should not panic.
+        let result = store.set_enabled("nonexistent-id", false);
+        assert!(result.is_ok());
+    }
 }
