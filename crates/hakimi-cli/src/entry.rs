@@ -20,7 +20,7 @@ use crate::Command;
 // ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
-#[command(name = "hakimi", about = "Hakimi Agent — AI-powered coding assistant")]
+#[command(name = "hakimi", version, about = "Hakimi Agent — AI-powered coding assistant")]
 pub struct Args {
     /// Model identifier override (e.g. "gpt-4o", "claude-sonnet-4-20250514").
     #[arg(long)]
@@ -546,6 +546,7 @@ async fn build_agent(
         std::sync::Arc::new(hakimi_tools::SendMessageTool),
         std::sync::Arc::new(hakimi_tools::SkillManageTool),
         std::sync::Arc::new(hakimi_tools::TextToSpeechTool),
+        std::sync::Arc::new(hakimi_tools::ImageGenerateTool),
     ];
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;
@@ -864,37 +865,45 @@ async fn self_update() -> Result<()> {
     // Determine current binary path
     let current_exe = env::current_exe()?;
     let backup_path = format!("{}.bak", current_exe.display());
+    let tmp_path = format!("{}.new", current_exe.display());
 
     // Backup current binary
     fs::copy(&current_exe, &backup_path)?;
     println!("Backed up current binary to {backup_path}");
 
-    // Write new binary
-    fs::write(&current_exe, &binary_data)?;
+    // Write new binary to a temp file first, then atomically rename.
+    // This allows replacing a running binary on Linux — the running process
+    // keeps the old inode while the new file takes over the path.
+    fs::write(&tmp_path, &binary_data)?;
 
     // Set executable permissions (Unix)
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&current_exe, fs::Permissions::from_mode(0o755))?;
+        fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o755))?;
     }
+
+    // Atomic rename over the running binary
+    fs::rename(&tmp_path, &current_exe)?;
 
     // Verify new binary works
     let output = std::process::Command::new(&current_exe)
-        .arg("--version")
+        .arg("--help")
         .output();
 
     match output {
         Ok(o) if o.status.success() => {
             let version = String::from_utf8_lossy(&o.stdout);
             println!("✅ Updated successfully! {version}");
+            println!("🔄 Restart the gateway/service to use the new version.");
             // Clean up backup
             let _ = fs::remove_file(&backup_path);
         }
         _ => {
             // Restore backup
             eprintln!("⚠️  New binary failed verification. Restoring backup...");
-            fs::copy(&backup_path, &current_exe)?;
+            let _ = fs::remove_file(&current_exe);
+            fs::rename(&backup_path, &current_exe)?;
             anyhow::bail!("Update failed — previous version restored.");
         }
     }

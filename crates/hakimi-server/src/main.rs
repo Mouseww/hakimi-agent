@@ -200,6 +200,7 @@ async fn build_agent(
         Arc::new(hakimi_tools::SendMessageTool),
         Arc::new(hakimi_tools::SkillManageTool),
         Arc::new(hakimi_tools::TextToSpeechTool),
+        Arc::new(hakimi_tools::ImageGenerateTool),
     ];
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;

@@ -185,6 +185,7 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         Arc::new(hakimi_tools::SessionSearchTool),
         Arc::new(hakimi_tools::SendMessageTool),
         Arc::new(hakimi_tools::SkillManageTool),
+        Arc::new(hakimi_tools::ImageGenerateTool),
     ];
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;

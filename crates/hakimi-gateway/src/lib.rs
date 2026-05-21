@@ -68,6 +68,24 @@ pub trait PlatformAdapter: Send + Sync {
     /// Send a message to a specific chat / channel.
     async fn send_message(&self, chat_id: &str, text: &str) -> anyhow::Result<()>;
 
+    /// Send a chat action (e.g. "typing") to indicate the bot is working.
+    /// Default: no-op for platforms that don't support it.
+    async fn send_chat_action(&self, _chat_id: &str, _action: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Edit an existing message (for streaming progressive updates).
+    /// Returns Ok(message_id) on success, Err if not supported.
+    async fn edit_message(&self, _chat_id: &str, _message_id: i64, _text: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Send a message and return the platform message ID (for later editing).
+    async fn send_message_get_id(&self, chat_id: &str, text: &str) -> anyhow::Result<Option<i64>> {
+        self.send_message(chat_id, text).await?;
+        Ok(None)
+    }
+
     /// Take ownership of the inbound message receiver channel.
     ///
     /// Returns `Some(receiver)` if the adapter supports receiving messages
@@ -138,6 +156,16 @@ impl Gateway {
             .ok_or_else(|| anyhow::anyhow!("no adapter for platform '{}' with bot_id '{}'", msg.platform, msg.bot_id))?;
 
         adapter.send_message(&msg.chat_id, &msg.text).await
+    }
+
+    /// Send a chat action (e.g. "typing") to the correct adapter by bot_id.
+    pub async fn send_chat_action(&self, bot_id: &str, chat_id: &str, action: &str) -> anyhow::Result<()> {
+        for adapter in &self.adapters {
+            if adapter.bot_id() == bot_id {
+                return adapter.send_chat_action(chat_id, action).await;
+            }
+        }
+        Ok(())
     }
 
     /// Return the list of registered platform names.

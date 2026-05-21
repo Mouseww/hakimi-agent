@@ -325,6 +325,98 @@ impl PlatformAdapter for TelegramAdapter {
         Ok(())
     }
 
+    async fn send_chat_action(&self, chat_id: &str, action: &str) -> Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "action": action,
+        });
+        let _ = self
+            .client
+            .post(self.api_url("sendChatAction"))
+            .json(&body)
+            .send()
+            .await;
+        Ok(())
+    }
+
+    async fn send_message_get_id(&self, chat_id: &str, text: &str) -> Result<Option<i64>> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+        });
+        let resp: TgResponse<serde_json::Value> = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&body)
+            .send()
+            .await
+            .context("failed to send Telegram message")?
+            .json()
+            .await
+            .context("failed to parse sendMessage response")?;
+        if resp.ok {
+            if let Some(result) = &resp.result {
+                return Ok(result.get("message_id").and_then(|v| v.as_i64()));
+            }
+        }
+        // Fallback: retry plain text
+        let plain_body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": text,
+        });
+        let resp: TgResponse<serde_json::Value> = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&plain_body)
+            .send()
+            .await
+            .context("failed to send Telegram message (plain)")?
+            .json()
+            .await
+            .context("failed to parse sendMessage response (plain)")?;
+        if resp.ok {
+            if let Some(result) = &resp.result {
+                return Ok(result.get("message_id").and_then(|v| v.as_i64()));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn edit_message(&self, chat_id: &str, message_id: i64, text: &str) -> Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+            "parse_mode": "Markdown",
+        });
+        let resp: TgResponse<serde_json::Value> = self
+            .client
+            .post(self.api_url("editMessageText"))
+            .json(&body)
+            .send()
+            .await
+            .context("failed to edit Telegram message")?
+            .json()
+            .await
+            .context("failed to parse editMessageText response")?;
+        if !resp.ok {
+            // Retry plain text
+            let plain_body = serde_json::json!({
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+            });
+            let _ = self
+                .client
+                .post(self.api_url("editMessageText"))
+                .json(&plain_body)
+                .send()
+                .await;
+        }
+        Ok(())
+    }
+
     fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<GatewayMessage>> {
         self.msg_rx.take()
     }
