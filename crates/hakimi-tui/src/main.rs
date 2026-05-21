@@ -169,7 +169,7 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
     ));
 
     let tool_registry = hakimi_tools::ToolRegistry::new();
-    let builtin_tools: Vec<Arc<dyn hakimi_tools::Tool>> = vec![
+    let mut builtin_tools: Vec<Arc<dyn hakimi_tools::Tool>> = vec![
         Arc::new(hakimi_tools::ReadFileTool),
         Arc::new(hakimi_tools::WriteFileTool),
         Arc::new(hakimi_tools::TerminalTool),
@@ -187,6 +187,13 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         Arc::new(hakimi_tools::SkillManageTool),
         Arc::new(hakimi_tools::ImageGenerateTool),
     ];
+    // Browser tools (shared browser instance)
+    let browser_manager = hakimi_tools::BrowserManager::new();
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserNavigateTool::new(browser_manager.clone())));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserSnapshotTool::new(browser_manager.clone())));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserClickTool::new(browser_manager.clone())));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserTypeTool::new(browser_manager.clone())));
+    builtin_tools.push(Arc::new(hakimi_tools::BrowserScreenshotTool::new(browser_manager)));
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;
     }
@@ -226,8 +233,7 @@ async fn run_agent_task(
                         for msg in &result.messages {
                             if msg.role == hakimi_common::MessageRole::Tool {
                                 let name = msg.name.as_deref().unwrap_or("unknown");
-                                let content =
-                                    msg.content.as_deref().unwrap_or("").to_string();
+                                let content = msg.content.as_deref().unwrap_or("").to_string();
                                 event_tx
                                     .send(AgentEvent::ToolResult {
                                         name: name.to_string(),
