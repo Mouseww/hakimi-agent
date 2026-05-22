@@ -284,5 +284,5 @@ async fn main() -> Result<()> {
     session_db.initialize()?;
 
     let server = hakimi_server::Server::new(&args.addr, agent, config, session_db)?;
-    server.start().await
+    server.serve(args.addr.parse().unwrap()).await
 }

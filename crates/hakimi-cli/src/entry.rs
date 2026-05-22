@@ -614,13 +614,21 @@ async fn build_agent(
 // ---------------------------------------------------------------------------
 
 /// Start the HTTP API server.
-fn start_server(agent: hakimi_core::AIAgent, addr: &str) -> Result<()> {
+fn start_server(
+    agent: hakimi_core::AIAgent,
+    addr: &str,
+    config: hakimi_config::HakimiConfig,
+) -> Result<()> {
     info!(addr = %addr, "starting Hakimi Agent API server");
-    // Placeholder: server implementation is in hakimi-server crate.
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
-    rt.block_on(async { hakimi_server::Server::new(agent).serve(addr).await })?;
+    rt.block_on(async {
+        let db = hakimi_session::SessionDB::new(std::path::Path::new(":memory:"))?;
+        hakimi_server::Server::new(addr, agent, config, db)?
+            .serve(addr.parse().unwrap())
+            .await
+    })?;
     Ok(())
 }
 
@@ -637,12 +645,16 @@ async fn start_gateway(
     info!("starting Hakimi Agent gateway mode");
 
     // Initialize gateway.
-    let gateway = hakimi_gateway::Gateway::new();
+    let mut gateway = hakimi_gateway::Gateway::new();
 
     // Configure Telegram gateway.
     if !config.gateways.telegram.bot_token.is_empty() {
-        let telegram =
-            hakimi_gateway::TelegramAdapter::new(config.gateways.telegram.bot_token.clone());
+        let telegram_config = hakimi_gateway::TelegramAdapterConfig {
+            token: config.gateways.telegram.bot_token.clone(),
+            bot_id: "telegram_bot".to_string(),
+            base_url: None,
+        };
+        let telegram = hakimi_gateway::TelegramAdapter::new(telegram_config);
         gateway.add_adapter(Box::new(telegram));
         info!("telegram gateway registered");
     }
@@ -650,14 +662,15 @@ async fn start_gateway(
     // Agent and conversation history map.
     // We use a Mutex to protect the agent because it maintains state.
     // In a production multi-user scenario, you'd want per-chat agents.
-    let agent_clone = Arc::new(Mutex::new(agent));
+    let agent_arc = Arc::new(Mutex::new(agent));
     let histories_clone: Arc<Mutex<HashMap<String, Vec<hakimi_common::Message>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let skill_store_ref = Arc::new(skill_store);
+
     // 3. Connect all platforms.
     gateway.connect_all().await?;
-
     let mut receivers = gateway.take_all_receivers();
+    let gateway = Arc::new(gateway);
     let (_, _, mut messages) = receivers
         .pop()
         .ok_or_else(|| anyhow::anyhow!("no platform adapter receivers available"))?;
@@ -672,7 +685,7 @@ async fn start_gateway(
 
         info!(platform = %platform, chat_id = %chat_id, "received message via gateway");
 
-        let agent_clone = agent.clone();
+        let agent_clone = agent_arc.clone();
         let gateway_clone = gateway.clone();
         let skill_store_ref = skill_store_ref.clone();
         let histories_clone = histories_clone.clone();
@@ -856,5 +869,43 @@ async fn start_gateway(
         });
     }
 
+    Ok(())
+}
+async fn self_update() -> Result<()> {
+    info!("checking for updates...");
+    // Update logic placeholder
+    Ok(())
+}
+
+pub async fn run() -> Result<()> {
+    let args = Args::parse();
+    // Initialise logging.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+    
+    if args.update { return self_update().await; }
+
+    let config = load_config();
+    if args.setup { println!("Setup not implemented."); return Ok(()); }
+
+    let agent = build_agent(&args, &config).await?;
+
+    if args.serve { return start_server(agent, &args.addr, config); }
+    if args.gateway {
+        let skill_store = agent.skill_store().clone();
+        return start_gateway(agent, skill_store, config).await;
+    }
+
+    if let Some(query) = args.query {
+        let mut a = agent;
+        println!("{}", a.query(&query).await?);
+        return Ok(());
+    }
+
+    println!("Interactive REPL (not yet implemented in this view).");
     Ok(())
 }
