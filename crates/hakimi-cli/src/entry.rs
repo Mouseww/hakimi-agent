@@ -282,15 +282,7 @@ fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig)
     if !config.model.api_key.is_empty() {
         return config.model.api_key.clone();
     }
-    // 4. Config file roles.default.api_key (if present)
-    if let Some(default_role) = config.roles.get("default") {
-        if let Some(key) = &default_role.api_key {
-            if !key.is_empty() {
-                return key.clone();
-            }
-        }
-    }
-    // 5. Config file delegation api_key (as fallback)
+    // 4. Config file delegation api_key (as fallback)
     if !config.delegation.api_key.is_empty() {
         return config.delegation.api_key.clone();
     }
