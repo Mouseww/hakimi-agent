@@ -110,6 +110,20 @@ pub struct ToolContext {
     pub knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
 }
 
+impl Default for ToolContext {
+    fn default() -> Self {
+        Self {
+            session_id: String::new(),
+            user_id: None,
+            task_id: None,
+            workdir: String::new(),
+            model: None,
+            delegate_executor: None,
+            knowledge_searcher: None,
+        }
+    }
+}
+
 impl std::fmt::Debug for ToolContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ToolContext")
