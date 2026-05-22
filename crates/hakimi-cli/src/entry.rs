@@ -781,8 +781,18 @@ async fn start_gateway(
                     Some(Command::Update) => {
                         let gateway = gateway_clone.clone();
                         let chat = chat_id.clone();
+                        let bot = bot_id.clone();
+                        let plat = platform.clone();
                         tokio::spawn(async move {
-                            let _ = gateway.send_message(&chat, "🔄 System is updating and restarting, please hold on...").await;
+                            let msg = hakimi_gateway::GatewayMessage {
+                                platform: plat,
+                                bot_id: bot,
+                                chat_id: chat,
+                                user_id: "".to_string(),
+                                text: "🔄 System is updating and restarting, please hold on...".to_string(),
+                                media: None,
+                            };
+                            let _ = gateway.route_message(&msg).await;
                             let _ = std::process::Command::new("bash").arg("-c").arg("nohup sh -c 'hakimi --update && pkill -f \"hakimi --gateway\" && hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' &").spawn();
                         });
                         "Update sequence initiated...".to_string()
