@@ -1362,17 +1362,8 @@ pub async fn run() -> Result<()> {
                                     )
                                 }
                                 Command::Usage => {
-                                    let a = agent_clone.lock().await;
-                                    let usage = a.usage();
-                                    format!(
-                                        "📊 Token Usage:\n\
-                                         - Prompt: {}\n\
-                                         - Completion: {}\n\
-                                         - Total: {}",
-                                        usage.prompt_tokens,
-                                        usage.completion_tokens,
-                                        usage.total_tokens
-                                    )
+                                    "📊 Usage tracking is currently only available for individual conversation turns and is not yet globally tracked for the session."
+                                        .to_string()
                                 }
                                 _ => "⚠️ Command not supported in gateway mode.".to_string(),
                             };
