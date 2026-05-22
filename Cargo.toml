@@ -81,14 +81,14 @@ petgraph = { version = "0.6", features = ["serde-1", "stable_graph"] }
 tempfile = "3"
 
 # Async traits
-async-trait = "0.1"
+async_trait = "0.1"
 
 # Stream utilities
 futures = "0.3"
 bytes = "1"
 
 # Pin/project
-pin-project = "1"
+pin_project = "1"
 
 # Regex for streaming
 fancy_regex = "0.14"
