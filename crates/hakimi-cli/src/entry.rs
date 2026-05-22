@@ -635,6 +635,7 @@ async fn start_gateway(
         }
     }
 
+    // Load roles context correctly when receiving messages from specific platforms
     // Agent and conversation history map.
     // We use a Mutex to protect the agent because it maintains state.
     // In a production multi-user scenario, you'd want per-chat agents.
