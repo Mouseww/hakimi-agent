@@ -886,15 +886,22 @@ pub async fn run() -> Result<()> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
-    
-    if args.update { return self_update().await; }
+
+    if args.update {
+        return self_update().await;
+    }
 
     let config = load_config();
-    if args.setup { println!("Setup not implemented."); return Ok(()); }
+    if args.setup {
+        println!("Setup not implemented.");
+        return Ok(());
+    }
 
     let agent = build_agent(&args, &config).await?;
 
-    if args.serve { return start_server(agent, &args.addr, config); }
+    if args.serve {
+        return start_server(agent, &args.addr, config);
+    }
     if args.gateway {
         let skill_store = agent.skill_store().clone();
         return start_gateway(agent, skill_store, config).await;
