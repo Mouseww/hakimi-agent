@@ -1330,52 +1330,93 @@ pub async fn run() -> Result<()> {
                     };
 
                     if let Some(command) = command {
-                        let response = match command {
-                            Command::Help => {
-                                "Commands:\n\
-                                 /help - Show this help message\n\
-                                 /clear - Reset the conversation history\n\
-                                 /model [name] - Show or change the current model\n\
-                                 /status - Show agent status\n\
-                                 /usage - Show token usage for this session"
-                                    .to_string()
-                            }
-                            Command::Clear => {
-                                {
-                                    let mut histories = histories_clone.lock().await;
-                                    histories.remove(&chat_id);
+                            let response = match command {
+                                Command::Help => {
+                                    "Commands:\n\
+                                     /help - Show this help message\n\
+                                     /clear - Reset the conversation history\n\
+                                     /model [name] - Show or change the current model\n\
+                                     /tools - List available tools\n\
+                                     /skills - List available skills\n\
+                                     /cron - List scheduled cron jobs\n\
+                                     /status - Show agent status\n\
+                                     /usage - Show token usage statistics"
+                                        .to_string()
                                 }
-                                {
+                                Command::Clear => {
+                                    {
+                                        let mut histories = histories_clone.lock().await;
+                                        histories.remove(&chat_id);
+                                    }
+                                    {
+                                        let mut a = agent_clone.lock().await;
+                                        a.clear_messages();
+                                    }
+                                    "🧹 Conversation history cleared.".to_string()
+                                }
+                                Command::Model(new_model) => {
                                     let mut a = agent_clone.lock().await;
-                                    a.clear_messages();
+                                    if let Some(m) = new_model {
+                                        a.set_model(&m);
+                                        format!("🤖 Model changed to `{m}`.")
+                                    } else {
+                                        format!("🤖 Current model: `{}`", a.model())
+                                    }
                                 }
-                                "🧹 Conversation history cleared.".to_string()
-                            }
-                            Command::Model(new_model) => {
-                                let mut a = agent_clone.lock().await;
-                                if let Some(m) = new_model {
-                                    a.set_model(&m);
-                                    format!("🤖 Model changed to `{m}`.")
-                                } else {
-                                    format!("🤖 Current model: `{}`", a.model())
+                                Command::Tools(_) => {
+                                    let a = agent_clone.lock().await;
+                                    let tools = a.tool_registry();
+                                    let mut msg = "🛠️ Available Tools:\n".to_string();
+                                    for tool in tools.list_tools() {
+                                        msg.push_str(&format!("- `{}`: {}\n", tool.name, tool.description));
+                                    }
+                                    msg
                                 }
-                            }
-                            Command::Status => {
-                                let a = agent_clone.lock().await;
-                                format!(
-                                    "✅ Hakimi Agent is online.\n\
-                                     - Platform: {platform}\n\
-                                     - Bot ID: {bot_id}\n\
-                                     - Model: `{}`",
-                                    a.model()
-                                )
-                            }
-                            Command::Usage => {
-                                "📊 Usage tracking is currently only available for individual conversation turns and is not yet globally tracked for the session."
-                                    .to_string()
-                            }
-                            _ => "⚠️ Command not supported in gateway mode.".to_string(),
-                        };
+                                Command::Skills(_) => {
+                                    let mut msg = "🧠 Loaded Skills:\n".to_string();
+                                    for skill in skill_store_ref.list_skills() {
+                                        msg.push_str(&format!("- `{}`: {}\n", skill.name, skill.description));
+                                    }
+                                    msg
+                                }
+                                Command::Cron(_) => {
+                                    let cron_db_path = format!("{}/cron.db", config.session.database_path.replace("sessions.db", ""));
+                                    if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                                        if let Ok(jobs) = store.list_jobs() {
+                                            if jobs.is_empty() {
+                                                "⏰ No scheduled cron jobs.".to_string()
+                                            } else {
+                                                let mut msg = "⏰ Scheduled Cron Jobs:\n".to_string();
+                                                for job in jobs {
+                                                    msg.push_str(&format!("- `{}`: {} ({})\n", job.job_id, job.name.unwrap_or_default(), job.schedule));
+                                                }
+                                                msg
+                                            }
+                                        } else {
+                                            "❌ Failed to list cron jobs.".to_string()
+                                        }
+                                    } else {
+                                        "❌ Failed to open cron database.".to_string()
+                                    }
+                                }
+                                Command::Status => {
+                                    let a = agent_clone.lock().await;
+                                    format!(
+                                        "✅ Hakimi Agent is online.\n\
+                                         - Version: v{}\n\
+                                         - Platform: {platform}\n\
+                                         - Bot ID: {bot_id}\n\
+                                         - Model: `{}`",
+                                        env!("CARGO_PKG_VERSION"),
+                                        a.model()
+                                    )
+                                }
+                                Command::Usage => {
+                                    "📊 Usage tracking is currently only available for individual conversation turns."
+                                        .to_string()
+                                }
+                                _ => "⚠️ This command is not yet fully implemented for gateway mode.".to_string(),
+                            };
 
                         // Send response back via gateway and continue to next message.
                         let _ = gateway
