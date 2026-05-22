@@ -209,7 +209,10 @@ impl AIAgentBuilder {
     }
 
     /// Set the knowledge searcher for the agent.
-    pub fn knowledge_searcher(mut self, searcher: Arc<dyn hakimi_common::KnowledgeSearcher>) -> Self {
+    pub fn knowledge_searcher(
+        mut self,
+        searcher: Arc<dyn hakimi_common::KnowledgeSearcher>,
+    ) -> Self {
         self.knowledge_searcher = Some(searcher);
         self
     }
@@ -313,7 +316,10 @@ impl AIAgent {
         // Apply skill prompt additions.
         let skill_prompt = self.skill_store.get_system_prompt_additions(user_message);
         if !skill_prompt.is_empty() {
-            let base = self.system_prompt.clone().unwrap_or_else(|| crate::DEFAULT_SYSTEM_PROMPT.to_string());
+            let base = self
+                .system_prompt
+                .clone()
+                .unwrap_or_else(|| crate::DEFAULT_SYSTEM_PROMPT.to_string());
             self.set_system_prompt(format!("{base}\n\n{skill_prompt}"));
         }
 

@@ -117,7 +117,7 @@ impl BrowserManager {
     /// Close the browser and clean up.
     pub async fn close(&self) {
         let mut inner = self.inner.lock().await;
-        if let Some(browser) = inner.browser.take() {
+        if let Some(mut browser) = inner.browser.take() {
             let _ = browser.close().await;
         }
     }

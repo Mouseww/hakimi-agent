@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hakimi_common::{Result, ToolContext, HakimiError};
+use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{Value as JsonValue, json};
 use tracing::info;
 
@@ -49,23 +49,33 @@ impl Tool for DelegateTaskTool {
     }
 
     async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
-        let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| {
-            HakimiError::Tool("missing 'task' argument".into())
-        })?;
+        let task = args
+            .get("task")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| HakimiError::Tool("missing 'task' argument".into()))?;
         let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("");
-        
-        let toolsets: Vec<String> = args.get("toolsets")
+
+        let toolsets: Vec<String> = args
+            .get("toolsets")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|i| i.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|i| i.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         info!(task = %task, "Delegating task via ToolContext");
 
         if let Some(executor) = &ctx.delegate_executor {
-            let result = executor.execute_delegation(task, context, &toolsets).await?;
+            let result = executor
+                .execute_delegation(task, context, &toolsets)
+                .await?;
             Ok(result)
         } else {
-            Err(HakimiError::Tool("Delegation executor not available in current context".into()))
+            Err(HakimiError::Tool(
+                "Delegation executor not available in current context".into(),
+            ))
         }
     }
 }

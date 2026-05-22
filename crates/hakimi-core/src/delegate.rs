@@ -110,7 +110,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
 
         loop {
             attempts += 1;
-            
+
             // Build a filtered tool registry for the child agent.
             let child_registry = ToolRegistry::new();
             let all_tool_names = self.tool_registry.list().await;
@@ -155,7 +155,8 @@ impl DelegateExecutor for CoreDelegateExecutor {
                 .map_err(|e| HakimiError::Tool(format!("failed to create child agent: {e}")))?;
 
             // Run the child agent with a timeout.
-            let result = tokio::time::timeout(DEFAULT_DELEGATION_TIMEOUT, child_agent.chat(goal)).await;
+            let result =
+                tokio::time::timeout(DEFAULT_DELEGATION_TIMEOUT, child_agent.chat(goal)).await;
 
             // Record execution metadata
             info!(
@@ -171,7 +172,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
                         attempts = attempts,
                         "Child agent delegation completed successfully"
                     );
-                    
+
                     // TODO: Integrate feedback loop to parent's memory
                     return Ok(response);
                 }
@@ -182,7 +183,10 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     }
                 }
                 Err(_elapsed) => {
-                    warn!(attempts = attempts, "Child agent delegation timed out after 60 seconds");
+                    warn!(
+                        attempts = attempts,
+                        "Child agent delegation timed out after 60 seconds"
+                    );
                     if attempts >= max_attempts {
                         return Err(HakimiError::Other(
                             "Child agent timed out after 60 seconds after maximum retries".into(),
@@ -190,7 +194,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     }
                 }
             }
-            
+
             // Wait briefly before retrying
             tokio::time::sleep(Duration::from_secs(2)).await;
         }

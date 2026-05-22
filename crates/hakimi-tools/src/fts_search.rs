@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hakimi_common::{Result, ToolContext, HakimiError};
+use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{Value as JsonValue, json};
 use tracing::info;
 
@@ -45,9 +45,10 @@ impl Tool for FtsSearchTool {
     }
 
     async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
-        let query = args.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
-            HakimiError::Tool("missing 'query' argument".into())
-        })?;
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| HakimiError::Tool("missing 'query' argument".into()))?;
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
         info!(query = %query, limit = limit, "Executing knowledge search");
@@ -61,7 +62,8 @@ impl Tool for FtsSearchTool {
                 "results": [],
                 "query": query,
                 "message": "Knowledge base search is currently unavailable in this context."
-            }).to_string())
+            })
+            .to_string())
         }
     }
 }

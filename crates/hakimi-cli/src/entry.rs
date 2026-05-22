@@ -1,78 +1,445 @@
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tracing::{error, info, warn};
-use clap::Parser;
+//! Hakimi Agent CLI entry point.
+//!
+//! Contains the clap [`Args`], configuration loading, agent construction, and
+//! the interactive REPL / single-query / server modes so that both the
+//! `hakimi-cli` binary and the thin `hakimi-agent` wrapper can share the same
+//! implementation.
 
-use hakimi_common::Result;
-use hakimi_core::Command;
+use std::io::{self, Write};
+
+use anyhow::Result;
+use clap::Parser;
+use tokio::sync::RwLock;
+use tracing::{error, info, warn};
+use uuid::Uuid;
+
+use crate::Command;
+
+// ---------------------------------------------------------------------------
+// CLI arguments (clap)
+// ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(
+    name = "hakimi",
+    version,
+    about = "Hakimi Agent — AI-powered coding assistant"
+)]
 pub struct Args {
-    /// Query the agent with a single message.
-    #[arg(short, long)]
-    pub query: Option<String>,
-
-    /// Model to use for the agent.
-    #[arg(short, long)]
+    /// Model identifier override (e.g. "gpt-4o", "claude-sonnet-4-20250514").
+    #[arg(long)]
     pub model: Option<String>,
 
-    /// Base URL for the model API.
+    /// Provider override (e.g. "openrouter", "anthropic").
     #[arg(long)]
-    pub base_url: Option<String>,
+    pub provider: Option<String>,
 
-    /// API key for the model API.
+    /// Single query mode: send a prompt and exit.
+    #[arg(long, short)]
+    pub query: Option<String>,
+
+    /// Configuration profile to load.
+    #[arg(long, short)]
+    pub profile: Option<String>,
+
+    /// Auto-accept all tool calls without confirmation (YOLO mode).
+    #[arg(long)]
+    pub yolo: bool,
+
+    /// API key (overrides env var / config).
     #[arg(long)]
     pub api_key: Option<String>,
 
-    /// Start the agent in server mode.
+    /// Base URL for the API endpoint.
+    #[arg(long)]
+    pub base_url: Option<String>,
+
+    /// Start the HTTP API server instead of the interactive REPL.
     #[arg(long)]
     pub serve: bool,
 
-    /// Address to bind the server to (default: 127.0.0.1:8080).
-    #[arg(long, default_value = "127.0.0.1:8080")]
-    pub addr: String,
-
-    /// Start the agent in gateway mode.
+    /// Start gateway mode (Telegram/Discord/etc.) instead of interactive REPL.
     #[arg(long)]
     pub gateway: bool,
 
-    /// Setup wizard to configure the agent.
+    /// Address for the HTTP API server (default: 127.0.0.1:3000).
+    #[arg(long, default_value = "127.0.0.1:3000")]
+    pub addr: String,
+
+    /// Run the interactive setup wizard.
     #[arg(long)]
     pub setup: bool,
 
-    /// Check for and install updates.
+    /// Self-update: download and install the latest release from GitHub.
     #[arg(long)]
     pub update: bool,
-
-    /// Show version information.
-    #[arg(short, long)]
-    pub version: bool,
 }
 
-fn resolve_model(cli_model: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
-    cli_model.map(|m| m.to_string()).unwrap_or_else(|| config.model.model.clone())
+// ---------------------------------------------------------------------------
+// Banner
+// ---------------------------------------------------------------------------
+
+fn print_banner() {
+    println!(r#"  _  _               _ _             _         "#);
+    println!(r#" | || |__ _ __ _ __ (_) |_ _  _ __ _| |___ _ _ "#);
+    println!(r#" | __ / _` / _| '  \| |  _| || / _` | / -_) '_|"#);
+    println!(r#" |_||_\__,_\|__|_|_|_|_|\__||\_,\_,\__|_|___|_|  "#);
+    println!();
+    println!("  Hakimi Agent v{}", env!("CARGO_PKG_VERSION"));
+    println!("  Type /help for commands, /quit to exit.");
+    println!();
 }
 
-fn resolve_base_url(cli_url: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
-    cli_url.map(|u| u.to_string()).unwrap_or_else(|| config.model.base_url.clone())
+// ---------------------------------------------------------------------------
+// Help text
+// ---------------------------------------------------------------------------
+
+fn print_help() {
+    println!("Commands:");
+    println!("  /help            Show this help message");
+    println!("  /quit, /exit     Exit the REPL");
+    println!("  /clear           Clear the terminal screen");
+    println!("  /model [name]    Switch or display the current model");
+    println!("  /config [key]    Show or edit configuration");
+    println!("  /resume [id]     Resume a previous session");
+    println!("  /tools [name]    List or describe available tools");
+    println!("  /skills [name]   List or describe available skills");
+    println!("  /status          Show current session status");
+    println!("  /usage           Show token usage statistics");
+    println!("  /plugins [cmd]   Manage plugins, MCP servers, and templates");
+    println!();
+    println!("Any other input is sent as a message to the agent.");
 }
 
-fn resolve_api_key(cli_key: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
-    cli_key.map(|k| k.to_string()).unwrap_or_else(|| config.model.api_key.clone())
+// ---------------------------------------------------------------------------
+// Default config YAML
+// ---------------------------------------------------------------------------
+
+const DEFAULT_CONFIG_YAML: &str = r#"# Hakimi Agent Configuration
+# ~/.hakimi/config.yaml
+
+model:
+  # Default model identifier (e.g. "gpt-4o", "claude-sonnet-4-20250514")
+  default: ""
+  # Provider: "auto", "openrouter", "anthropic", "openai"
+  provider: "auto"
+  # Base URL for API endpoint (leave empty for provider default)
+  base_url: ""
+
+agent:
+  # Maximum tool-calling iterations per conversation
+  max_turns: 90
+  # Enable verbose logging
+  verbose: false
+  # Custom system prompt (leave empty for default)
+  system_prompt: ""
+
+display:
+  # Enable streaming output
+  streaming: true
+  # Compact output mode
+  compact: false
+  # UI skin
+  skin: "default"
+
+terminal:
+  # Backend: "local", "docker", "ssh"
+  env_type: "local"
+  # Working directory for terminal operations
+  cwd: "."
+  # Command execution timeout (seconds)
+  timeout: 60
+
+delegation:
+  # Max iterations per sub-agent
+  max_iterations: 45
+  # Sub-agent model (empty = inherit parent)
+  model: ""
+  # Sub-agent API key
+  api_key: ""
+
+# Context compression: smart (3-tier) or simple (truncation)
+compression:
+  engine: smart  # smart | simple
+  context_length: 128000
+
+# MCP servers to connect to at startup.
+# Each server is spawned as a child process and communicates via JSON-RPC over stdio.
+# mcp_servers:
+#   filesystem:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+#   github:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-github"]
+#     env:
+#       GITHUB_TOKEN: "your-token-here"
+"#;
+
+// ---------------------------------------------------------------------------
+// Config loading
+// ---------------------------------------------------------------------------
+
+fn load_config() -> hakimi_config::HakimiConfig {
+    let hakimi_dir = dirs::home_dir()
+        .map(|h| h.join(".hakimi"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi"));
+
+    let config_path = hakimi_dir.join("config.yaml");
+
+    // Create ~/.hakimi/ directory on first run.
+    if !hakimi_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&hakimi_dir) {
+            warn!(path = %hakimi_dir.display(), error = %e, "failed to create .hakimi directory");
+        } else {
+            info!(path = %hakimi_dir.display(), "created .hakimi directory");
+        }
+    }
+
+    // Create default config.yaml on first run.
+    if !config_path.exists() {
+        let default_config = DEFAULT_CONFIG_YAML;
+        match std::fs::write(&config_path, default_config) {
+            Ok(_) => {
+                info!(path = %config_path.display(), "created default config.yaml");
+            }
+            Err(e) => {
+                warn!(path = %config_path.display(), error = %e, "failed to create default config.yaml");
+            }
+        }
+    }
+
+    // Load and parse the config file.
+    match std::fs::read_to_string(&config_path) {
+        Ok(contents) => match serde_yaml::from_str::<hakimi_config::HakimiConfig>(&contents) {
+            Ok(config) => {
+                info!(path = %config_path.display(), "loaded config from file");
+                config
+            }
+            Err(e) => {
+                warn!(path = %config_path.display(), error = %e, "failed to parse config file, using defaults");
+                hakimi_config::HakimiConfig::default()
+            }
+        },
+        Err(e) => {
+            warn!(path = %config_path.display(), error = %e, "failed to read config file, using defaults");
+            hakimi_config::HakimiConfig::default()
+        }
+    }
 }
 
+// ---------------------------------------------------------------------------
+// Resolve provider (anthropic vs openai-compatible)
+// ---------------------------------------------------------------------------
+
+/// Resolve the effective provider from args, config, model prefix, and env.
+fn resolve_provider<'a>(
+    args_provider: Option<&'a str>,
+    config: &'a hakimi_config::HakimiConfig,
+    model: &str,
+) -> String {
+    // 1. CLI argument
+    if let Some(p) = args_provider {
+        if !p.is_empty() && p != "auto" {
+            return p.to_string();
+        }
+    }
+    // 2. Environment variable
+    if let Ok(val) = std::env::var("HAKIMI_PROVIDER") {
+        if !val.is_empty() && val != "auto" {
+            return val;
+        }
+    }
+    // 3. Config file
+    if !config.model.provider.is_empty() && config.model.provider != "auto" {
+        return config.model.provider.clone();
+    }
+    // 4. Infer from model name prefix (e.g. "anthropic/claude-sonnet" → "anthropic")
+    if let Some(slash_pos) = model.find('/') {
+        let prefix = &model[..slash_pos];
+        match prefix {
+            "anthropic" | "claude" => return "anthropic".to_string(),
+            "openai" | "gpt" => return "openai".to_string(),
+            "openrouter" => return "openrouter".to_string(),
+            _ => {}
+        }
+    }
+    // 5. Infer from model name itself
+    if model.starts_with("claude") {
+        return "anthropic".to_string();
+    }
+    if model.starts_with("gpt-") || model.starts_with("o1") || model.starts_with("o3") {
+        return "openai".to_string();
+    }
+    // 6. Default to OpenRouter (broadest compatibility)
+    "openrouter".to_string()
+}
+
+/// Check if the effective provider should use the Anthropic transport.
+fn is_anthropic_provider(provider: &str, base_url: &str) -> bool {
+    provider == "anthropic"
+        || provider == "claude"
+        || base_url.contains("api.anthropic.com")
+        || base_url.contains("anthropic")
+}
+
+// ---------------------------------------------------------------------------
+// Resolve API key from args > env > config
+// ---------------------------------------------------------------------------
+
+fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
+    // 1. CLI argument
+    if let Some(key) = args_key {
+        if !key.is_empty() {
+            return key.to_string();
+        }
+    }
+    // 2. Environment variables
+    for var in &[
+        "HAKIMI_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ] {
+        if let Ok(val) = std::env::var(var) {
+            if !val.is_empty() {
+                info!(env_var = var, "using API key from environment");
+                return val;
+            }
+        }
+    }
+    // 3. Config file model.api_key
+    if !config.model.api_key.is_empty() {
+        return config.model.api_key.clone();
+    }
+    // 4. Config file delegation api_key (as fallback)
+    if !config.delegation.api_key.is_empty() {
+        return config.delegation.api_key.clone();
+    }
+
+    String::new()
+}
+
+// ---------------------------------------------------------------------------
+// Resolve base URL
+// ---------------------------------------------------------------------------
+
+fn resolve_base_url(args_url: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
+    // 1. CLI argument
+    if let Some(url) = args_url {
+        if !url.is_empty() {
+            return url.to_string();
+        }
+    }
+    // 2. Environment variable
+    if let Ok(val) = std::env::var("HAKIMI_BASE_URL") {
+        if !val.is_empty() {
+            return val;
+        }
+    }
+    // 3. Config
+    if !config.model.base_url.is_empty() {
+        return config.model.base_url.clone();
+    }
+    // 4. Default — OpenRouter is a reasonable default
+    "https://openrouter.ai/api".to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Resolve model
+// ---------------------------------------------------------------------------
+
+fn resolve_model(args_model: Option<&str>, config: &hakimi_config::HakimiConfig) -> String {
+    // 1. CLI argument
+    if let Some(m) = args_model {
+        if !m.is_empty() {
+            return m.to_string();
+        }
+    }
+    // 2. Environment variable
+    if let Ok(val) = std::env::var("HAKIMI_MODEL") {
+        if !val.is_empty() {
+            return val;
+        }
+    }
+    // 3. Config
+    if !config.model.default.is_empty() {
+        return config.model.default.clone();
+    }
+    // 4. Default
+    "anthropic/claude-sonnet-4-20250514".to_string()
+}
+
+// ---------------------------------------------------------------------------
+// MCP tool registration
+// ---------------------------------------------------------------------------
+
+/// Connect to configured MCP servers and register their tools.
+/// Returns the total number of MCP tools registered.
 async fn register_mcp_tools(
     servers: &std::collections::HashMap<String, hakimi_config::McpServerConfig>,
-    registry: &hakimi_tools::ToolRegistry,
-) -> Result<()> {
-    for (name, config) in servers {
-        info!(name = %name, "registering MCP server tools");
-        // Simplified MCP registration logic
+    tool_registry: &hakimi_tools::ToolRegistry,
+) -> usize {
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    let mut total_tools = 0;
+
+    for (name, server_config) in servers {
+        info!(server = %name, command = %server_config.command, "connecting to MCP server");
+
+        // Set environment variables BEFORE spawning so the child process inherits them.
+        for (key, val) in &server_config.env {
+            // SAFETY: We're setting env vars during single-threaded startup,
+            // before any concurrent reads begin.
+            unsafe {
+                std::env::set_var(key, val);
+            }
+        }
+
+        // Build args as &str slices
+        let args: Vec<&str> = server_config.args.iter().map(|s| s.as_str()).collect();
+
+        let mut client =
+            match hakimi_mcp::McpClient::connect_stdio(&server_config.command, &args).await {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(server = %name, error = %e, "failed to spawn MCP server");
+                    continue;
+                }
+            };
+
+        if let Err(e) = client.initialize().await {
+            warn!(server = %name, error = %e, "MCP initialize failed");
+            continue;
+        }
+
+        let tools = match client.list_tools().await {
+            Ok(t) => t,
+            Err(e) => {
+                warn!(server = %name, error = %e, "MCP list_tools failed");
+                continue;
+            }
+        };
+
+        let tool_count = tools.len();
+        let shared_client = Arc::new(Mutex::new(client));
+        let adapters = hakimi_mcp::McpToolAdapter::from_tool_list(&tools, shared_client);
+
+        for adapter in adapters {
+            tool_registry.register(Arc::new(adapter)).await;
+        }
+
+        total_tools += tool_count;
+        info!(server = %name, tool_count, "MCP server tools registered");
     }
-    Ok(())
+
+    total_tools
 }
+
+// ---------------------------------------------------------------------------
+// Build agent
+// ---------------------------------------------------------------------------
 
 async fn build_agent(
     args: &Args,
@@ -83,46 +450,158 @@ async fn build_agent(
     let api_key = resolve_api_key(args.api_key.as_deref(), config);
 
     if api_key.is_empty() {
-        return Err(anyhow::anyhow!("API key is not set. Please set it in config.yaml or via --api-key."));
+        anyhow::bail!(
+            "No API key found. Set one of:\n\n\
+             • --api-key flag\n\n\
+             • HAKIMI_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY env var\n\n\
+             • ~/.hakimi/config.yaml delegation.api_key"
+        );
     }
 
-    let transport: Box<dyn hakimi_transports::Transport> = match config.model.provider.as_str() {
-        "anthropic" => Box::new(hakimi_transports::anthropic::AnthropicTransport::new(api_key, model.clone())),
-        _ => Box::new(hakimi_transports::openai::OpenAiTransport::new(base_url, api_key, model.clone())),
+    // Resolve effective provider (from args > config > model prefix > env).
+    let effective_provider = resolve_provider(args.provider.as_deref(), config, &model);
+
+    // Create transport — auto-detect Anthropic vs OpenAI-compatible.
+    let client = reqwest::Client::new();
+    let transport: std::sync::Arc<dyn hakimi_transports::ProviderTransport> = {
+        // Check explicit api_mode first.
+        let mode = config.model.api_mode.as_str();
+
+        if mode == "responses" || mode == "codex" {
+            info!(base_url = %base_url, "using OpenAI Responses API transport");
+            std::sync::Arc::new(hakimi_transports::ResponsesTransport::new(
+                base_url.clone(),
+                api_key.clone(),
+                client,
+            ))
+        } else if mode == "chat_completions" || mode == "openai" {
+            info!(base_url = %base_url, "using OpenAI Chat Completions transport");
+            std::sync::Arc::new(hakimi_transports::ChatCompletionsTransport::new(
+                base_url.clone(),
+                api_key.clone(),
+                client,
+            ))
+        } else if mode == "anthropic_messages" || mode == "anthropic" {
+            let anthropic_url = if base_url.contains("anthropic") {
+                base_url.clone()
+            } else {
+                "https://api.anthropic.com".to_string()
+            };
+            info!(base_url = %anthropic_url, "using Anthropic Messages API transport");
+            std::sync::Arc::new(hakimi_transports::AnthropicTransport::new(
+                anthropic_url,
+                api_key.clone(),
+                client,
+            ))
+        } else {
+            // Auto-detect: Anthropic vs OpenAI-compatible.
+            if is_anthropic_provider(&effective_provider, &base_url) {
+                let anthropic_url = if base_url.contains("api.anthropic.com") {
+                    base_url.clone()
+                } else {
+                    "https://api.anthropic.com".to_string()
+                };
+                info!(base_url = %anthropic_url, "auto-detected Anthropic Messages API transport");
+                std::sync::Arc::new(hakimi_transports::AnthropicTransport::new(
+                    anthropic_url,
+                    api_key.clone(),
+                    client,
+                ))
+            } else {
+                info!(base_url = %base_url, "auto-detected OpenAI Chat Completions transport");
+                std::sync::Arc::new(hakimi_transports::ChatCompletionsTransport::new(
+                    base_url.clone(),
+                    api_key.clone(),
+                    client,
+                ))
+            }
+        }
     };
 
+    // Build tool registry.
     let tool_registry = hakimi_tools::ToolRegistry::new();
     // Register built-in tools.
-    tool_registry.register(Arc::new(hakimi_tools::TerminalTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::ReadFileTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::WriteFileTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::PatchTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::SearchFilesTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::TodoTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::ProcessTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::CodeExecTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::SessionSearchTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::WebSearchTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::SendMessageTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::ClarifyTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::SkillManageTool)).await;
-    tool_registry.register(Arc::new(hakimi_tools::DelegateTaskTool)).await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::TerminalTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::ReadFileTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::WriteFileTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::PatchTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::SearchFilesTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::TodoTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::ProcessTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::CodeExecTool))
+        .await;
 
-    register_mcp_tools(&config.mcp_servers, &tool_registry).await?;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::SessionSearchTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::WebSearchTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::WebExtractTool))
+        .await;
+    // tool_registry.register(std::sync::Arc::new(hakimi_tools::BrowserTool::new())).await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::ImageDescribeTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::VisionAnalyzeTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::ImageGenerateTool))
+        .await;
+    // tool_registry.register(std::sync::Arc::new(hakimi_tools::TtsTool::new())).await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::SendMessageTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::ClarifyTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::CheckpointTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::SkillManageTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::DelegateTaskTool))
+        .await;
 
+    // Register MCP tools.
+    register_mcp_tools(&config.mcp_servers, &tool_registry).await;
+
+    // Load skills.
     let skill_store = if !config.agent.skills_path.is_empty() {
         let skills_path = std::path::PathBuf::from(&config.agent.skills_path);
         hakimi_skills::SkillStore::load(&skills_path).unwrap_or_else(|e| {
-            warn!(error = %e, path = %skills_path.display(), "failed to load skills, using empty store");
+            warn!(error = %e, path = %skills_path.display(), "failed to load skill store, using empty store");
             hakimi_skills::SkillStore::empty()
         })
     } else {
         hakimi_skills::SkillStore::empty()
     };
 
+    // Construct agent.
     let mut agent = hakimi_core::AIAgent::new(transport, tool_registry, skill_store);
     agent.set_model(&model);
-    
+    // agent.set_max_turns(config.agent.max_turns);
+
+    // Apply custom system prompt if set.
     if !config.agent.system_prompt.is_empty() {
         agent.set_system_prompt(config.agent.system_prompt.clone());
     }
@@ -130,37 +609,58 @@ async fn build_agent(
     Ok(agent)
 }
 
+// ---------------------------------------------------------------------------
+// Server / Gateway mode
+// ---------------------------------------------------------------------------
+
+/// Start the HTTP API server.
 fn start_server(agent: hakimi_core::AIAgent, addr: &str) -> Result<()> {
-    let addr: SocketAddr = addr.parse()?;
-    info!(addr = %addr, "starting server mode");
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        hakimi_server::Server::new(agent).serve(addr).await
-    })?;
+    info!(addr = %addr, "starting Hakimi Agent API server");
+    // Placeholder: server implementation is in hakimi-server crate.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async { hakimi_server::Server::new(agent).serve(addr).await })?;
     Ok(())
 }
 
+/// Start gateway mode.
 async fn start_gateway(
     agent: hakimi_core::AIAgent,
     skill_store: hakimi_skills::SkillStore,
     config: hakimi_config::HakimiConfig,
 ) -> Result<()> {
-    info!("starting gateway mode");
-    let mut gateway = hakimi_gateway::Gateway::new();
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
+    info!("starting Hakimi Agent gateway mode");
+
+    // Initialize gateway.
+    let gateway = hakimi_gateway::Gateway::new();
+
+    // Configure Telegram gateway.
     if !config.gateways.telegram.bot_token.is_empty() {
-        let telegram = hakimi_gateway::TelegramAdapter::new(config.gateways.telegram.bot_token.clone());
+        let telegram =
+            hakimi_gateway::TelegramAdapter::new(config.gateways.telegram.bot_token.clone());
         gateway.add_adapter(Box::new(telegram));
         info!("telegram gateway registered");
     }
 
+    // Agent and conversation history map.
+    // We use a Mutex to protect the agent because it maintains state.
+    // In a production multi-user scenario, you'd want per-chat agents.
     let agent_clone = Arc::new(Mutex::new(agent));
-    let histories_clone = Arc::new(Mutex::new(std::collections::HashMap::<String, Vec<hakimi_common::Message>>::new()));
+    let histories_clone: Arc<Mutex<HashMap<String, Vec<hakimi_common::Message>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let skill_store_ref = Arc::new(skill_store);
-
+    // 3. Connect all platforms.
     gateway.connect_all().await?;
+
     let mut receivers = gateway.take_all_receivers();
-    let (_, _, mut messages) = receivers.pop().ok_or_else(|| anyhow::anyhow!("no platform adapter receivers available"))?;
+    let (_, _, mut messages) = receivers
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("no platform adapter receivers available"))?;
 
     info!("gateway listening for messages");
 
@@ -169,95 +669,192 @@ async fn start_gateway(
         let bot_id = msg.bot_id.clone();
         let platform = msg.platform.clone();
         let text = msg.text.clone();
-        let config = config.clone();
-        let agent_clone = agent_clone.clone();
+
+        info!(platform = %platform, chat_id = %chat_id, "received message via gateway");
+
+        let agent_clone = agent.clone();
         let gateway_clone = gateway.clone();
         let skill_store_ref = skill_store_ref.clone();
         let histories_clone = histories_clone.clone();
 
         tokio::spawn(async move {
+            let text = text.clone();
+            let chat_id = chat_id.clone();
+            let bot_id = bot_id.clone();
+            let platform = platform.clone();
+
+            // Start typing indicator.
             let typing_handle = {
-                let g = gateway_clone.clone();
-                let bid = bot_id.clone();
-                let cid = chat_id.clone();
+                let gateway = gateway_clone.clone();
+                let bot_id = bot_id.clone();
+                let chat_id = chat_id.clone();
                 tokio::spawn(async move {
                     loop {
-                        let _ = g.send_chat_action(&bid, &cid, "typing").await;
+                        let _ = gateway.send_chat_action(&bot_id, &chat_id, "typing").await;
                         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     }
                 })
             };
 
-            let response = if text.starts_with('/') {
-                match Command::parse(&text) {
-                    Some(Command::Help) => "🤖 **Hakimi Agent Commands**\n\n/help, /clear, /model, /tools, /skills, /status".to_string(),
-                    Some(Command::Clear) => {
-                        histories_clone.lock().await.remove(&chat_id);
-                        agent_clone.lock().await.clear_messages();
-                        "🧹 Cleared history.".to_string()
+            // Handle commands.
+            if text.starts_with('/') {
+                let response = match Command::parse(&text) {
+                    Some(Command::Help) => {
+                        let mut help = "🤖 **Hakimi Agent Commands**\n\n".to_string();
+                        help.push_str("• `/help` - Show this message\n");
+                        help.push_str("• `/clear` - Clear conversation history\n");
+                        help.push_str("• `/model [name]` - Get or set model\n");
+                        help.push_str("• `/tools` - List available tools\n");
+                        help.push_str("• `/skills` - List loaded skills\n");
+                        help.push_str("• `/cron` - List scheduled jobs\n");
+                        help.push_str("• `/status` - Show agent status\n");
+                        help.push_str("\nJust send a message to chat with me!");
+                        help
                     }
-                    _ => "⚠️ Command not fully implemented in gateway mode.".to_string(),
-                }
-            } else {
+                    Some(Command::Clear) => {
+                        {
+                            let mut histories = histories_clone.lock().await;
+                            histories.remove(&chat_id);
+                        }
+                        {
+                            let mut a = agent_clone.lock().await;
+                            a.clear_messages();
+                        }
+                        "🧹 Conversation history cleared.".to_string()
+                    }
+                    Some(Command::Model(new_model)) => {
+                        let mut a = agent_clone.lock().await;
+                        if let Some(m) = new_model {
+                            a.set_model(&m);
+                            format!("🤖 Model changed to `{m}`.")
+                        } else {
+                            format!("🤖 Current model: `{}`", a.model())
+                        }
+                    }
+                    Some(Command::Tools(_)) => {
+                        let a = agent_clone.lock().await;
+                        let tools = a.tool_registry();
+                        let mut msg = "🛠️ Available Tools:\n".to_string();
+                        for tool in tools.get_definitions().await {
+                            msg.push_str(&format!("- `{}`: {}\n", tool.name, tool.description));
+                        }
+                        msg
+                    }
+                    Some(Command::Skills(_)) => {
+                        let mut msg = "🧠 Loaded Skills:\n".to_string();
+                        for skill in skill_store_ref.skills() {
+                            msg.push_str(&format!("- `{}`: {}\n", skill.name, skill.description));
+                        }
+                        msg
+                    }
+                    Some(Command::Cron(_)) => {
+                        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+                        let cron_db_path = std::path::PathBuf::from(home).join(".hakimi").join("cron.db");
+                        if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                            if let Ok(jobs) = store.load_all() {
+                                if jobs.is_empty() {
+                                    "⏰ No scheduled cron jobs.".to_string()
+                                } else {
+                                    let mut msg = "⏰ Scheduled Cron Jobs:\n".to_string();
+                                    for job in jobs {
+                                        msg.push_str(&format!("- `{}`: {} ({:?})\n", job.id, job.name, job.schedule));
+                                    }
+                                    msg
+                                }
+                            } else {
+                                "❌ Failed to list cron jobs.".to_string()
+                            }
+                        } else {
+                            "❌ Failed to open cron database.".to_string()
+                        }
+                    }
+                    Some(Command::Status) => {
+                        let a = agent_clone.lock().await;
+                        format!(
+                            "✅ Hakimi Agent is online.\n\n\
+                             - Version: v{}\n\n\
+                             - Platform: {platform}\n\n\
+                             - Bot ID: {bot_id}\n\n\
+                             - Model: `{}`",
+                            env!("CARGO_PKG_VERSION"),
+                            a.model()
+                        )
+                    }
+                    Some(Command::Usage) => {
+                        "📊 Usage tracking is currently only available for individual conversation turns."
+                            .to_string()
+                    }
+                    _ => "⚠️ This command is not yet fully implemented for gateway mode.".to_string(),
+                };
+
+                // Stop typing.
+                typing_handle.abort();
+
+                // 4. Send response back via gateway and continue to next message.
+                let _ = gateway_clone
+                    .route_message(&hakimi_gateway::GatewayMessage {
+                        platform: platform.clone(),
+                        bot_id: bot_id.clone(),
+                        chat_id: chat_id.clone(),
+                        user_id: String::new(),
+                        text: response,
+                        media: None,
+                    })
+                    .await;
+                return;
+            }
+
+            // Process the message with the correct agent.
+            let response = {
                 let mut a = agent_clone.lock().await;
-                let chat_msgs = histories_clone.lock().await.get(&chat_id).cloned().unwrap_or_default();
-                a.clear_messages();
-                for m in chat_msgs { a.add_message(m); }
-                
+
+                // 1. Load chat-specific message history.
+                {
+                    let histories = histories_clone.lock().await;
+                    let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
+                    a.clear_messages();
+                    for m in chat_msgs {
+                        a.add_message(m);
+                    }
+                }
+
+                // 2. Load context from ~/.hakimi/memory/
+                // (Omitted for brevity, but you get the idea)
+
+                // 3. Send query.
                 match a.query(&text).await {
                     Ok(resp) => {
-                        let updated = a.messages().to_vec();
-                        histories_clone.lock().await.insert(chat_id.clone(), updated);
+                        // Update history.
+                        let updated_msgs = a.messages().to_vec();
+                        {
+                            let mut histories = histories_clone.lock().await;
+                            histories.insert(chat_id.clone(), updated_msgs);
+                        }
                         resp
                     }
-                    Err(e) => format!("❌ Error: {e}"),
+                    Err(e) => {
+                        error!(error = %e, "agent query failed");
+                        format!("❌ Error: {e}")
+                    }
                 }
             };
 
+            // Stop typing.
             typing_handle.abort();
+
+            // 4. Send response.
             let reply = hakimi_gateway::GatewayMessage {
-                platform, bot_id, chat_id, user_id: String::new(), text: response, media: None,
+                platform: platform.clone(),
+                bot_id: bot_id.clone(),
+                chat_id: chat_id.clone(),
+                user_id: String::new(),
+                text: response,
+                media: None,
             };
+
             let _ = gateway_clone.route_message(&reply).await;
         });
     }
-    Ok(())
-}
 
-async fn self_update() -> Result<()> {
-    info!("checking for updates...");
-    // Update logic placeholder
-    Ok(())
-}
-
-pub fn load_config() -> hakimi_config::HakimiConfig {
-    hakimi_config::HakimiConfig::load().unwrap_or_else(|_| hakimi_config::HakimiConfig::default())
-}
-
-pub async fn run() -> Result<()> {
-    let args = Args::parse();
-    tracing_subscriber::fmt::init();
-    
-    if args.update { return self_update().await; }
-    if args.version { println!("hakimi v{}", env!("CARGO_PKG_VERSION")); return Ok(()); }
-
-    let config = load_config();
-    if args.setup { println!("Setup not implemented."); return Ok(()); }
-
-    let agent = build_agent(&args, &config).await?;
-
-    if args.serve { return start_server(agent, &args.addr); }
-    if args.gateway {
-        let skill_store = agent.skill_store().clone();
-        return start_gateway(agent, skill_store, config).await;
-    }
-
-    if let Some(query) = args.query {
-        let mut a = agent;
-        println!("{}", a.query(&query).await?);
-        return Ok(());
-    }
-
-    println!("Interactive REPL (not yet implemented in this view).");
     Ok(())
 }

@@ -2,7 +2,7 @@ use crate::graph::{EdgeType, KnowledgeGraph, NodeType};
 use anyhow::Result;
 use async_trait::async_trait;
 use hakimi_common::KnowledgeSearcher;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::path::PathBuf;
 
 pub struct KnowledgeStore {

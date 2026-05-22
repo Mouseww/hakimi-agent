@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use crate::skill::Skill;
 use crate::loader::SkillLoader;
+use crate::skill::Skill;
 
 /// Store for managing and loading skills.
 #[derive(Clone, Default)]
