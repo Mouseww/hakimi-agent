@@ -168,8 +168,8 @@ impl BatchProcessor {
         let mut start_index = 0;
         let mut results = Vec::new();
 
-        if self.config.checkpoint_enabled {
-            if let Some(checkpoint) = load_checkpoint(&checkpoint_path) {
+        if self.config.checkpoint_enabled
+            && let Some(checkpoint) = load_checkpoint(&checkpoint_path) {
                 info!(index = checkpoint.next_index, "Resuming from checkpoint");
                 start_index = checkpoint.next_index;
                 // Load existing results if resuming
@@ -185,7 +185,6 @@ impl BatchProcessor {
                         }
                     }
                 }
-            }
         }
 
         let total = items.len();
@@ -226,19 +225,15 @@ impl BatchProcessor {
                                 .filter_map(|m| {
                                     use hakimi_common::MessageRole;
                                     if m.role == MessageRole::Assistant {
-                                        if let Some(tcs) = &m.tool_calls {
-                                            Some(
-                                                tcs.iter()
-                                                    .map(|tc| ToolCallRecord {
-                                                        tool_name: tc.name.clone(),
-                                                        arguments: tc.arguments.clone(),
-                                                        result_preview: "".into(),
-                                                    })
-                                                    .collect::<Vec<_>>(),
-                                            )
-                                        } else {
-                                            None
-                                        }
+        m.tool_calls.as_ref().map(|tcs| {
+            tcs.iter()
+                .map(|tc| ToolCallRecord {
+                    tool_name: tc.name.clone(),
+                    arguments: tc.arguments.clone(),
+                    result_preview: "".into(),
+                })
+                .collect::<Vec<_>>()
+        })
                                     } else {
                                         None
                                     }
