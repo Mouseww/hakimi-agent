@@ -169,22 +169,23 @@ impl BatchProcessor {
         let mut results = Vec::new();
 
         if self.config.checkpoint_enabled
-            && let Some(checkpoint) = load_checkpoint(&checkpoint_path) {
-                info!(index = checkpoint.next_index, "Resuming from checkpoint");
-                start_index = checkpoint.next_index;
-                // Load existing results if resuming
-                if results_path.exists() {
-                    let _items = load_dataset(&results_path)?;
-                    // This is a bit hacky since load_dataset returns BatchItem,
-                    // but results.jsonl contains BatchResult.
-                    // Let's just re-read manually.
-                    let content = std::fs::read_to_string(&results_path)?;
-                    for line in content.lines() {
-                        if let Ok(res) = serde_json::from_str::<BatchResult>(line) {
-                            results.push(res);
-                        }
+            && let Some(checkpoint) = load_checkpoint(&checkpoint_path)
+        {
+            info!(index = checkpoint.next_index, "Resuming from checkpoint");
+            start_index = checkpoint.next_index;
+            // Load existing results if resuming
+            if results_path.exists() {
+                let _items = load_dataset(&results_path)?;
+                // This is a bit hacky since load_dataset returns BatchItem,
+                // but results.jsonl contains BatchResult.
+                // Let's just re-read manually.
+                let content = std::fs::read_to_string(&results_path)?;
+                for line in content.lines() {
+                    if let Ok(res) = serde_json::from_str::<BatchResult>(line) {
+                        results.push(res);
                     }
                 }
+            }
         }
 
         let total = items.len();
@@ -225,15 +226,15 @@ impl BatchProcessor {
                                 .filter_map(|m| {
                                     use hakimi_common::MessageRole;
                                     if m.role == MessageRole::Assistant {
-        m.tool_calls.as_ref().map(|tcs| {
-            tcs.iter()
-                .map(|tc| ToolCallRecord {
-                    tool_name: tc.name.clone(),
-                    arguments: tc.arguments.clone(),
-                    result_preview: "".into(),
-                })
-                .collect::<Vec<_>>()
-        })
+                                        m.tool_calls.as_ref().map(|tcs| {
+                                            tcs.iter()
+                                                .map(|tc| ToolCallRecord {
+                                                    tool_name: tc.name.clone(),
+                                                    arguments: tc.arguments.clone(),
+                                                    result_preview: "".into(),
+                                                })
+                                                .collect::<Vec<_>>()
+                                        })
                                     } else {
                                         None
                                     }
