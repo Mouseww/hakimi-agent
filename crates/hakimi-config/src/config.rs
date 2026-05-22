@@ -148,6 +148,10 @@ pub struct AgentConfig {
     /// Disabled toolset names.
     #[serde(default)]
     pub disabled_toolsets: Vec<String>,
+
+    /// Path to the skills directory.
+    #[serde(default)]
+    pub skills_path: String,
 }
 
 fn default_max_turns() -> usize {
@@ -163,6 +167,7 @@ impl Default for AgentConfig {
             reasoning_effort: String::new(),
             service_tier: String::new(),
             disabled_toolsets: Vec::new(),
+            skills_path: String::new(),
         }
     }
 }

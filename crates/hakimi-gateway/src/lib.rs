@@ -22,6 +22,9 @@ pub use telegram::TelegramAdapter;
 pub use webhook::{WebhookAdapter, WebhookAdapterConfig};
 pub use wecom::{WeComAdapter, WeComAdapterConfig};
 
+// TelegramAdapterConfig is not re-exported above, add it
+pub use telegram::TelegramAdapterConfig;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
