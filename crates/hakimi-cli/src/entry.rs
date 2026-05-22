@@ -910,7 +910,8 @@ async fn self_update() -> Result<()> {
     fs::copy(&current_exe, &backup_path)?;
     println!("Backed up current binary to {backup_path}");
 
-    // Write new binary
+    // Instead of fs::write which overwrites (and hits Text file busy), we must remove it first or replace it via rename.
+    let _ = fs::remove_file(&current_exe);
     fs::write(&current_exe, &binary_data)?;
 
     // Set executable permissions (Unix)
