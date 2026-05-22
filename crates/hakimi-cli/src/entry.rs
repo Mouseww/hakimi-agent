@@ -1318,9 +1318,9 @@ pub async fn run() -> Result<()> {
 
                     // 1. Check if the message is a slash command.
                     if user_text.starts_with('/') {
-                        if let Some(command) = crate::Command::parse(&user_text) {
+                        if let Some(command) = Command::parse(&user_text) {
                             let response = match command {
-                                crate::Command::Help => {
+                                Command::Help => {
                                     "Commands:\n\
                                      /help - Show this help message\n\
                                      /clear - Reset the conversation history\n\
@@ -1329,14 +1329,14 @@ pub async fn run() -> Result<()> {
                                      /usage - Show token usage for this session"
                                         .to_string()
                                 }
-                                crate::Command::Clear => {
+                                Command::Clear => {
                                     let mut histories = histories_clone.lock().await;
                                     histories.remove(&chat_id);
                                     let mut a = agent_clone.lock().await;
                                     a.clear_messages();
                                     "🧹 Conversation history cleared.".to_string()
                                 }
-                                crate::Command::Model(new_model) => {
+                                Command::Model(new_model) => {
                                     let mut a = agent_clone.lock().await;
                                     if let Some(m) = new_model {
                                         a.set_model(&m);
@@ -1345,17 +1345,17 @@ pub async fn run() -> Result<()> {
                                         format!("🤖 Current model: `{}`", a.model())
                                     }
                                 }
-                                crate::Command::Status => {
+                                Command::Status => {
                                     let a = agent_clone.lock().await;
                                     format!(
                                         "✅ Hakimi Agent is online.\n\
-                                         - Platform: {}\n\
-                                         - Bot ID: {}\n\
+                                         - Platform: {platform}\n\
+                                         - Bot ID: {bot_id}\n\
                                          - Model: `{}`",
-                                        platform, bot_id, a.model()
+                                        a.model()
                                     )
                                 }
-                                crate::Command::Usage => {
+                                Command::Usage => {
                                     let a = agent_clone.lock().await;
                                     let usage = a.usage();
                                     format!(
