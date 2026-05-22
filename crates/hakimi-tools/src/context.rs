@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hakimi_common::{DelegateExecutor, ToolContext};
+use hakimi_common::{DelegateExecutor, KnowledgeSearcher, ToolContext};
 
 /// Builder for constructing a [`ToolContext`].
 #[derive(Clone, Default)]
@@ -11,6 +11,7 @@ pub struct ToolContextBuilder {
     workdir: Option<String>,
     model: Option<String>,
     delegate_executor: Option<Arc<dyn DelegateExecutor>>,
+    knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
 }
 
 impl std::fmt::Debug for ToolContextBuilder {
@@ -22,6 +23,7 @@ impl std::fmt::Debug for ToolContextBuilder {
             .field("workdir", &self.workdir)
             .field("model", &self.model)
             .field("delegate_executor", &self.delegate_executor.is_some())
+            .field("knowledge_searcher", &self.knowledge_searcher.is_some())
             .finish()
     }
 }
@@ -68,6 +70,12 @@ impl ToolContextBuilder {
         self
     }
 
+    /// Set the knowledge searcher.
+    pub fn knowledge_searcher(mut self, searcher: Arc<dyn KnowledgeSearcher>) -> Self {
+        self.knowledge_searcher = Some(searcher);
+        self
+    }
+
     /// Build the [`ToolContext`].
     ///
     /// # Panics
@@ -82,6 +90,7 @@ impl ToolContextBuilder {
             workdir: self.workdir.expect("workdir is required for ToolContext"),
             model: self.model,
             delegate_executor: self.delegate_executor,
+            knowledge_searcher: self.knowledge_searcher,
         }
     }
 
@@ -101,6 +110,7 @@ impl ToolContextBuilder {
             workdir,
             model: self.model,
             delegate_executor: self.delegate_executor,
+            knowledge_searcher: self.knowledge_searcher,
         })
     }
 }

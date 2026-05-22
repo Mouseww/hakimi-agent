@@ -104,72 +104,95 @@ impl DelegateExecutor for CoreDelegateExecutor {
                 HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
             })?;
 
-        // Build a filtered tool registry for the child agent.
-        let child_registry = ToolRegistry::new();
-        let all_tool_names = self.tool_registry.list().await;
-        for tool_name in &all_tool_names {
-            if let Some(tool) = self.tool_registry.get(tool_name).await {
-                // If toolsets are specified, only include tools from those sets.
-                // If no toolsets specified, include all tools.
-                if toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()) {
-                    child_registry.register(tool).await;
+        // Retry logic for transient failures
+        let mut attempts = 0;
+        let max_attempts = 3;
+
+        loop {
+            attempts += 1;
+            
+            // Build a filtered tool registry for the child agent.
+            let child_registry = ToolRegistry::new();
+            let all_tool_names = self.tool_registry.list().await;
+            for tool_name in &all_tool_names {
+                if let Some(tool) = self.tool_registry.get(tool_name).await {
+                    if toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()) {
+                        child_registry.register(tool).await;
+                    }
                 }
             }
-        }
 
-        // Build the system prompt for the child agent.
-        let system_prompt = if context.is_empty() {
-            format!(
-                "You are a sub-agent delegated by a parent agent. Your task: {goal}. Complete this task and return a clear, concise result."
-            )
-        } else {
-            format!(
-                "You are a sub-agent delegated by a parent agent. Your task: {goal}. \
-                 Context: {context}. Complete this task and return a clear, concise result."
-            )
-        };
+            // Build the system prompt for the child agent.
+            let system_prompt = if context.is_empty() {
+                format!(
+                    "You are a sub-agent delegated by a parent agent. Your task: {goal}. Complete this task and return a clear, concise result."
+                )
+            } else {
+                format!(
+                    "You are a sub-agent delegated by a parent agent. Your task: {goal}. \
+                     Context: {context}. Complete this task and return a clear, concise result."
+                )
+            };
 
-        // Create a fresh context engine for the child agent (isolated from parent).
-        let parent_context_length = {
-            let engine = self.context_engine.read().await;
-            engine.context_length()
-        };
-        let child_context_engine =
-            Arc::new(RwLock::new(SimpleContextEngine::new(parent_context_length)));
+            // Create a fresh context engine for the child agent (isolated from parent).
+            let parent_context_length = {
+                let engine = self.context_engine.read().await;
+                engine.context_length()
+            };
+            let child_context_engine =
+                Arc::new(RwLock::new(SimpleContextEngine::new(parent_context_length)));
 
-        // Build the child agent.
-        let mut child_agent = AIAgent::builder()
-            .model(&self.model)
-            .transport(self.transport.clone())
-            .context_engine(child_context_engine)
-            .tool_registry(child_registry)
-            .system_prompt(system_prompt)
-            .workdir(&self.workdir)
-            .max_iterations(CHILD_MAX_ITERATIONS)
-            .build()
-            .map_err(|e| HakimiError::Tool(format!("failed to create child agent: {e}")))?;
+            // Build the child agent.
+            let mut child_agent = AIAgent::builder()
+                .model(&self.model)
+                .transport(self.transport.clone())
+                .context_engine(child_context_engine)
+                .tool_registry(child_registry)
+                .system_prompt(system_prompt)
+                .workdir(&self.workdir)
+                .max_iterations(CHILD_MAX_ITERATIONS)
+                .build()
+                .map_err(|e| HakimiError::Tool(format!("failed to create child agent: {e}")))?;
 
-        // Run the child agent with a timeout.
-        let result = tokio::time::timeout(DEFAULT_DELEGATION_TIMEOUT, child_agent.chat(goal)).await;
+            // Run the child agent with a timeout.
+            let result = tokio::time::timeout(DEFAULT_DELEGATION_TIMEOUT, child_agent.chat(goal)).await;
 
-        match result {
-            Ok(Ok(response)) => {
-                info!(
-                    response_len = response.len(),
-                    "Child agent delegation completed successfully"
-                );
-                Ok(response)
+            // Record execution metadata
+            info!(
+                task_goal = %goal,
+                attempt = attempts,
+                "Delegation attempt in progress"
+            );
+
+            match result {
+                Ok(Ok(response)) => {
+                    info!(
+                        response_len = response.len(),
+                        attempts = attempts,
+                        "Child agent delegation completed successfully"
+                    );
+                    
+                    // TODO: Integrate feedback loop to parent's memory
+                    return Ok(response);
+                }
+                Ok(Err(e)) => {
+                    warn!(error = %e, attempts = attempts, "Child agent delegation failed");
+                    if attempts >= max_attempts {
+                        return Err(e);
+                    }
+                }
+                Err(_elapsed) => {
+                    warn!(attempts = attempts, "Child agent delegation timed out after 60 seconds");
+                    if attempts >= max_attempts {
+                        return Err(HakimiError::Other(
+                            "Child agent timed out after 60 seconds after maximum retries".into(),
+                        ));
+                    }
+                }
             }
-            Ok(Err(e)) => {
-                warn!(error = %e, "Child agent delegation failed");
-                Err(e)
-            }
-            Err(_elapsed) => {
-                warn!("Child agent delegation timed out after 60 seconds");
-                Err(HakimiError::Other(
-                    "Child agent timed out after 60 seconds".into(),
-                ))
-            }
+            
+            // Wait briefly before retrying
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
     }
 

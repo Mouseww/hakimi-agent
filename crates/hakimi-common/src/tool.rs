@@ -72,6 +72,13 @@ pub trait DelegateExecutor: Send + Sync {
     async fn enqueue_task(&self, goal: &str, priority: u32) -> crate::Result<String>;
 }
 
+/// Trait for searching the knowledge base.
+#[async_trait]
+pub trait KnowledgeSearcher: Send + Sync {
+    /// Search for knowledge entities or snippets.
+    async fn search(&self, query: &str, limit: usize) -> crate::Result<JsonValue>;
+}
+
 /// Contextual information available during tool execution.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ToolContext {
@@ -97,6 +104,10 @@ pub struct ToolContext {
     /// Holds shared resources (transport, context engine, tool registry).
     #[serde(skip)]
     pub delegate_executor: Option<Arc<dyn DelegateExecutor>>,
+
+    /// Searcher for accessing the knowledge base.
+    #[serde(skip)]
+    pub knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -108,6 +119,7 @@ impl std::fmt::Debug for ToolContext {
             .field("workdir", &self.workdir)
             .field("model", &self.model)
             .field("delegate_executor", &self.delegate_executor.is_some())
+            .field("knowledge_searcher", &self.knowledge_searcher.is_some())
             .finish()
     }
 }

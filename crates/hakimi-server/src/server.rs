@@ -31,7 +31,6 @@ pub struct AppState {
 
 /// HTTP API server for the Hakimi Agent.
 pub struct Server {
-    addr: SocketAddr,
     state: AppState,
 }
 
@@ -40,27 +39,26 @@ impl Server {
     ///
     /// The `agent` will be wrapped in shared state accessible by all handlers.
     pub fn new(
-        addr: &str,
+        _addr: &str,
         agent: hakimi_core::AIAgent,
         config: hakimi_config::HakimiConfig,
         session_db: hakimi_session::SessionDB,
     ) -> Result<Self> {
-        let addr: SocketAddr = addr.parse()?;
         let state = AppState {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(config)),
             session_db: Arc::new(Mutex::new(session_db)),
         };
-        Ok(Self { addr, state })
+        Ok(Self { state })
     }
 
     /// Start the HTTP server and block until it shuts down.
-    pub async fn start(self) -> Result<()> {
+    pub async fn serve(self, addr: SocketAddr) -> Result<()> {
         let app = api::build_router(self.state);
 
-        info!(addr = %self.addr, "starting HTTP API server");
+        info!(addr = %addr, "starting HTTP API server");
 
-        let listener = tokio::net::TcpListener::bind(self.addr).await?;
+        let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app).await?;
 
         Ok(())

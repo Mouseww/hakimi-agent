@@ -17,3 +17,4 @@ pub use delegate::CoreDelegateExecutor;
 pub use error_classifier::{ErrorClassifier, FailoverReason, RecoveryAction};
 pub use file_safety::SecretRedactor;
 pub use guardrails::{GuardrailDecision, IdempotencyTracker, ToolCallObservation, ToolGuardrails};
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are Hakimi Agent, an intelligent AI assistant created by Webber Wei. You are helpful, knowledgeable, and direct.";

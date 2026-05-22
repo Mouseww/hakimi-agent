@@ -34,6 +34,30 @@ pub struct AIAgent {
     pub(crate) workdir: String,
     pub(crate) system_prompt: Option<String>,
     pub(crate) streaming: bool,
+    pub(crate) knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
+    pub(crate) skill_store: hakimi_skills::SkillStore,
+}
+
+impl AIAgent {
+    /// Create a new agent from its components.
+    pub fn new(
+        transport: Arc<dyn ProviderTransport>,
+        tool_registry: ToolRegistry,
+        skill_store: hakimi_skills::SkillStore,
+    ) -> Self {
+        Self::builder()
+            .transport(transport)
+            .tool_registry(tool_registry)
+            .build()
+            .expect("failed to build agent with defaults")
+            .with_skill_store(skill_store)
+    }
+
+    /// Set or replace the skill store.
+    pub fn with_skill_store(mut self, store: hakimi_skills::SkillStore) -> Self {
+        self.skill_store = store;
+        self
+    }
 }
 
 /// Builder for constructing an [`AIAgent`].
@@ -58,6 +82,7 @@ pub struct AIAgentBuilder {
     workdir: Option<String>,
     system_prompt: Option<String>,
     streaming: Option<bool>,
+    knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
 }
 
 impl AIAgentBuilder {
@@ -80,6 +105,7 @@ impl AIAgentBuilder {
             workdir: None,
             system_prompt: None,
             streaming: None,
+            knowledge_searcher: None,
         }
     }
 
@@ -182,6 +208,12 @@ impl AIAgentBuilder {
         self
     }
 
+    /// Set the knowledge searcher for the agent.
+    pub fn knowledge_searcher(mut self, searcher: Arc<dyn hakimi_common::KnowledgeSearcher>) -> Self {
+        self.knowledge_searcher = Some(searcher);
+        self
+    }
+
     /// Build the [`AIAgent`].
     ///
     /// # Errors
@@ -238,6 +270,8 @@ impl AIAgentBuilder {
             workdir,
             system_prompt: self.system_prompt,
             streaming: self.streaming.unwrap_or(false),
+            knowledge_searcher: self.knowledge_searcher,
+            skill_store: hakimi_skills::SkillStore::empty(), // Builder default
         })
     }
 }
@@ -265,13 +299,24 @@ impl AIAgent {
 
     /// Run a full conversation turn: send a user message and iterate with tools
     /// until the model produces a text response or the budget is exhausted.
+    pub async fn query(&mut self, user_message: &str) -> Result<String> {
+        let result = self.run_conversation(user_message).await?;
+        Ok(result.final_response)
+    }
+
+    /// Run a full conversation turn: send a user message and iterate with tools
+    /// until the model produces a text response or the budget is exhausted.
     ///
     /// Returns a [`ConversationResult`] containing the final response, all
     /// messages, accumulated usage, and the number of API calls made.
-    ///
-    /// If streaming is enabled on this agent, the streaming transport will be
-    /// used and content deltas will be printed to stdout in real-time.
     pub async fn run_conversation(&mut self, user_message: &str) -> Result<ConversationResult> {
+        // Apply skill prompt additions.
+        let skill_prompt = self.skill_store.get_system_prompt_additions(user_message);
+        if !skill_prompt.is_empty() {
+            let base = self.system_prompt.clone().unwrap_or_else(|| crate::DEFAULT_SYSTEM_PROMPT.to_string());
+            self.set_system_prompt(format!("{base}\n\n{skill_prompt}"));
+        }
+
         // Append the user message to conversation history.
         self.messages.push(Message::user(user_message));
 
@@ -316,6 +361,7 @@ impl AIAgent {
             workdir: self.workdir.clone(),
             model: Some(self.model.clone()),
             delegate_executor,
+            knowledge_searcher: self.knowledge_searcher.clone(),
         }
     }
 
@@ -382,5 +428,20 @@ impl AIAgent {
     /// Clear the interrupt flag.
     pub fn clear_interrupt(&self) {
         self.interrupt.store(false, Ordering::Relaxed);
+    }
+
+    /// Get a reference to the skill store.
+    pub fn skill_store(&self) -> &hakimi_skills::SkillStore {
+        &self.skill_store
+    }
+
+    /// Set a user profile.
+    pub fn set_user_profile(&mut self, profile: impl Into<String>) {
+        // Placeholder or actual logic
+    }
+
+    /// Set a memory.
+    pub fn set_memory(&mut self, memory: impl Into<String>) {
+        // Placeholder or actual logic
     }
 }

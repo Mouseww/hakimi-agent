@@ -10,6 +10,7 @@ hakimi-tools = { path = "../hakimi-tools" }
 hakimi-session = { path = "../hakimi-session" }
 hakimi-config = { path = "../hakimi-config" }
 hakimi-context = { path = "../hakimi-context" }
+hakimi-skills = { path = "../hakimi-skills" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

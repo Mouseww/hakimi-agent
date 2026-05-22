@@ -1,5 +1,8 @@
 use crate::graph::{EdgeType, KnowledgeGraph, NodeType};
 use anyhow::Result;
+use async_trait::async_trait;
+use hakimi_common::KnowledgeSearcher;
+use serde_json::{json, Value as JsonValue};
 use std::path::PathBuf;
 
 pub struct KnowledgeStore {
@@ -79,6 +82,30 @@ impl KnowledgeStore {
     /// Get auto-save status.
     pub fn auto_save(&self) -> bool {
         self.auto_save
+    }
+}
+
+#[async_trait]
+impl KnowledgeSearcher for KnowledgeStore {
+    async fn search(&self, query: &str, limit: usize) -> hakimi_common::Result<JsonValue> {
+        let nodes = self.graph.search(query);
+        let results: Vec<JsonValue> = nodes
+            .iter()
+            .take(limit)
+            .map(|n| {
+                json!({
+                    "key": n.key(),
+                    "kind": n.kind(),
+                    "preview": format!("{:?}", n)
+                })
+            })
+            .collect();
+
+        Ok(json!({
+            "results": results,
+            "count": results.len(),
+            "query": query
+        }))
     }
 }
 

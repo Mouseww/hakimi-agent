@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{Result, ToolContext, HakimiError};
 use serde_json::{Value as JsonValue, json};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::Tool;
 
-/// Tool for performing FTS5 (Full Text Search) over knowledge base.
+/// Tool for performing search over knowledge base.
 pub struct FtsSearchTool;
 
 #[async_trait]
@@ -19,7 +19,7 @@ impl Tool for FtsSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search the knowledge base using FTS5 full-text search. Returns matching entities and snippets."
+        "Search the knowledge base for entities, notes, and snippets. Use this to retrieve information from memory."
     }
 
     fn emoji(&self) -> &str {
@@ -32,7 +32,7 @@ impl Tool for FtsSearchTool {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "The search query."
+                    "description": "The search query (e.g. 'project architecture', 'API keys')."
                 },
                 "limit": {
                     "type": "integer",
@@ -45,43 +45,23 @@ impl Tool for FtsSearchTool {
     }
 
     async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
-        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let query = args.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
+            HakimiError::Tool("missing 'query' argument".into())
+        })?;
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
         info!(query = %query, limit = limit, "Executing knowledge search");
 
-        // Use the context's knowledge store if available
-        let results = if let Some(ref store) = ctx.knowledge_store {
-            let store_lock = store.read().await;
-            let found_nodes = store_lock.graph().search(query);
-
-            let items: Vec<JsonValue> = found_nodes
-                .iter()
-                .take(limit)
-                .map(|n| {
-                    json!({
-                        "key": n.key(),
-                        "kind": n.kind(),
-                        "snippet": n.key() // In a real FTS we would have fragments, here we just return the key
-                    })
-                })
-                .collect();
-
-            json!({
-                "results": items,
-                "query": query,
-                "total_matches": found_nodes.len(),
-                "engine": "memory_fuzzy"
-            })
+        if let Some(searcher) = &ctx.knowledge_searcher {
+            let results = searcher.search(query, limit).await?;
+            Ok(serde_json::to_string_pretty(&results).unwrap())
         } else {
-            json!({
+            // Fallback for when knowledge searcher is not yet implemented or injected
+            Ok(json!({
                 "results": [],
                 "query": query,
-                "message": "No knowledge store available in current context.",
-                "engine": "none"
-            })
-        };
-
-        Ok(serde_json::to_string_pretty(&results).unwrap())
+                "message": "Knowledge base search is currently unavailable in this context."
+            }).to_string())
+        }
     }
 }

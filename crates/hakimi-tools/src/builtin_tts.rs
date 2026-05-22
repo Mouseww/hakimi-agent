@@ -255,20 +255,21 @@ async fn generate_edge_tts(
         .send()
         .await;
 
-    if let Ok(resp) = voices_response
-        && let Ok(body) = resp.text().await
-        && let Ok(voices) = serde_json::from_str::<JsonValue>(&body)
-    {
-        let empty_vec = vec![];
-        let voice_list = voices.as_array().unwrap_or(&empty_vec);
-        let voice_exists = voice_list.iter().any(|v| {
-            v.get("ShortName")
-                .and_then(|n| n.as_str())
-                .map(|n| n == voice)
-                .unwrap_or(false)
-        });
-        if !voice_exists {
-            warn!(voice = %voice, "voice not found in Edge TTS voice list, proceeding anyway");
+    if let Ok(resp) = voices_response {
+        if let Ok(body) = resp.text().await {
+            if let Ok(voices) = serde_json::from_str::<JsonValue>(&body) {
+                let empty_vec = vec![];
+                let voice_list = voices.as_array().unwrap_or(&empty_vec);
+                let voice_exists = voice_list.iter().any(|v| {
+                    v.get("ShortName")
+                        .and_then(|n| n.as_str())
+                        .map(|n| n == voice)
+                        .unwrap_or(false)
+                });
+                if !voice_exists {
+                    warn!(voice = %voice, "voice not found in Edge TTS voice list, proceeding anyway");
+                }
+            }
         }
     }
 

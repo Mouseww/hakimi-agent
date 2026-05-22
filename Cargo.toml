@@ -25,8 +25,8 @@ members = [
 [workspace.package]
     version = "0.3.4"
 edition = "2024"
-license = "MIT"
-authors = ["Hakimi Agent Contributors"]
+
+
 
 [workspace.dependencies]
 # Async runtime

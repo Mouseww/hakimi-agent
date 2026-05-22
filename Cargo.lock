@@ -1042,6 +1042,7 @@ dependencies = [
  "hakimi-config",
  "hakimi-context",
  "hakimi-session",
+ "hakimi-skills",
  "hakimi-tools",
  "hakimi-transports",
  "rand 0.9.4",
