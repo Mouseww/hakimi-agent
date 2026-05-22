@@ -899,7 +899,8 @@ async fn self_update() -> Result<()> {
         }
     }
 
-    let binary_data = binary_data.ok_or_else(|| anyhow::anyhow!("Binary 'hakimi' not found in archive"))?;
+    let binary_data =
+        binary_data.ok_or_else(|| anyhow::anyhow!("Binary 'hakimi' not found in archive"))?;
 
     // Determine current binary path
     let current_exe = env::current_exe()?;
