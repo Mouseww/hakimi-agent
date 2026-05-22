@@ -46,7 +46,7 @@ impl AIAgent {
         tool_registry: ToolRegistry,
         skill_store: hakimi_skills::SkillStore,
     ) -> Self {
-        let engine = hakimi_context::ContextEngineBuilder::new().build();
+        let engine = hakimi_context::SmartContextEngine::new(128000, None);
         Self::builder()
             .model(model)
             .transport(transport)
