@@ -5,13 +5,10 @@
 //! `hakimi-cli` binary and the thin `hakimi-agent` wrapper can share the same
 //! implementation.
 
-use std::io::{self, Write};
 
 use anyhow::Result;
 use clap::Parser;
-use tokio::sync::RwLock;
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 use crate::Command;
 
@@ -79,37 +76,13 @@ pub struct Args {
 // Banner
 // ---------------------------------------------------------------------------
 
-fn print_banner() {
-    println!(r#"  _  _               _ _             _         "#);
-    println!(r#" | || |__ _ __ _ __ (_) |_ _  _ __ _| |___ _ _ "#);
-    println!(r#" | __ / _` / _| '  \| |  _| || / _` | / -_) '_|"#);
-    println!(r#" |_||_\__,_\|__|_|_|_|_|\__||\_,\_,\__|_|___|_|  "#);
-    println!();
-    println!("  Hakimi Agent v{}", env!("CARGO_PKG_VERSION"));
-    println!("  Type /help for commands, /quit to exit.");
-    println!();
-}
+
 
 // ---------------------------------------------------------------------------
 // Help text
 // ---------------------------------------------------------------------------
 
-fn print_help() {
-    println!("Commands:");
-    println!("  /help            Show this help message");
-    println!("  /quit, /exit     Exit the REPL");
-    println!("  /clear           Clear the terminal screen");
-    println!("  /model [name]    Switch or display the current model");
-    println!("  /config [key]    Show or edit configuration");
-    println!("  /resume [id]     Resume a previous session");
-    println!("  /tools [name]    List or describe available tools");
-    println!("  /skills [name]   List or describe available skills");
-    println!("  /status          Show current session status");
-    println!("  /usage           Show token usage statistics");
-    println!("  /plugins [cmd]   Manage plugins, MCP servers, and templates");
-    println!();
-    println!("Any other input is sent as a message to the agent.");
-}
+
 
 // ---------------------------------------------------------------------------
 // Default config YAML

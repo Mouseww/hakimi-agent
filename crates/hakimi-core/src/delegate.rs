@@ -51,6 +51,7 @@ impl Default for TaskQueue {
 }
 
 impl TaskQueue {
+    pub fn pop(&mut self) -> Option<QueuedTask> {
         self.tasks.pop_front()
     }
 }
