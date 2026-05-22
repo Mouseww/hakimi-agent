@@ -24,7 +24,7 @@ members = [
 
 [workspace.package]
 version = "0.3.3"
-edition = "2024"
+edition = "2021"
 license = "MIT"
 authors = ["Hakimi Agent Contributors"]
 
@@ -81,17 +81,17 @@ petgraph = { version = "0.6", features = ["serde-1", "stable_graph"] }
 tempfile = "3"
 
 # Async traits
-async-trait = "0.1"
+async_trait = "0.1"
 
 # Stream utilities
 futures = "0.3"
 bytes = "1"
 
 # Pin/project
-pin-project = "1"
+pin_project = "1"
 
 # Regex for streaming
-fancy-regex = "0.14"
+fancy_regex = "0.14"
 
 # Base64
 base64 = "0.22"
