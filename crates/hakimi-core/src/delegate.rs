@@ -42,8 +42,15 @@ impl TaskQueue {
     pub fn push(&mut self, task: QueuedTask) {
         self.tasks.push_back(task);
     }
+}
 
-    pub fn pop(&mut self) -> Option<QueuedTask> {
+impl Default for TaskQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TaskQueue {
         self.tasks.pop_front()
     }
 }
