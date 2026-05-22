@@ -618,10 +618,13 @@ async fn start_gateway(
     let mut gateway = hakimi_gateway::Gateway::new();
 
     // Configure Telegram gateway.
-    let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
-        .ok()
-        .or_else(|| config.roles.get("default").and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone())));
-    
+    let bot_token = std::env::var("TELEGRAM_BOT_TOKEN").ok().or_else(|| {
+        config
+            .roles
+            .get("default")
+            .and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone()))
+    });
+
     if let Some(token) = bot_token {
         if !token.is_empty() {
             let telegram_config = hakimi_gateway::TelegramAdapterConfig {
@@ -698,6 +701,7 @@ async fn start_gateway(
                         help.push_str("• `/skills` - List loaded skills\n");
                         help.push_str("• `/cron` - List scheduled jobs\n");
                         help.push_str("• `/status` - Show agent status\n");
+                        help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
                         help.push_str("\nJust send a message to chat with me!");
                         help
                     }
@@ -773,6 +777,15 @@ async fn start_gateway(
                     Some(Command::Usage) => {
                         "📊 Usage tracking is currently only available for individual conversation turns."
                             .to_string()
+                    }
+                    Some(Command::Update) => {
+                        let gateway = gateway_clone.clone();
+                        let chat = chat_id.clone();
+                        tokio::spawn(async move {
+                            let _ = gateway.send_message(&chat, "🔄 System is updating and restarting, please hold on...").await;
+                            let _ = std::process::Command::new("bash").arg("-c").arg("nohup sh -c 'hakimi --update && pkill -f \"hakimi --gateway\" && hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' &").spawn();
+                        });
+                        "Update sequence initiated...".to_string()
                     }
                     _ => "⚠️ This command is not yet fully implemented for gateway mode.".to_string(),
                 };

@@ -159,6 +159,11 @@ impl TelegramAdapter {
                  /start – Start a conversation\n\
                  /help – Show this help message",
             ),
+            "/update" => Some(
+                "🔄 *Hakimi Updater*\n\n\
+                 Starting update and restart sequence...\n\
+                 Please wait a moment while the binary is downloaded and the gateway is restarted.",
+            ),
             _ => None,
         }
     }

@@ -23,10 +23,8 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.18"
+version = "0.3.20"
 edition = "2024"
-
-
 
 [workspace.dependencies]
 # Async runtime

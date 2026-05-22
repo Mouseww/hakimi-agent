@@ -46,6 +46,8 @@ pub enum Command {
     Cron(Option<String>),
     /// Plugin management.
     Plugins(Option<String>),
+    /// Update system.
+    Update,
 }
 
 impl Command {
@@ -79,6 +81,7 @@ impl Command {
             "setup" => Some(Command::Setup),
             "cron" => Some(Command::Cron(arg.map(String::from))),
             "plugins" | "plugin" => Some(Command::Plugins(arg.map(String::from))),
+            "update" => Some(Command::Update),
             _ => None,
         }
     }
@@ -110,6 +113,7 @@ impl fmt::Display for Command {
             Command::Cron(Some(c)) => write!(f, "/cron {c}"),
             Command::Plugins(None) => write!(f, "/plugins"),
             Command::Plugins(Some(p)) => write!(f, "/plugins {p}"),
+            Command::Update => write!(f, "/update"),
         }
     }
 }

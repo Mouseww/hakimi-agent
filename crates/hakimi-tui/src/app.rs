@@ -1,6 +1,6 @@
 //! Application state and event handling for the Hakimi TUI.
 
-use crate::{AgentCommand, AgentEvent, ChatMessage, SPINNER_FRAMES, ToolActivity, ToolStatus};
+use crate::{AgentCommand, AgentEvent, ChatMessage, ToolActivity, ToolStatus, SPINNER_FRAMES};
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;

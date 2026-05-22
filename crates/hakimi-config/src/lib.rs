@@ -7,4 +7,4 @@ pub mod config;
 pub mod defaults;
 
 pub use config::*;
-pub use defaults::{DEFAULT_FLAT, default_config_value};
+pub use defaults::{default_config_value, DEFAULT_FLAT};

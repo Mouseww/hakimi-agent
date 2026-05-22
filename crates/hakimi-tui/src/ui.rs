@@ -3,11 +3,11 @@
 use crate::app::App;
 use crate::{Role, ToolStatus};
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    Frame,
 };
 
 /// Color scheme constants
@@ -312,7 +312,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 mod tests {
     use super::*;
     use crate::app::App;
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{backend::TestBackend, Terminal};
     use tokio::sync::mpsc;
 
     fn make_app() -> App {
