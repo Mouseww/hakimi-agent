@@ -290,6 +290,16 @@ impl Default for AIAgentBuilder {
 }
 
 impl AIAgent {
+    /// Set the API key.
+    pub fn set_api_key(&mut self, api_key: &str) {
+        self._api_key = api_key.to_string();
+    }
+
+    /// Set the base URL.
+    pub fn set_base_url(&mut self, base_url: &str) {
+        self._base_url = base_url.to_string();
+    }
+
     /// Create a new builder for constructing an [`AIAgent`].
     pub fn builder() -> AIAgentBuilder {
         AIAgentBuilder::new()
