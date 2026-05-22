@@ -620,7 +620,7 @@ async fn start_gateway(
     // Configure Telegram gateway.
     let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
         .ok()
-        .or_else(|| config.roles.get("default").and_then(|r| r.gateways.telegram.bot_token.clone()));
+        .or_else(|| config.roles.get("default").and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone())));
     
     if let Some(token) = bot_token {
         if !token.is_empty() {
