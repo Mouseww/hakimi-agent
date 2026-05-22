@@ -852,7 +852,7 @@ async fn self_update() -> Result<()> {
     // Detect platform
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
-    
+
     // Choose flavor: musl is preferred on Linux for maximum compatibility (static linking).
     let (platform, ext) = match os {
         "linux" => {
