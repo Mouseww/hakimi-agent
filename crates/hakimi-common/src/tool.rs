@@ -67,6 +67,9 @@ pub trait DelegateExecutor: Send + Sync {
         context: &str,
         toolsets: &[String],
     ) -> crate::Result<String>;
+
+    /// Submit a task to the delegation queue.
+    async fn enqueue_task(&self, goal: &str, priority: u32) -> crate::Result<String>;
 }
 
 /// Contextual information available during tool execution.

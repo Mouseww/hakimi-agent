@@ -1,0 +1,65 @@
+                    // 1. Check if the message is a slash command.
+                    let command = if user_text.starts_with('/') {
+                        Command::parse(&user_text)
+                    } else {
+                        None
+                    };
+
+                    if let Some(command) = command {
+                        let response = match command {
+                            Command::Help => {
+                                "Commands:\n\
+                                 /help - Show this help message\n\
+                                 /clear - Reset the conversation history\n\
+                                 /model [name] - Show or change the current model\n\
+                                 /status - Show agent status\n\
+                                 /usage - Show token usage for this session"
+                                    .to_string()
+                            }
+                            Command::Clear => {
+                                let mut histories = histories_clone.lock().await;
+                                histories.remove(&chat_id);
+                                let mut a = agent_clone.lock().await;
+                                a.clear_messages();
+                                "🧹 Conversation history cleared.".to_string()
+                            }
+                            Command::Model(new_model) => {
+                                let mut a = agent_clone.lock().await;
+                                if let Some(m) = new_model {
+                                    a.set_model(&m);
+                                    format!("🤖 Model changed to `{m}`.")
+                                } else {
+                                    format!("🤖 Current model: `{}`", a.model())
+                                }
+                            }
+                            Command::Status => {
+                                let a = agent_clone.lock().await;
+                                format!(
+                                    "✅ Hakimi Agent is online.\n\
+                                     - Platform: {platform}\n\
+                                     - Bot ID: {bot_id}\n\
+                                     - Model: `{}`",
+                                    a.model()
+                                )
+                            }
+                            Command::Usage => {
+                                "📊 Usage tracking is currently only available for individual conversation turns and is not yet globally tracked for the session."
+                                    .to_string()
+                            }
+                            _ => "⚠️ Command not supported in gateway mode.".to_string(),
+                        };
+
+                        // Send response back via gateway and continue to next message.
+                        let _ = gateway
+                            .route_message(&hakimi_gateway::GatewayMessage {
+                                platform: platform.clone(),
+                                bot_id: bot_id.clone(),
+                                chat_id: chat_id.clone(),
+                                user_id: String::new(),
+                                text: response,
+                                media: None,
+                            })
+                            .await;
+                        typing_handle.abort();
+                        continue;
+                    }

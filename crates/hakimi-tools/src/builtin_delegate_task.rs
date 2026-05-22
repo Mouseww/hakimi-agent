@@ -34,22 +34,26 @@ impl Tool for DelegateTaskTool {
 
     fn schema(&self) -> JsonValue {
         json!({
-            "type": "object",
-            "properties": {
-                "goal": {
-                    "type": "string",
-                    "description": "The goal or objective for the sub-task. Should be a clear, actionable description of what the child agent should accomplish."
-                },
-                "context": {
-                    "type": "string",
-                    "description": "Optional additional context, constraints, or background information for the sub-task."
-                },
+                "type": "object",
+                "properties": {
+                    "goal": {
+                        "type": "string",
+                        "description": "The goal or objective for the sub-task. Should be a clear, actionable description of what the child agent should accomplish."
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Optional additional context, constraints, or background information for the sub-task."
+                    },
                 "toolsets": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
                     "description": "Optional list of toolset names the child agent should have access to (e.g., ['file', 'shell', 'web']). If omitted, the child agent gets access to all tools."
+                },
+                "enqueue": {
+                    "type": "boolean",
+                    "description": "If true, the task will be added to a background queue instead of executing immediately."
                 }
             },
             "required": ["goal"]
@@ -74,16 +78,50 @@ impl Tool for DelegateTaskTool {
             })
             .unwrap_or_default();
 
+        let enqueue = args
+            .get("enqueue")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         debug!(
             goal = %goal,
             context = %context,
             toolsets = ?toolsets,
+            enqueue = enqueue,
             session_id = %ctx.session_id,
             "delegating task"
         );
 
         // Attempt to use the delegate executor for real delegation.
         if let Some(ref executor) = ctx.delegate_executor {
+            if enqueue {
+                match executor.enqueue_task(goal, 1).await {
+                    Ok(task_id) => {
+                        let response = json!({
+                            "status": "enqueued",
+                            "goal": goal,
+                            "task_id": task_id,
+                            "parent_session": ctx.session_id,
+                        });
+                        return serde_json::to_string_pretty(&response).map_err(|e| {
+                            HakimiError::Tool(format!("failed to serialize result: {e}"))
+                        });
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to enqueue task");
+                        let response = json!({
+                            "status": "failed_to_enqueue",
+                            "goal": goal,
+                            "error": format!("{e}"),
+                            "parent_session": ctx.session_id,
+                        });
+                        return serde_json::to_string_pretty(&response).map_err(|e| {
+                            HakimiError::Tool(format!("failed to serialize error: {e}"))
+                        });
+                    }
+                }
+            }
+
             match executor.execute_delegation(goal, context, &toolsets).await {
                 Ok(result) => {
                     let response = json!({

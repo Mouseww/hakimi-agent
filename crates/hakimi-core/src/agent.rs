@@ -40,6 +40,7 @@ pub struct AIAgent {
 ///
 /// Required fields: `model`, `transport`, `context_engine`.
 /// All other fields have sensible defaults.
+#[derive(Clone)]
 pub struct AIAgentBuilder {
     model: Option<String>,
     provider: Option<String>,

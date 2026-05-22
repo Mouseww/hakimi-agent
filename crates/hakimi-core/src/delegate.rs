@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,7 +7,7 @@ use hakimi_common::{DelegateExecutor, HakimiError, Result};
 use hakimi_context::SimpleContextEngine;
 use hakimi_tools::ToolRegistry;
 use hakimi_transports::ProviderTransport;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{info, warn};
 
 use crate::AIAgent;
@@ -16,6 +17,36 @@ const DEFAULT_DELEGATION_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Default max iterations for a child agent.
 const CHILD_MAX_ITERATIONS: usize = 10;
+
+/// Maximum number of concurrent child agents.
+const MAX_CONCURRENT_DELEGATIONS: usize = 5;
+
+/// Task queue for internal coordination.
+pub struct TaskQueue {
+    tasks: VecDeque<QueuedTask>,
+}
+
+pub struct QueuedTask {
+    pub id: String,
+    pub goal: String,
+    pub priority: u32,
+}
+
+impl TaskQueue {
+    pub fn new() -> Self {
+        Self {
+            tasks: VecDeque::new(),
+        }
+    }
+
+    pub fn push(&mut self, task: QueuedTask) {
+        self.tasks.push_back(task);
+    }
+
+    pub fn pop(&mut self) -> Option<QueuedTask> {
+        self.tasks.pop_front()
+    }
+}
 
 /// Core implementation of [`DelegateExecutor`].
 ///
@@ -27,6 +58,8 @@ pub struct CoreDelegateExecutor {
     model: String,
     tool_registry: ToolRegistry,
     workdir: String,
+    task_queue: Arc<RwLock<TaskQueue>>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl CoreDelegateExecutor {
@@ -44,6 +77,8 @@ impl CoreDelegateExecutor {
             model,
             tool_registry,
             workdir,
+            task_queue: Arc::new(RwLock::new(TaskQueue::new())),
+            semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_DELEGATIONS)),
         }
     }
 }
@@ -62,6 +97,12 @@ impl DelegateExecutor for CoreDelegateExecutor {
             toolsets = ?toolsets,
             "Spawning child agent for delegation"
         );
+
+        // Acquire a permit before spawning a child agent to control concurrency.
+        let _permit =
+            self.semaphore.acquire().await.map_err(|e| {
+                HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
+            })?;
 
         // Build a filtered tool registry for the child agent.
         let child_registry = ToolRegistry::new();
@@ -130,5 +171,18 @@ impl DelegateExecutor for CoreDelegateExecutor {
                 ))
             }
         }
+    }
+
+    async fn enqueue_task(&self, goal: &str, priority: u32) -> Result<String> {
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let task = QueuedTask {
+            id: task_id.clone(),
+            goal: goal.to_string(),
+            priority,
+        };
+        let mut queue = self.task_queue.write().await;
+        queue.push(task);
+        info!(task_id = %task_id, goal = %goal, "Task enqueued for delegation");
+        Ok(task_id)
     }
 }
