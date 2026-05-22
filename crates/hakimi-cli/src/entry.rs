@@ -618,15 +618,21 @@ async fn start_gateway(
     let mut gateway = hakimi_gateway::Gateway::new();
 
     // Configure Telegram gateway.
-    if !config.gateways.telegram.bot_token.is_empty() {
-        let telegram_config = hakimi_gateway::TelegramAdapterConfig {
-            token: config.gateways.telegram.bot_token.clone(),
-            bot_id: "telegram_bot".to_string(),
-            base_url: None,
-        };
-        let telegram = hakimi_gateway::TelegramAdapter::new(telegram_config);
-        gateway.add_adapter(Box::new(telegram));
-        info!("telegram gateway registered");
+    let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
+        .ok()
+        .or_else(|| config.roles.get("default").and_then(|r| r.gateways.telegram.bot_token.clone()));
+    
+    if let Some(token) = bot_token {
+        if !token.is_empty() {
+            let telegram_config = hakimi_gateway::TelegramAdapterConfig {
+                token: token.clone(),
+                bot_id: "telegram_bot".to_string(),
+                base_url: None,
+            };
+            let telegram = hakimi_gateway::TelegramAdapter::new(telegram_config);
+            gateway.add_adapter(Box::new(telegram));
+            info!("telegram gateway registered");
+        }
     }
 
     // Agent and conversation history map.
