@@ -3,10 +3,6 @@ name = "hakimi-cli"
 version.workspace = true
 edition = "2024"
 
-[[bin]]
-name = "hakimi"
-path = "src/main.rs"
-
 [dependencies]
 hakimi-gateway = { path = "../hakimi-gateway" }
 hakimi-common = { path = "../hakimi-common" }
