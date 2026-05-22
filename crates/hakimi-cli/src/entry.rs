@@ -852,8 +852,14 @@ async fn self_update() -> Result<()> {
     // Detect platform
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
+    
+    // Choose flavor: musl is preferred on Linux for maximum compatibility (static linking).
     let (platform, ext) = match os {
-        "linux" => ("unknown-linux-gnu", "tar.gz"),
+        "linux" => {
+            // Check if we should prefer musl (e.g. if we are on a system with older glibc)
+            // For now, let's always prefer musl on Linux to avoid GLIBC issues during update.
+            ("unknown-linux-musl", "tar.gz")
+        }
         "macos" => ("apple-darwin", "tar.gz"),
         _ => anyhow::bail!("Self-update not supported on this OS. Use the install script."),
     };
