@@ -1316,11 +1316,82 @@ pub async fn run() -> Result<()> {
                         }
                     });
 
+                    // 1. Check if the message is a slash command.
+                    if user_text.starts_with('/') {
+                        if let Some(command) = crate::Command::parse(&user_text) {
+                            let response = match command {
+                                crate::Command::Help => {
+                                    "Commands:\n\
+                                     /help - Show this help message\n\
+                                     /clear - Reset the conversation history\n\
+                                     /model [name] - Show or change the current model\n\
+                                     /status - Show agent status\n\
+                                     /usage - Show token usage for this session"
+                                        .to_string()
+                                }
+                                crate::Command::Clear => {
+                                    let mut histories = histories_clone.lock().await;
+                                    histories.remove(&chat_id);
+                                    let mut a = agent_clone.lock().await;
+                                    a.clear_messages();
+                                    "🧹 Conversation history cleared.".to_string()
+                                }
+                                crate::Command::Model(new_model) => {
+                                    let mut a = agent_clone.lock().await;
+                                    if let Some(m) = new_model {
+                                        a.set_model(&m);
+                                        format!("🤖 Model changed to `{m}`.")
+                                    } else {
+                                        format!("🤖 Current model: `{}`", a.model())
+                                    }
+                                }
+                                crate::Command::Status => {
+                                    let a = agent_clone.lock().await;
+                                    format!(
+                                        "✅ Hakimi Agent is online.\n\
+                                         - Platform: {}\n\
+                                         - Bot ID: {}\n\
+                                         - Model: `{}`",
+                                        platform, bot_id, a.model()
+                                    )
+                                }
+                                crate::Command::Usage => {
+                                    let a = agent_clone.lock().await;
+                                    let usage = a.usage();
+                                    format!(
+                                        "📊 Token Usage:\n\
+                                         - Prompt: {}\n\
+                                         - Completion: {}\n\
+                                         - Total: {}",
+                                        usage.prompt_tokens,
+                                        usage.completion_tokens,
+                                        usage.total_tokens
+                                    )
+                                }
+                                _ => "⚠️ Command not supported in gateway mode.".to_string(),
+                            };
+
+                            // Send response back via gateway and continue to next message.
+                            let _ = gateway
+                                .route_message(&hakimi_gateway::GatewayMessage {
+                                    platform: platform.clone(),
+                                    bot_id: bot_id.clone(),
+                                    chat_id: chat_id.clone(),
+                                    user_id: String::new(),
+                                    text: response,
+                                    media: None,
+                                })
+                                .await;
+                            typing_handle.abort();
+                            continue;
+                        }
+                    }
+
                     // Process the message with the correct agent.
                     let response = {
                         let mut a = agent_clone.lock().await;
 
-                        // 1. Load chat-specific message history.
+                        // 2. Load chat-specific message history.
                         {
                             let histories = histories_clone.lock().await;
                             let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
