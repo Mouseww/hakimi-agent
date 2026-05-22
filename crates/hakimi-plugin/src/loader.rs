@@ -5,8 +5,8 @@ use hakimi_common::{HakimiError, Result};
 use hakimi_tools::Tool;
 use tracing::{debug, info, warn};
 
-use crate::http_tool::{HttpPluginConfig, HttpToolPlugin};
 use crate::Plugin;
+use crate::http_tool::{HttpPluginConfig, HttpToolPlugin};
 
 /// Default plugin directory: ~/.hakimi/plugins/
 fn default_plugin_dir() -> PathBuf {

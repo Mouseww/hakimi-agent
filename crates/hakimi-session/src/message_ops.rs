@@ -365,9 +365,11 @@ mod tests {
         let results = db.search_messages("fox", 10).unwrap();
         assert!(!results.is_empty());
         // "fox" appears in "The quick brown fox"
-        assert!(results
-            .iter()
-            .any(|r| r.content.as_deref() == Some("The quick brown fox")));
+        assert!(
+            results
+                .iter()
+                .any(|r| r.content.as_deref() == Some("The quick brown fox"))
+        );
     }
 
     #[test]

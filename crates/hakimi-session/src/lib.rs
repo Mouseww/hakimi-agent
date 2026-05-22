@@ -8,4 +8,4 @@ pub mod session_ops;
 
 pub use db::SessionDB;
 pub use message_ops::{MessageOps, SearchResult};
-pub use session_ops::{generate_session_title, SessionMeta, SessionOps};
+pub use session_ops::{SessionMeta, SessionOps, generate_session_title};
