@@ -5,7 +5,6 @@
 //! `hakimi-cli` binary and the thin `hakimi-agent` wrapper can share the same
 //! implementation.
 
-
 use anyhow::Result;
 use clap::Parser;
 use tracing::{error, info, warn};
@@ -76,13 +75,9 @@ pub struct Args {
 // Banner
 // ---------------------------------------------------------------------------
 
-
-
 // ---------------------------------------------------------------------------
 // Help text
 // ---------------------------------------------------------------------------
-
-
 
 // ---------------------------------------------------------------------------
 // Default config YAML

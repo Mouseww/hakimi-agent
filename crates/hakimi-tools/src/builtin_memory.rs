@@ -232,7 +232,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         (tool, ctx, dir)
     }
 

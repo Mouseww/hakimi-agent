@@ -238,7 +238,9 @@ mod tests {
             task_id: None,
             workdir: ".".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({}), &ctx).await;
         assert!(result.is_err());
     }
@@ -252,7 +254,9 @@ mod tests {
             task_id: None,
             workdir: ".".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         // This will fail since the URL is invalid, but tests parameter parsing.
         let result = tool
             .execute(

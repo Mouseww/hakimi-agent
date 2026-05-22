@@ -293,7 +293,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({"action": "invalid"}), &ctx).await;
         assert!(result.is_err());
     }
@@ -307,7 +309,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({"action": "rollback"}), &ctx).await;
         assert!(result.is_err());
     }
@@ -321,7 +325,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({"action": "diff"}), &ctx).await;
         assert!(result.is_err());
     }
@@ -387,7 +393,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({"action": "create"}), &ctx).await;
         assert!(result.is_ok(), "create should succeed: {:?}", result.err());
         let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
@@ -422,7 +430,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
 
         // Create a checkpoint.
         let create_res = tool.execute(&json!({"action": "create"}), &ctx).await;
@@ -463,7 +473,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool
             .execute(
                 &json!({"action": "create", "label": "before-refactor"}),
@@ -494,7 +506,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({}), &ctx).await;
         assert!(result.is_err(), "missing action should fail");
     }
@@ -509,7 +523,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         // No shadow git dir exists — list should return empty
         let result = tool.execute(&json!({"action": "list"}), &ctx).await;
         assert!(
@@ -532,7 +548,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         // No shadow git dir — rollback should fail
         let result = tool
             .execute(
@@ -553,7 +571,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         // No shadow git dir — diff should fail
         let result = tool
             .execute(&json!({"action": "diff", "checkpoint_id": "abc123"}), &ctx)
@@ -588,7 +608,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
 
         // Create first checkpoint
         let r1 = tool
@@ -653,7 +675,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
 
         // Create checkpoint
         let create_res = tool
@@ -707,7 +731,9 @@ mod tests {
             task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool
             .execute(&json!({ "action": "unknown_action" }), &ctx)
             .await;

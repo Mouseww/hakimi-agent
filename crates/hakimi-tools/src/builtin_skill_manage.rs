@@ -189,8 +189,9 @@ impl Tool for SkillManageTool {
                 })? {
                     let path = entry.path();
                     if path.extension().is_some_and(|ext| ext == "md")
-                        && let Some(stem) = path.file_stem() {
-                            skills.push(stem.to_string_lossy().to_string());
+                        && let Some(stem) = path.file_stem()
+                    {
+                        skills.push(stem.to_string_lossy().to_string());
                     }
                 }
 
@@ -226,7 +227,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() }
+            delegate_executor: None,
+            ..Default::default()
+        }
     }
 
     /// Generate unique skill name to avoid test collisions

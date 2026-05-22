@@ -90,7 +90,8 @@ impl ToolContextBuilder {
             workdir: self.workdir.expect("workdir is required for ToolContext"),
             model: self.model,
             delegate_executor: self.delegate_executor,
-            knowledge_searcher: self.knowledge_searcher }
+            knowledge_searcher: self.knowledge_searcher,
+        }
     }
 
     /// Try to build the [`ToolContext`], returning an error if required fields
@@ -109,6 +110,7 @@ impl ToolContextBuilder {
             workdir,
             model: self.model,
             delegate_executor: self.delegate_executor,
-            knowledge_searcher: self.knowledge_searcher })
+            knowledge_searcher: self.knowledge_searcher,
+        })
     }
 }

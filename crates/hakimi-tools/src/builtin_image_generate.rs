@@ -529,7 +529,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({"prompt": ""}), &ctx).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
@@ -545,7 +547,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({"prompt": "   "}), &ctx).await;
         assert!(result.is_err());
     }
@@ -559,7 +563,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool.execute(&json!({}), &ctx).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
@@ -575,7 +581,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool
             .execute(&json!({"prompt": "a cat", "provider": "invalid"}), &ctx)
             .await;
@@ -598,7 +606,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool
             .execute(&json!({"prompt": "a cat", "provider": "fal"}), &ctx)
             .await;
@@ -621,7 +631,9 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None, ..Default::default() };
+            delegate_executor: None,
+            ..Default::default()
+        };
         let result = tool
             .execute(&json!({"prompt": "a cat", "provider": "openai"}), &ctx)
             .await;

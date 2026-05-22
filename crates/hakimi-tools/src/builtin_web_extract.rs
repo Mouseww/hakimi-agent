@@ -180,8 +180,9 @@ fn extract_readable_text(html: &str) -> String {
     let mut result = String::new();
 
     if let Some(t) = title
-        && !t.is_empty() {
-            result.push_str(&format!("# {t}\n\n"));
+        && !t.is_empty()
+    {
+        result.push_str(&format!("# {t}\n\n"));
     }
 
     for part in &content_parts {
@@ -199,20 +200,22 @@ fn extract_readable_text(html: &str) -> String {
 fn extract_title(document: &Html) -> Option<String> {
     // Try <title> tag
     if let Ok(sel) = Selector::parse("title")
-        && let Some(el) = document.select(&sel).next() {
-            let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
-            if !text.is_empty() {
-                return Some(text);
-            }
+        && let Some(el) = document.select(&sel).next()
+    {
+        let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
+        if !text.is_empty() {
+            return Some(text);
+        }
     }
 
     // Try <h1> tag
     if let Ok(sel) = Selector::parse("h1")
-        && let Some(el) = document.select(&sel).next() {
-            let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
-            if !text.is_empty() {
-                return Some(text);
-            }
+        && let Some(el) = document.select(&sel).next()
+    {
+        let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
+        if !text.is_empty() {
+            return Some(text);
+        }
     }
 
     None
