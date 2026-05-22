@@ -123,10 +123,9 @@ impl DelegateExecutor for CoreDelegateExecutor {
             let child_registry = ToolRegistry::new();
             let all_tool_names = self.tool_registry.list().await;
             for tool_name in &all_tool_names {
-                if let Some(tool) = self.tool_registry.get(tool_name).await {
-                    if toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()) {
+                if let Some(tool) = self.tool_registry.get(tool_name).await
+                    && (toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string())) {
                         child_registry.register(tool).await;
-                    }
                 }
             }
 
