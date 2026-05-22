@@ -46,9 +46,11 @@ impl AIAgent {
         tool_registry: ToolRegistry,
         skill_store: hakimi_skills::SkillStore,
     ) -> Self {
+        let engine = hakimi_context::ContextEngineBuilder::new().build();
         Self::builder()
             .model(model)
             .transport(transport)
+            .context_engine(Arc::new(tokio::sync::RwLock::new(engine)))
             .tool_registry(tool_registry)
             .build()
             .expect("failed to build agent with defaults")
