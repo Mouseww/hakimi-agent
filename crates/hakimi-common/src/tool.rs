@@ -80,7 +80,7 @@ pub trait KnowledgeSearcher: Send + Sync {
 }
 
 /// Contextual information available during tool execution.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct ToolContext {
     /// ID of the current session.
     pub session_id: String,
@@ -108,20 +108,6 @@ pub struct ToolContext {
     /// Searcher for accessing the knowledge base.
     #[serde(skip)]
     pub knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
-}
-
-impl Default for ToolContext {
-    fn default() -> Self {
-        Self {
-            session_id: String::new(),
-            user_id: None,
-            task_id: None,
-            workdir: String::new(),
-            model: None,
-            delegate_executor: None,
-            knowledge_searcher: None,
-        }
-    }
 }
 
 impl std::fmt::Debug for ToolContext {
