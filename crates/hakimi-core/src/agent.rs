@@ -41,11 +41,13 @@ pub struct AIAgent {
 impl AIAgent {
     /// Create a new agent from its components.
     pub fn new(
+        model: impl Into<String>,
         transport: Arc<dyn ProviderTransport>,
         tool_registry: ToolRegistry,
         skill_store: hakimi_skills::SkillStore,
     ) -> Self {
         Self::builder()
+            .model(model)
             .transport(transport)
             .tool_registry(tool_registry)
             .build()

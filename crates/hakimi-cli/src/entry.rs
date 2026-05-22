@@ -567,7 +567,7 @@ async fn build_agent(
     };
 
     // Construct agent.
-    let mut agent = hakimi_core::AIAgent::new(transport, tool_registry, skill_store);
+    let mut agent = hakimi_core::AIAgent::new(&model, transport, tool_registry, skill_store);
     agent.set_model(&model);
     // agent.set_max_turns(config.agent.max_turns);
 
