@@ -61,9 +61,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p hakimi-cli
+            cross build --release --target ${{ matrix.target }} -p hakimi-agent
           else
-            cargo build --release --target ${{ matrix.target }} -p hakimi-cli
+            cargo build --release --target ${{ matrix.target }} -p hakimi-agent
           fi
 
       - name: Package (Unix)
