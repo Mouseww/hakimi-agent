@@ -450,8 +450,7 @@ echo "{\"result\": \"echo: $INPUT\"}"
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None,
-        };
+            delegate_executor: None, ..Default::default() };
 
         let result = tool.execute(&json!({"msg": "hello"}), &ctx).await.unwrap();
         assert!(result.contains("echo:"));

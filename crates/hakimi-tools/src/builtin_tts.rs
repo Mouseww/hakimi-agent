@@ -255,22 +255,20 @@ async fn generate_edge_tts(
         .send()
         .await;
 
-    if let Ok(resp) = voices_response {
-        if let Ok(body) = resp.text().await {
-            if let Ok(voices) = serde_json::from_str::<JsonValue>(&body) {
-                let empty_vec = vec![];
-                let voice_list = voices.as_array().unwrap_or(&empty_vec);
-                let voice_exists = voice_list.iter().any(|v| {
-                    v.get("ShortName")
-                        .and_then(|n| n.as_str())
-                        .map(|n| n == voice)
-                        .unwrap_or(false)
-                });
-                if !voice_exists {
-                    warn!(voice = %voice, "voice not found in Edge TTS voice list, proceeding anyway");
-                }
+    if let Ok(resp) = voices_response
+        && let Ok(body) = resp.text().await
+        && let Ok(voices) = serde_json::from_str::<JsonValue>(&body) {
+            let empty_vec = vec![];
+            let voice_list = voices.as_array().unwrap_or(&empty_vec);
+            let voice_exists = voice_list.iter().any(|v| {
+                v.get("ShortName")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n == voice)
+                    .unwrap_or(false)
+            });
+            if !voice_exists {
+                warn!(voice = %voice, "voice not found in Edge TTS voice list, proceeding anyway");
             }
-        }
     }
 
     // Step 2: Generate audio using Edge TTS WebSocket protocol
@@ -427,8 +425,7 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None,
-        };
+            delegate_executor: None, ..Default::default() };
         let result = tool.execute(&json!({"text": ""}), &ctx).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
@@ -444,8 +441,7 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None,
-        };
+            delegate_executor: None, ..Default::default() };
         let result = tool.execute(&json!({"text": "   "}), &ctx).await;
         assert!(result.is_err());
     }
@@ -459,8 +455,7 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None,
-        };
+            delegate_executor: None, ..Default::default() };
         let result = tool.execute(&json!({}), &ctx).await;
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
@@ -476,8 +471,7 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None,
-        };
+            delegate_executor: None, ..Default::default() };
         let result = tool
             .execute(&json!({"text": "hello", "provider": "invalid"}), &ctx)
             .await;
@@ -500,8 +494,7 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None,
-        };
+            delegate_executor: None, ..Default::default() };
         let result = tool
             .execute(&json!({"text": "hello", "provider": "openai"}), &ctx)
             .await;

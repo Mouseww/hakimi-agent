@@ -136,8 +136,7 @@ mod tests {
             task_id: None,
             workdir: "/tmp".to_string(),
             model: None,
-            delegate_executor: None,
-        }
+            delegate_executor: None, ..Default::default() }
     }
 
     /// Drain the message queue to avoid cross-test pollution

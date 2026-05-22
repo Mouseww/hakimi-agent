@@ -179,10 +179,9 @@ fn extract_readable_text(html: &str) -> String {
     // Build result
     let mut result = String::new();
 
-    if let Some(t) = title {
-        if !t.is_empty() {
+    if let Some(t) = title
+        && !t.is_empty() {
             result.push_str(&format!("# {t}\n\n"));
-        }
     }
 
     for part in &content_parts {
@@ -199,23 +198,21 @@ fn extract_readable_text(html: &str) -> String {
 /// Extract the page title.
 fn extract_title(document: &Html) -> Option<String> {
     // Try <title> tag
-    if let Ok(sel) = Selector::parse("title") {
-        if let Some(el) = document.select(&sel).next() {
+    if let Ok(sel) = Selector::parse("title")
+        && let Some(el) = document.select(&sel).next() {
             let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
             if !text.is_empty() {
                 return Some(text);
             }
-        }
     }
 
     // Try <h1> tag
-    if let Ok(sel) = Selector::parse("h1") {
-        if let Some(el) = document.select(&sel).next() {
+    if let Ok(sel) = Selector::parse("h1")
+        && let Some(el) = document.select(&sel).next() {
             let text = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
             if !text.is_empty() {
                 return Some(text);
             }
-        }
     }
 
     None

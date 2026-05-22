@@ -176,8 +176,7 @@ mod tests {
             task_id: None,
             workdir: workdir.to_string(),
             model: None,
-            delegate_executor: None,
-        }
+            delegate_executor: None, ..Default::default() }
     }
 
     #[test]
