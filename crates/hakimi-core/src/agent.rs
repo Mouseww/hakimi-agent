@@ -442,12 +442,12 @@ impl AIAgent {
     }
 
     /// Set a user profile.
-    pub fn set_user_profile(&mut self, profile: impl Into<String>) {
+    pub fn set_user_profile(&mut self, _profile: impl Into<String>) {
         // Placeholder or actual logic
     }
 
     /// Set a memory.
-    pub fn set_memory(&mut self, memory: impl Into<String>) {
+    pub fn set_memory(&mut self, _memory: impl Into<String>) {
         // Placeholder or actual logic
     }
 }
