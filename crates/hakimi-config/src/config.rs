@@ -407,6 +407,12 @@ pub struct RoleConfig {
     /// Model override for this role (falls back to top-level model)
     #[serde(default)]
     pub model: String,
+    /// API Key override for this role
+    #[serde(default)]
+    pub api_key: String,
+    /// Base URL override for this role
+    #[serde(default)]
+    pub base_url: String,
     /// API mode override
     #[serde(default)]
     pub api_mode: String,
