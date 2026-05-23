@@ -18,9 +18,9 @@ use crate::loop_impl;
 /// Use [`AIAgent::builder()`] to construct an instance via the builder pattern.
 pub struct AIAgent {
     pub(crate) model: String,
-    pub(crate) _provider: String,
-    pub(crate) _base_url: String,
-    pub(crate) _api_key: String,
+    pub(crate) provider: String,
+    pub(crate) base_url: String,
+    pub(crate) api_key: String,
     pub(crate) max_iterations: usize,
     pub(crate) transport: Arc<dyn ProviderTransport>,
     pub(crate) tool_registry: ToolRegistry,
@@ -261,9 +261,9 @@ impl AIAgentBuilder {
 
         Ok(AIAgent {
             model,
-            _provider: provider,
-            _base_url: base_url,
-            _api_key: api_key,
+            provider,
+            base_url,
+            api_key,
             max_iterations,
             transport,
             tool_registry,
@@ -292,12 +292,12 @@ impl Default for AIAgentBuilder {
 impl AIAgent {
     /// Set the API key.
     pub fn set_api_key(&mut self, api_key: &str) {
-        self._api_key = api_key.to_string();
+        self.api_key = api_key.to_string();
     }
 
     /// Set the base URL.
     pub fn set_base_url(&mut self, base_url: &str) {
-        self._base_url = base_url.to_string();
+        self.base_url = base_url.to_string();
     }
 
     /// Create a new builder for constructing an [`AIAgent`].
@@ -314,11 +314,9 @@ impl AIAgent {
         Ok(result.final_response)
     }
 
-    /// Run a full conversation turn: send a user message and iterate with tools
-    /// until the model produces a text response or the budget is exhausted.
+    /// Alias for [`chat`](Self::chat) — kept for API compatibility.
     pub async fn query(&mut self, user_message: &str) -> Result<String> {
-        let result = self.run_conversation(user_message).await?;
-        Ok(result.final_response)
+        self.chat(user_message).await
     }
 
     /// Run a full conversation turn: send a user message and iterate with tools
@@ -453,15 +451,5 @@ impl AIAgent {
     /// Get a reference to the skill store.
     pub fn skill_store(&self) -> &hakimi_skills::SkillStore {
         &self.skill_store
-    }
-
-    /// Set a user profile.
-    pub fn set_user_profile(&mut self, _profile: impl Into<String>) {
-        // Placeholder or actual logic
-    }
-
-    /// Set a memory.
-    pub fn set_memory(&mut self, _memory: impl Into<String>) {
-        // Placeholder or actual logic
     }
 }

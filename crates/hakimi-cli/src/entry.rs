@@ -288,7 +288,6 @@ fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig)
             return default_role.api_key.clone();
         }
     }
-    // 5. Delegation fallback
     if !config.delegation.api_key.is_empty() {
         return config.delegation.api_key.clone();
     }
@@ -630,6 +629,17 @@ async fn start_gateway(
             .get("default")
             .and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone()))
     });
+
+    // Re-resolve API key for Gateway mode from default role
+    let mut agent = agent;
+    if let Some(default_role) = config.roles.get("default") {
+        if !default_role.api_key.is_empty() {
+            agent.set_api_key(&default_role.api_key);
+        }
+        if !default_role.base_url.is_empty() {
+            agent.set_base_url(&default_role.base_url);
+        }
+    }
 
     if let Some(token) = bot_token {
         if !token.is_empty() {
