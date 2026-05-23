@@ -81,7 +81,16 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         }
 
         // Fetch a response (streaming or non-streaming).
-        let response = fetch_response(agent, streaming, &send_messages, &tool_defs, &params, &mut api_call_count, &mut agent.messages).await?;
+        let response = fetch_response(
+            agent,
+            streaming,
+            &send_messages,
+            &tool_defs,
+            &params,
+            &mut api_call_count,
+            &mut agent.messages,
+        )
+        .await?;
 
         // Track usage.
         if let Some(ref usage) = response.usage {
@@ -254,7 +263,11 @@ async fn fetch_streaming_response(
 }
 
 /// Process tool calls: append assistant message, check guardrails, dispatch tools.
-async fn process_tool_calls(agent: &mut AIAgent, response: &NormalizedResponse, tool_ctx: &hakimi_common::ToolContext) {
+async fn process_tool_calls(
+    agent: &mut AIAgent,
+    response: &NormalizedResponse,
+    tool_ctx: &hakimi_common::ToolContext,
+) {
     let tool_calls = response.tool_calls.as_ref().unwrap();
 
     debug!(count = tool_calls.len(), "Processing tool calls");
