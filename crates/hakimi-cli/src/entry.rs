@@ -1094,9 +1094,13 @@ async fn start_gateway(
 
             let final_text = err_msg.unwrap_or(response_text);
 
-            if let Some(_msg_id) = initial_message_id {
-                // The progressive streaming callback has already sent the final text
-                // So we do not need to do another redundant `.edit_message` here
+            if let Some(msg_id) = initial_message_id {
+                // The streaming callback appends ⏳ to every frame except the absolute final one,
+                // but since it's throttled to 1s, it may have missed the very last `[DONE]` delta frame.
+                // We MUST do one final `.edit_message()` here with the clean `final_text` (no hourglass).
+                let _ = gateway_clone
+                    .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
+                    .await;
             } else {
                 let reply = hakimi_gateway::GatewayMessage {
                     platform: platform.clone(),
