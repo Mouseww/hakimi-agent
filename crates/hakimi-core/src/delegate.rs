@@ -123,10 +123,10 @@ impl DelegateExecutor for CoreDelegateExecutor {
             let child_registry = ToolRegistry::new();
             let all_tool_names = self.tool_registry.list().await;
             for tool_name in &all_tool_names {
-                if let Some(tool) = self.tool_registry.get(tool_name).await {
-                    if toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()) {
-                        child_registry.register(tool).await;
-                    }
+                if let Some(tool) = self.tool_registry.get(tool_name).await
+                    && (toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()))
+                {
+                    child_registry.register(tool).await;
                 }
             }
 
@@ -154,7 +154,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
             // In simple cases we just share parent's builder parameters, but we must explicitly
             // pass an empty tool_registry and context_engine since we rebuild them.
             // Build the child agent.
-            let mut child_agent = AIAgent::builder()
+            let child_agent = AIAgent::builder()
                 .model(&self.model)
                 .transport(self.transport.clone())
                 .context_engine(child_context_engine)
