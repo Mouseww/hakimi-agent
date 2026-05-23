@@ -82,16 +82,31 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         }
 
         // Fetch a response (streaming or non-streaming).
-        let response = fetch_response(
-            agent,
+        let response = match fetch_response(
+            agent.transport.as_ref(),
+            &agent.model,
             streaming,
             &send_messages,
             &tool_defs,
             &params,
             &mut api_call_count,
-            &mut agent.messages,
         )
-        .await?;
+        .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                // Check if context compression might help.
+                let classifier = ErrorClassifier::new();
+                let classification = classifier.classify_transport_error(&e.to_string());
+                if matches!(classification.action, RecoveryAction::CompressContext) {
+                    warn!(error = %e, "Context overflow detected — compressing and retrying");
+                    let mut engine = agent.context_engine.write().await;
+                    engine.compress(&mut agent.messages).await?;
+                    continue;
+                }
+                return Err(e);
+            }
+        };
 
         // Track usage.
         if let Some(ref usage) = response.usage {
@@ -154,24 +169,23 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
 
 /// Fetch a response from the transport, with retry logic.
 async fn fetch_response(
-    agent: &AIAgent,
+    transport: &dyn hakimi_transports::ProviderTransport,
+    model: &str,
     streaming: bool,
     send_messages: &[Message],
     tool_defs: &[ToolDefinition],
     params: &RequestParams,
     api_call_count: &mut usize,
-    messages: &mut Vec<Message>,
 ) -> Result<NormalizedResponse> {
     // Maximum retry attempts per fetch.
     let max_retries = MAX_RETRIES;
 
     loop {
         let result = if streaming {
-            fetch_streaming_response(agent, send_messages, tool_defs, params).await
+            fetch_streaming_response(transport, model, send_messages, tool_defs, params).await
         } else {
-            agent
-                .transport
-                .execute(&agent.model, send_messages, tool_defs, params)
+            transport
+                .execute(model, send_messages, tool_defs, params)
                 .await
                 .map_err(|e| e.into())
         };
@@ -190,10 +204,9 @@ async fn fetch_response(
 
                 match classification.action {
                     RecoveryAction::CompressContext => {
-                        warn!(error = %e, "Context overflow detected — triggering compression");
-                        let mut engine = agent.context_engine.write().await;
-                        engine.compress(messages).await?;
-                        continue;
+                        // Signal the caller to compress context and retry.
+                        warn!(error = %e, "Context overflow detected — returning error for caller to handle");
+                        return Err(e);
                     }
                     RecoveryAction::Abort => {
                         warn!(error = %e, reason = ?classification.reason, "Non-recoverable error — aborting");
@@ -225,14 +238,14 @@ async fn fetch_response(
 
 /// Open a streaming connection, consume the stream, and return the accumulated response.
 async fn fetch_streaming_response(
-    agent: &AIAgent,
+    transport: &dyn hakimi_transports::ProviderTransport,
+    model: &str,
     send_messages: &[Message],
     tool_defs: &[ToolDefinition],
     params: &RequestParams,
 ) -> Result<NormalizedResponse> {
-    let mut stream = agent
-        .transport
-        .execute_streaming(&agent.model, send_messages, tool_defs, params)
+    let mut stream = transport
+        .execute_streaming(model, send_messages, tool_defs, params)
         .await?;
 
     let mut accumulator = StreamAccumulator::new();
