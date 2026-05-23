@@ -103,6 +103,7 @@ impl AIAgentBuilder {
             streaming: None,
             knowledge_searcher: None,
             skill_store: None,
+        }
     }
 
     /// Set the model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-20250514"`).

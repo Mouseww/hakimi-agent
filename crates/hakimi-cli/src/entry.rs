@@ -1048,6 +1048,16 @@ async fn self_update() -> Result<()> {
     let current_exe = env::current_exe()?;
     let backup_path = format!("{}.bak", current_exe.display());
 
+    // Important: Backup user/memory state across updates
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let hakimi_dir = home.join(".hakimi");
+    let state_backup_tar = home.join(format!(".hakimi-state-backup-pre-update-{}.tar.gz", chrono::Local::now().format("%Y%m%d%H%M%S")));
+    
+    if hakimi_dir.exists() {
+        println!("Creating pre-update backup of memory and sessions...");
+        let _ = std::process::Command::new("tar").arg("-czf").arg(&state_backup_tar).arg("-C").arg(&home).arg(".hakimi").output().map_err(|e| anyhow::anyhow!("Tar backup failed: {}", e))?;
+    }
+
     // Backup current binary
     fs::copy(&current_exe, &backup_path)?;
     println!("Backed up current binary to {backup_path}");
@@ -1072,6 +1082,13 @@ async fn self_update() -> Result<()> {
         Ok(o) if o.status.success() => {
             println!("✅ Updated successfully! Hakimi Agent — AI-powered coding assistant\n");
             let _ = fs::remove_file(&backup_path);
+            
+            // Try to restore user/memory state if the archive was created
+            if state_backup_tar.exists() {
+                println!("Restoring pre-update backup of memory and sessions...");
+                let _ = std::process::Command::new("tar").arg("-xzf").arg(&state_backup_tar).arg("-C").arg(&home).output();
+                let _ = fs::remove_file(&state_backup_tar);
+            }
         }
         _ => {
             // Restore backup
