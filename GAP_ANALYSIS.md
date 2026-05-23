@@ -573,7 +573,7 @@ Generated: 2026-05-21
 **Missing entirely: ~85+**
 
 ### Top 10 Critical Gaps (by impact)
-1. Browser automation (12 tools, zero in Hakimi)
+1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
 2. Web content extraction (web_extract)
 3. Image generation
 4. TTS / voice output
