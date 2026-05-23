@@ -22,19 +22,18 @@ const BASE_DELAY: Duration = Duration::from_secs(1);
 /// Maximum delay cap for backoff.
 const MAX_DELAY: Duration = Duration::from_secs(30);
 
-/// Run the core conversation loop.
-///
-/// This function:
-/// 1. Builds the messages array (system prompt + conversation history).
-/// 2. Calls the transport to get an LLM response.
-/// 3. If the response contains tool calls, dispatches each one, appends
-///    the results, and loops back.
-/// 4. If the response is plain text, returns it as the final answer.
-/// 5. On transient errors, retries with jittered exponential backoff.
-///
-/// Returns a [`ConversationResult`] with the final response, all messages,
-/// accumulated usage, and the API call count.
+/// Run the core conversation loop (non-streaming).
 pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
+    run_loop_inner(agent, false).await
+}
+
+/// Run the streaming variant of the core conversation loop.
+pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResult> {
+    run_loop_inner(agent, true).await
+}
+
+/// Shared inner loop — `streaming` controls how the response is fetched.
+async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<ConversationResult> {
     let budget = IterationBudget::new(agent.max_iterations);
     let mut total_usage = Usage::default();
     let mut api_call_count: usize = 0;
@@ -46,6 +45,7 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
     debug!(
         tool_count = tool_defs.len(),
         max_iterations = agent.max_iterations,
+        streaming = streaming,
         "Starting agent loop"
     );
 
@@ -80,55 +80,8 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
             }
         }
 
-        // Call the transport.
-        let response = match agent
-            .transport
-            .execute(&agent.model, &send_messages, &tool_defs, &params)
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) => {
-                api_call_count += 1;
-                let attempt = (api_call_count % (MAX_RETRIES as usize + 1)) as u32;
-
-                // Use error classifier for smarter recovery decisions
-                let classifier = ErrorClassifier::new();
-                let classification = classifier.classify_transport_error(&e.to_string());
-
-                match classification.action {
-                    RecoveryAction::CompressContext => {
-                        warn!(error = %e, "Context overflow detected — triggering compression");
-                        let engine = agent.context_engine.write().await;
-                        engine.compress(&mut agent.messages).await?;
-                        continue;
-                    }
-                    RecoveryAction::Abort => {
-                        warn!(error = %e, reason = ?classification.reason, "Non-recoverable error — aborting");
-                        return Err(e);
-                    }
-                    _ if should_retry(&e, attempt, MAX_RETRIES) => {
-                        let delay = if let Some(retry_after) = classification.retry_after_ms {
-                            Duration::from_millis(retry_after)
-                        } else {
-                            jittered_backoff(attempt, BASE_DELAY, MAX_DELAY)
-                        };
-                        warn!(
-                            error = %e,
-                            reason = ?classification.reason,
-                            action = ?classification.action,
-                            attempt = attempt,
-                            delay_ms = delay.as_millis(),
-                            "Retrying after classified error"
-                        );
-                        tokio::time::sleep(delay).await;
-                        continue;
-                    }
-                    _ => return Err(e),
-                }
-            }
-        };
-
-        api_call_count += 1;
+        // Fetch a response (streaming or non-streaming).
+        let response = fetch_response(agent, streaming, &send_messages, &tool_defs, &params, &mut api_call_count, &mut agent.messages).await?;
 
         // Track usage.
         if let Some(ref usage) = response.usage {
@@ -146,65 +99,13 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
 
         // Check for tool calls.
         if response.has_tool_calls() {
-            let tool_calls = response.tool_calls.unwrap();
-
-            debug!(count = tool_calls.len(), "Processing tool calls");
-
-            // Append the assistant message (with tool_calls) to history.
-            let assistant_msg = build_assistant_message_with_tools(
-                response.content.clone(),
-                &tool_calls,
-                response.reasoning.clone(),
-            );
-            agent.messages.push(assistant_msg);
-
-            // Initialize guardrails for this turn.
-            let mut guardrails = ToolGuardrails::new();
-
-            // Dispatch each tool call and append results.
-            for tc in &tool_calls {
-                if agent.check_interrupt() {
-                    info!("Interrupted during tool dispatch");
-                    break;
-                }
-
-                // Check guardrails before dispatching
-                let decision = guardrails.record_call(&tc.name, &tc.arguments);
-                match decision {
-                    GuardrailDecision::Halt(reason) => {
-                        warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch");
-                        agent.messages.push(Message::tool_result(
-                            &tc.id,
-                            &tc.name,
-                            format!("HALT: Tool dispatch halted by guardrails: {reason}"),
-                        ));
-                        break;
-                    }
-                    GuardrailDecision::SyntheticResult(msg) => {
-                        warn!(tool = %tc.name, "Injecting synthetic result to break loop");
-                        agent
-                            .messages
-                            .push(Message::tool_result(&tc.id, &tc.name, msg));
-                        continue;
-                    }
-                    GuardrailDecision::Warn(msg) => {
-                        warn!(tool = %tc.name, reason = %msg, "Guardrail warning");
-                    }
-                    GuardrailDecision::Allow => {}
-                }
-
-                let tool_result = dispatch_tool(agent, &tool_ctx, tc).await;
-                agent.messages.push(tool_result);
-            }
-
+            process_tool_calls(agent, &response, &tool_ctx).await;
             budget.use_one();
             continue;
         }
 
         // Text response — we're done.
         let final_text = response.content.unwrap_or_default();
-
-        // Append the final assistant message to history.
         agent.messages.push(Message::assistant(&final_text));
 
         // Notify context engine that the session ended.
@@ -239,6 +140,171 @@ pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
         usage: total_usage,
         api_call_count,
     })
+}
+
+/// Fetch a response from the transport, with retry logic.
+async fn fetch_response(
+    agent: &AIAgent,
+    streaming: bool,
+    send_messages: &[Message],
+    tool_defs: &[hakimi_transports::ToolDefinition],
+    params: &RequestParams,
+    api_call_count: &mut usize,
+    messages: &mut Vec<Message>,
+) -> Result<NormalizedResponse> {
+    // Maximum retry attempts per fetch.
+    let max_retries = MAX_RETRIES;
+
+    loop {
+        let result = if streaming {
+            fetch_streaming_response(agent, send_messages, tool_defs, params).await
+        } else {
+            agent
+                .transport
+                .execute(&agent.model, send_messages, tool_defs, params)
+                .await
+                .map_err(|e| e.into())
+        };
+
+        match result {
+            Ok(resp) => {
+                *api_call_count += 1;
+                return Ok(resp);
+            }
+            Err(e) => {
+                *api_call_count += 1;
+                let attempt = (*api_call_count % (max_retries as usize + 1)) as u32;
+
+                let classifier = ErrorClassifier::new();
+                let classification = classifier.classify_transport_error(&e.to_string());
+
+                match classification.action {
+                    RecoveryAction::CompressContext => {
+                        warn!(error = %e, "Context overflow detected — triggering compression");
+                        let mut engine = agent.context_engine.write().await;
+                        engine.compress(messages).await?;
+                        continue;
+                    }
+                    RecoveryAction::Abort => {
+                        warn!(error = %e, reason = ?classification.reason, "Non-recoverable error — aborting");
+                        return Err(e);
+                    }
+                    _ if should_retry(&e, attempt, max_retries) => {
+                        let delay = if let Some(retry_after) = classification.retry_after_ms {
+                            Duration::from_millis(retry_after)
+                        } else {
+                            jittered_backoff(attempt, BASE_DELAY, MAX_DELAY)
+                        };
+                        warn!(
+                            error = %e,
+                            reason = ?classification.reason,
+                            action = ?classification.action,
+                            attempt = attempt,
+                            delay_ms = delay.as_millis(),
+                            "Retrying after classified error"
+                        );
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+                    _ => return Err(e),
+                }
+            }
+        }
+    }
+}
+
+/// Open a streaming connection, consume the stream, and return the accumulated response.
+async fn fetch_streaming_response(
+    agent: &AIAgent,
+    send_messages: &[Message],
+    tool_defs: &[hakimi_transports::ToolDefinition],
+    params: &RequestParams,
+) -> Result<NormalizedResponse> {
+    let mut stream = agent
+        .transport
+        .execute_streaming(&agent.model, send_messages, tool_defs, params)
+        .await?;
+
+    let mut accumulator = StreamAccumulator::new();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(event) => {
+                // Print content deltas to stdout in real-time.
+                if let StreamEvent::ContentDelta(ref text) = event {
+                    use std::io::Write;
+                    let _ = std::io::stdout().write_all(text.as_bytes());
+                    let _ = std::io::stdout().flush();
+                }
+                accumulator.push(event);
+            }
+            Err(e) => {
+                warn!(error = %e, "Error in streaming response");
+                return Err(HakimiError::Transport(format!("Stream error: {e}")));
+            }
+        }
+    }
+    // Print a newline after the stream completes.
+    {
+        use std::io::Write;
+        let _ = std::io::stdout().write_all(b"\n");
+        let _ = std::io::stdout().flush();
+    }
+
+    Ok(accumulator_to_response(&accumulator))
+}
+
+/// Process tool calls: append assistant message, check guardrails, dispatch tools.
+async fn process_tool_calls(agent: &mut AIAgent, response: &NormalizedResponse, tool_ctx: &hakimi_common::ToolContext) {
+    let tool_calls = response.tool_calls.as_ref().unwrap();
+
+    debug!(count = tool_calls.len(), "Processing tool calls");
+
+    // Append the assistant message (with tool_calls) to history.
+    let assistant_msg = build_assistant_message_with_tools(
+        response.content.clone(),
+        tool_calls,
+        response.reasoning.clone(),
+    );
+    agent.messages.push(assistant_msg);
+
+    // Initialize guardrails for this turn.
+    let mut guardrails = ToolGuardrails::new();
+
+    // Dispatch each tool call and append results.
+    for tc in tool_calls {
+        if agent.check_interrupt() {
+            info!("Interrupted during tool dispatch");
+            break;
+        }
+
+        // Check guardrails before dispatching
+        let decision = guardrails.record_call(&tc.name, &tc.arguments);
+        match decision {
+            GuardrailDecision::Halt(reason) => {
+                warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch");
+                agent.messages.push(Message::tool_result(
+                    &tc.id,
+                    &tc.name,
+                    format!("HALT: Tool dispatch halted by guardrails: {reason}"),
+                ));
+                break;
+            }
+            GuardrailDecision::SyntheticResult(msg) => {
+                warn!(tool = %tc.name, "Injecting synthetic result to break loop");
+                agent
+                    .messages
+                    .push(Message::tool_result(&tc.id, &tc.name, msg));
+                continue;
+            }
+            GuardrailDecision::Warn(msg) => {
+                warn!(tool = %tc.name, reason = %msg, "Guardrail warning");
+            }
+            GuardrailDecision::Allow => {}
+        }
+
+        let tool_result = dispatch_tool(agent, tool_ctx, tc).await;
+        agent.messages.push(tool_result);
+    }
 }
 
 /// Build the messages array to send to the API:
@@ -314,254 +380,6 @@ async fn dispatch_tool(
             Message::tool_result(&tc.id, &tc.name, format!("Error: {e}"))
         }
     }
-}
-
-/// Run the streaming variant of the core conversation loop.
-///
-/// This function is identical to [`run_loop`] in its overall structure, but
-/// uses `transport.execute_streaming()` to receive tokens as they are generated.
-/// Content deltas are printed to stdout in real-time for a responsive REPL UX.
-///
-/// After the stream is fully consumed, the accumulated response is processed
-/// exactly like a non-streaming response: tool calls are dispatched and the
-/// loop iterates until a text response is produced or the budget is exhausted.
-pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResult> {
-    let budget = IterationBudget::new(agent.max_iterations);
-    let mut total_usage = Usage::default();
-    let mut api_call_count: usize = 0;
-
-    let tool_ctx = agent.build_tool_context();
-    let tool_defs = agent.tool_registry.get_definitions().await;
-    let params = RequestParams::default();
-
-    debug!(
-        tool_count = tool_defs.len(),
-        max_iterations = agent.max_iterations,
-        "Starting streaming agent loop"
-    );
-
-    // Notify the context engine that a session has started.
-    {
-        let mut engine = agent.context_engine.write().await;
-        engine.on_session_start();
-    }
-
-    loop {
-        // Check budget and interrupt.
-        if budget.is_exhausted() {
-            warn!(api_calls = api_call_count, "Iteration budget exhausted");
-            break;
-        }
-        if agent.check_interrupt() {
-            info!("Agent loop interrupted by user");
-            break;
-        }
-
-        // Build the messages array to send: system prompt + conversation history.
-        let send_messages = build_send_messages(agent);
-
-        // Check if context compression is needed.
-        {
-            let engine = agent.context_engine.read().await;
-            if engine.should_compress() {
-                drop(engine);
-                let engine = agent.context_engine.write().await;
-                engine.compress(&mut agent.messages).await?;
-                info!("Context compression applied");
-            }
-        }
-
-        // Open a streaming connection to the transport.
-        let mut stream = match agent
-            .transport
-            .execute_streaming(&agent.model, &send_messages, &tool_defs, &params)
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                api_call_count += 1;
-                let attempt = (api_call_count % (MAX_RETRIES as usize + 1)) as u32;
-
-                // Use error classifier for smarter recovery decisions
-                let classifier = ErrorClassifier::new();
-                let classification = classifier.classify_transport_error(&e.to_string());
-
-                match classification.action {
-                    RecoveryAction::CompressContext => {
-                        warn!(error = %e, "Context overflow detected — triggering compression (streaming)");
-                        let engine = agent.context_engine.write().await;
-                        engine.compress(&mut agent.messages).await?;
-                        continue;
-                    }
-                    RecoveryAction::Abort => {
-                        warn!(error = %e, reason = ?classification.reason, "Non-recoverable error — aborting (streaming)");
-                        return Err(e);
-                    }
-                    _ if should_retry(&e, attempt, MAX_RETRIES) => {
-                        let delay = if let Some(retry_after) = classification.retry_after_ms {
-                            Duration::from_millis(retry_after)
-                        } else {
-                            jittered_backoff(attempt, BASE_DELAY, MAX_DELAY)
-                        };
-                        warn!(
-                            error = %e,
-                            reason = ?classification.reason,
-                            action = ?classification.action,
-                            attempt = attempt,
-                            delay_ms = delay.as_millis(),
-                            "Retrying after classified error (streaming)"
-                        );
-                        tokio::time::sleep(delay).await;
-                        continue;
-                    }
-                    _ => return Err(e),
-                }
-            }
-        };
-
-        api_call_count += 1;
-
-        // Consume the stream and accumulate the response.
-        let mut accumulator = StreamAccumulator::new();
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(event) => {
-                    // Print content deltas to stdout in real-time.
-                    if let StreamEvent::ContentDelta(ref text) = event {
-                        use std::io::Write;
-                        let _ = std::io::stdout().write_all(text.as_bytes());
-                        let _ = std::io::stdout().flush();
-                    }
-                    accumulator.push(event);
-                }
-                Err(e) => {
-                    warn!(error = %e, "Error in streaming response");
-                    return Err(HakimiError::Transport(format!("Stream error: {e}")));
-                }
-            }
-        }
-        // Print a newline after the stream completes.
-        {
-            use std::io::Write;
-            let _ = std::io::stdout().write_all(b"\n");
-            let _ = std::io::stdout().flush();
-        }
-
-        // Build a NormalizedResponse from the accumulated stream data.
-        let response = accumulator_to_response(&accumulator);
-
-        // Track usage.
-        if let Some(ref usage) = response.usage {
-            total_usage.accumulate(usage);
-            let mut engine = agent.context_engine.write().await;
-            engine.update_from_response(usage);
-        }
-
-        // Check for content filter.
-        if response.finish_reason == Some(FinishReason::ContentFilter) {
-            return Err(HakimiError::Other(
-                "Response was filtered by the content policy".into(),
-            ));
-        }
-
-        // Check for tool calls.
-        if response.has_tool_calls() {
-            let tool_calls = response.tool_calls.unwrap();
-
-            debug!(
-                count = tool_calls.len(),
-                "Processing tool calls (streaming)"
-            );
-
-            // Append the assistant message (with tool_calls) to history.
-            let assistant_msg = build_assistant_message_with_tools(
-                response.content.clone(),
-                &tool_calls,
-                response.reasoning.clone(),
-            );
-            agent.messages.push(assistant_msg);
-
-            // Initialize guardrails for this turn.
-            let mut guardrails = ToolGuardrails::new();
-
-            // Dispatch each tool call and append results.
-            for tc in &tool_calls {
-                if agent.check_interrupt() {
-                    info!("Interrupted during tool dispatch");
-                    break;
-                }
-
-                // Check guardrails before dispatching
-                let decision = guardrails.record_call(&tc.name, &tc.arguments);
-                match decision {
-                    GuardrailDecision::Halt(reason) => {
-                        warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch (streaming)");
-                        agent.messages.push(Message::tool_result(
-                            &tc.id,
-                            &tc.name,
-                            format!("HALT: Tool dispatch halted by guardrails: {reason}"),
-                        ));
-                        break;
-                    }
-                    GuardrailDecision::SyntheticResult(msg) => {
-                        warn!(tool = %tc.name, "Injecting synthetic result to break loop (streaming)");
-                        agent
-                            .messages
-                            .push(Message::tool_result(&tc.id, &tc.name, msg));
-                        continue;
-                    }
-                    GuardrailDecision::Warn(msg) => {
-                        warn!(tool = %tc.name, reason = %msg, "Guardrail warning (streaming)");
-                    }
-                    GuardrailDecision::Allow => {}
-                }
-
-                let tool_result = dispatch_tool(agent, &tool_ctx, tc).await;
-                agent.messages.push(tool_result);
-            }
-
-            budget.use_one();
-            continue;
-        }
-
-        // Text response — we're done.
-        let final_text = response.content.unwrap_or_default();
-
-        // Append the final assistant message to history.
-        agent.messages.push(Message::assistant(&final_text));
-
-        // Notify context engine that the session ended.
-        {
-            let mut engine = agent.context_engine.write().await;
-            engine.on_session_end();
-        }
-
-        info!(
-            api_calls = api_call_count,
-            response_len = final_text.len(),
-            "Streaming agent loop completed"
-        );
-
-        return Ok(ConversationResult {
-            final_response: final_text,
-            messages: agent.messages.clone(),
-            usage: total_usage,
-            api_call_count,
-        });
-    }
-
-    // Budget exhausted or interrupted — return what we have.
-    {
-        let mut engine = agent.context_engine.write().await;
-        engine.on_session_end();
-    }
-
-    Ok(ConversationResult {
-        final_response: String::new(),
-        messages: agent.messages.clone(),
-        usage: total_usage,
-        api_call_count,
-    })
 }
 
 /// Convert a [`StreamAccumulator`] into a [`NormalizedResponse`].
