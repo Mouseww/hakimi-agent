@@ -18,9 +18,6 @@ use crate::loop_impl;
 /// Use [`AIAgent::builder()`] to construct an instance via the builder pattern.
 pub struct AIAgent {
     pub(crate) model: String,
-    pub(crate) provider: String,
-    pub(crate) base_url: String,
-    pub(crate) api_key: String,
     pub(crate) max_iterations: usize,
     pub(crate) transport: Arc<dyn ProviderTransport>,
     pub(crate) tool_registry: ToolRegistry,
@@ -71,9 +68,6 @@ impl AIAgent {
 #[derive(Clone)]
 pub struct AIAgentBuilder {
     model: Option<String>,
-    provider: Option<String>,
-    base_url: Option<String>,
-    api_key: Option<String>,
     max_iterations: Option<usize>,
     transport: Option<Arc<dyn ProviderTransport>>,
     tool_registry: Option<ToolRegistry>,
@@ -94,9 +88,6 @@ impl AIAgentBuilder {
     pub fn new() -> Self {
         Self {
             model: None,
-            provider: None,
-            base_url: None,
-            api_key: None,
             max_iterations: None,
             transport: None,
             tool_registry: None,
@@ -116,24 +107,6 @@ impl AIAgentBuilder {
     /// Set the model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-20250514"`).
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
-        self
-    }
-
-    /// Set the provider name (e.g. `"openai"`, `"anthropic"`).
-    pub fn provider(mut self, provider: impl Into<String>) -> Self {
-        self.provider = Some(provider.into());
-        self
-    }
-
-    /// Set the base URL for the API endpoint.
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.base_url = Some(url.into());
-        self
-    }
-
-    /// Set the API key.
-    pub fn api_key(mut self, key: impl Into<String>) -> Self {
-        self.api_key = Some(key.into());
         self
     }
 
@@ -239,11 +212,6 @@ impl AIAgentBuilder {
         let session_id = self
             .session_id
             .unwrap_or_else(|| Uuid::new_v4().to_string());
-        let provider = self
-            .provider
-            .unwrap_or_else(|| transport.provider_name().to_string());
-        let base_url = self.base_url.unwrap_or_default();
-        let api_key = self.api_key.unwrap_or_default();
         let max_iterations = self.max_iterations.unwrap_or(90);
         let tool_registry = self.tool_registry.unwrap_or_default();
         let interrupt = self
@@ -254,16 +222,12 @@ impl AIAgentBuilder {
         info!(
             session_id = %session_id,
             model = %model,
-            provider = %provider,
             max_iterations = max_iterations,
             "AIAgent created"
         );
 
         Ok(AIAgent {
             model,
-            provider,
-            base_url,
-            api_key,
             max_iterations,
             transport,
             tool_registry,
@@ -290,16 +254,6 @@ impl Default for AIAgentBuilder {
 }
 
 impl AIAgent {
-    /// Set the API key.
-    pub fn set_api_key(&mut self, api_key: &str) {
-        self.api_key = api_key.to_string();
-    }
-
-    /// Set the base URL.
-    pub fn set_base_url(&mut self, base_url: &str) {
-        self.base_url = base_url.to_string();
-    }
-
     /// Create a new builder for constructing an [`AIAgent`].
     pub fn builder() -> AIAgentBuilder {
         AIAgentBuilder::new()
@@ -401,21 +355,6 @@ impl AIAgent {
     /// Get the model identifier.
     pub fn model(&self) -> &str {
         &self.model
-    }
-
-    /// Get the provider name.
-    pub fn provider(&self) -> &str {
-        &self.provider
-    }
-
-    /// Get the API base URL.
-    pub fn base_url(&self) -> &str {
-        &self.base_url
-    }
-
-    /// Get the API key.
-    pub fn api_key(&self) -> &str {
-        &self.api_key
     }
 
     /// Get the platform name, if set.

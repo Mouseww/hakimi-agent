@@ -631,15 +631,9 @@ async fn start_gateway(
     });
 
     // Re-resolve API key for Gateway mode from default role
+    // Since Gateway mode shares the agent, we just rely on the transport that was already built
+    // with the default role's api_key and base_url.
     let mut agent = agent;
-    if let Some(default_role) = config.roles.get("default") {
-        if !default_role.api_key.is_empty() {
-            agent.set_api_key(&default_role.api_key);
-        }
-        if !default_role.base_url.is_empty() {
-            agent.set_base_url(&default_role.base_url);
-        }
-    }
 
     if let Some(token) = bot_token
         && !token.is_empty()
