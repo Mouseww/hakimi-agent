@@ -11,6 +11,9 @@ path = "src/lib.rs"
 name = "hakimi-server"
 path = "src/main.rs"
 
+[features]
+browser = ["hakimi-tools/browser"]
+
 [dependencies]
 hakimi-core = { path = "../hakimi-core" }
 hakimi-config = { path = "../hakimi-config" }

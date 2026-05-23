@@ -7,6 +7,9 @@ edition.workspace = true
 name = "hakimi-tui"
 path = "src/main.rs"
 
+[features]
+browser = ["hakimi-tools/browser"]
+
 [dependencies]
 hakimi-common = { path = "../hakimi-common" }
 hakimi-core = { path = "../hakimi-core" }

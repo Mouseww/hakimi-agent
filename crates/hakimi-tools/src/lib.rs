@@ -1,3 +1,4 @@
+#[cfg(feature = "browser")]
 mod builtin_browser;
 mod builtin_checkpoint;
 mod builtin_clarify;
@@ -26,6 +27,7 @@ mod plugin;
 mod registry;
 mod trait_def;
 
+#[cfg(feature = "browser")]
 pub use builtin_browser::*;
 pub use builtin_checkpoint::*;
 pub use builtin_clarify::*;

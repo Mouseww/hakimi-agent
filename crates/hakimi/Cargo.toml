@@ -8,6 +8,9 @@ description = "A high-performance AI agent framework written in Rust"
 name = "hakimi"
 path = "src/main.rs"
 
+[features]
+browser = ["hakimi-cli/browser"]
+
 [dependencies]
 hakimi-cli = { path = "../hakimi-cli" }
 anyhow = { workspace = true }

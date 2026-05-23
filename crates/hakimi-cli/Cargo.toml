@@ -3,6 +3,9 @@ name = "hakimi-cli"
 version.workspace = true
 edition = "2024"
 
+[features]
+browser = ["hakimi-tools/browser", "hakimi-server/browser"]
+
 [dependencies]
 hakimi-gateway = { path = "../hakimi-gateway" }
 hakimi-common = { path = "../hakimi-common" }

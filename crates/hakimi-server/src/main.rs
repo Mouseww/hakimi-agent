@@ -222,22 +222,25 @@ async fn build_agent(
         Arc::new(hakimi_tools::ImageGenerateTool),
     ];
     // Browser tools (shared browser instance)
-    let browser_manager = hakimi_tools::BrowserManager::new();
-    builtin_tools.push(Arc::new(hakimi_tools::BrowserNavigateTool::new(
-        browser_manager.clone(),
-    )));
-    builtin_tools.push(Arc::new(hakimi_tools::BrowserSnapshotTool::new(
-        browser_manager.clone(),
-    )));
-    builtin_tools.push(Arc::new(hakimi_tools::BrowserClickTool::new(
-        browser_manager.clone(),
-    )));
-    builtin_tools.push(Arc::new(hakimi_tools::BrowserTypeTool::new(
-        browser_manager.clone(),
-    )));
-    builtin_tools.push(Arc::new(hakimi_tools::BrowserScreenshotTool::new(
-        browser_manager,
-    )));
+    #[cfg(feature = "browser")]
+    {
+        let browser_manager = hakimi_tools::BrowserManager::new();
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserNavigateTool::new(
+            browser_manager.clone(),
+        )));
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserSnapshotTool::new(
+            browser_manager.clone(),
+        )));
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserClickTool::new(
+            browser_manager.clone(),
+        )));
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserTypeTool::new(
+            browser_manager.clone(),
+        )));
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserScreenshotTool::new(
+            browser_manager,
+        )));
+    }
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;
     }
