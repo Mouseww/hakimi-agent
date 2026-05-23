@@ -249,9 +249,10 @@ impl AIAgentBuilder {
             system_prompt: self.system_prompt,
             streaming: self.streaming.unwrap_or(false),
             knowledge_searcher: self.knowledge_searcher,
-            skill_store: Some(self
-                .skill_store
-                .unwrap_or_else(hakimi_skills::SkillStore::empty)),
+            skill_store: Some(
+                self.skill_store
+                    .unwrap_or_else(hakimi_skills::SkillStore::empty),
+            ),
         })
     }
 }
