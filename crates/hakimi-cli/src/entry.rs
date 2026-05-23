@@ -1096,10 +1096,9 @@ async fn start_gateway(
 
             let final_text = err_msg.unwrap_or(response_text);
 
-            if let Some(msg_id) = initial_message_id {
-                let _ = gateway_clone
-                    .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
-                    .await;
+            if let Some(_msg_id) = initial_message_id {
+                // The progressive streaming callback has already sent the final text
+                // So we do not need to do another redundant `.edit_message` here
             } else {
                 let reply = hakimi_gateway::GatewayMessage {
                     platform: platform.clone(),
