@@ -72,6 +72,11 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 
 ## Capabilities
 
+### 🌟 What's New
+- **Gateway Progressive Streaming**: Resolved lingering typing indicators (`⏳`) ensuring fluid platform interaction without delayed edits.
+- **Enhanced Memory Injection**: Fixed move-semantics that occasionally dropped configuration states when reading `~/.hakimi/memory` across concurrent `tokio` tasks.
+- **Improved Code Quality**: Resolved all CI linting errors, including `clippy::too_many_arguments` in `hakimi-core` and various nested `if` statements across the codebase.
+
 ### 🧠 Hakimi-Original Features
 
 These features do not exist in the original Hermes Agent — they are unique to Hakimi:
