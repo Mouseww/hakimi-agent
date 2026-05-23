@@ -338,7 +338,7 @@ impl AIAgent {
         let result = self.run_conversation(message).await?;
         Ok(result.final_response)
     }
-    
+
     /// Dynamically set the streaming callback for this agent instance.
     pub fn set_streaming_callback(&mut self, callback: Option<Arc<dyn Fn(String) + Send + Sync>>) {
         self.streaming_callback = callback;

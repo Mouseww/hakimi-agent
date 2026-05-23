@@ -184,7 +184,15 @@ async fn fetch_response(
 
     loop {
         let result = if streaming {
-            fetch_streaming_response(transport, model, send_messages, tool_defs, params, callback.clone()).await
+            fetch_streaming_response(
+                transport,
+                model,
+                send_messages,
+                tool_defs,
+                params,
+                callback.clone(),
+            )
+            .await
         } else {
             transport
                 .execute(model, send_messages, tool_defs, params)

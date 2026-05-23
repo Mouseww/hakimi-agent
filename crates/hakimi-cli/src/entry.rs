@@ -690,7 +690,9 @@ async fn start_gateway(
             let platform = platform.clone();
 
             // Start typing indicator.
-            let _ = gateway_clone.send_chat_action(&bot_id, &chat_id, "typing").await;
+            let _ = gateway_clone
+                .send_chat_action(&bot_id, &chat_id, "typing")
+                .await;
 
             // Progressive streaming response logic.
             // 1. Send initial empty placeholder message to grab a message ID.
@@ -702,8 +704,11 @@ async fn start_gateway(
                 text: "⏳ Processing...".to_string(),
                 media: None,
             };
-            
-            let initial_message_id = gateway_clone.route_message_get_id(&placeholder).await.unwrap_or(None);
+
+            let initial_message_id = gateway_clone
+                .route_message_get_id(&placeholder)
+                .await
+                .unwrap_or(None);
 
             // Keep typing active while agent processes
             let typing_handle = {
@@ -932,7 +937,9 @@ async fn start_gateway(
 
                 // 4. Send response back via gateway and continue to next message.
                 if let Some(msg_id) = initial_message_id {
-                    let _ = gateway_clone.edit_message(&platform, &bot_id, &chat_id, msg_id, &response).await;
+                    let _ = gateway_clone
+                        .edit_message(&platform, &bot_id, &chat_id, msg_id, &response)
+                        .await;
                 } else {
                     let _ = gateway_clone
                         .route_message(&hakimi_gateway::GatewayMessage {
@@ -967,16 +974,17 @@ async fn start_gateway(
                         a.add_message(m);
                     }
                 }
-                
+
                 if let Some(msg_id) = initial_message_id {
                     let platform_cb = platform.clone();
                     let bot_id_cb = bot_id.clone();
                     let chat_id_cb = chat_id.clone();
                     let gateway_cb = gateway_clone.clone();
-                    
+
                     let current_text = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-                    let last_edit_time = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
-                    
+                    let last_edit_time =
+                        std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+
                     let callback = move |token: String| {
                         let mut text_guard = current_text.lock().unwrap();
                         text_guard.push_str(&token);
@@ -1000,7 +1008,14 @@ async fn start_gateway(
 
                 let result = a.chat_streaming(&text).await;
                 
+                // Clear the callback once complete
                 a.set_streaming_callback(None);
+                
+                // Final update without the loading indicator
+                if let Some(msg_id) = initial_message_id {
+                    let final_text = result.as_ref().map_or_else(|e| format!("❌ Error: {}", e), |res| res.clone());
+                    let _ = gateway_clone.edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text).await;
+                }
 
                 match result {
                     Ok(res) => {
@@ -1017,13 +1032,15 @@ async fn start_gateway(
                     }
                 }
             };
-            
+
             typing_handle.abort();
-            
+
             let final_text = err_msg.unwrap_or(response_text);
-            
+
             if let Some(msg_id) = initial_message_id {
-                let _ = gateway_clone.edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text).await;
+                let _ = gateway_clone
+                    .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
+                    .await;
             } else {
                 let reply = hakimi_gateway::GatewayMessage {
                     platform: platform.clone(),
