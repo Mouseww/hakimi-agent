@@ -690,6 +690,8 @@ async fn start_gateway(
             let platform = platform.clone();
 
             // Start typing indicator.
+            let _ = gateway_clone.send_chat_action(&bot_id, &chat_id, "typing").await;
+
             // Progressive streaming response logic.
             // 1. Send initial empty placeholder message to grab a message ID.
             let placeholder = hakimi_gateway::GatewayMessage {
@@ -702,6 +704,19 @@ async fn start_gateway(
             };
             
             let initial_message_id = gateway_clone.route_message_get_id(&placeholder).await.unwrap_or(None);
+
+            // Keep typing active while agent processes
+            let typing_handle = {
+                let gateway = gateway_clone.clone();
+                let bot_id = bot_id.clone();
+                let chat_id = chat_id.clone();
+                tokio::spawn(async move {
+                    loop {
+                        let _ = gateway.send_chat_action(&bot_id, &chat_id, "typing").await;
+                        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                    }
+                })
+            };
 
             // Handle commands.
             if text.starts_with('/') {
@@ -913,6 +928,8 @@ async fn start_gateway(
                     _ => "⚠️ This command is not yet fully implemented for gateway mode.".to_string(),
                 };
 
+                typing_handle.abort();
+
                 // 4. Send response back via gateway and continue to next message.
                 if let Some(msg_id) = initial_message_id {
                     let _ = gateway_clone.edit_message(&platform, &bot_id, &chat_id, msg_id, &response).await;
@@ -966,6 +983,8 @@ async fn start_gateway(
                     }
                 }
             };
+            
+            typing_handle.abort();
             
             let final_text = err_msg.unwrap_or(response_text);
             
