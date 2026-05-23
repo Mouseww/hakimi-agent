@@ -73,6 +73,8 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **Interactive Commands Menu:** Auto-configured command menu in Telegram for easier navigation (e.g., `/help`, `/stop`, `/clear`).
+- **Stop Command:** Added `/stop` command to halt ongoing tasks or streaming generation.
 - **Gateway Progressive Streaming**: Resolved lingering typing indicators (`⏳`) ensuring fluid platform interaction without delayed edits.
 - **Enhanced Memory Injection**: Fixed move-semantics that occasionally dropped configuration states when reading `~/.hakimi/memory` across concurrent `tokio` tasks.
 - **Improved Code Quality**: Resolved all CI linting errors, including `clippy::too_many_arguments` in `hakimi-core` and various nested `if` statements across the codebase.
