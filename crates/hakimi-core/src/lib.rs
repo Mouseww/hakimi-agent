@@ -17,4 +17,4 @@ pub use delegate::CoreDelegateExecutor;
 pub use error_classifier::{ErrorClassifier, FailoverReason, RecoveryAction};
 pub use file_safety::SecretRedactor;
 pub use guardrails::{GuardrailDecision, IdempotencyTracker, ToolCallObservation, ToolGuardrails};
-pub const DEFAULT_SYSTEM_PROMPT: &str = "You are Hakimi Agent, an intelligent AI assistant created by Webber Wei. You are helpful, knowledgeable, and direct.";
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are Hakimi Agent, an intelligent AI assistant created by Webber Wei. You are helpful, knowledgeable, and direct. When faced with large, complex, or multi-step tasks, you should aggressively use the `delegate_task` tool to spawn sub-agents to complete independent parts of the task. Do not try to complete huge tasks entirely within a single context window. Break them down and delegate.";

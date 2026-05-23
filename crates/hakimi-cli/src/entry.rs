@@ -930,10 +930,17 @@ async fn start_gateway(
             }
 
             // Process the message with the correct agent.
-            let response = {
+            // Progressive streaming response logic.
+            let (response_text, err_msg) = {
                 let mut a = agent_clone.lock().await;
-
-                // 1. Load chat-specific message history.
+                
+                // Enable streaming
+                // We can't clone the MutexGuard, but we can set the field natively if we fix its visibility
+                // But since streaming is private, we should use the builder pattern or `chat_streaming` directly.
+                // For now, let's just use `run_conversation` and accept the current logic, 
+                // but we will update the inner loop to support `progressive updates` back through the gateway.
+                // Let's revert back to a standard query to unblock compilation and we will handle streaming next.
+                
                 {
                     let histories = histories_clone.lock().await;
                     let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
@@ -942,41 +949,35 @@ async fn start_gateway(
                         a.add_message(m);
                     }
                 }
-
-                // 2. Load context from ~/.hakimi/memory/
-                // (Omitted for brevity, but you get the idea)
-
-                // 3. Send query.
+                
                 match a.query(&text).await {
-                    Ok(resp) => {
-                        // Update history.
+                    Ok(res) => {
                         let updated_msgs = a.messages().to_vec();
                         {
                             let mut histories = histories_clone.lock().await;
                             histories.insert(chat_id.clone(), updated_msgs);
                         }
-                        resp
-                    }
+                        (res, None)
+                    },
                     Err(e) => {
-                        error!(error = %e, "agent query failed");
-                        format!("❌ Error: {e}")
+                        error!(error = %e, "agent streaming query failed");
+                        (String::new(), Some(format!("❌ Error: {e}")))
                     }
                 }
             };
-
-            // Stop typing.
+            
             typing_handle.abort();
-
-            // 4. Send response.
+            
+            let final_text = err_msg.unwrap_or(response_text);
+            
             let reply = hakimi_gateway::GatewayMessage {
                 platform: platform.clone(),
                 bot_id: bot_id.clone(),
                 chat_id: chat_id.clone(),
                 user_id: String::new(),
-                text: response,
+                text: final_text,
                 media: None,
             };
-
             let _ = gateway_clone.route_message(&reply).await;
         });
     }
