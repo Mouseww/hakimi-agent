@@ -1,6 +1,7 @@
 use futures::StreamExt;
 use hakimi_common::{
-    FinishReason, HakimiError, Message, MessageRole, NormalizedResponse, Result, ToolCall, Usage,
+    FinishReason, HakimiError, Message, MessageRole, NormalizedResponse, Result, ToolCall,
+    ToolDefinition, Usage,
 };
 use hakimi_transports::{RequestParams, StreamAccumulator, StreamEvent};
 use tracing::{debug, info, warn};
@@ -156,7 +157,7 @@ async fn fetch_response(
     agent: &AIAgent,
     streaming: bool,
     send_messages: &[Message],
-    tool_defs: &[hakimi_transports::ToolDefinition],
+    tool_defs: &[ToolDefinition],
     params: &RequestParams,
     api_call_count: &mut usize,
     messages: &mut Vec<Message>,
@@ -226,7 +227,7 @@ async fn fetch_response(
 async fn fetch_streaming_response(
     agent: &AIAgent,
     send_messages: &[Message],
-    tool_defs: &[hakimi_transports::ToolDefinition],
+    tool_defs: &[ToolDefinition],
     params: &RequestParams,
 ) -> Result<NormalizedResponse> {
     let mut stream = agent
