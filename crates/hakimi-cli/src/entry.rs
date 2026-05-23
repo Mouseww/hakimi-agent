@@ -1131,11 +1131,7 @@ pub async fn run() -> Result<()> {
     }
     if let Some(plugin_url) = args.plugin_install {
         println!("Installing plugin from: {}", plugin_url);
-        let loader = hakimi_plugin::PluginLoader::new();
-        match loader.install(&plugin_url).await {
-            Ok(name) => println!("✅ Successfully installed plugin '{}'", name),
-            Err(e) => println!("❌ Failed to install plugin: {}", e),
-        }
+        println!("Plugin installation from '{}' coming soon.", plugin_url);
         return Ok(());
     }
 
