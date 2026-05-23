@@ -169,6 +169,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
 }
 
 /// Fetch a response from the transport, with retry logic.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_response(
     transport: &dyn hakimi_transports::ProviderTransport,
     model: &str,
