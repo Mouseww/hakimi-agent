@@ -1067,13 +1067,9 @@ async fn start_gateway(
                 a.set_streaming_callback(None);
 
                 // Final update without the loading indicator
-                if let Some(msg_id) = initial_message_id {
-                    let final_text = result
-                        .as_ref()
-                        .map_or_else(|e| format!("❌ Error: {}", e), |res| res.clone());
-                    let _ = gateway_clone
-                        .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
-                        .await;
+                if let Some(_msg_id) = initial_message_id {
+                    // The progressive streaming callback has already sent the final text
+                    // So we do not need to do another redundant `.edit_message` here
                 }
 
                 match result {
