@@ -172,6 +172,47 @@ impl Gateway {
         adapter.send_message(&msg.chat_id, &msg.text).await
     }
 
+    /// Route an outbound message to the correct adapter and get its ID.
+    pub async fn route_message_get_id(&self, msg: &GatewayMessage) -> anyhow::Result<Option<i64>> {
+        let adapter = self
+            .adapters
+            .iter()
+            .find(|a| a.name() == msg.platform && a.bot_id() == msg.bot_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no adapter for platform '{}' with bot_id '{}'",
+                    msg.platform,
+                    msg.bot_id
+                )
+            })?;
+
+        adapter.send_message_get_id(&msg.chat_id, &msg.text).await
+    }
+
+    /// Edit an existing message by ID.
+    pub async fn edit_message(
+        &self,
+        platform: &str,
+        bot_id: &str,
+        chat_id: &str,
+        message_id: i64,
+        text: &str,
+    ) -> anyhow::Result<()> {
+        let adapter = self
+            .adapters
+            .iter()
+            .find(|a| a.name() == platform && a.bot_id() == bot_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no adapter for platform '{}' with bot_id '{}'",
+                    platform,
+                    bot_id
+                )
+            })?;
+
+        adapter.edit_message(chat_id, message_id, text).await
+    }
+
     /// Send a chat action (e.g. "typing") to the correct adapter by bot_id.
     pub async fn send_chat_action(
         &self,

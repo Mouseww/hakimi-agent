@@ -690,17 +690,18 @@ async fn start_gateway(
             let platform = platform.clone();
 
             // Start typing indicator.
-            let typing_handle = {
-                let gateway = gateway_clone.clone();
-                let bot_id = bot_id.clone();
-                let chat_id = chat_id.clone();
-                tokio::spawn(async move {
-                    loop {
-                        let _ = gateway.send_chat_action(&bot_id, &chat_id, "typing").await;
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    }
-                })
+            // Progressive streaming response logic.
+            // 1. Send initial empty placeholder message to grab a message ID.
+            let placeholder = hakimi_gateway::GatewayMessage {
+                platform: platform.clone(),
+                bot_id: bot_id.clone(),
+                chat_id: chat_id.clone(),
+                user_id: String::new(),
+                text: "⏳ Processing...".to_string(),
+                media: None,
             };
+            
+            let initial_message_id = gateway_clone.route_message_get_id(&placeholder).await.unwrap_or(None);
 
             // Handle commands.
             if text.starts_with('/') {
@@ -912,25 +913,25 @@ async fn start_gateway(
                     _ => "⚠️ This command is not yet fully implemented for gateway mode.".to_string(),
                 };
 
-                // Stop typing.
-                typing_handle.abort();
-
                 // 4. Send response back via gateway and continue to next message.
-                let _ = gateway_clone
-                    .route_message(&hakimi_gateway::GatewayMessage {
-                        platform: platform.clone(),
-                        bot_id: bot_id.clone(),
-                        chat_id: chat_id.clone(),
-                        user_id: String::new(),
-                        text: response,
-                        media: None,
-                    })
-                    .await;
+                if let Some(msg_id) = initial_message_id {
+                    let _ = gateway_clone.edit_message(&platform, &bot_id, &chat_id, msg_id, &response).await;
+                } else {
+                    let _ = gateway_clone
+                        .route_message(&hakimi_gateway::GatewayMessage {
+                            platform: platform.clone(),
+                            bot_id: bot_id.clone(),
+                            chat_id: chat_id.clone(),
+                            user_id: String::new(),
+                            text: response,
+                            media: None,
+                        })
+                        .await;
+                }
                 return;
             }
 
             // Process the message with the correct agent.
-            // Progressive streaming response logic.
             let (response_text, err_msg) = {
                 let mut a = agent_clone.lock().await;
 
@@ -965,20 +966,22 @@ async fn start_gateway(
                     }
                 }
             };
-
-            typing_handle.abort();
-
+            
             let final_text = err_msg.unwrap_or(response_text);
-
-            let reply = hakimi_gateway::GatewayMessage {
-                platform: platform.clone(),
-                bot_id: bot_id.clone(),
-                chat_id: chat_id.clone(),
-                user_id: String::new(),
-                text: final_text,
-                media: None,
-            };
-            let _ = gateway_clone.route_message(&reply).await;
+            
+            if let Some(msg_id) = initial_message_id {
+                let _ = gateway_clone.edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text).await;
+            } else {
+                let reply = hakimi_gateway::GatewayMessage {
+                    platform: platform.clone(),
+                    bot_id: bot_id.clone(),
+                    chat_id: chat_id.clone(),
+                    user_id: String::new(),
+                    text: final_text,
+                    media: None,
+                };
+                let _ = gateway_clone.route_message(&reply).await;
+            }
         });
     }
 
