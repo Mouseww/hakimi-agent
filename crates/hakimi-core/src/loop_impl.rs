@@ -100,7 +100,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                 let classification = classifier.classify_transport_error(&e.to_string());
                 if matches!(classification.action, RecoveryAction::CompressContext) {
                     warn!(error = %e, "Context overflow detected — compressing and retrying");
-                    let mut engine = agent.context_engine.write().await;
+                    let engine = agent.context_engine.write().await;
                     engine.compress(&mut agent.messages).await?;
                     continue;
                 }
@@ -187,7 +187,6 @@ async fn fetch_response(
             transport
                 .execute(model, send_messages, tool_defs, params)
                 .await
-                .map_err(|e| e.into())
         };
 
         match result {
