@@ -48,6 +48,48 @@ pub enum Command {
     Plugins(Option<String>),
     /// Update system.
     Update,
+    /// Authenticate / OAuth login
+    Auth(Option<String>),
+    /// Backup state/memory/sessions
+    Backup(Option<String>),
+    /// Open/control browser
+    Browser(Option<String>),
+    /// Manage file checkpoints
+    Checkpoints(Option<String>),
+    /// Export database dump
+    Dump(Option<String>),
+    /// Gateway management
+    Gateway(Option<String>),
+    /// Manage agent goals
+    Goals(Option<String>),
+    /// Manage shell hooks
+    Hooks(Option<String>),
+    /// Manage Kanban boards
+    Kanban(Option<String>),
+    /// View logs
+    Logs(Option<String>),
+    /// Manage MCP servers
+    Mcp(Option<String>),
+    /// Manage memory
+    Memory(Option<String>),
+    /// Gateway pairing
+    Pairing(Option<String>),
+    /// Platform management
+    Platforms(Option<String>),
+    /// Provider management
+    Providers(Option<String>),
+    /// CLI Skin / Theme management
+    Skin(Option<String>),
+    /// Daily tips / tutorial
+    Tips(Option<String>),
+    /// Configure tool sets
+    ToolsConfig(Option<String>),
+    /// Uninstall system components
+    Uninstall(Option<String>),
+    /// Voice control
+    Voice(Option<String>),
+    /// Webhook management
+    Webhook(Option<String>),
 }
 
 impl Command {
@@ -82,6 +124,27 @@ impl Command {
             "cron" => Some(Command::Cron(arg.map(String::from))),
             "plugins" | "plugin" => Some(Command::Plugins(arg.map(String::from))),
             "update" => Some(Command::Update),
+            "auth" => Some(Command::Auth(arg.map(String::from))),
+            "backup" => Some(Command::Backup(arg.map(String::from))),
+            "browser" | "b" => Some(Command::Browser(arg.map(String::from))),
+            "checkpoints" | "ckpt" => Some(Command::Checkpoints(arg.map(String::from))),
+            "dump" => Some(Command::Dump(arg.map(String::from))),
+            "gateway" | "gw" => Some(Command::Gateway(arg.map(String::from))),
+            "goals" => Some(Command::Goals(arg.map(String::from))),
+            "hooks" => Some(Command::Hooks(arg.map(String::from))),
+            "kanban" | "kb" => Some(Command::Kanban(arg.map(String::from))),
+            "logs" | "l" => Some(Command::Logs(arg.map(String::from))),
+            "mcp" => Some(Command::Mcp(arg.map(String::from))),
+            "memory" | "mem" => Some(Command::Memory(arg.map(String::from))),
+            "pairing" | "pair" => Some(Command::Pairing(arg.map(String::from))),
+            "platforms" => Some(Command::Platforms(arg.map(String::from))),
+            "providers" => Some(Command::Providers(arg.map(String::from))),
+            "skin" | "theme" => Some(Command::Skin(arg.map(String::from))),
+            "tips" | "tip" => Some(Command::Tips(arg.map(String::from))),
+            "tools_config" | "tc" => Some(Command::ToolsConfig(arg.map(String::from))),
+            "uninstall" => Some(Command::Uninstall(arg.map(String::from))),
+            "voice" | "v" => Some(Command::Voice(arg.map(String::from))),
+            "webhook" | "wh" => Some(Command::Webhook(arg.map(String::from))),
             _ => None,
         }
     }
@@ -114,6 +177,48 @@ impl fmt::Display for Command {
             Command::Plugins(None) => write!(f, "/plugins"),
             Command::Plugins(Some(p)) => write!(f, "/plugins {p}"),
             Command::Update => write!(f, "/update"),
+            Command::Auth(None) => write!(f, "/auth"),
+            Command::Auth(Some(a)) => write!(f, "/auth {a}"),
+            Command::Backup(None) => write!(f, "/backup"),
+            Command::Backup(Some(b)) => write!(f, "/backup {b}"),
+            Command::Browser(None) => write!(f, "/browser"),
+            Command::Browser(Some(b)) => write!(f, "/browser {b}"),
+            Command::Checkpoints(None) => write!(f, "/checkpoints"),
+            Command::Checkpoints(Some(c)) => write!(f, "/checkpoints {c}"),
+            Command::Dump(None) => write!(f, "/dump"),
+            Command::Dump(Some(d)) => write!(f, "/dump {d}"),
+            Command::Gateway(None) => write!(f, "/gateway"),
+            Command::Gateway(Some(g)) => write!(f, "/gateway {g}"),
+            Command::Goals(None) => write!(f, "/goals"),
+            Command::Goals(Some(g)) => write!(f, "/goals {g}"),
+            Command::Hooks(None) => write!(f, "/hooks"),
+            Command::Hooks(Some(h)) => write!(f, "/hooks {h}"),
+            Command::Kanban(None) => write!(f, "/kanban"),
+            Command::Kanban(Some(k)) => write!(f, "/kanban {k}"),
+            Command::Logs(None) => write!(f, "/logs"),
+            Command::Logs(Some(l)) => write!(f, "/logs {l}"),
+            Command::Mcp(None) => write!(f, "/mcp"),
+            Command::Mcp(Some(m)) => write!(f, "/mcp {m}"),
+            Command::Memory(None) => write!(f, "/memory"),
+            Command::Memory(Some(m)) => write!(f, "/memory {m}"),
+            Command::Pairing(None) => write!(f, "/pairing"),
+            Command::Pairing(Some(p)) => write!(f, "/pairing {p}"),
+            Command::Platforms(None) => write!(f, "/platforms"),
+            Command::Platforms(Some(p)) => write!(f, "/platforms {p}"),
+            Command::Providers(None) => write!(f, "/providers"),
+            Command::Providers(Some(p)) => write!(f, "/providers {p}"),
+            Command::Skin(None) => write!(f, "/skin"),
+            Command::Skin(Some(s)) => write!(f, "/skin {s}"),
+            Command::Tips(None) => write!(f, "/tips"),
+            Command::Tips(Some(t)) => write!(f, "/tips {t}"),
+            Command::ToolsConfig(None) => write!(f, "/tools_config"),
+            Command::ToolsConfig(Some(t)) => write!(f, "/tools_config {t}"),
+            Command::Uninstall(None) => write!(f, "/uninstall"),
+            Command::Uninstall(Some(u)) => write!(f, "/uninstall {u}"),
+            Command::Voice(None) => write!(f, "/voice"),
+            Command::Voice(Some(v)) => write!(f, "/voice {v}"),
+            Command::Webhook(None) => write!(f, "/webhook"),
+            Command::Webhook(Some(w)) => write!(f, "/webhook {w}"),
         }
     }
 }
