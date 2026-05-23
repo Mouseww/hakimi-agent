@@ -1051,11 +1051,21 @@ async fn self_update() -> Result<()> {
     // Important: Backup user/memory state across updates
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     let hakimi_dir = home.join(".hakimi");
-    let state_backup_tar = home.join(format!(".hakimi-state-backup-pre-update-{}.tar.gz", chrono::Local::now().format("%Y%m%d%H%M%S")));
-    
+    let state_backup_tar = home.join(format!(
+        ".hakimi-state-backup-pre-update-{}.tar.gz",
+        chrono::Local::now().format("%Y%m%d%H%M%S")
+    ));
+
     if hakimi_dir.exists() {
         println!("Creating pre-update backup of memory and sessions...");
-        let _ = std::process::Command::new("tar").arg("-czf").arg(&state_backup_tar).arg("-C").arg(&home).arg(".hakimi").output().map_err(|e| anyhow::anyhow!("Tar backup failed: {}", e))?;
+        let _ = std::process::Command::new("tar")
+            .arg("-czf")
+            .arg(&state_backup_tar)
+            .arg("-C")
+            .arg(&home)
+            .arg(".hakimi")
+            .output()
+            .map_err(|e| anyhow::anyhow!("Tar backup failed: {}", e))?;
     }
 
     // Backup current binary
@@ -1082,11 +1092,16 @@ async fn self_update() -> Result<()> {
         Ok(o) if o.status.success() => {
             println!("✅ Updated successfully! Hakimi Agent — AI-powered coding assistant\n");
             let _ = fs::remove_file(&backup_path);
-            
+
             // Try to restore user/memory state if the archive was created
             if state_backup_tar.exists() {
                 println!("Restoring pre-update backup of memory and sessions...");
-                let _ = std::process::Command::new("tar").arg("-xzf").arg(&state_backup_tar).arg("-C").arg(&home).output();
+                let _ = std::process::Command::new("tar")
+                    .arg("-xzf")
+                    .arg(&state_backup_tar)
+                    .arg("-C")
+                    .arg(&home)
+                    .output();
                 let _ = fs::remove_file(&state_backup_tar);
             }
         }
@@ -1123,7 +1138,7 @@ pub async fn run() -> Result<()> {
         }
         return Ok(());
     }
-    
+
     let config = load_config();
 
     if args.setup {
@@ -1137,7 +1152,10 @@ pub async fn run() -> Result<()> {
         return start_server(agent, &args.addr, config);
     }
     if args.gateway {
-        let skill_store = agent.skill_store().cloned().unwrap_or_else(hakimi_skills::SkillStore::empty);
+        let skill_store = agent
+            .skill_store()
+            .cloned()
+            .unwrap_or_else(hakimi_skills::SkillStore::empty);
         return start_gateway(agent, skill_store, config).await;
     }
 
