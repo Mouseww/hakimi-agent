@@ -265,6 +265,29 @@ impl PlatformAdapter for TelegramAdapter {
         }
         info!("Telegram bot identity verified via getMe");
 
+        // Set commands menu in Telegram
+        let commands_body = serde_json::json!({
+            "commands": [
+                {"command": "help", "description": "Show help and available commands"},
+                {"command": "clear", "description": "Clear conversation history"},
+                {"command": "model", "description": "Get or set the AI model"},
+                {"command": "tools", "description": "List available tools"},
+                {"command": "skills", "description": "List loaded skills"},
+                {"command": "cron", "description": "List scheduled jobs"},
+                {"command": "status", "description": "Show agent status"},
+                {"command": "update", "description": "Update Hakimi and restart Gateway"},
+                {"command": "stop", "description": "Stop current background task or streaming"},
+                {"command": "auth", "description": "Check auth status"},
+                {"command": "backup", "description": "Backup Hakimi state"},
+            ]
+        });
+        
+        let _ = self.client
+            .post(self.api_url("setMyCommands"))
+            .json(&commands_body)
+            .send()
+            .await;
+
         let handle = self.spawn_poll_loop();
         self.poll_handle = Some(handle);
 
