@@ -283,10 +283,10 @@ fn resolve_api_key(args_key: Option<&str>, config: &hakimi_config::HakimiConfig)
         return config.model.api_key.clone();
     }
     // 4. Config file roles.default fallback (as final check)
-    if let Some(default_role) = config.roles.get("default") {
-        if !default_role.api_key.is_empty() {
-            return default_role.api_key.clone();
-        }
+    if let Some(default_role) = config.roles.get("default")
+        && !default_role.api_key.is_empty()
+    {
+        return default_role.api_key.clone();
     }
     if !config.delegation.api_key.is_empty() {
         return config.delegation.api_key.clone();
@@ -641,17 +641,17 @@ async fn start_gateway(
         }
     }
 
-    if let Some(token) = bot_token {
-        if !token.is_empty() {
-            let telegram_config = hakimi_gateway::TelegramAdapterConfig {
-                token: token.clone(),
-                bot_id: "telegram_bot".to_string(),
-                base_url: None,
-            };
-            let telegram = hakimi_gateway::TelegramAdapter::new(telegram_config);
-            gateway.add_adapter(Box::new(telegram));
-            info!("telegram gateway registered");
-        }
+    if let Some(token) = bot_token
+        && !token.is_empty()
+    {
+        let telegram_config = hakimi_gateway::TelegramAdapterConfig {
+            token: token.clone(),
+            bot_id: "telegram_bot".to_string(),
+            base_url: None,
+        };
+        let telegram = hakimi_gateway::TelegramAdapter::new(telegram_config);
+        gateway.add_adapter(Box::new(telegram));
+        info!("telegram gateway registered");
     }
 
     // Load roles context correctly when receiving messages from specific platforms
