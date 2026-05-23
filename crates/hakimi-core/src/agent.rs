@@ -31,6 +31,7 @@ pub struct AIAgent {
     pub(crate) workdir: String,
     pub(crate) system_prompt: Option<String>,
     pub(crate) streaming: bool,
+    pub(crate) streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     pub(crate) knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
     pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
 }
@@ -80,6 +81,7 @@ pub struct AIAgentBuilder {
     workdir: Option<String>,
     system_prompt: Option<String>,
     streaming: Option<bool>,
+    streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
     skill_store: Option<hakimi_skills::SkillStore>,
 }
@@ -101,6 +103,7 @@ impl AIAgentBuilder {
             workdir: None,
             system_prompt: None,
             streaming: None,
+            streaming_callback: None,
             knowledge_searcher: None,
             skill_store: None,
         }
@@ -187,6 +190,15 @@ impl AIAgentBuilder {
         self
     }
 
+    /// Set a callback function to receive streaming text tokens.
+    pub fn streaming_callback<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        self.streaming_callback = Some(Arc::new(callback));
+        self
+    }
+
     pub fn skill_store(mut self, store: hakimi_skills::SkillStore) -> Self {
         self.skill_store = Some(store);
         self
@@ -248,6 +260,7 @@ impl AIAgentBuilder {
             workdir,
             system_prompt: self.system_prompt,
             streaming: self.streaming.unwrap_or(false),
+            streaming_callback: self.streaming_callback,
             knowledge_searcher: self.knowledge_searcher,
             skill_store: Some(
                 self.skill_store
@@ -324,6 +337,11 @@ impl AIAgent {
         self.streaming = true;
         let result = self.run_conversation(message).await?;
         Ok(result.final_response)
+    }
+    
+    /// Dynamically set the streaming callback for this agent instance.
+    pub fn set_streaming_callback(&mut self, callback: Option<Arc<dyn Fn(String) + Send + Sync>>) {
+        self.streaming_callback = callback;
     }
 
     /// Build a [`ToolContext`] from the agent's current state.

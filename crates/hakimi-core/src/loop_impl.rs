@@ -89,6 +89,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             &send_messages,
             &tool_defs,
             &params,
+            agent.streaming_callback.clone(),
             &mut api_call_count,
         )
         .await
@@ -175,6 +176,7 @@ async fn fetch_response(
     send_messages: &[Message],
     tool_defs: &[ToolDefinition],
     params: &RequestParams,
+    callback: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
     api_call_count: &mut usize,
 ) -> Result<NormalizedResponse> {
     // Maximum retry attempts per fetch.
@@ -182,7 +184,7 @@ async fn fetch_response(
 
     loop {
         let result = if streaming {
-            fetch_streaming_response(transport, model, send_messages, tool_defs, params).await
+            fetch_streaming_response(transport, model, send_messages, tool_defs, params, callback.clone()).await
         } else {
             transport
                 .execute(model, send_messages, tool_defs, params)
@@ -242,6 +244,7 @@ async fn fetch_streaming_response(
     send_messages: &[Message],
     tool_defs: &[ToolDefinition],
     params: &RequestParams,
+    callback: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
 ) -> Result<NormalizedResponse> {
     let mut stream = transport
         .execute_streaming(model, send_messages, tool_defs, params)
@@ -253,6 +256,9 @@ async fn fetch_streaming_response(
             Ok(event) => {
                 // Print content deltas to stdout in real-time.
                 if let StreamEvent::ContentDelta(ref text) = event {
+                    if let Some(ref cb) = callback {
+                        cb(text.clone());
+                    }
                     use std::io::Write;
                     let _ = std::io::stdout().write_all(text.as_bytes());
                     let _ = std::io::stdout().flush();

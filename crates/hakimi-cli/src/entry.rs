@@ -967,8 +967,42 @@ async fn start_gateway(
                         a.add_message(m);
                     }
                 }
+                
+                if let Some(msg_id) = initial_message_id {
+                    let platform_cb = platform.clone();
+                    let bot_id_cb = bot_id.clone();
+                    let chat_id_cb = chat_id.clone();
+                    let gateway_cb = gateway_clone.clone();
+                    
+                    let current_text = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+                    let last_edit_time = std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+                    
+                    let callback = move |token: String| {
+                        let mut text_guard = current_text.lock().unwrap();
+                        text_guard.push_str(&token);
+                        // Throttle edits to roughly once per second to avoid rate limits
+                        let mut time_guard = last_edit_time.lock().unwrap();
+                        if time_guard.elapsed().as_secs_f32() > 1.0 {
+                            *time_guard = std::time::Instant::now();
+                            let edit_text = format!("{} ⏳", *text_guard);
+                            let g = gateway_cb.clone();
+                            let p = platform_cb.clone();
+                            let b = bot_id_cb.clone();
+                            let c = chat_id_cb.clone();
+                            tokio::spawn(async move {
+                                let _ = g.edit_message(&p, &b, &c, msg_id, &edit_text).await;
+                            });
+                        }
+                    };
+                    // Temporarily set the callback for this request, execute via stream, and then clear it
+                    a.set_streaming_callback(Some(std::sync::Arc::new(callback)));
+                }
 
-                match a.query(&text).await {
+                let result = a.chat_streaming(&text).await;
+                
+                a.set_streaming_callback(None);
+
+                match result {
                     Ok(res) => {
                         let updated_msgs = a.messages().to_vec();
                         {
