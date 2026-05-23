@@ -403,6 +403,21 @@ impl AIAgent {
         &self.model
     }
 
+    /// Get the provider name.
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    /// Get the API base URL.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// Get the API key.
+    pub fn api_key(&self) -> &str {
+        &self.api_key
+    }
+
     /// Get the platform name, if set.
     pub fn platform(&self) -> Option<&str> {
         self.platform.as_deref()
