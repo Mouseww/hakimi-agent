@@ -982,6 +982,7 @@ async fn start_gateway(
 
                     let memory_file = memory_dir.join("memory.md");
                     if memory_file.exists() {
+                        #[allow(clippy::collapsible_if)]
                         if let Ok(content) = std::fs::read_to_string(&memory_file) {
                             if !content.trim().is_empty() {
                                 memory_parts.push(format!("[memory]\n{content}"));
@@ -991,6 +992,7 @@ async fn start_gateway(
 
                     let user_file = memory_dir.join("user.md");
                     if user_file.exists() {
+                        #[allow(clippy::collapsible_if)]
                         if let Ok(content) = std::fs::read_to_string(&user_file) {
                             if !content.trim().is_empty() {
                                 memory_parts.push(format!("[user profile]\n{content}"));
