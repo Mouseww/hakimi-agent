@@ -183,22 +183,32 @@ impl DelegateExecutor for CoreDelegateExecutor {
             );
 
             match result {
-                Ok(Ok(response)) => {
-                    info!(
-                        response_len = response.len(),
-                        attempts = attempts,
-                        "Child agent delegation completed successfully"
-                    );
-
-                    // TODO: Integrate feedback loop to parent's memory
-                    return Ok(response);
-                }
-                Ok(Err(e)) => {
-                    warn!(error = %e, attempts = attempts, "Child agent delegation failed");
-                    if attempts >= max_attempts {
-                        return Err(e);
+                Ok(join_res) => match join_res {
+                    Ok(Ok(response)) => {
+                        info!(
+                            response_len = response.len(),
+                            attempts = attempts,
+                            "Child agent delegation completed successfully"
+                        );
+                        return Ok(response);
                     }
-                }
+                    Ok(Err(e)) => {
+                        warn!(error = %e, attempts = attempts, "Child agent delegation failed");
+                        if attempts >= max_attempts {
+                            return Err(e);
+                        }
+                    }
+                    Err(join_err) => {
+                        let e = HakimiError::Tool(format!(
+                            "Child agent task panicked or was cancelled: {}",
+                            join_err
+                        ));
+                        warn!(error = %e, attempts = attempts, "Child agent delegation task failed");
+                        if attempts >= max_attempts {
+                            return Err(e);
+                        }
+                    }
+                },
                 Err(_elapsed) => {
                     warn!(
                         attempts = attempts,
