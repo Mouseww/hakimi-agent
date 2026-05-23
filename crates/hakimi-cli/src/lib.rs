@@ -18,8 +18,8 @@ use std::fmt;
 pub enum Command {
     /// Show help / available commands.
     Help,
-    /// Exit the REPL.
-    Quit,
+    /// Stop ongoing tasks or streaming.
+    Stop,
     /// Clear the terminal screen.
     Clear,
     /// Switch or display the current model.
@@ -109,7 +109,7 @@ impl Command {
 
         match cmd.to_lowercase().as_str() {
             "help" | "h" | "?" => Some(Command::Help),
-            "quit" | "exit" | "q" => Some(Command::Quit),
+            "stop" => Some(Command::Stop),
             "clear" | "cls" => Some(Command::Clear),
             "model" | "m" => Some(Command::Model(arg.map(String::from))),
             "config" | "cfg" => Some(Command::Config(arg.map(String::from))),
@@ -154,7 +154,7 @@ impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Command::Help => write!(f, "/help"),
-            Command::Quit => write!(f, "/quit"),
+            Command::Stop => write!(f, "/stop"),
             Command::Clear => write!(f, "/clear"),
             Command::Model(None) => write!(f, "/model"),
             Command::Model(Some(m)) => write!(f, "/model {m}"),
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn test_parse_slash_commands() {
         assert_eq!(Command::parse("/help"), Some(Command::Help));
-        assert_eq!(Command::parse("/quit"), Some(Command::Quit));
+        assert_eq!(Command::parse("/stop"), Some(Command::Stop));
         assert_eq!(Command::parse("/clear"), Some(Command::Clear));
         assert_eq!(
             Command::parse("/model gpt-4o"),

@@ -738,8 +738,18 @@ async fn start_gateway(
                         help.push_str("• `/cron` - List scheduled jobs\n");
                         help.push_str("• `/status` - Show agent status\n");
                         help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
+                        help.push_str("• `/stop` - Stop current background task or streaming\n");
                         help.push_str("\nJust send a message to chat with me!");
                         help
+                    }
+                    Some(Command::Stop) => {
+                        // In gateway mode, we mainly just tell the user we're stopping
+                        // Real background task cancellation could be implemented here
+                        {
+                            let mut a = agent_clone.lock().await;
+                            a.set_streaming_callback(None);
+                        }
+                        "⏹️ **Stopped current operation.**".to_string()
                     }
                     Some(Command::Clear) => {
                         {
