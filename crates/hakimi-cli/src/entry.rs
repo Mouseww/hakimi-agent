@@ -683,11 +683,13 @@ async fn start_gateway(
         let skill_store_ref = skill_store_ref.clone();
         let histories_clone = histories_clone.clone();
 
+        let config_clone = config.clone();
         tokio::spawn(async move {
             let text = text.clone();
             let chat_id = chat_id.clone();
             let bot_id = bot_id.clone();
             let platform = platform.clone();
+            let config = config_clone;
 
             // Start typing indicator.
             let _ = gateway_clone
@@ -966,6 +968,59 @@ async fn start_gateway(
                 // but we will update the inner loop to support `progressive updates` back through the gateway.
                 // Let's revert back to a standard query to unblock compilation and we will handle streaming next.
 
+                // 2. Load context from ~/.hakimi/memory/
+                let memory_text = if config.memory.enabled {
+                    let memory_dir = if config.memory.path.is_empty() {
+                        dirs::home_dir()
+                            .map(|h| h.join(".hakimi").join("memory"))
+                            .unwrap_or_else(|| std::path::PathBuf::from("/root/.hakimi/memory"))
+                    } else {
+                        std::path::PathBuf::from(&config.memory.path)
+                    };
+
+                    let mut memory_parts = Vec::new();
+
+                    let memory_file = memory_dir.join("memory.md");
+                    if memory_file.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&memory_file) {
+                            if !content.trim().is_empty() {
+                                memory_parts.push(format!("[memory]\n{content}"));
+                            }
+                        }
+                    }
+
+                    let user_file = memory_dir.join("user.md");
+                    if user_file.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&user_file) {
+                            if !content.trim().is_empty() {
+                                memory_parts.push(format!("[user profile]\n{content}"));
+                            }
+                        }
+                    }
+
+                    if memory_parts.is_empty() {
+                        String::new()
+                    } else {
+                        memory_parts.join("\n\n")
+                    }
+                } else {
+                    String::new()
+                };
+
+                // Set dynamic system prompt if memory exists.
+                if !memory_text.is_empty() {
+                    let base_prompt = config
+                        .roles
+                        .get("default")
+                        .map(|r| r.identity.clone())
+                        .filter(|id| !id.is_empty())
+                        .unwrap_or_else(|| hakimi_core::DEFAULT_SYSTEM_PROMPT.to_string());
+
+                    a.set_system_prompt(format!(
+                        "{base_prompt}\n\n### PERSISTENT CONTEXT\n{memory_text}"
+                    ));
+                }
+
                 {
                     let histories = histories_clone.lock().await;
                     let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
@@ -1007,14 +1062,18 @@ async fn start_gateway(
                 }
 
                 let result = a.chat_streaming(&text).await;
-                
+
                 // Clear the callback once complete
                 a.set_streaming_callback(None);
-                
+
                 // Final update without the loading indicator
                 if let Some(msg_id) = initial_message_id {
-                    let final_text = result.as_ref().map_or_else(|e| format!("❌ Error: {}", e), |res| res.clone());
-                    let _ = gateway_clone.edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text).await;
+                    let final_text = result
+                        .as_ref()
+                        .map_or_else(|e| format!("❌ Error: {}", e), |res| res.clone());
+                    let _ = gateway_clone
+                        .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
+                        .await;
                 }
 
                 match result {
