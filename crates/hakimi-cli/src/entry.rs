@@ -933,14 +933,14 @@ async fn start_gateway(
             // Progressive streaming response logic.
             let (response_text, err_msg) = {
                 let mut a = agent_clone.lock().await;
-                
+
                 // Enable streaming
                 // We can't clone the MutexGuard, but we can set the field natively if we fix its visibility
                 // But since streaming is private, we should use the builder pattern or `chat_streaming` directly.
-                // For now, let's just use `run_conversation` and accept the current logic, 
+                // For now, let's just use `run_conversation` and accept the current logic,
                 // but we will update the inner loop to support `progressive updates` back through the gateway.
                 // Let's revert back to a standard query to unblock compilation and we will handle streaming next.
-                
+
                 {
                     let histories = histories_clone.lock().await;
                     let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
@@ -949,7 +949,7 @@ async fn start_gateway(
                         a.add_message(m);
                     }
                 }
-                
+
                 match a.query(&text).await {
                     Ok(res) => {
                         let updated_msgs = a.messages().to_vec();
@@ -958,18 +958,18 @@ async fn start_gateway(
                             histories.insert(chat_id.clone(), updated_msgs);
                         }
                         (res, None)
-                    },
+                    }
                     Err(e) => {
                         error!(error = %e, "agent streaming query failed");
                         (String::new(), Some(format!("❌ Error: {e}")))
                     }
                 }
             };
-            
+
             typing_handle.abort();
-            
+
             let final_text = err_msg.unwrap_or(response_text);
-            
+
             let reply = hakimi_gateway::GatewayMessage {
                 platform: platform.clone(),
                 bot_id: bot_id.clone(),
