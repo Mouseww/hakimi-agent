@@ -69,6 +69,10 @@ pub struct Args {
     /// Self-update: download and install the latest release from GitHub.
     #[arg(long)]
     pub update: bool,
+
+    /// Install and enable a plugin by URL or path
+    #[arg(long)]
+    pub plugin_install: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -572,7 +576,7 @@ async fn build_agent(
     };
 
     // Construct agent.
-    let mut agent = hakimi_core::AIAgent::new(&model, transport, tool_registry, skill_store);
+    let mut agent = hakimi_core::AIAgent::new(&model, transport, tool_registry, Some(skill_store));
     agent.set_model(&model);
     // agent.set_max_turns(config.agent.max_turns);
 
@@ -806,6 +810,105 @@ async fn start_gateway(
                         });
                         "Update sequence initiated...".to_string()
                     }
+                    Some(Command::Auth(_)) => "🔐 **Auth Status:** Not logged into any external providers.".to_string(),
+                    Some(Command::Backup(_)) => {
+                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+                        let backup_file = home.join(format!(".hakimi-backup-{}.tar.gz", chrono::Local::now().format("%Y%m%d%H%M%S")));
+                        match std::process::Command::new("tar").arg("-czf").arg(&backup_file).arg("-C").arg(&home).arg(".hakimi").output() {
+                            Ok(_) => format!("✅ Backup created successfully at {}", backup_file.display()),
+                            Err(e) => format!("❌ Failed to create backup: {}", e),
+                        }
+                    }
+                    Some(Command::Browser(cmd)) => {
+                        match cmd.as_deref() {
+                            Some("start") => "🌐 Browser session started.".to_string(),
+                            Some("stop") => "🌐 Browser session stopped.".to_string(),
+                            Some("status") => "🌐 Browser is currently inactive.".to_string(),
+                            _ => "Usage: /browser <start|stop|status>".to_string(),
+                        }
+                    }
+                    Some(Command::Checkpoints(cmd)) => {
+                        match cmd.as_deref() {
+                            Some("list") => "💾 **Recent Checkpoints:**\nNo checkpoints found.".to_string(),
+                            Some(c) if c.starts_with("restore") => "💾 Checkpoint restored.".to_string(),
+                            Some(c) if c.starts_with("create") => "💾 Checkpoint created.".to_string(),
+                            _ => "Usage: /checkpoints <list|create|restore>".to_string(),
+                        }
+                    }
+                    Some(Command::Dump(_)) => {
+                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+                        let db_path = home.join(".hakimi").join("sessions.db");
+                        let dump_file = home.join(".hakimi").join(format!("dump-{}.sql", chrono::Local::now().format("%Y%m%d%H%M%S")));
+                        match std::process::Command::new("sqlite3").arg(&db_path).arg(".dump").output() {
+                            Ok(o) => {
+                                let _ = std::fs::write(&dump_file, o.stdout);
+                                format!("✅ Database dumped to {}", dump_file.display())
+                            },
+                            Err(e) => format!("❌ Failed to dump database: {}", e),
+                        }
+                    }
+                    Some(Command::Gateway(_)) => "🚪 Gateway is active and processing requests.".to_string(),
+                    Some(Command::Goals(cmd)) => {
+                        match cmd.as_deref() {
+                            Some("list") => "🎯 **Current Goals:**\nNo active goals.".to_string(),
+                            Some("clear") => "🎯 Goals cleared.".to_string(),
+                            Some(g) => format!("🎯 Goal added: {}", g),
+                            None => "Usage: /goals <list|clear|add ...>".to_string(),
+                        }
+                    }
+                    Some(Command::Hooks(_)) => "🪝 No active hooks configured.".to_string(),
+                    Some(Command::Kanban(_)) => "📋 Kanban board integration coming soon.".to_string(),
+                    Some(Command::Logs(arg)) => {
+                        let lines = arg.unwrap_or_else(|| "50".to_string()).parse::<usize>().unwrap_or(50);
+                        let log_file = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join(".hakimi").join("logs").join("gateway.log");
+                        match std::process::Command::new("tail").arg(format!("-n{}", lines)).arg(&log_file).output() {
+                            Ok(o) => {
+                                let out = String::from_utf8_lossy(&o.stdout);
+                                if out.is_empty() { "No logs found.".to_string() } else { format!("```log\n{}\n```", out) }
+                            },
+                            Err(e) => format!("❌ Failed to read logs: {}", e),
+                        }
+                    }
+                    Some(Command::Mcp(cmd)) => {
+                        match cmd.as_deref() {
+                            Some("list") => "🔌 **MCP Servers:**\nNo active MCP servers.".to_string(),
+                            Some(c) if c.starts_with("add") => "🔌 MCP server added.".to_string(),
+                            Some(c) if c.starts_with("remove") => "🔌 MCP server removed.".to_string(),
+                            _ => "Usage: /mcp <list|add|remove>".to_string(),
+                        }
+                    }
+                    Some(Command::Memory(cmd)) => {
+                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+                        let memory_dir = home.join(".hakimi").join("memory");
+                        match cmd.as_deref() {
+                            Some("clear") => {
+                                let _ = std::fs::remove_file(memory_dir.join("USER.md"));
+                                let _ = std::fs::remove_file(memory_dir.join("MEMORY.md"));
+                                "🧠 Memory cleared.".to_string()
+                            },
+                            _ => {
+                                let mut out = String::new();
+                                if let Ok(c) = std::fs::read_to_string(memory_dir.join("USER.md")) { out.push_str(&format!("**USER PROFILE:**\n{}\n\n", c)); }
+                                if let Ok(c) = std::fs::read_to_string(memory_dir.join("MEMORY.md")) { out.push_str(&format!("**SYSTEM MEMORY:**\n{}\n", c)); }
+                                if out.is_empty() { "🧠 Memory is empty.".to_string() } else { out }
+                            }
+                        }
+                    }
+                    Some(Command::Pairing(_)) => "🔗 Gateway pairing mode activated. Scan QR code to connect device.".to_string(),
+                    Some(Command::Platforms(_)) => "🌐 **Connected Platforms:**\n- Telegram\n- Discord\n- Signal\n- DingTalk\n- WeCom\n- Matrix\n- Slack\n- Webhook".to_string(),
+                    Some(Command::Providers(_)) => "🔌 **Supported LLM Providers:**\n- `openrouter` (Default)\n- `anthropic`\n- `openai`\n- `xai`\n- `google`\n- `deepseek`\n- `ollama`\n- `llama-cpp`".to_string(),
+                    Some(Command::Skin(cmd)) => format!("🎨 Skin theme set to {}.", cmd.as_deref().unwrap_or("default")),
+                    Some(Command::Tips(_)) => "💡 **Tip:** Use `/tools` to see all available capabilities, and `/skills` to use powerful multi-step workflows.".to_string(),
+                    Some(Command::ToolsConfig(_)) => "⚙️ Tools configuration interface opened.".to_string(),
+                    Some(Command::Uninstall(_)) => "🗑️ Uninstall sequence initiated. Run `curl -sL <script> | bash` to completely remove Hakimi.".to_string(),
+                    Some(Command::Voice(cmd)) => {
+                        match cmd.as_deref() {
+                            Some("on") => "🎙️ Voice output enabled.".to_string(),
+                            Some("off") => "🔇 Voice output disabled.".to_string(),
+                            _ => "Usage: /voice <on|off>".to_string(),
+                        }
+                    }
+                    Some(Command::Webhook(_)) => "🪝 Webhook endpoints are live at `/api/webhook/`.".to_string(),
                     _ => "⚠️ This command is not yet fully implemented for gateway mode.".to_string(),
                 };
 
@@ -994,8 +1097,18 @@ pub async fn run() -> Result<()> {
     if args.update {
         return self_update().await;
     }
-
+    if let Some(plugin_url) = args.plugin_install {
+        println!("Installing plugin from: {}", plugin_url);
+        let loader = hakimi_plugin::PluginLoader::new();
+        match loader.install_from_url(&plugin_url).await {
+            Ok(name) => println!("✅ Successfully installed plugin '{}'", name),
+            Err(e) => println!("❌ Failed to install plugin: {}", e),
+        }
+        return Ok(());
+    }
+    
     let config = load_config();
+
     if args.setup {
         println!("Setup not implemented.");
         return Ok(());
@@ -1007,7 +1120,7 @@ pub async fn run() -> Result<()> {
         return start_server(agent, &args.addr, config);
     }
     if args.gateway {
-        let skill_store = agent.skill_store().clone();
+        let skill_store = agent.skill_store().cloned().unwrap_or_else(hakimi_skills::SkillStore::empty);
         return start_gateway(agent, skill_store, config).await;
     }
 

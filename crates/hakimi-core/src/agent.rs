@@ -32,7 +32,7 @@ pub struct AIAgent {
     pub(crate) system_prompt: Option<String>,
     pub(crate) streaming: bool,
     pub(crate) knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
-    pub(crate) skill_store: hakimi_skills::SkillStore,
+    pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
 }
 
 impl AIAgent {
@@ -41,7 +41,7 @@ impl AIAgent {
         model: impl Into<String>,
         transport: Arc<dyn ProviderTransport>,
         tool_registry: ToolRegistry,
-        skill_store: hakimi_skills::SkillStore,
+        skill_store: Option<hakimi_skills::SkillStore>,
     ) -> Self {
         let engine = hakimi_context::SmartContextEngine::new(128000, None);
         Self::builder()
@@ -55,7 +55,7 @@ impl AIAgent {
     }
 
     /// Set or replace the skill store.
-    pub fn with_skill_store(mut self, store: hakimi_skills::SkillStore) -> Self {
+    pub fn with_skill_store(mut self, store: Option<hakimi_skills::SkillStore>) -> Self {
         self.skill_store = store;
         self
     }
@@ -81,6 +81,7 @@ pub struct AIAgentBuilder {
     system_prompt: Option<String>,
     streaming: Option<bool>,
     knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
+    skill_store: Option<hakimi_skills::SkillStore>,
 }
 
 impl AIAgentBuilder {
@@ -101,7 +102,7 @@ impl AIAgentBuilder {
             system_prompt: None,
             streaming: None,
             knowledge_searcher: None,
-        }
+            skill_store: None,
     }
 
     /// Set the model identifier (e.g. `"gpt-4o"`, `"claude-sonnet-4-20250514"`).
@@ -185,6 +186,11 @@ impl AIAgentBuilder {
         self
     }
 
+    pub fn skill_store(mut self, store: hakimi_skills::SkillStore) -> Self {
+        self.skill_store = Some(store);
+        self
+    }
+
     /// Set the knowledge searcher for the agent.
     pub fn knowledge_searcher(
         mut self,
@@ -242,7 +248,7 @@ impl AIAgentBuilder {
             system_prompt: self.system_prompt,
             streaming: self.streaming.unwrap_or(false),
             knowledge_searcher: self.knowledge_searcher,
-            skill_store: hakimi_skills::SkillStore::empty(), // Builder default
+            skill_store: self.skill_store.unwrap_or_else(hakimi_skills::SkillStore::empty),
         })
     }
 }
@@ -280,7 +286,11 @@ impl AIAgent {
     /// messages, accumulated usage, and the number of API calls made.
     pub async fn run_conversation(&mut self, user_message: &str) -> Result<ConversationResult> {
         // Apply skill prompt additions.
-        let skill_prompt = self.skill_store.get_system_prompt_additions(user_message);
+        let skill_prompt = if let Some(store) = &self.skill_store {
+            store.get_system_prompt_additions(user_message)
+        } else {
+            String::new()
+        };
         if !skill_prompt.is_empty() {
             let base = self
                 .system_prompt
@@ -403,7 +413,7 @@ impl AIAgent {
     }
 
     /// Get a reference to the skill store.
-    pub fn skill_store(&self) -> &hakimi_skills::SkillStore {
-        &self.skill_store
+    pub fn skill_store(&self) -> Option<&hakimi_skills::SkillStore> {
+        self.skill_store.as_ref()
     }
 }
