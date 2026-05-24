@@ -131,7 +131,9 @@ impl Tool for DelegateTaskTool {
                 };
                 q.push_back(crate::builtin_send_message::QueuedMessage {
                     target: target.clone(),
-                    text: msg_text,
+                    message: msg_text,
+                    session_id: ctx.session_id.clone(),
+                    queued_at: chrono::Utc::now().to_rfc3339(),
                 });
             }
         }
