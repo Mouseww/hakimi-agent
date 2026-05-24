@@ -128,6 +128,9 @@ impl Tool for SendMessageTool {
 mod tests {
     use super::*;
     use hakimi_common::ToolContext;
+    use std::sync::Mutex;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn test_ctx() -> ToolContext {
         ToolContext {
@@ -168,6 +171,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue_message() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         drain_queue();
 
         let ctx = test_ctx();
@@ -191,6 +195,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pop_message() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         drain_queue();
 
         let ctx = test_ctx();
@@ -211,6 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue_multiple_messages() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         drain_queue();
 
         let ctx = test_ctx();
