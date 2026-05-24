@@ -165,7 +165,9 @@ impl TelegramAdapter {
                  /cron – List scheduled jobs\n\
                  /status – Show agent status\n\
                  /update – Update Hakimi and restart Gateway\n\
-                 /stop – Stop current background task or streaming",
+                 /stop – Stop current background task or streaming\n\
+                 /memory – View or clear persistent memory\n\
+                 /checkpoints – Manage file system checkpoints",
             ),
             "/update" => Some(
                 "🔄 *Hakimi Updater*\n\n\
@@ -285,8 +287,8 @@ impl PlatformAdapter for TelegramAdapter {
                 {"command": "status", "description": "Show agent status"},
                 {"command": "update", "description": "Update Hakimi and restart Gateway"},
                 {"command": "stop", "description": "Stop current background task or streaming"},
-                {"command": "auth", "description": "Check auth status"},
-                {"command": "backup", "description": "Backup Hakimi state"},
+                {"command": "memory", "description": "View or clear your persistent memory"},
+                {"command": "checkpoints", "description": "Manage file system checkpoints"},
             ]
         });
 
