@@ -334,6 +334,51 @@ impl Default for MemoryConfig {
     }
 }
 
+/// Voice / TTS configuration section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceConfig {
+    /// Default TTS provider (e.g. "openai", "elevenlabs").
+    #[serde(default = "default_voice_provider")]
+    pub provider: String,
+
+    /// Default voice model (e.g. "tts-1").
+    #[serde(default)]
+    pub model: String,
+
+    /// Voice ID or name (e.g. "alloy", "onyx").
+    #[serde(default)]
+    pub voice: String,
+
+    /// Base URL for the TTS API.
+    #[serde(default)]
+    pub base_url: String,
+
+    /// API key for TTS.
+    #[serde(default)]
+    pub api_key: String,
+
+    /// Whether to auto-play generated audio.
+    #[serde(default)]
+    pub auto_play: bool,
+}
+
+fn default_voice_provider() -> String {
+    "openai".to_string()
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            provider: default_voice_provider(),
+            model: String::new(),
+            voice: String::new(),
+            base_url: String::new(),
+            api_key: String::new(),
+            auto_play: false,
+        }
+    }
+}
+
 /// Top-level Hakimi configuration.
 ///
 /// All fields have sensible defaults via `serde(default)` so partial config
@@ -374,6 +419,10 @@ pub struct HakimiConfig {
     /// Memory configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
+
+    /// Voice / TTS configuration.
+    #[serde(default)]
+    pub voice: VoiceConfig,
 
     /// Named roles — each can bind to its own bot(s).
     #[serde(default)]
