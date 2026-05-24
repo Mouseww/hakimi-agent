@@ -42,6 +42,10 @@ impl Tool for TerminalTool {
                     "type": "boolean",
                     "description": "Run the command in the background."
                 },
+                "pty": {
+                    "type": "boolean",
+                    "description": "Run in pseudo-terminal (PTY) mode for interactive CLI tools like Codex or REPL. Default: false."
+                },
                 "notify_on_complete": {
                     "type": "boolean",
                     "description": "Notify when background process completes."
@@ -93,6 +97,8 @@ impl Tool for TerminalTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        let pty = args.get("pty").and_then(|v| v.as_bool()).unwrap_or(false);
+
         let timeout_secs = args
             .get("timeout")
             .and_then(|v| v.as_u64())
@@ -118,6 +124,14 @@ impl Tool for TerminalTool {
 
         debug!(command = %command, background = background, notify_on_complete = notify_on_complete, timeout = timeout_secs, workdir = %workdir, "executing terminal command");
 
+        let mut final_command = command.to_string();
+        if pty {
+            final_command = format!(
+                "script -q -e -c '{}' /dev/null",
+                final_command.replace("'", "'\\''")
+            );
+        }
+
         if background {
             let proc_session_id = format!("{}-{}", ctx.session_id, uuid::Uuid::new_v4());
             let log_dir = std::path::PathBuf::from("/tmp/hakimi_sandbox");
@@ -130,7 +144,7 @@ impl Tool for TerminalTool {
 
             let child = Command::new("bash")
                 .arg("-c")
-                .arg(command)
+                .arg(&final_command)
                 .current_dir(workdir)
                 .stdout(std::process::Stdio::from(log_file.try_clone().unwrap()))
                 .stderr(std::process::Stdio::from(log_file))
@@ -202,7 +216,7 @@ impl Tool for TerminalTool {
             std::time::Duration::from_secs(timeout_secs),
             Command::new("bash")
                 .arg("-c")
-                .arg(command)
+                .arg(&final_command)
                 .current_dir(workdir)
                 .output(),
         )

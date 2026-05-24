@@ -105,10 +105,99 @@ impl Tool for CodeExecTool {
             .await
             .map_err(|e| HakimiError::Tool(format!("failed to write temp file: {e}")))?;
 
+        if language == "python" {
+            let hermes_tools_py = r#"
+import os, subprocess, json, re, shlex
+from collections import defaultdict
+import time
+
+def read_file(path, offset=1, limit=500):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        total_lines = len(lines)
+        start = max(0, offset - 1)
+        end = min(total_lines, start + limit)
+        content = "".join(lines[start:end])
+        return {"content": content, "total_lines": total_lines, "offset": offset, "limit": limit}
+    except Exception as e:
+        return {"error": str(e)}
+
+def write_file(path, content):
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return {"success": True, "path": path}
+    except Exception as e:
+        return {"error": str(e)}
+
+def search_files(pattern, target="content", path=".", file_glob=None, limit=50):
+    cmd = ["rg", "--json", "--max-count", str(limit)]
+    if target == "files":
+        cmd = ["rg", "--json", "--files"]
+    if file_glob:
+        cmd.extend(["-g", file_glob])
+    cmd.extend(["--", pattern, path])
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        matches = []
+        for line in res.stdout.strip().split("\n"):
+            if not line: continue
+            try:
+                data = json.loads(line)
+                if data["type"] == "match":
+                    matches.append({"path": data["data"]["path"]["text"], "line": data["data"]["line_number"], "content": data["data"]["lines"]["text"]})
+            except: pass
+        return {"matches": matches}
+    except Exception as e:
+        return {"error": str(e)}
+
+def patch(path, old_string, new_string, replace_all=False):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if not replace_all and content.count(old_string) != 1:
+            return {"error": "old_string is not unique"}
+        new_content = content.replace(old_string, new_string) if replace_all else content.replace(old_string, new_string, 1)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        return {"success": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+def terminal(command, timeout=180, workdir=None):
+    try:
+        res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout, cwd=workdir)
+        return {"output": res.stdout + res.stderr, "exit_code": res.returncode}
+    except subprocess.TimeoutExpired as e:
+        return {"error": "timeout", "output": e.stdout.decode('utf-8') if e.stdout else ''}
+    except Exception as e:
+        return {"error": str(e)}
+
+def json_parse(text):
+    return json.loads(text, strict=False)
+
+def shell_quote(s):
+    return shlex.quote(s)
+
+def retry(fn, max_attempts=3, delay=2):
+    for i in range(max_attempts):
+        try:
+            return fn()
+        except Exception as e:
+            if i == max_attempts - 1: raise e
+            time.sleep(delay)
+"#;
+            let ht_path = temp_dir.join("hermes_tools.py");
+            let _ = tokio::fs::write(&ht_path, hermes_tools_py).await;
+        }
+
         // Execute the code
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
             Command::new(interpreter)
+                .env("PYTHONPATH", temp_dir.to_str().unwrap_or_default())
                 .arg(&temp_file)
                 .current_dir(&ctx.workdir)
                 .output(),
