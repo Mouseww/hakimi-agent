@@ -1432,6 +1432,7 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    println!("Interactive REPL (not yet implemented in this view).");
+    println!("🚧 Interactive REPL is currently under construction.");
+    println!("💡 Tip: Try running with --query \"your prompt\" or use the TUI (hakimi-tui).");
     Ok(())
 }
