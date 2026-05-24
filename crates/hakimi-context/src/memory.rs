@@ -36,10 +36,10 @@ pub struct FileMemoryProvider {
 impl FileMemoryProvider {
     /// Create a new file-backed memory provider.
     ///
-    /// `home` is the user's home directory (e.g. `/root`).
-    pub fn new(home: &str) -> Self {
+    /// `memory_dir` is the exact directory containing the memory files.
+    pub fn new(memory_dir: impl Into<std::path::PathBuf>) -> Self {
         Self {
-            memory_dir: std::path::Path::new(home).join(".hakimi").join("memory"),
+            memory_dir: memory_dir.into(),
         }
     }
 }
@@ -77,9 +77,26 @@ impl MemoryProvider for FileMemoryProvider {
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown");
+                
+            let title = match name.to_lowercase().as_str() {
+                "user" => "USER PROFILE (who the user is)",
+                "memory" => "MEMORY (your personal notes)",
+                _ => name,
+            };
+
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
-                    blocks.push(format!("[{name}]\n{content}"));
+                    let content = content.trim();
+                    if content.is_empty() {
+                        continue;
+                    }
+                    let chars = content.chars().count();
+                    blocks.push(format!(
+                        "══════════════════════════════════════════════\n\
+                        {title} [{chars} chars]\n\
+                        ══════════════════════════════════════════════\n\
+                        {content}"
+                    ));
                 }
                 Err(e) => {
                     warn!(path = %path.display(), error = %e, "Failed to read memory file");
@@ -90,7 +107,7 @@ impl MemoryProvider for FileMemoryProvider {
         if blocks.is_empty() {
             String::new()
         } else {
-            format!("Long-term memory:\n\n{}", blocks.join("\n\n"))
+            blocks.join("\n\n")
         }
     }
 

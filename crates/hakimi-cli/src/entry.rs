@@ -552,11 +552,20 @@ async fn build_agent(
         .register(std::sync::Arc::new(hakimi_tools::ClarifyTool))
         .await;
     tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::MemoryTool::new()))
+        .await;
+    tool_registry
         .register(std::sync::Arc::new(hakimi_tools::CheckpointTool))
         .await;
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::SkillManageTool))
         .await;
+
+    // Build smart context engine
+    let max_context = 128000;
+    let context_engine = std::sync::Arc::new(tokio::sync::RwLock::new(
+        hakimi_context::SmartContextEngine::new(max_context, None),
+    ));
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::DelegateTaskTool))
         .await;
@@ -576,7 +585,8 @@ async fn build_agent(
     };
 
     // Construct agent.
-    let mut agent = hakimi_core::AIAgent::new(&model, transport, tool_registry, Some(skill_store));
+    let mut agent = hakimi_core::AIAgent::new(&model, transport, tool_registry, Some(skill_store))
+        .with_context_engine(context_engine);
     agent.set_model(&model);
     // agent.set_max_turns(config.agent.max_turns);
 
@@ -602,6 +612,7 @@ fn start_server(
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    // Removed `async move` to fix lint
     rt.block_on(async {
         let db = hakimi_session::SessionDB::new(std::path::Path::new(":memory:"))?;
         hakimi_server::Server::new(addr, agent, config, db)?
@@ -978,8 +989,9 @@ async fn start_gateway(
                 // but we will update the inner loop to support `progressive updates` back through the gateway.
                 // Let's revert back to a standard query to unblock compilation and we will handle streaming next.
 
-                // 2. Load context from ~/.hakimi/memory/
-                let memory_text = if config.memory.enabled {
+                // 2. Load context from ~/.hakimi/memory/ via MemoryProvider
+                let mut memory_text = String::new();
+                if config.memory.enabled {
                     let memory_dir = if config.memory.path.is_empty() {
                         dirs::home_dir()
                             .map(|h| h.join(".hakimi").join("memory"))
@@ -988,49 +1000,33 @@ async fn start_gateway(
                         std::path::PathBuf::from(&config.memory.path)
                     };
 
-                    let mut memory_parts = Vec::new();
-
-                    let memory_file = memory_dir.join("memory.md");
-                    if memory_file.exists() {
-                        #[allow(clippy::collapsible_if)]
-                        if let Ok(content) = std::fs::read_to_string(&memory_file) {
-                            if !content.trim().is_empty() {
-                                memory_parts.push(format!("[memory]\n{content}"));
-                            }
+                    use hakimi_context::MemoryProvider;
+                    let file_mem = hakimi_context::FileMemoryProvider::new(
+                        memory_dir.to_str().unwrap_or("/root/.hakimi/memory"),
+                    );
+                    if file_mem.is_available() {
+                        let text = file_mem.system_prompt_block();
+                        if !text.is_empty() {
+                            memory_text.push_str(&text);
                         }
                     }
+                }
 
-                    let user_file = memory_dir.join("user.md");
-                    if user_file.exists() {
-                        #[allow(clippy::collapsible_if)]
-                        if let Ok(content) = std::fs::read_to_string(&user_file) {
-                            if !content.trim().is_empty() {
-                                memory_parts.push(format!("[user profile]\n{content}"));
-                            }
-                        }
-                    }
+                // Remove persistent memory hardcoding. SmartContextEngine handles this via tools and system prompts now.
+                // Reset to default role identity if configured, else default prompt
+                let base_prompt = config
+                    .roles
+                    .get("default")
+                    .map(|r| r.identity.clone())
+                    .filter(|id| !id.is_empty())
+                    .unwrap_or_else(|| hakimi_core::DEFAULT_SYSTEM_PROMPT.to_string());
 
-                    if memory_parts.is_empty() {
-                        String::new()
-                    } else {
-                        memory_parts.join("\n\n")
-                    }
-                } else {
-                    String::new()
-                };
-
-                // Set dynamic system prompt if memory exists.
                 if !memory_text.is_empty() {
-                    let base_prompt = config
-                        .roles
-                        .get("default")
-                        .map(|r| r.identity.clone())
-                        .filter(|id| !id.is_empty())
-                        .unwrap_or_else(|| hakimi_core::DEFAULT_SYSTEM_PROMPT.to_string());
-
                     a.set_system_prompt(format!(
                         "{base_prompt}\n\n### PERSISTENT CONTEXT\n{memory_text}"
                     ));
+                } else {
+                    a.set_system_prompt(base_prompt);
                 }
 
                 {
@@ -1042,40 +1038,54 @@ async fn start_gateway(
                     }
                 }
 
+                let mut updater_handle = None;
+
                 if let Some(msg_id) = initial_message_id {
                     let platform_cb = platform.clone();
                     let bot_id_cb = bot_id.clone();
                     let chat_id_cb = chat_id.clone();
                     let gateway_cb = gateway_clone.clone();
 
-                    let current_text = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-                    let last_edit_time =
-                        std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+                    let (tx, mut rx) = tokio::sync::watch::channel(String::new());
+
+                    let handle = tokio::spawn(async move {
+                        let mut last_edit_text = String::new();
+                        loop {
+                            tokio::select! {
+                                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
+                                    let text = rx.borrow().clone();
+                                    if !text.is_empty() && text != last_edit_text {
+                                        last_edit_text = text.clone();
+                                        let edit_text = format!("{} ⏳", text);
+                                        let _ = gateway_cb.edit_message(&platform_cb, &bot_id_cb, &chat_id_cb, msg_id, &edit_text).await;
+                                    }
+                                }
+                                res = rx.changed() => {
+                                    if res.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    updater_handle = Some(handle);
 
                     let callback = move |token: String| {
-                        let mut text_guard = current_text.lock().unwrap();
-                        text_guard.push_str(&token);
-                        // Throttle edits to roughly once per second to avoid rate limits
-                        let mut time_guard = last_edit_time.lock().unwrap();
-                        if time_guard.elapsed().as_secs_f32() > 1.0 {
-                            *time_guard = std::time::Instant::now();
-                            let edit_text = format!("{} ⏳", *text_guard);
-                            let g = gateway_cb.clone();
-                            let p = platform_cb.clone();
-                            let b = bot_id_cb.clone();
-                            let c = chat_id_cb.clone();
-                            tokio::spawn(async move {
-                                let _ = g.edit_message(&p, &b, &c, msg_id, &edit_text).await;
-                            });
-                        }
+                        let current = tx.borrow().clone();
+                        let _ = tx.send(current + &token);
                     };
-                    // Temporarily set the callback for this request, execute via stream, and then clear it
                     a.set_streaming_callback(Some(std::sync::Arc::new(callback)));
                 }
 
-                let result = a.chat_streaming(&text).await;
+                let result = if config.model.api_mode.as_str() == "REST" {
+                    a.run_conversation(&text).await.map(|r| r.final_response)
+                } else {
+                    a.chat_streaming(&text).await
+                };
 
-                // Clear the callback once complete
+                if let Some(handle) = updater_handle {
+                    handle.abort();
+                }
                 a.set_streaming_callback(None);
 
                 // Final update without the loading indicator
