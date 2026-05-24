@@ -117,10 +117,24 @@ impl Tool for DelegateTaskTool {
             batch_tasks.push((goal, context, toolsets));
         }
 
-        info!(
+info!(
             task_count = batch_tasks.len(),
             "Delegating task(s) via ToolContext"
         );
+
+        if let Some(target) = &ctx.user_id {
+            if let Ok(mut q) = crate::builtin_send_message::MESSAGE_QUEUE.lock() {
+                let msg_text = if batch_tasks.len() == 1 {
+                    format!("🐾 哞哞的小跟班出动啦！\n🎯 目标：{}", batch_tasks[0].0)
+                } else {
+                    format!("🐾 哞哞派出了 {} 个小跟班并发执行任务！", batch_tasks.len())
+                };
+                q.push_back(crate::builtin_send_message::QueuedMessage {
+                    target: target.clone(),
+                    text: msg_text,
+                });
+            }
+        }
 
         if let Some(executor) = &ctx.delegate_executor {
             if batch_tasks.len() == 1 {
