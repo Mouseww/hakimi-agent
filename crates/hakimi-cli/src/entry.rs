@@ -867,6 +867,8 @@ async fn start_gateway(
                         help.push_str("• `/status` - Show agent status\n");
                         help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
                         help.push_str("• `/stop` - Stop current background task or streaming\n");
+                        help.push_str("• `/memory` - View or clear persistent memory\n");
+                        help.push_str("• `/checkpoints` - Manage file system checkpoints\n");
                         help.push_str("\nJust send a message to chat with me!");
                         help
                     }
