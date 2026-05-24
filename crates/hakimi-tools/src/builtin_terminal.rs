@@ -119,18 +119,23 @@ impl Tool for TerminalTool {
         debug!(command = %command, background = background, notify_on_complete = notify_on_complete, timeout = timeout_secs, workdir = %workdir, "executing terminal command");
 
         if background {
-            let mut child = Command::new("bash")
+            let proc_session_id = format!("{}-{}", ctx.session_id, uuid::Uuid::new_v4());
+            let log_dir = std::path::PathBuf::from("/tmp/hakimi_sandbox");
+            tokio::fs::create_dir_all(&log_dir).await.unwrap_or_default();
+            let log_path = log_dir.join(format!("{}.log", proc_session_id));
+            let log_file = std::fs::File::create(&log_path)
+                .map_err(|e| HakimiError::Tool(format!("failed to create log file: {e}")))?;
+
+            let child = Command::new("bash")
                 .arg("-c")
                 .arg(command)
                 .current_dir(workdir)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::from(log_file.try_clone().unwrap()))
+                .stderr(std::process::Stdio::from(log_file))
                 .spawn()
                 .map_err(|e| {
                     HakimiError::Tool(format!("failed to spawn background process: {e}"))
                 })?;
-
-            let proc_session_id = format!("{}-{}", ctx.session_id, uuid::Uuid::new_v4());
 
             let info = crate::builtin_process::ProcessInfo {
                 session_id: proc_session_id.clone(),
@@ -141,10 +146,48 @@ impl Tool for TerminalTool {
             let mut processes = crate::builtin_process::PROCESSES.lock().await;
             processes.insert(proc_session_id.clone(), info);
 
+            if notify_on_complete {
+                let sid = proc_session_id.clone();
+                let cmd = command.to_string();
+                let ctx_session = ctx.session_id.clone();
+                tokio::spawn(async move {
+                    // Poll for completion
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        let mut exited = false;
+                        let mut exit_code = None;
+                        {
+                            let mut procs = crate::builtin_process::PROCESSES.lock().await;
+                            if let Some(info) = procs.get_mut(&sid) {
+                                if let Some(ref mut c) = info.child {
+                                    if let Ok(Some(status)) = c.try_wait() {
+                                        exited = true;
+                                        exit_code = status.code();
+                                    }
+                                }
+                            }
+                        }
+                        if exited {
+                            let message = format!("Background process `{}` (Session: {}) finished with exit code {:?}.", cmd, sid, exit_code);
+                            let queued = crate::builtin_send_message::QueuedMessage {
+                                target: "origin".to_string(), // Gateway handles 'origin' routing
+                                message,
+                                session_id: ctx_session,
+                                queued_at: chrono::Utc::now().to_rfc3339(),
+                            };
+                            if let Ok(mut q) = crate::builtin_send_message::MESSAGE_QUEUE.lock() {
+                                q.push_back(queued);
+                            }
+                            break;
+                        }
+                    }
+                });
+            }
+
             return Ok(json!({
                 "output": "Background process started",
                 "session_id": proc_session_id,
-                "pid": 0, // Mock PID for compatibility or we could extract it from child.id()
+                "pid": 0,
                 "exit_code": 0,
                 "error": null
             }).to_string());

@@ -11,7 +11,7 @@ mod builtin_patch;
 mod builtin_process;
 mod builtin_read_file;
 mod builtin_search_files;
-mod builtin_send_message;
+pub mod builtin_send_message;
 mod builtin_session_search;
 mod builtin_skill_manage;
 mod builtin_terminal;

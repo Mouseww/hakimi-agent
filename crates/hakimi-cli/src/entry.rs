@@ -681,6 +681,36 @@ async fn start_gateway(
 
     info!("gateway listening for messages");
 
+    // Spawn a background task to process queued outbound messages
+    let gateway_queue = gateway.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Some(queued) = hakimi_tools::builtin_send_message::pop_message() {
+                let mut target_platform = "telegram".to_string();
+                let mut target_chat = queued.session_id.clone();
+                let bot_id = "telegram_bot".to_string();
+
+                if queued.target != "origin" {
+                    if let Some((p, c)) = queued.target.split_once(':') {
+                        target_platform = p.to_string();
+                        target_chat = c.to_string();
+                    }
+                }
+
+                let msg = hakimi_gateway::GatewayMessage {
+                    platform: target_platform,
+                    bot_id,
+                    chat_id: target_chat,
+                    user_id: String::new(),
+                    text: queued.message,
+                    media: None,
+                };
+                let _ = gateway_queue.route_message(&msg).await;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    });
+
     while let Some(msg) = messages.recv().await {
         let chat_id = msg.chat_id.clone();
         let bot_id = msg.bot_id.clone();
