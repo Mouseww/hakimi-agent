@@ -394,8 +394,11 @@ mod tests {
         if temp_dir.exists() {
             let mut entries = tokio::fs::read_dir(&temp_dir).await.unwrap();
             let mut count = 0;
-            while entries.next_entry().await.unwrap().is_some() {
-                count += 1;
+            while let Some(entry) = entries.next_entry().await.unwrap() {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name.starts_with("snippet_") {
+                    count += 1;
+                }
             }
             assert_eq!(count, 0, "temp file should have been cleaned up");
         }
