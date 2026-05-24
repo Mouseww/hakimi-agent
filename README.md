@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.51-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.52-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,7 +73,7 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
-- **v0.3.51 Real-time Tool Status & Concurrent Borrow Fix**:
+- **v0.3.52 Real-time Tool Status & Concurrent Borrow Fix**:
   - **Tool Stream Announce**: When an LLM calls a tool (like `delegate_task`), the message now instantly updates to show `⚙️ **tool_call**: {tool_name}` alongside `⏳ Processing...`, eliminating the "hanging" feeling during long-running tasks.
   - **Concurrent Borrow Checker Fix**: Fixed the immutable borrow conflict inside `process_tool_calls` when dispatching concurrent tools by isolating the `ToolRegistry` arc.
 - **v0.3.49 Advanced Tool Execution**:

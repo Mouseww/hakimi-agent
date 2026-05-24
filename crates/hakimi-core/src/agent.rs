@@ -395,6 +395,8 @@ impl AIAgent {
             model: Some(self.model.clone()),
             delegate_executor,
             knowledge_searcher: self.knowledge_searcher.clone(),
+            tts_provider: None,
+            tts_model: None,
         }
     }
 

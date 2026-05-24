@@ -112,6 +112,14 @@ pub struct ToolContext {
     #[serde(skip)]
     pub delegate_executor: Option<Arc<dyn DelegateExecutor>>,
 
+    /// TTS Provider setting
+    #[serde(skip)]
+    pub tts_provider: Option<String>,
+
+    /// TTS Model setting
+    #[serde(skip)]
+    pub tts_model: Option<String>,
+
     /// Searcher for accessing the knowledge base.
     #[serde(skip)]
     pub knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,

@@ -1,0 +1,73 @@
+   Compiling hakimi-tools v0.3.51 (/root/hakimi-agent/crates/hakimi-tools)
+error[E0425]: cannot find value `ctx` in this scope
+  --> crates/hakimi-tools/src/builtin_tts.rs:87:31
+   |
+76 |     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+   |                                               ---- `_ctx` defined here
+...
+87 |         let config_provider = ctx
+   |                               ^^^
+   |
+help: the leading underscore in `_ctx` marks it as unused, consider renaming it to `ctx`
+   |
+76 -     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+76 +     async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
+   |
+
+error[E0425]: cannot find value `ctx` in this scope
+   --> crates/hakimi-tools/src/builtin_tts.rs:107:17
+    |
+ 76 |     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+    |                                               ---- `_ctx` defined here
+...
+107 |                 ctx.hakimi_config
+    |                 ^^^
+    |
+help: the leading underscore in `_ctx` marks it as unused, consider renaming it to `ctx`
+    |
+ 76 -     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+ 76 +     async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
+    |
+
+error[E0425]: cannot find value `ctx` in this scope
+   --> crates/hakimi-tools/src/builtin_tts.rs:121:82
+    |
+ 76 |     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+    |                                               ---- `_ctx` defined here
+...
+121 |             "openai" => generate_openai_tts(text, voice.as_deref(), output_path, ctx).await?,
+    |                                                                                  ^^^
+    |
+help: the leading underscore in `_ctx` marks it as unused, consider renaming it to `ctx`
+    |
+ 76 -     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+ 76 +     async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
+    |
+
+error[E0609]: no field `hakimi_config` on type `&hakimi_common::ToolContext`
+   --> crates/hakimi-tools/src/builtin_tts.rs:165:10
+    |
+165 |         .hakimi_config
+    |          ^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `session_id`, `user_id`, `task_id`, `workdir`, `model` ... and 2 others
+
+error[E0609]: no field `hakimi_config` on type `&hakimi_common::ToolContext`
+   --> crates/hakimi-tools/src/builtin_tts.rs:179:10
+    |
+179 |         .hakimi_config
+    |          ^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `session_id`, `user_id`, `task_id`, `workdir`, `model` ... and 2 others
+
+error[E0609]: no field `hakimi_config` on type `&hakimi_common::ToolContext`
+   --> crates/hakimi-tools/src/builtin_tts.rs:189:10
+    |
+189 |         .hakimi_config
+    |          ^^^^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `session_id`, `user_id`, `task_id`, `workdir`, `model` ... and 2 others
+
+Some errors have detailed explanations: E0425, E0609.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `hakimi-tools` (lib test) due to 6 previous errors

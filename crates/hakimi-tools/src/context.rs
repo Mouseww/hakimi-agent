@@ -11,6 +11,8 @@ pub struct ToolContextBuilder {
     workdir: Option<String>,
     model: Option<String>,
     delegate_executor: Option<Arc<dyn DelegateExecutor>>,
+    tts_provider: Option<String>,
+    tts_model: Option<String>,
     knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
 }
 
@@ -70,6 +72,18 @@ impl ToolContextBuilder {
         self
     }
 
+    /// Set the TTS provider.
+    pub fn tts_provider(mut self, provider: impl Into<String>) -> Self {
+        self.tts_provider = Some(provider.into());
+        self
+    }
+
+    /// Set the TTS model.
+    pub fn tts_model(mut self, model: impl Into<String>) -> Self {
+        self.tts_model = Some(model.into());
+        self
+    }
+
     /// Set the knowledge searcher.
     pub fn knowledge_searcher(mut self, searcher: Arc<dyn KnowledgeSearcher>) -> Self {
         self.knowledge_searcher = Some(searcher);
@@ -91,6 +105,8 @@ impl ToolContextBuilder {
             model: self.model,
             delegate_executor: self.delegate_executor,
             knowledge_searcher: self.knowledge_searcher,
+            tts_provider: self.tts_provider,
+            tts_model: self.tts_model,
         }
     }
 
@@ -111,6 +127,8 @@ impl ToolContextBuilder {
             model: self.model,
             delegate_executor: self.delegate_executor,
             knowledge_searcher: self.knowledge_searcher,
+            tts_provider: self.tts_provider,
+            tts_model: self.tts_model,
         })
     }
 }

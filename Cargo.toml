@@ -19,7 +19,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.51"
+version = "0.3.52"
 edition = "2024"
 
 [workspace.dependencies]
@@ -67,12 +67,6 @@ scraper = "0.22"
 
 # Random
 rand = "0.9"
-
-# Graph
-petgraph = { version = "0.6", features = ["serde-1", "stable_graph"] }
-
-# Tempfile
-tempfile = "3"
 
 # Async traits
 async-trait = "0.1"

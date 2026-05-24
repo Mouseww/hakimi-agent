@@ -1194,20 +1194,15 @@ async fn start_gateway(
                     let handle = tokio::spawn(async move {
                         let mut last_edit_text = String::new();
                         loop {
-                            tokio::select! {
-                                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
-                                    let text = rx.borrow().clone();
-                                    if !text.is_empty() && text != last_edit_text {
-                                        last_edit_text = text.clone();
-                                        let _ = gateway_cb.edit_message(&platform_cb, &bot_id_cb, &chat_id_cb, msg_id, &text).await;
-                                    }
-                                }
-                                res = rx.changed() => {
-                                    if res.is_err() {
-                                        break;
-                                    }
-                                }
+                            let text = rx.borrow().clone();
+                            if !text.is_empty() && text != last_edit_text {
+                                last_edit_text = text.clone();
+                                let _ = gateway_cb.edit_message(&platform_cb, &bot_id_cb, &chat_id_cb, msg_id, &text).await;
                             }
+                            if rx.changed().await.is_err() {
+                                break;
+                            }
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         }
                     });
                     updater_handle = Some(handle);

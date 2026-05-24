@@ -323,7 +323,31 @@ async fn process_tool_calls(
     let mut halt_message = None;
     // First check guardrails and collect safe tools to dispatch
     for tc in tool_calls {
-        let tool_notice = format!("\n⚙️ **tool**: `{}`", tc.name);
+        let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
+        let mut arg_summary = String::new();
+        if let Some(obj) = args.as_object() {
+            let mut parts = Vec::new();
+            for (k, v) in obj {
+                // Skip very long fields like 'content' in write_file
+                if k == "content" || k == "patch" || k == "code" {
+                    parts.push(format!("{}: [...]", k));
+                    continue;
+                }
+                let v_str = if let Some(s) = v.as_str() { s.to_string() } else { v.to_string() };
+                // Truncate long strings but keep them readable
+                let v_trunc = if v_str.len() > 40 {
+                    format!("{}...", &v_str[..40].replace('\n', " "))
+                } else {
+                    v_str.replace('\n', " ")
+                };
+                parts.push(format!("{}: {}", k, v_trunc));
+            }
+            if !parts.is_empty() {
+                arg_summary = format!(" ({})", parts.join(", "));
+            }
+        }
+
+        let tool_notice = format!("\n⚙️ **tool**: `{}`{}", tc.name, arg_summary);
         if let Some(ref cb) = agent.streaming_callback {
             cb(tool_notice.clone());
         }

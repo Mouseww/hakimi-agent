@@ -73,7 +73,7 @@ impl Tool for TextToSpeechTool {
         Some(2048) // Result is just a file path
     }
 
-    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+    async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
         let text = args
             .get("text")
             .and_then(|v| v.as_str())
@@ -84,15 +84,24 @@ impl Tool for TextToSpeechTool {
         }
 
         // Determine provider
+        let config_provider = ctx
+            .tts_provider
+            .clone()
+            .filter(|s| !s.is_empty());
+
         let provider = args
             .get("provider")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
+            .or(config_provider)
             .unwrap_or_else(|| {
                 std::env::var("HAKIMI_TTS_PROVIDER").unwrap_or_else(|_| "openai".to_string())
             });
 
-        let voice = args.get("voice").and_then(|v| v.as_str()).map(String::from);
+        let voice = args
+            .get("voice")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let output_path = args
             .get("output_path")
@@ -102,7 +111,7 @@ impl Tool for TextToSpeechTool {
         debug!(provider = %provider, text_len = text.len(), "TTS request");
 
         let result_path = match provider.as_str() {
-            "openai" => generate_openai_tts(text, voice.as_deref(), output_path).await?,
+            "openai" => generate_openai_tts(text, voice.as_deref(), output_path, ctx).await?,
             "edge" => generate_edge_tts(text, voice.as_deref(), output_path).await?,
             _ => {
                 return Err(HakimiError::Tool(format!(
@@ -143,8 +152,11 @@ async fn generate_openai_tts(
     text: &str,
     voice: Option<&str>,
     output_path: Option<PathBuf>,
+    ctx: &ToolContext,
 ) -> Result<PathBuf> {
-    let api_key = std::env::var("HAKIMI_TTS_API_KEY").map_err(|_| {
+    let config_api_key: Option<String> = None;
+
+    let api_key = config_api_key.or_else(|| std::env::var("HAKIMI_TTS_API_KEY").ok()).ok_or_else(|| {
         HakimiError::Tool(
             "HAKIMI_TTS_API_KEY environment variable not set. \
              Set it to your OpenAI API key, or use provider='edge' for free TTS."
@@ -152,10 +164,20 @@ async fn generate_openai_tts(
         )
     })?;
 
-    let base_url = std::env::var("HAKIMI_TTS_BASE_URL")
-        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+    let config_base_url: Option<String> = None;
 
-    let model = std::env::var("HAKIMI_TTS_MODEL").unwrap_or_else(|_| "tts-1".to_string());
+    let base_url = config_base_url
+        .or_else(|| std::env::var("HAKIMI_TTS_BASE_URL").ok())
+        .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+
+    let config_model = ctx
+        .tts_model
+        .clone()
+        .filter(|s| !s.is_empty());
+
+    let model = config_model
+        .or_else(|| std::env::var("HAKIMI_TTS_MODEL").ok())
+        .unwrap_or_else(|| "tts-1".to_string());
     let voice = voice.unwrap_or("alloy");
 
     let url = format!("{}/audio/speech", base_url.trim_end_matches('/'));
