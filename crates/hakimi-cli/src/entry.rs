@@ -501,7 +501,9 @@ async fn build_agent(
     let tool_registry = hakimi_tools::ToolRegistry::new();
     // Register built-in tools.
     tool_registry
-        .register(std::sync::Arc::new(hakimi_tools::builtin_cronjob::CronjobTool::new()))
+        .register(std::sync::Arc::new(
+            hakimi_tools::builtin_cronjob::CronjobTool::new(),
+        ))
         .await;
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::TerminalTool))
@@ -719,45 +721,54 @@ async fn start_gateway(
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            
+
             let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-            let cron_db_path = std::path::PathBuf::from(home).join(".hakimi").join("cron.db");
-            
+            let cron_db_path = std::path::PathBuf::from(home)
+                .join(".hakimi")
+                .join("cron.db");
+
             if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
                 if let Ok(jobs) = store.load_all() {
                     let now = chrono::Utc::now();
                     for mut job in jobs {
-                        if !job.enabled { continue; }
-                        
+                        if !job.enabled {
+                            continue;
+                        }
+
                         if let Some(next_run) = job.next_run {
                             if now >= next_run {
                                 tracing::info!(job_id = %job.id, "Executing scheduled cron job");
-                                
+
                                 // Update times
                                 let new_next = job.schedule.next_after(now);
                                 let _ = store.update_run_times(&job.id, now, new_next);
-                                
+
                                 // Spawn execution
                                 let job_clone = job.clone();
                                 let base = cron_agent_base.clone();
-                                
+
                                 tokio::spawn(async move {
                                     let executor = {
                                         let a = base.lock().await;
                                         a.build_tool_context().delegate_executor
                                     };
-                                    
+
                                     if let Some(exec) = executor {
-                                        let toolsets = job_clone.enabled_toolsets.unwrap_or_default();
-                                        let res = exec.execute_delegation(
-                                            &job_clone.prompt,
-                                            "Cronjob auto-execution context.",
-                                            &toolsets,
-                                        ).await;
-                                        
+                                        let toolsets =
+                                            job_clone.enabled_toolsets.unwrap_or_default();
+                                        let res = exec
+                                            .execute_delegation(
+                                                &job_clone.prompt,
+                                                "Cronjob auto-execution context.",
+                                                &toolsets,
+                                            )
+                                            .await;
+
                                         match res {
                                             Ok(output) => {
-                                                let target = job_clone.deliver.unwrap_or_else(|| "telegram".to_string());
+                                                let target = job_clone
+                                                    .deliver
+                                                    .unwrap_or_else(|| "telegram".to_string());
                                                 let queued = hakimi_tools::builtin_send_message::QueuedMessage {
                                                     target,
                                                     message: format!("⏰ **Cronjob '{}' Finished**\n\n{}", job_clone.name, output),
@@ -769,7 +780,11 @@ async fn start_gateway(
                                                 }
                                             }
                                             Err(e) => {
-                                                tracing::error!("Cronjob {} failed: {}", job_clone.id, e);
+                                                tracing::error!(
+                                                    "Cronjob {} failed: {}",
+                                                    job_clone.id,
+                                                    e
+                                                );
                                             }
                                         }
                                     }

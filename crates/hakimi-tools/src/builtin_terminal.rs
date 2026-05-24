@@ -121,7 +121,9 @@ impl Tool for TerminalTool {
         if background {
             let proc_session_id = format!("{}-{}", ctx.session_id, uuid::Uuid::new_v4());
             let log_dir = std::path::PathBuf::from("/tmp/hakimi_sandbox");
-            tokio::fs::create_dir_all(&log_dir).await.unwrap_or_default();
+            tokio::fs::create_dir_all(&log_dir)
+                .await
+                .unwrap_or_default();
             let log_path = log_dir.join(format!("{}.log", proc_session_id));
             let log_file = std::fs::File::create(&log_path)
                 .map_err(|e| HakimiError::Tool(format!("failed to create log file: {e}")))?;
@@ -168,7 +170,10 @@ impl Tool for TerminalTool {
                             }
                         }
                         if exited {
-                            let message = format!("Background process `{}` (Session: {}) finished with exit code {:?}.", cmd, sid, exit_code);
+                            let message = format!(
+                                "Background process `{}` (Session: {}) finished with exit code {:?}.",
+                                cmd, sid, exit_code
+                            );
                             let queued = crate::builtin_send_message::QueuedMessage {
                                 target: "origin".to_string(), // Gateway handles 'origin' routing
                                 message,
@@ -190,7 +195,8 @@ impl Tool for TerminalTool {
                 "pid": 0,
                 "exit_code": 0,
                 "error": null
-            }).to_string());
+            })
+            .to_string());
         }
 
         let output = tokio::time::timeout(

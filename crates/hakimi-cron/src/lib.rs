@@ -96,7 +96,7 @@ pub struct CronJob {
     pub last_run: Option<DateTime<Utc>>,
     /// Next scheduled execution, if any.
     pub next_run: Option<DateTime<Utc>>,
-    
+
     // Hermes extensions
     #[serde(default)]
     pub skills: Vec<String>,

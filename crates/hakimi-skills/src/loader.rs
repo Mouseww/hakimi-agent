@@ -73,7 +73,10 @@ impl SkillLoader {
             }
         }
 
-        debug!(count = loader.skills.len(), "Loaded skills from directory tree");
+        debug!(
+            count = loader.skills.len(),
+            "Loaded skills from directory tree"
+        );
         Ok(loader)
     }
 

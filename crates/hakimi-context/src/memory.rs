@@ -77,7 +77,7 @@ impl MemoryProvider for FileMemoryProvider {
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown");
-                
+
             let title = match name.to_lowercase().as_str() {
                 "user" => "USER PROFILE (who the user is)",
                 "memory" => "MEMORY (your personal notes)",
