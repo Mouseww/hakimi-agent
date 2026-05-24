@@ -182,7 +182,7 @@ mod tests {
         });
 
         let result = SendMessageTool.execute(&args, &ctx).await.unwrap();
-        
+
         assert!(result.contains("queued"));
         assert!(result.contains("telegram:123456789"));
 
