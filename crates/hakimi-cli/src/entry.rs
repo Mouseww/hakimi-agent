@@ -696,10 +696,11 @@ async fn start_gateway(
                 let bot_id = "telegram_bot".to_string();
 
                 if queued.target != "origin"
-                    && let Some((p, c)) = queued.target.split_once(':') {
-                        target_platform = p.to_string();
-                        target_chat = c.to_string();
-                    }
+                    && let Some((p, c)) = queued.target.split_once(':')
+                {
+                    target_platform = p.to_string();
+                    target_chat = c.to_string();
+                }
 
                 let msg = hakimi_gateway::GatewayMessage {
                     platform: target_platform,
@@ -727,70 +728,73 @@ async fn start_gateway(
                 .join("cron.db");
 
             if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path)
-                && let Ok(jobs) = store.load_all() {
-                    let now = chrono::Utc::now();
-                    for job in jobs {
-                        if !job.enabled {
-                            continue;
-                        }
+                && let Ok(jobs) = store.load_all()
+            {
+                let now = chrono::Utc::now();
+                for job in jobs {
+                    if !job.enabled {
+                        continue;
+                    }
 
-                        if let Some(next_run) = job.next_run
-                            && now >= next_run {
-                                tracing::info!(job_id = %job.id, "Executing scheduled cron job");
+                    if let Some(next_run) = job.next_run
+                        && now >= next_run
+                    {
+                        tracing::info!(job_id = %job.id, "Executing scheduled cron job");
 
-                                // Update times
-                                let new_next = job.schedule.next_after(now);
-                                let _ = store.update_run_times(&job.id, now, new_next);
+                        // Update times
+                        let new_next = job.schedule.next_after(now);
+                        let _ = store.update_run_times(&job.id, now, new_next);
 
-                                // Spawn execution
-                                let job_clone = job.clone();
-                                let base = cron_agent_base.clone();
+                        // Spawn execution
+                        let job_clone = job.clone();
+                        let base = cron_agent_base.clone();
 
-                                tokio::spawn(async move {
-                                    let executor = {
-                                        let a = base.lock().await;
-                                        a.build_tool_context().delegate_executor
-                                    };
+                        tokio::spawn(async move {
+                            let executor = {
+                                let a = base.lock().await;
+                                a.build_tool_context().delegate_executor
+                            };
 
-                                    if let Some(exec) = executor {
-                                        let toolsets =
-                                            job_clone.enabled_toolsets.unwrap_or_default();
-                                        let res = exec
-                                            .execute_delegation(
-                                                &job_clone.prompt,
-                                                "Cronjob auto-execution context.",
-                                                &toolsets,
-                                            )
-                                            .await;
+                            if let Some(exec) = executor {
+                                let toolsets = job_clone.enabled_toolsets.unwrap_or_default();
+                                let res = exec
+                                    .execute_delegation(
+                                        &job_clone.prompt,
+                                        "Cronjob auto-execution context.",
+                                        &toolsets,
+                                    )
+                                    .await;
 
-                                        match res {
-                                            Ok(output) => {
-                                                let target = job_clone
-                                                    .deliver
-                                                    .unwrap_or_else(|| "telegram".to_string());
-                                                let queued = hakimi_tools::builtin_send_message::QueuedMessage {
-                                                    target,
-                                                    message: format!("⏰ **Cronjob '{}' Finished**\n\n{}", job_clone.name, output),
-                                                    session_id: "cron_scheduler".to_string(),
-                                                    queued_at: chrono::Utc::now().to_rfc3339(),
-                                                };
-                                                if let Ok(mut q) = hakimi_tools::builtin_send_message::MESSAGE_QUEUE.lock() {
-                                                    q.push_back(queued);
-                                                }
-                                            }
-                                            Err(e) => {
-                                                tracing::error!(
-                                                    "Cronjob {} failed: {}",
-                                                    job_clone.id,
-                                                    e
-                                                );
-                                            }
+                                match res {
+                                    Ok(output) => {
+                                        let target = job_clone
+                                            .deliver
+                                            .unwrap_or_else(|| "telegram".to_string());
+                                        let queued =
+                                            hakimi_tools::builtin_send_message::QueuedMessage {
+                                                target,
+                                                message: format!(
+                                                    "⏰ **Cronjob '{}' Finished**\n\n{}",
+                                                    job_clone.name, output
+                                                ),
+                                                session_id: "cron_scheduler".to_string(),
+                                                queued_at: chrono::Utc::now().to_rfc3339(),
+                                            };
+                                        if let Ok(mut q) =
+                                            hakimi_tools::builtin_send_message::MESSAGE_QUEUE.lock()
+                                        {
+                                            q.push_back(queued);
                                         }
                                     }
-                                });
+                                    Err(e) => {
+                                        tracing::error!("Cronjob {} failed: {}", job_clone.id, e);
+                                    }
+                                }
                             }
+                        });
                     }
                 }
+            }
         }
     });
 

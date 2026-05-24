@@ -162,10 +162,11 @@ impl Tool for TerminalTool {
                             let mut procs = crate::builtin_process::PROCESSES.lock().await;
                             if let Some(info) = procs.get_mut(&sid)
                                 && let Some(ref mut c) = info.child
-                                    && let Ok(Some(status)) = c.try_wait() {
-                                        exited = true;
-                                        exit_code = status.code();
-                                    }
+                                && let Ok(Some(status)) = c.try_wait()
+                            {
+                                exited = true;
+                                exit_code = status.code();
+                            }
                         }
                         if exited {
                             let message = format!(

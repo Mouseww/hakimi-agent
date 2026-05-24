@@ -38,9 +38,10 @@ async fn find_skill(name: &str) -> Option<std::path::PathBuf> {
                     }
                     if file_name == "SKILL.md"
                         && let Some(parent) = path.parent()
-                            && parent.file_name().unwrap_or_default().to_string_lossy() == name {
-                                return Some(path);
-                            }
+                        && parent.file_name().unwrap_or_default().to_string_lossy() == name
+                    {
+                        return Some(path);
+                    }
                 }
             }
         }

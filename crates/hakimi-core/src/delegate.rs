@@ -10,7 +10,6 @@ use hakimi_transports::ProviderTransport;
 use tokio::sync::{RwLock, Semaphore};
 use tracing::info;
 
-
 /// Default timeout for child agent execution (60 seconds).
 const DEFAULT_DELEGATION_TIMEOUT: Duration = Duration::from_secs(60);
 
