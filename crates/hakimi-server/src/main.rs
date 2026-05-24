@@ -201,7 +201,7 @@ async fn build_agent(
 
     // Tool registry with built-in tools
     let tool_registry = hakimi_tools::ToolRegistry::new();
-    let mut builtin_tools: Vec<Arc<dyn hakimi_tools::Tool>> = vec![
+    let builtin_tools: Vec<Arc<dyn hakimi_tools::Tool>> = vec![
         Arc::new(hakimi_tools::ReadFileTool),
         Arc::new(hakimi_tools::WriteFileTool),
         Arc::new(hakimi_tools::TerminalTool),

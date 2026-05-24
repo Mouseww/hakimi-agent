@@ -8,6 +8,12 @@ use serde_json::{Value as JsonValue, json};
 
 pub struct CronjobTool;
 
+impl Default for CronjobTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CronjobTool {
     pub fn new() -> Self {
         Self {}

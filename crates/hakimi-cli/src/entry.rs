@@ -695,12 +695,11 @@ async fn start_gateway(
                 let mut target_chat = queued.session_id.clone();
                 let bot_id = "telegram_bot".to_string();
 
-                if queued.target != "origin" {
-                    if let Some((p, c)) = queued.target.split_once(':') {
+                if queued.target != "origin"
+                    && let Some((p, c)) = queued.target.split_once(':') {
                         target_platform = p.to_string();
                         target_chat = c.to_string();
                     }
-                }
 
                 let msg = hakimi_gateway::GatewayMessage {
                     platform: target_platform,
@@ -727,16 +726,16 @@ async fn start_gateway(
                 .join(".hakimi")
                 .join("cron.db");
 
-            if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
-                if let Ok(jobs) = store.load_all() {
+            if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path)
+                && let Ok(jobs) = store.load_all() {
                     let now = chrono::Utc::now();
-                    for mut job in jobs {
+                    for job in jobs {
                         if !job.enabled {
                             continue;
                         }
 
-                        if let Some(next_run) = job.next_run {
-                            if now >= next_run {
+                        if let Some(next_run) = job.next_run
+                            && now >= next_run {
                                 tracing::info!(job_id = %job.id, "Executing scheduled cron job");
 
                                 // Update times
@@ -790,10 +789,8 @@ async fn start_gateway(
                                     }
                                 });
                             }
-                        }
                     }
                 }
-            }
         }
     });
 

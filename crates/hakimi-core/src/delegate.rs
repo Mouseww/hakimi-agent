@@ -1,16 +1,15 @@
+#![allow(dead_code)]
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use hakimi_common::{DelegateExecutor, HakimiError, Result};
-use hakimi_context::SimpleContextEngine;
 use hakimi_tools::ToolRegistry;
 use hakimi_transports::ProviderTransport;
 use tokio::sync::{RwLock, Semaphore};
-use tracing::{info, warn};
+use tracing::info;
 
-use crate::AIAgent;
 
 /// Default timeout for child agent execution (60 seconds).
 const DEFAULT_DELEGATION_TIMEOUT: Duration = Duration::from_secs(60);
@@ -137,7 +136,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
             }
 
             let semaphore = self.semaphore.clone();
-            let mut workdir = self.workdir.clone();
+            let _workdir = self.workdir.clone();
 
             // Generate a unique session ID for the child
             let child_session_id = format!("child_{}", uuid::Uuid::new_v4().simple());

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{Value as JsonValue, json};
 use tokio::fs;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::Tool;
 
@@ -36,13 +36,11 @@ async fn find_skill(name: &str) -> Option<std::path::PathBuf> {
                     if file_name == format!("{}.md", name) {
                         return Some(path);
                     }
-                    if file_name == "SKILL.md" {
-                        if let Some(parent) = path.parent() {
-                            if parent.file_name().unwrap_or_default().to_string_lossy() == name {
+                    if file_name == "SKILL.md"
+                        && let Some(parent) = path.parent()
+                            && parent.file_name().unwrap_or_default().to_string_lossy() == name {
                                 return Some(path);
                             }
-                        }
-                    }
                 }
             }
         }
