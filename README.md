@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.41-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.48-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.48 Full-Stack Reliability & Features**:
+  - **Embedded Cron Scheduler**: 100% isolated background Daemon polling `cron.db` and delegating scheduled tasks.
+  - **MCP Out-of-the-Box**: Verified and activated the native integration of Model Context Protocol (`mcp_servers` configuration in `config.yaml`).
+  - **Deadlock-Free CI**: Complete elimination of race conditions and deadlocks in the async test suites.
 - **Interactive Commands Menu:** Auto-configured command menu in Telegram for easier navigation (e.g., `/help`, `/stop`, `/clear`).
 - **Stop Command:** Added `/stop` command to halt ongoing tasks or streaming generation.
 - **Gateway Progressive Streaming**: Resolved lingering typing indicators (`⏳`) ensuring fluid platform interaction without delayed edits.
