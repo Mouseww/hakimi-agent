@@ -157,7 +157,15 @@ impl TelegramAdapter {
                  Simply type a message and I will respond.\n\n\
                  *Commands:*\n\
                  /start – Start a conversation\n\
-                 /help – Show this help message",
+                 /help – Show this help message\n\
+                 /clear – Clear conversation history\n\
+                 /model – Get or set the AI model\n\
+                 /tools – List available tools\n\
+                 /skills – List loaded skills\n\
+                 /cron – List scheduled jobs\n\
+                 /status – Show agent status\n\
+                 /update – Update Hakimi and restart Gateway\n\
+                 /stop – Stop current background task or streaming",
             ),
             "/update" => Some(
                 "🔄 *Hakimi Updater*\n\n\
