@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.48-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.49-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,9 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.49 Advanced Tool Execution**:
+  - **Execute Code Injection (`execute_code`)**: Embedded Python REPL sandbox now natively injects the `hermes_tools` library, bridging the tool pipeline (read/write/patch/search/terminal) directly into the Python environment!
+  - **PTY Terminal Support**: Added full pseudo-terminal (`pty: true`) backing via standard linux `script` for interactive commands, ensuring smooth flow without input deadlocks.
 - **v0.3.48 Full-Stack Reliability & Features**:
   - **Embedded Cron Scheduler**: 100% isolated background Daemon polling `cron.db` and delegating scheduled tasks.
   - **MCP Out-of-the-Box**: Verified and activated the native integration of Model Context Protocol (`mcp_servers` configuration in `config.yaml`).
