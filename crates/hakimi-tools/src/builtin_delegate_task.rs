@@ -117,7 +117,7 @@ impl Tool for DelegateTaskTool {
             batch_tasks.push((goal, context, toolsets));
         }
 
-info!(
+        info!(
             task_count = batch_tasks.len(),
             "Delegating task(s) via ToolContext"
         );
