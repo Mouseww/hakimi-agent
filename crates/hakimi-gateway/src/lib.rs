@@ -102,6 +102,12 @@ pub trait PlatformAdapter: Send + Sync {
         None
     }
 
+    /// Download a media file given its platform-specific identifier or URL.
+    /// Returns the raw bytes of the file and its MIME type (e.g., "image/jpeg").
+    async fn download_media(&self, _media_id: &str) -> anyhow::Result<(Vec<u8>, String)> {
+        anyhow::bail!("Media download not supported on this platform")
+    }
+
     /// Gracefully disconnect from the platform.
     async fn disconnect(&mut self) -> anyhow::Result<()>;
 }
@@ -187,6 +193,28 @@ impl Gateway {
             })?;
 
         adapter.send_message_get_id(&msg.chat_id, &msg.text).await
+    }
+
+    /// Download media from a platform adapter.
+    pub async fn download_media(
+        &self,
+        platform: &str,
+        bot_id: &str,
+        media_id: &str,
+    ) -> anyhow::Result<(Vec<u8>, String)> {
+        let adapter = self
+            .adapters
+            .iter()
+            .find(|a| a.name() == platform && a.bot_id() == bot_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no adapter for platform '{}' with bot_id '{}'",
+                    platform,
+                    bot_id
+                )
+            })?;
+
+        adapter.download_media(media_id).await
     }
 
     /// Edit an existing message by ID.

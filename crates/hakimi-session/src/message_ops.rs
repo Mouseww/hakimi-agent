@@ -194,6 +194,7 @@ fn row_to_message(row: &rusqlite::Row) -> rusqlite::Result<Message> {
     Ok(Message {
         role,
         content: row.get(1)?,
+        images: None,
         tool_calls,
         tool_call_id: row.get(2)?,
         name: row.get(4)?,

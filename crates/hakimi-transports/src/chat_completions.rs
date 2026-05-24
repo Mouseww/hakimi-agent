@@ -56,7 +56,29 @@ impl ChatCompletionsTransport {
 
                 // Content — may be absent for assistant messages with tool_calls.
                 if let Some(ref content) = m.content {
-                    obj["content"] = json!(content);
+                    if let Some(ref images) = m.images {
+                        if !images.is_empty() {
+                            let mut content_array = Vec::new();
+                            content_array.push(json!({
+                                "type": "text",
+                                "text": content
+                            }));
+                            for img in images {
+                                let url = format!("data:{};base64,{}", img.mime_type, img.data);
+                                content_array.push(json!({
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": url
+                                    }
+                                }));
+                            }
+                            obj["content"] = json!(content_array);
+                        } else {
+                            obj["content"] = json!(content);
+                        }
+                    } else {
+                        obj["content"] = json!(content);
+                    }
                 }
 
                 // Tool calls (assistant messages).

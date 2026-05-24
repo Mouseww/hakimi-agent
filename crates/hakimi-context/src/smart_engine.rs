@@ -203,6 +203,7 @@ impl SmartContextEngine {
         let summary_msg = Message {
             role: MessageRole::System,
             content: Some(summary_text),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -257,6 +258,7 @@ impl SmartContextEngine {
                  </context-compression>",
                 dropped_count, keep_recent
             )),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -991,6 +993,7 @@ mod tests {
         let msg = Message {
             role: MessageRole::Assistant,
             content: Some("answer".to_string()),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,

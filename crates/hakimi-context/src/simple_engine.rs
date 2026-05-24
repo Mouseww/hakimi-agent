@@ -81,6 +81,7 @@ impl ContextEngine for SimpleContextEngine {
             let summary_msg = Message {
                 role: MessageRole::System,
                 content: Some(dropped_summary),
+                images: None,
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,

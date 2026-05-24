@@ -458,6 +458,52 @@ impl PlatformAdapter for TelegramAdapter {
         self.msg_rx.take()
     }
 
+    async fn download_media(&self, media_id: &str) -> Result<(Vec<u8>, String)> {
+        let file_resp: TgResponse<serde_json::Value> = self
+            .client
+            .get(self.api_url("getFile"))
+            .query(&[("file_id", media_id)])
+            .send()
+            .await
+            .context("getFile request failed")?
+            .json()
+            .await
+            .context("failed to parse getFile response")?;
+
+        if !file_resp.ok {
+            anyhow::bail!(
+                "getFile error: {}",
+                file_resp.description.unwrap_or_else(|| "unknown".into())
+            );
+        }
+
+        let file_path = file_resp
+            .result
+            .and_then(|v| {
+                v.get("file_path")
+                    .and_then(|p| p.as_str())
+                    .map(|s| s.to_owned())
+            })
+            .context("file_path missing in getFile response")?;
+
+        let download_url = format!("{}/file/bot{}/{}", self.base_url, self.token, file_path);
+        let resp = self.client.get(&download_url).send().await?;
+        let bytes = resp.bytes().await?.to_vec();
+
+        let lower_path = file_path.to_lowercase();
+        let mime_type = if lower_path.ends_with(".jpg") || lower_path.ends_with(".jpeg") {
+            "image/jpeg"
+        } else if lower_path.ends_with(".png") {
+            "image/png"
+        } else if lower_path.ends_with(".webp") {
+            "image/webp"
+        } else {
+            "application/octet-stream"
+        };
+
+        Ok((bytes, mime_type.to_owned()))
+    }
+
     async fn disconnect(&mut self) -> Result<()> {
         info!("disconnecting Telegram adapter");
         if let Some(handle) = self.poll_handle.take() {

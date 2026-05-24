@@ -35,6 +35,10 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
 
+    /// Images attached to this message (for Vision multimodal support).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<ImageContent>>,
+
     /// Tool calls requested by the assistant.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
@@ -68,12 +72,22 @@ pub struct Message {
     pub finish_reason: Option<String>,
 }
 
+/// Image content attached to a message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageContent {
+    /// MIME type of the image (e.g. "image/jpeg", "image/png").
+    pub mime_type: String,
+    /// Base64-encoded image data.
+    pub data: String,
+}
+
 impl Message {
     /// Create a new system message.
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: MessageRole::System,
             content: Some(content.into()),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -90,6 +104,7 @@ impl Message {
         Self {
             role: MessageRole::User,
             content: Some(content.into()),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -101,11 +116,18 @@ impl Message {
         }
     }
 
+    /// Attach images to this message.
+    pub fn with_images(mut self, images: Vec<ImageContent>) -> Self {
+        self.images = Some(images);
+        self
+    }
+
     /// Create a new assistant message.
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             role: MessageRole::Assistant,
             content: Some(content.into()),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -126,6 +148,7 @@ impl Message {
         Self {
             role: MessageRole::Tool,
             content: Some(content.into()),
+            images: None,
             tool_calls: None,
             tool_call_id: Some(tool_call_id.into()),
             name: Some(name.into()),
@@ -237,6 +260,7 @@ mod tests {
         let msg = Message {
             role: MessageRole::Assistant,
             content: None,
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -289,6 +313,7 @@ mod tests {
         let msg = Message {
             role: MessageRole::Assistant,
             content: None,
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,

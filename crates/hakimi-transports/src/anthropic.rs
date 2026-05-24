@@ -116,9 +116,36 @@ impl AnthropicTransport {
                     continue;
                 }
                 MessageRole::User => {
+                    let mut content_blocks: Vec<JsonValue> = Vec::new();
+                    if let Some(ref text) = msg.content {
+                        if !text.is_empty() {
+                            content_blocks.push(json!({
+                                "type": "text",
+                                "text": text
+                            }));
+                        }
+                    }
+                    if let Some(ref images) = msg.images {
+                        for img in images {
+                            content_blocks.push(json!({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": img.mime_type,
+                                    "data": img.data
+                                }
+                            }));
+                        }
+                    }
+                    if content_blocks.is_empty() {
+                        content_blocks.push(json!({
+                            "type": "text",
+                            "text": ""
+                        }));
+                    }
                     let obj = json!({
                         "role": "user",
-                        "content": msg.content.as_deref().unwrap_or("")
+                        "content": content_blocks
                     });
                     result.push(obj);
                 }

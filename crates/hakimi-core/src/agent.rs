@@ -334,6 +334,23 @@ impl AIAgent {
         Ok(result)
     }
 
+    /// Run a conversation with a custom pre-constructed message.
+    /// Use this when you need to attach images or other multimodal content.
+    pub async fn run_conversation_with_message(
+        &mut self,
+        msg: Message,
+    ) -> Result<ConversationResult> {
+        self.messages.push(msg);
+
+        let result = if self.streaming {
+            loop_impl::run_loop_streaming(self).await?
+        } else {
+            loop_impl::run_loop(self).await?
+        };
+
+        Ok(result)
+    }
+
     /// Convenience method: enable streaming and run a conversation.
     ///
     /// This is equivalent to calling `.streaming(true)` on the builder and
@@ -341,6 +358,13 @@ impl AIAgent {
     pub async fn chat_streaming(&mut self, message: &str) -> Result<String> {
         self.streaming = true;
         let result = self.run_conversation(message).await?;
+        Ok(result.final_response)
+    }
+
+    /// Convenience method: enable streaming and run a conversation with a custom message.
+    pub async fn chat_streaming_with_message(&mut self, msg: Message) -> Result<String> {
+        self.streaming = true;
+        let result = self.run_conversation_with_message(msg).await?;
         Ok(result.final_response)
     }
 

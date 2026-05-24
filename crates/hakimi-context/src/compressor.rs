@@ -173,6 +173,7 @@ impl ContextEngine for ContextCompressor {
         let summary_msg = Message {
             role: MessageRole::System,
             content: Some(summary),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -643,6 +644,7 @@ impl ContextEngine for LlmCompressor {
         let summary_msg = Message {
             role: MessageRole::System,
             content: Some(summary_text),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,

@@ -803,8 +803,9 @@ async fn start_gateway(
         let bot_id = msg.bot_id.clone();
         let platform = msg.platform.clone();
         let text = msg.text.clone();
+        let media_id = msg.media.clone();
 
-        info!(platform = %platform, chat_id = %chat_id, "received message via gateway");
+        info!(platform = %platform, chat_id = %chat_id, has_media = media_id.is_some(), "received message via gateway");
 
         let agent_clone = agent_arc.clone();
         let gateway_clone = gateway.clone();
@@ -814,6 +815,7 @@ async fn start_gateway(
         let config_clone = config.clone();
         tokio::spawn(async move {
             let text = text.clone();
+            let media_id = media_id.clone();
             let chat_id = chat_id.clone();
             let bot_id = bot_id.clone();
             let platform = platform.clone();
@@ -823,6 +825,28 @@ async fn start_gateway(
             let _ = gateway_clone
                 .send_chat_action(&bot_id, &chat_id, "typing")
                 .await;
+
+            // Download media if present
+            let mut images = Vec::new();
+            if let Some(mid) = media_id {
+                match gateway_clone.download_media(&platform, &bot_id, &mid).await {
+                    Ok((bytes, mime_type)) => {
+                        use base64::Engine;
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        images.push(hakimi_common::ImageContent {
+                            mime_type,
+                            data: b64,
+                        });
+                        info!(
+                            "successfully downloaded and encoded media for chat {}",
+                            chat_id
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to download media: {}", e);
+                    }
+                }
+            }
 
             // Progressive streaming response logic.
             // 1. Send initial empty placeholder message to grab a message ID.
@@ -1195,10 +1219,17 @@ async fn start_gateway(
                     a.set_streaming_callback(Some(std::sync::Arc::new(callback)));
                 }
 
+                let mut msg = hakimi_common::Message::user(&text);
+                if !images.is_empty() {
+                    msg = msg.with_images(images);
+                }
+
                 let result = if config.model.api_mode.as_str() == "REST" {
-                    a.run_conversation(&text).await.map(|r| r.final_response)
+                    a.run_conversation_with_message(msg)
+                        .await
+                        .map(|r| r.final_response)
                 } else {
-                    a.chat_streaming(&text).await
+                    a.chat_streaming_with_message(msg).await
                 };
 
                 if let Some(handle) = updater_handle {

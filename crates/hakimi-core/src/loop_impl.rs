@@ -404,6 +404,7 @@ fn build_assistant_message_with_tools(
     Message {
         role: MessageRole::Assistant,
         content,
+        images: None,
         tool_calls: Some(tool_calls.to_vec()),
         tool_call_id: None,
         name: None,
