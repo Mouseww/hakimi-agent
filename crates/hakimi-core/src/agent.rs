@@ -353,7 +353,7 @@ impl AIAgent {
     ///
     /// Includes a [`CoreDelegateExecutor`] so that the `delegate_task` tool
     /// can spawn child agents that share this agent's transport and resources.
-    pub(crate) fn build_tool_context(&self) -> ToolContext {
+    pub fn build_tool_context(&self) -> ToolContext {
         let delegate_executor: Option<Arc<dyn hakimi_common::DelegateExecutor>> =
             Some(Arc::new(crate::CoreDelegateExecutor::new(
                 self.transport.clone(),
