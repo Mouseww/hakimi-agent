@@ -318,8 +318,20 @@ async fn process_tool_calls(
     // Initialize guardrails for this turn.
     let mut guardrails = ToolGuardrails::new();
 
-    // Dispatch each tool call and append results.
+    // We will collect futures for tool dispatch and run them concurrently.
+    let mut futures = Vec::new();
+    let mut halt_message = None;
+    // First check guardrails and collect safe tools to dispatch
     for tc in tool_calls {
+        let tool_notice = format!("\n\n⚙️ **tool_call**: `{}`\n", tc.name);
+        if let Some(ref cb) = agent.streaming_callback {
+            cb(tool_notice.clone());
+        }
+        // Print to stdout as well
+        use std::io::Write;
+        let _ = std::io::stdout().write_all(tool_notice.as_bytes());
+        let _ = std::io::stdout().flush();
+
         if agent.check_interrupt() {
             info!("Interrupted during tool dispatch");
             break;
@@ -330,7 +342,7 @@ async fn process_tool_calls(
         match decision {
             GuardrailDecision::Halt(reason) => {
                 warn!(tool = %tc.name, reason = %reason, "Guardrails halted tool dispatch");
-                agent.messages.push(Message::tool_result(
+                halt_message = Some(Message::tool_result(
                     &tc.id,
                     &tc.name,
                     format!("HALT: Tool dispatch halted by guardrails: {reason}"),
@@ -339,10 +351,8 @@ async fn process_tool_calls(
             }
             GuardrailDecision::SyntheticResult(msg) => {
                 warn!(tool = %tc.name, "Injecting synthetic result to break loop");
-                agent
-                    .messages
-                    .push(Message::tool_result(&tc.id, &tc.name, msg));
-                continue;
+                halt_message = Some(Message::tool_result(&tc.id, &tc.name, msg));
+                break;
             }
             GuardrailDecision::Warn(msg) => {
                 warn!(tool = %tc.name, reason = %msg, "Guardrail warning");
@@ -350,8 +360,22 @@ async fn process_tool_calls(
             GuardrailDecision::Allow => {}
         }
 
-        let tool_result = dispatch_tool(agent, tool_ctx, tc).await;
-        agent.messages.push(tool_result);
+        let registry = agent.tool_registry.clone();
+        futures.push(async move { dispatch_tool(&registry, tool_ctx, tc).await });
+    }
+
+    let results = if !futures.is_empty() {
+        futures::future::join_all(futures).await
+    } else {
+        Vec::new()
+    };
+
+    for res in results {
+        agent.messages.push(res);
+    }
+
+    if let Some(msg) = halt_message {
+        agent.messages.push(msg);
     }
 }
 
@@ -393,7 +417,7 @@ fn build_assistant_message_with_tools(
 
 /// Dispatch a single tool call via the tool registry and return the result message.
 async fn dispatch_tool(
-    agent: &AIAgent,
+    tool_registry: &hakimi_tools::ToolRegistry,
     tool_ctx: &hakimi_common::ToolContext,
     tc: &ToolCall,
 ) -> Message {
@@ -410,11 +434,7 @@ async fn dispatch_tool(
 
     debug!(tool = %tc.name, call_id = %tc.id, "Dispatching tool");
 
-    match agent
-        .tool_registry
-        .dispatch(&tc.name, &args, tool_ctx)
-        .await
-    {
+    match tool_registry.dispatch(&tc.name, &args, tool_ctx).await {
         Ok(content) => {
             debug!(
                 tool = %tc.name,
