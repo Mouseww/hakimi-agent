@@ -115,6 +115,10 @@ impl PersistentCronStore {
                             .ok()
                             .map(|dt| dt.with_timezone(&Utc))
                     }),
+                    skills: Vec::new(),
+                    enabled_toolsets: None,
+                    context_from: Vec::new(),
+                    deliver: None,
                 })
             })?
             .filter_map(|r| r.ok())

@@ -501,6 +501,9 @@ async fn build_agent(
     let tool_registry = hakimi_tools::ToolRegistry::new();
     // Register built-in tools.
     tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::builtin_cronjob::CronjobTool::new()))
+        .await;
+    tool_registry
         .register(std::sync::Arc::new(hakimi_tools::TerminalTool))
         .await;
     tool_registry

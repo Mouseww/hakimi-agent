@@ -7,6 +7,7 @@ edition = "2024"
 browser = ["dep:chromiumoxide"]
 
 [dependencies]
+hakimi-cron = { path = "../hakimi-cron" }
 hakimi-common = { path = "../hakimi-common" }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -30,3 +31,4 @@ futures = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+hakimi-cron = { path = "../hakimi-cron" }

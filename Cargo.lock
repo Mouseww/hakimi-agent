@@ -1167,6 +1167,7 @@ dependencies = [
  "dirs",
  "futures",
  "hakimi-common",
+ "hakimi-cron",
  "hakimi-session",
  "regex",
  "reqwest",

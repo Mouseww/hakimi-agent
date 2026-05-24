@@ -96,6 +96,16 @@ pub struct CronJob {
     pub last_run: Option<DateTime<Utc>>,
     /// Next scheduled execution, if any.
     pub next_run: Option<DateTime<Utc>>,
+    
+    // Hermes extensions
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub enabled_toolsets: Option<Vec<String>>,
+    #[serde(default)]
+    pub context_from: Vec<String>,
+    #[serde(default)]
+    pub deliver: Option<String>,
 }
 
 impl CronJob {
@@ -104,13 +114,17 @@ impl CronJob {
         let now = Utc::now();
         let next = schedule.next_after(now);
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4().to_string(),
             name: name.into(),
             schedule,
             prompt: prompt.into(),
             enabled: true,
             last_run: None,
             next_run: Some(next),
+            skills: Vec::new(),
+            enabled_toolsets: None,
+            context_from: Vec::new(),
+            deliver: None,
         }
     }
 }
