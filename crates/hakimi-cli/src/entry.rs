@@ -831,7 +831,7 @@ async fn start_gateway(
                 bot_id: bot_id.clone(),
                 chat_id: chat_id.clone(),
                 user_id: String::new(),
-                text: "⏳ Processing...".to_string(),
+                text: "✨ Processing...".to_string(),
                 media: None,
             };
 
@@ -1175,8 +1175,7 @@ async fn start_gateway(
                                     let text = rx.borrow().clone();
                                     if !text.is_empty() && text != last_edit_text {
                                         last_edit_text = text.clone();
-                                        let edit_text = format!("{} ⏳", text);
-                                        let _ = gateway_cb.edit_message(&platform_cb, &bot_id_cb, &chat_id_cb, msg_id, &edit_text).await;
+                                        let _ = gateway_cb.edit_message(&platform_cb, &bot_id_cb, &chat_id_cb, msg_id, &text).await;
                                     }
                                 }
                                 res = rx.changed() => {

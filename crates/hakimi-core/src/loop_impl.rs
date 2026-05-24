@@ -323,7 +323,7 @@ async fn process_tool_calls(
     let mut halt_message = None;
     // First check guardrails and collect safe tools to dispatch
     for tc in tool_calls {
-        let tool_notice = format!("\n\n⚙️ **tool_call**: `{}`\n", tc.name);
+        let tool_notice = format!("\n⚙️ **tool**: `{}`", tc.name);
         if let Some(ref cb) = agent.streaming_callback {
             cb(tool_notice.clone());
         }
