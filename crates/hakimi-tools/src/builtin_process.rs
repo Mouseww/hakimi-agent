@@ -16,15 +16,15 @@ use crate::Tool;
 pub struct ProcessTool;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ProcessInfo {
-    session_id: String,
-    command: String,
+pub struct ProcessInfo {
+    pub session_id: String,
+    pub command: String,
     #[serde(skip)]
-    child: Option<Child>,
+    pub child: Option<Child>,
 }
 
 // Global state for background processes
-static PROCESSES: LazyLock<Mutex<HashMap<String, ProcessInfo>>> =
+pub static PROCESSES: LazyLock<Mutex<HashMap<String, ProcessInfo>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[async_trait]

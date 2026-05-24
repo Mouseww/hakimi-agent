@@ -30,48 +30,107 @@ impl Tool for DelegateTaskTool {
         json!({
             "type": "object",
             "properties": {
-                "task": {
+                "goal": {
                     "type": "string",
-                    "description": "The specific task description for the sub-agent."
+                    "description": "What the subagent should accomplish. Required if 'tasks' is not provided."
                 },
                 "context": {
                     "type": "string",
-                    "description": "Additional context or constraints for the task."
+                    "description": "Additional context or constraints for the single task."
                 },
                 "toolsets": {
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "Optional list of toolsets the sub-agent should have access to."
+                },
+                "tasks": {
+                    "type": "array",
+                    "description": "Batch mode: array of tasks to run in parallel. When provided, top-level goal/context/toolsets are ignored.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "goal": { "type": "string" },
+                            "context": { "type": "string" },
+                            "toolsets": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                            }
+                        },
+                        "required": ["goal"]
+                    }
                 }
-            },
-            "required": ["task"]
+            }
         })
     }
 
     async fn execute(&self, args: &JsonValue, ctx: &ToolContext) -> Result<String> {
-        let task = args
-            .get("task")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing 'task' argument".into()))?;
-        let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("");
+        let mut batch_tasks = Vec::new();
 
-        let toolsets: Vec<String> = args
-            .get("toolsets")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|i| i.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
+        if let Some(tasks_arr) = args.get("tasks").and_then(|v| v.as_array()) {
+            for task_obj in tasks_arr {
+                let goal = task_obj
+                    .get("goal")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if goal.is_empty() {
+                    return Err(HakimiError::Tool(
+                        "Each item in 'tasks' must have a 'goal'".into(),
+                    ));
+                }
+                let context = task_obj
+                    .get("context")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let toolsets: Vec<String> = task_obj
+                    .get("toolsets")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|i| i.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                batch_tasks.push((goal, context, toolsets));
+            }
+        } else {
+            let goal = args
+                .get("goal")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| HakimiError::Tool("missing 'goal' or 'tasks' argument".into()))?
+                .to_string();
+            let context = args
+                .get("context")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let toolsets: Vec<String> = args
+                .get("toolsets")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|i| i.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            batch_tasks.push((goal, context, toolsets));
+        }
 
-        info!(task = %task, "Delegating task via ToolContext");
+        info!(
+            task_count = batch_tasks.len(),
+            "Delegating task(s) via ToolContext"
+        );
 
         if let Some(executor) = &ctx.delegate_executor {
-            let result = executor
-                .execute_delegation(task, context, &toolsets)
-                .await?;
-            Ok(result)
+            if batch_tasks.len() == 1 {
+                let (goal, context, toolsets) = &batch_tasks[0];
+                let result = executor.execute_delegation(goal, context, toolsets).await?;
+                Ok(json!([result]).to_string())
+            } else {
+                let results = executor.execute_batch_delegation(batch_tasks).await?;
+                Ok(json!(results).to_string())
+            }
         } else {
             Err(HakimiError::Tool(
                 "Delegation executor not available in current context".into(),

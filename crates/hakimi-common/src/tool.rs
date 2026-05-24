@@ -68,6 +68,13 @@ pub trait DelegateExecutor: Send + Sync {
         toolsets: &[String],
     ) -> crate::Result<String>;
 
+    /// Spawn multiple child agents to accomplish a batch of tasks concurrently.
+    /// Returns a list of the child agents' final text responses in the same order.
+    async fn execute_batch_delegation(
+        &self,
+        tasks: Vec<(String, String, Vec<String>)>, // (goal, context, toolsets)
+    ) -> crate::Result<Vec<String>>;
+
     /// Submit a task to the delegation queue.
     async fn enqueue_task(&self, goal: &str, priority: u32) -> crate::Result<String>;
 }

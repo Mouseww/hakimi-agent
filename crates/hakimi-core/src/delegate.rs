@@ -99,144 +99,125 @@ impl DelegateExecutor for CoreDelegateExecutor {
         context: &str,
         toolsets: &[String],
     ) -> Result<String> {
-        info!(
-            goal = %goal,
-            context = %context,
-            toolsets = ?toolsets,
-            "Spawning child agent for delegation"
-        );
+        let results = self
+            .execute_batch_delegation(vec![(
+                goal.to_string(),
+                context.to_string(),
+                toolsets.to_vec(),
+            )])
+            .await?;
 
-        // Acquire a permit before spawning a child agent to control concurrency.
-        let _permit =
-            self.semaphore.acquire().await.map_err(|e| {
-                HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
-            })?;
-
-        // Retry logic for transient failures
-        let mut attempts = 0;
-        let max_attempts = 3;
-
-        loop {
-            attempts += 1;
-
-            // Build a filtered tool registry for the child agent.
-            let child_registry = ToolRegistry::new();
-            let all_tool_names = self.tool_registry.list().await;
-            for tool_name in &all_tool_names {
-                if let Some(tool) = self.tool_registry.get(tool_name).await
-                    && (toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()))
-                {
-                    child_registry.register(tool).await;
-                }
-            }
-
-            // Build the system prompt for the child agent.
-            let system_prompt = if context.is_empty() {
-                format!(
-                    "You are a sub-agent delegated by a parent agent. Your task: {goal}. Complete this task and return a clear, concise result."
-                )
-            } else {
-                format!(
-                    "You are a sub-agent delegated by a parent agent. Your task: {goal}. \
-                     Context: {context}. Complete this task and return a clear, concise result."
-                )
-            };
-
-            // Create a fresh context engine for the child agent (isolated from parent).
-            let parent_context_length = {
-                let engine = self.context_engine.read().await;
-                engine.context_length()
-            };
-            let child_context_engine =
-                Arc::new(RwLock::new(SimpleContextEngine::new(parent_context_length)));
-
-            // The parent agent's context_engine might be a SmartContextEngine or SimpleContextEngine.
-            // In simple cases we just share parent's builder parameters, but we must explicitly
-            // pass an empty tool_registry and context_engine since we rebuild them.
-            // Build the child agent.
-            let child_agent = AIAgent::builder()
-                .model(&self.model)
-                .transport(self.transport.clone())
-                .context_engine(child_context_engine)
-                .tool_registry(child_registry)
-                .system_prompt(system_prompt)
-                .workdir(&self.workdir)
-                .max_iterations(CHILD_MAX_ITERATIONS)
-                .build()
-                .map_err(|e| HakimiError::Tool(format!("failed to create child agent: {e}")))?;
-
-            // Run the child agent with a timeout.
-            // Using tokio::spawn to ensure the nested executor runs independently and handles
-            // inner tool calls properly without deadlocking the parent's tokio context tasks.
-            let result = tokio::time::timeout(DEFAULT_DELEGATION_TIMEOUT, async {
-                let mut child = child_agent;
-                let g = goal.to_string();
-                tokio::task::spawn(async move { child.chat(&g).await }).await
-            })
-            .await;
-
-            // Record execution metadata
-            info!(
-                task_goal = %goal,
-                attempt = attempts,
-                "Delegation attempt in progress"
-            );
-
-            match result {
-                Ok(join_res) => match join_res {
-                    Ok(Ok(response)) => {
-                        info!(
-                            response_len = response.len(),
-                            attempts = attempts,
-                            "Child agent delegation completed successfully"
-                        );
-                        return Ok(response);
-                    }
-                    Ok(Err(e)) => {
-                        warn!(error = %e, attempts = attempts, "Child agent delegation failed");
-                        if attempts >= max_attempts {
-                            return Err(e);
-                        }
-                    }
-                    Err(join_err) => {
-                        let e = HakimiError::Tool(format!(
-                            "Child agent task panicked or was cancelled: {}",
-                            join_err
-                        ));
-                        warn!(error = %e, attempts = attempts, "Child agent delegation task failed");
-                        if attempts >= max_attempts {
-                            return Err(e);
-                        }
-                    }
-                },
-                Err(_elapsed) => {
-                    warn!(
-                        attempts = attempts,
-                        "Child agent delegation timed out after 60 seconds"
-                    );
-                    if attempts >= max_attempts {
-                        return Err(HakimiError::Other(
-                            "Child agent timed out after 60 seconds after maximum retries".into(),
-                        ));
-                    }
-                }
-            }
-
-            // Wait briefly before retrying
-            tokio::time::sleep(Duration::from_secs(2)).await;
-        }
+        Ok(results.into_iter().next().unwrap_or_default())
     }
 
-    async fn enqueue_task(&self, goal: &str, priority: u32) -> Result<String> {
-        let task_id = uuid::Uuid::new_v4().to_string();
-        let task = QueuedTask {
-            id: task_id.clone(),
-            goal: goal.to_string(),
-            priority,
-        };
-        let mut queue = self.task_queue.write().await;
-        queue.push(task);
-        info!(task_id = %task_id, goal = %goal, "Task enqueued for delegation");
-        Ok(task_id)
+    async fn execute_batch_delegation(
+        &self,
+        tasks: Vec<(String, String, Vec<String>)>,
+    ) -> Result<Vec<String>> {
+        info!(
+            task_count = tasks.len(),
+            "Spawning child agents for batch delegation"
+        );
+
+        let mut futures = Vec::new();
+
+        for (goal, context, toolsets) in tasks {
+            let transport = self.transport.clone();
+            let parent_model = self.model.clone();
+            let all_tool_names = self.tool_registry.list().await;
+
+            // Build a filtered tool registry for this child
+            let child_registry = ToolRegistry::new();
+            for tool_name in &all_tool_names {
+                if let Some(tool) = self.tool_registry.get(tool_name).await {
+                    if toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()) {
+                        child_registry.register(tool).await;
+                    }
+                }
+            }
+
+            let semaphore = self.semaphore.clone();
+            let mut workdir = self.workdir.clone();
+
+            // Generate a unique session ID for the child
+            let child_session_id = format!("child_{}", uuid::Uuid::new_v4().simple());
+
+            // Optionally, we could create an isolated sub-directory for the child's workdir here.
+            // For now, we share the parent's workdir but they run in parallel.
+
+            let future = async move {
+                // Acquire a permit before spawning a child agent to control concurrency.
+                let _permit = semaphore.acquire().await.map_err(|e| {
+                    HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
+                })?;
+
+                let mut attempts = 0;
+                let max_attempts = 3;
+
+                loop {
+                    attempts += 1;
+
+                    // Build the system prompt for the child agent.
+                    let system_prompt = if context.is_empty() {
+                        format!(
+                            "You are a sub-agent delegated by a parent agent. Your task: {goal}. Complete this task and return a clear, concise result."
+                        )
+                    } else {
+                        format!(
+                            "You are a sub-agent delegated by a parent agent.\n\nYour task: {goal}\n\nContext and constraints:\n{context}\n\nComplete this task and return a clear, concise result."
+                        )
+                    };
+
+                    let mut child_agent = crate::AIAgent::new(
+                        &parent_model,
+                        transport.clone(),
+                        child_registry.clone(),
+                        None,
+                    );
+                    child_agent.set_system_prompt(system_prompt);
+                    child_agent.set_session_id(child_session_id.clone());
+                    // Not mounting the parent's ContextEngine so the child runs with clean context.
+
+                    // Execute
+                    match child_agent.run_conversation(&goal).await {
+                        Ok(res) => return Ok(res.final_response),
+                        Err(e) => {
+                            if attempts >= max_attempts {
+                                return Err(HakimiError::Tool(format!(
+                                    "Child agent failed after {max_attempts} attempts: {e}"
+                                )));
+                            }
+                            tracing::warn!(
+                                error = %e,
+                                attempt = attempts,
+                                "Child agent failed, retrying"
+                            );
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        }
+                    }
+                }
+            };
+
+            // We use tokio::spawn to ensure they run concurrently on the executor
+            futures.push(tokio::spawn(future));
+        }
+
+        // Wait for all children to complete
+        let mut results = Vec::new();
+        for join_handle in futures::future::join_all(futures).await {
+            match join_handle {
+                Ok(Ok(result_text)) => results.push(result_text),
+                Ok(Err(e)) => results.push(format!("Task failed: {e}")),
+                Err(e) => results.push(format!("Task panicked: {e}")),
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn enqueue_task(&self, _goal: &str, _priority: u32) -> Result<String> {
+        Err(HakimiError::Tool(
+            "Task queueing is not yet implemented".into(),
+        ))
     }
 }

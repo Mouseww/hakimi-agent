@@ -5,7 +5,7 @@ mod gemini;
 mod params;
 pub mod prompt_caching;
 mod responses;
-mod scrubber;
+pub mod scrubber;
 mod streaming;
 mod trait_def;
 

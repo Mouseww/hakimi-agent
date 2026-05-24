@@ -260,17 +260,24 @@ async fn fetch_streaming_response(
         .await?;
 
     let mut accumulator = StreamAccumulator::new();
+    let scrubber = hakimi_transports::scrubber::ThinkScrubber::new();
+    let scrubber = std::sync::Arc::new(tokio::sync::Mutex::new(scrubber));
+
     while let Some(item) = stream.next().await {
         match item {
             Ok(event) => {
                 // Print content deltas to stdout in real-time.
                 if let StreamEvent::ContentDelta(ref text) = event {
-                    if let Some(ref cb) = callback {
-                        cb(text.clone());
+                    let mut s = scrubber.lock().await;
+                    let (clean_text, _) = s.process(text);
+                    if !clean_text.is_empty() {
+                        if let Some(ref cb) = callback {
+                            cb(clean_text.clone());
+                        }
+                        use std::io::Write;
+                        let _ = std::io::stdout().write_all(clean_text.as_bytes());
+                        let _ = std::io::stdout().flush();
                     }
-                    use std::io::Write;
-                    let _ = std::io::stdout().write_all(text.as_bytes());
-                    let _ = std::io::stdout().flush();
                 }
                 accumulator.push(event);
             }

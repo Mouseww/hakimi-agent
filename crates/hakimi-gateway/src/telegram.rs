@@ -281,8 +281,9 @@ impl PlatformAdapter for TelegramAdapter {
                 {"command": "backup", "description": "Backup Hakimi state"},
             ]
         });
-        
-        let _ = self.client
+
+        let _ = self
+            .client
             .post(self.api_url("setMyCommands"))
             .json(&commands_body)
             .send()

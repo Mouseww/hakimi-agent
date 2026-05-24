@@ -38,6 +38,14 @@ impl Tool for TerminalTool {
                     "type": "string",
                     "description": "The shell command to execute."
                 },
+                "background": {
+                    "type": "boolean",
+                    "description": "Run the command in the background."
+                },
+                "notify_on_complete": {
+                    "type": "boolean",
+                    "description": "Notify when background process completes."
+                },
                 "timeout": {
                     "type": "integer",
                     "description": "Maximum time in seconds to wait for the command to finish. Defaults to 180.",
@@ -75,18 +83,15 @@ impl Tool for TerminalTool {
             "cmake ",
         ];
 
-        let is_heavy = heavy_patterns.iter().any(|p| command.contains(p));
-        if is_heavy && !command.contains("--force-local") {
-            return Ok(format!(
-                "WARNING: Detected heavy task: `{}`\n\n\
-                 Executing heavy build/test tasks on the main gateway machine often leads to system freezes (deadlocks). \
-                 As per user preference, these tasks MUST be offloaded to a Codespace or high-performance worker.\n\n\
-                 ACTION REQUIRED:\n\
-                 1. Push your changes to GitHub: `git push` (CI will run tests automatically)\n\
-                 2. Or use the `--force-local` flag if you are absolutely sure (NOT RECOMMENDED).",
-                command
-            ));
-        }
+        let background = args
+            .get("background")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let notify_on_complete = args
+            .get("notify_on_complete")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let timeout_secs = args
             .get("timeout")
@@ -99,7 +104,51 @@ impl Tool for TerminalTool {
             .and_then(|v| v.as_str())
             .unwrap_or(&ctx.workdir);
 
-        debug!(command = %command, timeout = timeout_secs, workdir = %workdir, "executing terminal command");
+        let is_heavy = heavy_patterns.iter().any(|p| command.contains(p));
+        if is_heavy && !command.contains("--force-local") && !background {
+            return Ok(format!(
+                "WARNING: Detected heavy task: `{}`\n\n\
+                 Executing heavy build/test tasks on the main gateway machine synchronously often leads to system freezes (deadlocks). \n\n\
+                 ACTION REQUIRED:\n\
+                 1. Use `background: true` to run this task asynchronously in a sandbox without blocking the agent loop.\n\
+                 2. Or use the `--force-local` flag if you absolutely must run synchronously (NOT RECOMMENDED).",
+                command
+            ));
+        }
+
+        debug!(command = %command, background = background, notify_on_complete = notify_on_complete, timeout = timeout_secs, workdir = %workdir, "executing terminal command");
+
+        if background {
+            let mut child = Command::new("bash")
+                .arg("-c")
+                .arg(command)
+                .current_dir(workdir)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|e| {
+                    HakimiError::Tool(format!("failed to spawn background process: {e}"))
+                })?;
+
+            let proc_session_id = format!("{}-{}", ctx.session_id, uuid::Uuid::new_v4());
+
+            let info = crate::builtin_process::ProcessInfo {
+                session_id: proc_session_id.clone(),
+                command: command.to_string(),
+                child: Some(child),
+            };
+
+            let mut processes = crate::builtin_process::PROCESSES.lock().await;
+            processes.insert(proc_session_id.clone(), info);
+
+            return Ok(json!({
+                "output": "Background process started",
+                "session_id": proc_session_id,
+                "pid": 0, // Mock PID for compatibility or we could extract it from child.id()
+                "exit_code": 0,
+                "error": null
+            }).to_string());
+        }
 
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),

@@ -29,34 +29,51 @@ impl SkillLoader {
             return Ok(loader);
         }
 
-        let entries = std::fs::read_dir(dir)
-            .with_context(|| format!("failed to read skills directory: {}", dir.display()))?;
+        let mut dirs_to_visit = vec![dir.to_path_buf()];
 
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-
-            if !path.is_file() {
-                continue;
-            }
-
-            match path.extension().and_then(|e| e.to_str()) {
-                Some("md") => {}
-                _ => continue,
-            }
-
-            match loader.load_file(&path) {
-                Ok(skill) => {
-                    debug!(name = %skill.name, path = %path.display(), "Loaded skill");
-                    loader.skills.push(skill);
-                }
+        while let Some(current_dir) = dirs_to_visit.pop() {
+            let entries = match std::fs::read_dir(&current_dir) {
+                Ok(e) => e,
                 Err(e) => {
-                    warn!(path = %path.display(), error = %e, "Failed to load skill file");
+                    warn!(path = %current_dir.display(), error = %e, "Failed to read skills directory");
+                    continue;
+                }
+            };
+
+            for entry in entries {
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                let path = entry.path();
+
+                if path.is_dir() {
+                    dirs_to_visit.push(path);
+                    continue;
+                }
+
+                if !path.is_file() {
+                    continue;
+                }
+
+                match path.extension().and_then(|e| e.to_str()) {
+                    Some("md") => {}
+                    _ => continue,
+                }
+
+                match loader.load_file(&path) {
+                    Ok(skill) => {
+                        debug!(name = %skill.name, path = %path.display(), "Loaded skill");
+                        loader.skills.push(skill);
+                    }
+                    Err(e) => {
+                        warn!(path = %path.display(), error = %e, "Failed to load skill file");
+                    }
                 }
             }
         }
 
-        debug!(count = loader.skills.len(), "Loaded skills from directory");
+        debug!(count = loader.skills.len(), "Loaded skills from directory tree");
         Ok(loader)
     }
 

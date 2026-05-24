@@ -143,10 +143,10 @@ impl ChatCompletionsTransport {
         if let Some(ref stop) = params.stop {
             body["stop"] = json!(stop);
         }
+
         if stream {
             body["stream"] = json!(true);
         }
-
         body
     }
 

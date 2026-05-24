@@ -60,6 +60,11 @@ impl AIAgent {
         self.skill_store = store;
         self
     }
+
+    pub fn with_context_engine(mut self, engine: Arc<RwLock<dyn ContextEngine>>) -> Self {
+        self.context_engine = engine;
+        self
+    }
 }
 
 /// Builder for constructing an [`AIAgent`].
@@ -382,6 +387,10 @@ impl AIAgent {
     /// Get the session ID.
     pub fn session_id(&self) -> &str {
         &self.session_id
+    }
+
+    pub fn set_session_id(&mut self, session_id: impl Into<String>) {
+        self.session_id = session_id.into();
     }
 
     /// Get the model identifier.
