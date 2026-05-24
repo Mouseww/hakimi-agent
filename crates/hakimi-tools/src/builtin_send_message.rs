@@ -170,6 +170,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_queue_message() {
         let _guard = TEST_MUTEX.lock().unwrap();
         drain_queue();
@@ -181,6 +182,7 @@ mod tests {
         });
 
         let result = SendMessageTool.execute(&args, &ctx).await.unwrap();
+        
         assert!(result.contains("queued"));
         assert!(result.contains("telegram:123456789"));
 
@@ -194,6 +196,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_pop_message() {
         let _guard = TEST_MUTEX.lock().unwrap();
         drain_queue();
@@ -215,6 +218,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_queue_multiple_messages() {
         let _guard = TEST_MUTEX.lock().unwrap();
         drain_queue();
