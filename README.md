@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.60-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.61-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.61 Processing Placeholder Recovery**:
+  - **No Stuck `✨ Processing...`**: Gateway now tracks whether any assistant prose actually rendered through the streaming callback; if providers return final text without content deltas, Hakimi edits the initial placeholder with the final response instead of leaving it visible.
+  - **Error Bubble Cleanup**: errors now overwrite the same placeholder message, so Telegram users see the actual failure instead of a permanent loading state.
+  - **Regression Coverage**: added a focused unit test for the no-stream-content fallback path.
 - **v0.3.60 Gateway Concurrent Input Routing**:
   - **No More Silent Blocking**: Telegram/Gateway handlers no longer hold the shared `AIAgent` mutex across the full LLM/tool loop, so a second message sent while a task is running is accepted immediately instead of appearing ignored.
   - **Supplement-or-New-Task Hinting**: Overlapping messages run through an isolated turn agent with the latest chat snapshot and an explicit system hint that the text may be supplemental context for the active request or a separate task.

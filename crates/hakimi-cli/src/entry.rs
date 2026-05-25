@@ -8,6 +8,7 @@
 use anyhow::Result;
 use clap::Parser;
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::{error, info, warn};
 
 use crate::Command;
@@ -46,6 +47,14 @@ impl GatewayChatTurnTracker {
             text.to_string()
         }
     }
+}
+
+fn should_edit_initial_gateway_message(
+    initial_message_id: Option<i64>,
+    is_error: bool,
+    rendered_stream_content: bool,
+) -> bool {
+    initial_message_id.is_some() && (is_error || !rendered_stream_content)
 }
 
 #[derive(Debug, Default)]
@@ -1554,14 +1563,18 @@ async fn start_gateway(
                 (a, base_history_len, concurrent)
             };
 
-            let (response_text, err_msg) = {
+            let (response_text, err_msg, rendered_stream_content) = {
                 let mut updater_handle = None;
+                let mut rendered_content = None;
 
                 if let Some(msg_id) = initial_message_id {
                     let platform_cb = platform.clone();
                     let bot_id_cb = bot_id.clone();
                     let chat_id_cb = chat_id.clone();
                     let gateway_cb = gateway_clone.clone();
+                    let rendered_content_flag = Arc::new(AtomicBool::new(false));
+                    let rendered_content_for_task = rendered_content_flag.clone();
+                    rendered_content = Some(rendered_content_flag.clone());
 
                     let (ui_tx, mut ui_rx) =
                         tokio::sync::mpsc::unbounded_channel::<GatewayStreamUiEvent>();
@@ -1598,6 +1611,7 @@ async fn start_gateway(
                                     let Some(target) = ui_state.append_content(&text) else {
                                         continue;
                                     };
+                                    rendered_content_for_task.store(true, Ordering::Relaxed);
 
                                     match target {
                                         GatewayUiContentTarget::EditCurrent => {
@@ -1703,11 +1717,10 @@ async fn start_gateway(
                     let _ = handle.await;
                 }
 
-                // Final update without the loading indicator
-                if let Some(_msg_id) = initial_message_id {
-                    // The progressive streaming callback has already sent the final text
-                    // So we do not need to do another redundant `.edit_message` here
-                }
+                let stream_rendered = rendered_content
+                    .as_ref()
+                    .map(|flag| flag.load(Ordering::Relaxed))
+                    .unwrap_or(false);
 
                 match result {
                     Ok(res) => {
@@ -1721,11 +1734,15 @@ async fn start_gateway(
                             let chat_history = histories.entry(chat_id.clone()).or_default();
                             chat_history.extend(new_msgs);
                         }
-                        (res, None)
+                        (res, None, stream_rendered)
                     }
                     Err(e) => {
                         error!(error = %e, "agent streaming query failed");
-                        (String::new(), Some(format!("❌ Error: {e}")))
+                        (
+                            String::new(),
+                            Some(format!("❌ Error: {e}")),
+                            stream_rendered,
+                        )
                     }
                 }
             };
@@ -1744,7 +1761,17 @@ async fn start_gateway(
             let is_error = err_msg.is_some();
             let final_text = err_msg.unwrap_or(response_text);
 
-            if initial_message_id.is_none() || is_error {
+            if should_edit_initial_gateway_message(
+                initial_message_id,
+                is_error,
+                rendered_stream_content,
+            ) {
+                if let Some(msg_id) = initial_message_id {
+                    let _ = gateway_clone
+                        .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
+                        .await;
+                }
+            } else if initial_message_id.is_none() {
                 let reply = hakimi_gateway::GatewayMessage {
                     platform: platform.clone(),
                     bot_id: bot_id.clone(),
@@ -1944,7 +1971,10 @@ pub async fn run() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayChatTurnTracker, GatewayStreamUiState, GatewayUiContentTarget};
+    use super::{
+        GatewayChatTurnTracker, GatewayStreamUiState, GatewayUiContentTarget,
+        should_edit_initial_gateway_message,
+    };
 
     #[test]
     fn streaming_tokens_are_appended_verbatim_without_inserted_spaces() {
@@ -1997,6 +2027,14 @@ mod tests {
             state.append_content("下一句继续编辑同一个新气泡。"),
             Some(GatewayUiContentTarget::EditCurrent)
         );
+    }
+
+    #[test]
+    fn initial_processing_message_is_edited_when_no_stream_content_rendered() {
+        assert!(should_edit_initial_gateway_message(Some(42), false, false));
+        assert!(should_edit_initial_gateway_message(Some(42), true, true));
+        assert!(!should_edit_initial_gateway_message(Some(42), false, true));
+        assert!(!should_edit_initial_gateway_message(None, false, false));
     }
 
     #[test]
