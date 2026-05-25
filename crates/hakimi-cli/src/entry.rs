@@ -136,6 +136,9 @@ fn resolve_clawbot_gateway_config(
         .get("default")
         .and_then(|role| role.gateways.clawbot.clone())
     {
+        if role_cfg.enabled {
+            resolved.enabled = true;
+        }
         if role_cfg.mode != resolved.mode {
             resolved.mode = role_cfg.mode;
         }
