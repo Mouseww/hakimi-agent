@@ -14,7 +14,7 @@ mod telegram;
 mod webhook;
 mod wecom;
 
-pub use clawbot::{ClawBotAdapter, ClawBotAdapterConfig};
+pub use clawbot::{ClawBotAdapter, ClawBotAdapterConfig, ClawBotMode};
 pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 pub use discord::{DiscordAdapter, DiscordAdapterConfig, DiscordEmbed};
 pub use matrix::{MatrixAdapter, MatrixAdapterConfig};

@@ -136,7 +136,9 @@ fn resolve_clawbot_gateway_config(
         .get("default")
         .and_then(|role| role.gateways.clawbot.clone())
     {
-        resolved.enabled = role_cfg.enabled || resolved.enabled;
+        if role_cfg.mode != resolved.mode {
+            resolved.mode = role_cfg.mode;
+        }
         if !role_cfg.bot_id.is_empty() {
             resolved.bot_id = role_cfg.bot_id;
         }
@@ -161,6 +163,15 @@ fn resolve_clawbot_gateway_config(
         if role_cfg.poll_limit > 0 {
             resolved.poll_limit = role_cfg.poll_limit;
         }
+        if !role_cfg.token_store.is_empty() {
+            resolved.token_store = role_cfg.token_store;
+        }
+        if !role_cfg.channel_version.is_empty() {
+            resolved.channel_version = role_cfg.channel_version;
+        }
+        if !role_cfg.app_client_version.is_empty() {
+            resolved.app_client_version = role_cfg.app_client_version;
+        }
     }
 
     if let Ok(url) = std::env::var("CLAWBOT_BASE_URL")
@@ -175,7 +186,21 @@ fn resolve_clawbot_gateway_config(
         resolved.token = token;
         resolved.enabled = true;
     }
+    if let Ok(mode) = std::env::var("CLAWBOT_MODE")
+        && !mode.trim().is_empty()
+    {
+        resolved.mode = mode;
+        resolved.enabled = true;
+    }
     resolved
+}
+
+fn parse_clawbot_mode(mode: &str) -> hakimi_gateway::ClawBotMode {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "ilink_native" | "ilink" | "native" => hakimi_gateway::ClawBotMode::IlinkNative,
+        "weclawbot_api" | "weclawbot" => hakimi_gateway::ClawBotMode::WeClawBotApi,
+        _ => hakimi_gateway::ClawBotMode::HttpBridge,
+    }
 }
 
 fn merge_gateway_receivers(
@@ -374,6 +399,7 @@ embedding:
 gateways:
   clawbot:
     enabled: false
+    mode: "http_bridge"   # http_bridge | weclawbot_api | ilink_native
     bot_id: "clawbot"
     base_url: "http://127.0.0.1:5700"
     token: ""
@@ -382,6 +408,9 @@ gateways:
     edit_path: "/edit_message"
     poll_interval_ms: 1000
     poll_limit: 50
+    token_store: "~/.hakimi/clawbot"
+    channel_version: "1.0.2"
+    app_client_version: "2.4.3"
 
 # Context compression: smart (3-tier) or simple (truncation)
 compression:
@@ -1169,6 +1198,7 @@ async fn start_gateway(
     let clawbot_config = resolve_clawbot_gateway_config(&config);
     if clawbot_config.enabled {
         let clawbot = hakimi_gateway::ClawBotAdapter::new(hakimi_gateway::ClawBotAdapterConfig {
+            mode: parse_clawbot_mode(&clawbot_config.mode),
             bot_id: clawbot_config.bot_id,
             base_url: clawbot_config.base_url,
             token: clawbot_config.token,
@@ -1177,6 +1207,9 @@ async fn start_gateway(
             edit_path: clawbot_config.edit_path,
             poll_interval_ms: clawbot_config.poll_interval_ms,
             poll_limit: clawbot_config.poll_limit,
+            token_store: clawbot_config.token_store,
+            channel_version: clawbot_config.channel_version,
+            app_client_version: clawbot_config.app_client_version,
         });
         gateway.add_adapter(Box::new(clawbot));
         info!("clawbot gateway registered");

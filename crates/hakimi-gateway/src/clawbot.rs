@@ -1,58 +1,90 @@
-//! WeChat ClawBot bridge adapter.
+//! WeChat ClawBot gateway adapter.
 //!
-//! ClawBot deployments differ in their exact HTTP schema, so this adapter uses
-//! a small configurable HTTP bridge contract:
-//! - `GET {base_url}{poll_path}?offset=...&limit=...` receives messages.
-//! - `POST {base_url}{send_path}` sends messages.
-//! - `POST {base_url}{edit_path}` edits messages when the bridge supports it.
-//!
-//! The JSON parser intentionally accepts several common field aliases so the
-//! bridge can sit in front of ClawBot without Hakimi-specific code changes.
+//! Supports three modes:
+//! - `http_bridge`: backward-compatible generic bridge from v0.3.63.
+//! - `weclawbot_api`: Cp0204/WeClawBot-API outbound send API.
+//! - `ilink_native`: official WeChat ClawBot/iLink HTTP protocol with QR
+//!   login, getupdates long polling, and sendmessage replies with context_token.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::{GatewayMessage, PlatformAdapter};
 
-const DEFAULT_BASE_URL: &str = "http://127.0.0.1:5700";
+const HTTP_BRIDGE_BASE_URL: &str = "http://127.0.0.1:5700";
+const ILINK_BASE_URL: &str = "https://ilinkai.weixin.qq.com";
 const DEFAULT_POLL_PATH: &str = "/messages";
 const DEFAULT_SEND_PATH: &str = "/send_message";
 const DEFAULT_EDIT_PATH: &str = "/edit_message";
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1_000;
 const DEFAULT_POLL_LIMIT: usize = 50;
+const DEFAULT_CHANNEL_VERSION: &str = "1.0.2";
+const DEFAULT_APP_CLIENT_VERSION: &str = "2.4.3";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClawBotMode {
+    HttpBridge,
+    WeClawBotApi,
+    IlinkNative,
+}
+
+impl Default for ClawBotMode {
+    fn default() -> Self {
+        Self::HttpBridge
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClawBotAdapterConfig {
+    /// Adapter mode: http_bridge | weclawbot_api | ilink_native.
+    #[serde(default)]
+    pub mode: ClawBotMode,
     /// Bot / role identifier for this instance.
     #[serde(default = "default_clawbot_bot_id")]
     pub bot_id: String,
-    /// ClawBot bridge base URL, e.g. `http://127.0.0.1:5700`.
+    /// Base URL. For ilink_native this defaults to https://ilinkai.weixin.qq.com.
     #[serde(default = "default_base_url")]
     pub base_url: String,
-    /// Optional bearer token sent as `Authorization: Bearer ...`.
+    /// Optional bearer token. For ilink_native this can seed an existing bot_token.
     #[serde(default)]
     pub token: String,
-    /// Polling endpoint path.
+    /// Generic bridge polling endpoint path.
     #[serde(default = "default_poll_path")]
     pub poll_path: String,
-    /// Send endpoint path.
+    /// Generic bridge send endpoint path.
     #[serde(default = "default_send_path")]
     pub send_path: String,
-    /// Edit endpoint path.
+    /// Generic bridge edit endpoint path.
     #[serde(default = "default_edit_path")]
     pub edit_path: String,
-    /// Polling interval in milliseconds.
+    /// Polling interval in milliseconds for http_bridge retry loops.
     #[serde(default = "default_poll_interval_ms")]
     pub poll_interval_ms: u64,
-    /// Maximum messages requested per poll.
+    /// Maximum messages requested per generic bridge poll.
     #[serde(default = "default_poll_limit")]
     pub poll_limit: usize,
+    /// iLink token/cursor/context store directory.
+    #[serde(default = "default_token_store")]
+    pub token_store: String,
+    /// iLink channel_version in base_info.
+    #[serde(default = "default_channel_version")]
+    pub channel_version: String,
+    /// iLink client version header.
+    #[serde(default = "default_app_client_version")]
+    pub app_client_version: String,
 }
 
 fn default_clawbot_bot_id() -> String {
@@ -60,7 +92,7 @@ fn default_clawbot_bot_id() -> String {
 }
 
 fn default_base_url() -> String {
-    DEFAULT_BASE_URL.to_string()
+    HTTP_BRIDGE_BASE_URL.to_string()
 }
 
 fn default_poll_path() -> String {
@@ -83,9 +115,22 @@ fn default_poll_limit() -> usize {
     DEFAULT_POLL_LIMIT
 }
 
+fn default_token_store() -> String {
+    "~/.hakimi/clawbot".to_string()
+}
+
+fn default_channel_version() -> String {
+    DEFAULT_CHANNEL_VERSION.to_string()
+}
+
+fn default_app_client_version() -> String {
+    DEFAULT_APP_CLIENT_VERSION.to_string()
+}
+
 impl Default for ClawBotAdapterConfig {
     fn default() -> Self {
         Self {
+            mode: ClawBotMode::HttpBridge,
             bot_id: default_clawbot_bot_id(),
             base_url: default_base_url(),
             token: String::new(),
@@ -94,6 +139,9 @@ impl Default for ClawBotAdapterConfig {
             edit_path: default_edit_path(),
             poll_interval_ms: DEFAULT_POLL_INTERVAL_MS,
             poll_limit: DEFAULT_POLL_LIMIT,
+            token_store: default_token_store(),
+            channel_version: default_channel_version(),
+            app_client_version: default_app_client_version(),
         }
     }
 }
@@ -104,17 +152,31 @@ pub struct ClawBotAdapter {
     msg_tx: mpsc::UnboundedSender<GatewayMessage>,
     msg_rx: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
     poll_handle: Option<JoinHandle<()>>,
+    ilink_state: Arc<Mutex<IlinkStoredState>>,
 }
 
 impl ClawBotAdapter {
-    pub fn new(config: ClawBotAdapterConfig) -> Self {
+    pub fn new(mut config: ClawBotAdapterConfig) -> Self {
+        if matches!(config.mode, ClawBotMode::IlinkNative)
+            && config.base_url == HTTP_BRIDGE_BASE_URL
+        {
+            config.base_url = ILINK_BASE_URL.to_string();
+        }
+        let state = load_ilink_state(&config).unwrap_or_else(|err| {
+            warn!(error = %err, "failed to load iLink state; starting fresh");
+            IlinkStoredState::default()
+        });
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             config,
-            client: Client::new(),
+            client: Client::builder()
+                .timeout(Duration::from_secs(45))
+                .build()
+                .unwrap_or_else(|_| Client::new()),
             msg_tx,
             msg_rx: Some(msg_rx),
             poll_handle: None,
+            ilink_state: Arc::new(Mutex::new(state)),
         }
     }
 
@@ -130,21 +192,21 @@ impl ClawBotAdapter {
         }
     }
 
-    fn spawn_poll_loop(&self) -> JoinHandle<()> {
+    fn spawn_http_bridge_poll_loop(&self) -> JoinHandle<()> {
         let client = self.client.clone();
         let config = self.config.clone();
         let msg_tx = self.msg_tx.clone();
         tokio::spawn(async move {
             let mut offset: Option<String> = None;
             loop {
-                match poll_once(&client, &config, offset.as_deref()).await {
+                match poll_http_bridge_once(&client, &config, offset.as_deref()).await {
                     Ok(batch) => {
                         for envelope in batch.messages {
                             if let Some(next_offset) = envelope.next_offset.clone() {
                                 offset = Some(next_offset);
                             }
                             if let Some(msg) =
-                                convert_clawbot_message(&config.bot_id, &envelope.value)
+                                convert_bridge_message(&config.bot_id, &envelope.value)
                                 && msg_tx.send(msg).is_err()
                             {
                                 error!("ClawBot receiver dropped; stopping poll loop");
@@ -155,11 +217,86 @@ impl ClawBotAdapter {
                             offset = Some(next_offset);
                         }
                     }
-                    Err(err) => {
-                        warn!(error = %err, "ClawBot poll failed, retrying");
-                    }
+                    Err(err) => warn!(error = %err, "ClawBot bridge poll failed, retrying"),
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(config.poll_interval_ms)).await;
+                tokio::time::sleep(Duration::from_millis(config.poll_interval_ms)).await;
+            }
+        })
+    }
+
+    async fn ensure_ilink_login(&self) -> Result<()> {
+        if !self.config.token.trim().is_empty() {
+            let mut state = self
+                .ilink_state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
+            if state.bot_token.is_empty() {
+                state.bot_token = self.config.token.clone();
+            }
+            if state.base_url.is_empty() {
+                state.base_url = self.config.base_url.clone();
+            }
+            save_ilink_state(&self.config, &state)?;
+            return Ok(());
+        }
+        {
+            let state = self
+                .ilink_state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
+            if !state.bot_token.is_empty() {
+                return Ok(());
+            }
+        }
+
+        let qr = ilink_get_qrcode(&self.client, &self.config).await?;
+        info!(
+            qrcode_url = %qr.qrcode_img_content,
+            "WeChat ClawBot login required: scan this QR URL with WeChat"
+        );
+        println!(
+            "\n=== WeChat ClawBot / iLink login ===\nScan with WeChat: {}\n",
+            qr.qrcode_img_content
+        );
+
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let status = ilink_get_qrcode_status(&self.client, &self.config, &qr.qrcode).await?;
+            if let Some(token) = status.bot_token {
+                let mut state = self
+                    .ilink_state
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
+                state.bot_token = token;
+                state.base_url = status
+                    .baseurl
+                    .unwrap_or_else(|| self.config.base_url.clone());
+                save_ilink_state(&self.config, &state)?;
+                info!("WeChat ClawBot iLink login completed");
+                return Ok(());
+            }
+        }
+    }
+
+    fn spawn_ilink_poll_loop(&self) -> JoinHandle<()> {
+        let client = self.client.clone();
+        let config = self.config.clone();
+        let msg_tx = self.msg_tx.clone();
+        let state = self.ilink_state.clone();
+        tokio::spawn(async move {
+            loop {
+                match ilink_poll_once(&client, &config, &state).await {
+                    Ok(messages) => {
+                        for msg in messages {
+                            if msg_tx.send(msg).is_err() {
+                                error!("ClawBot receiver dropped; stopping iLink poll loop");
+                                return;
+                            }
+                        }
+                    }
+                    Err(err) => warn!(error = %err, "iLink getupdates failed, retrying"),
+                }
+                tokio::time::sleep(Duration::from_millis(config.poll_interval_ms)).await;
             }
         })
     }
@@ -176,72 +313,63 @@ impl PlatformAdapter for ClawBotAdapter {
     }
 
     async fn connect(&mut self) -> Result<()> {
-        info!(base_url = %self.config.base_url, "connecting ClawBot adapter");
-        let handle = self.spawn_poll_loop();
+        info!(mode = ?self.config.mode, base_url = %self.config.base_url, "connecting ClawBot adapter");
+        let handle = match self.config.mode {
+            ClawBotMode::HttpBridge => self.spawn_http_bridge_poll_loop(),
+            ClawBotMode::WeClawBotApi => {
+                info!("WeClawBot-API mode is outbound-only; no inbound receiver is started");
+                tokio::spawn(async { std::future::pending::<()>().await })
+            }
+            ClawBotMode::IlinkNative => {
+                self.ensure_ilink_login().await?;
+                self.spawn_ilink_poll_loop()
+            }
+        };
         self.poll_handle = Some(handle);
         Ok(())
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> Result<()> {
-        let payload = serde_json::json!({
-            "chat_id": chat_id,
-            "conversation_id": chat_id,
-            "to": chat_id,
-            "text": text,
-            "content": text,
-            "msgtype": "text",
-        });
-        let resp = self
-            .auth_request(self.client.post(self.endpoint(&self.config.send_path)))
-            .json(&payload)
-            .send()
-            .await
-            .context("failed to send ClawBot message")?;
-        ensure_success(resp, "ClawBot send_message").await?;
-        debug!(chat_id, text_len = text.len(), "ClawBot message sent");
-        Ok(())
+        match self.config.mode {
+            ClawBotMode::HttpBridge => self.send_http_bridge_message(chat_id, text).await,
+            ClawBotMode::WeClawBotApi => self.send_weclawbot_api_message(text).await,
+            ClawBotMode::IlinkNative => self.send_ilink_message(chat_id, text).await,
+        }
     }
 
     async fn send_message_get_id(&self, chat_id: &str, text: &str) -> Result<Option<i64>> {
-        let payload = serde_json::json!({
-            "chat_id": chat_id,
-            "conversation_id": chat_id,
-            "to": chat_id,
-            "text": text,
-            "content": text,
-            "msgtype": "text",
-        });
-        let resp = self
-            .auth_request(self.client.post(self.endpoint(&self.config.send_path)))
-            .json(&payload)
-            .send()
-            .await
-            .context("failed to send ClawBot message")?;
-        let body = ensure_success_json(resp, "ClawBot send_message").await?;
-        Ok(extract_i64(&body, &["message_id", "msg_id", "id"]))
+        match self.config.mode {
+            ClawBotMode::HttpBridge => self.send_http_bridge_message_get_id(chat_id, text).await,
+            _ => {
+                self.send_message(chat_id, text).await?;
+                Ok(None)
+            }
+        }
     }
 
     async fn edit_message(&self, chat_id: &str, message_id: i64, text: &str) -> Result<()> {
-        let payload = serde_json::json!({
-            "chat_id": chat_id,
-            "conversation_id": chat_id,
-            "message_id": message_id,
-            "msg_id": message_id,
-            "text": text,
-            "content": text,
-        });
-        let resp = self
-            .auth_request(self.client.post(self.endpoint(&self.config.edit_path)))
-            .json(&payload)
-            .send()
-            .await
-            .context("failed to edit ClawBot message")?;
-        ensure_success(resp, "ClawBot edit_message").await
+        match self.config.mode {
+            ClawBotMode::HttpBridge => {
+                self.edit_http_bridge_message(chat_id, message_id, text)
+                    .await
+            }
+            // WeChat does not support editing normal messages; treat progressive edit as no-op.
+            _ => Ok(()),
+        }
     }
 
-    async fn send_chat_action(&self, _chat_id: &str, _action: &str) -> Result<()> {
-        // WeChat/ClawBot bridges commonly do not expose typing indicators.
-        Ok(())
+    async fn send_chat_action(&self, chat_id: &str, action: &str) -> Result<()> {
+        match self.config.mode {
+            ClawBotMode::WeClawBotApi => {
+                let status = if action == "typing" { 1 } else { 2 };
+                self.send_weclawbot_typing(status).await
+            }
+            ClawBotMode::IlinkNative => {
+                let status = if action == "typing" { 1 } else { 2 };
+                self.send_ilink_typing(chat_id, status).await
+            }
+            ClawBotMode::HttpBridge => Ok(()),
+        }
     }
 
     fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<GatewayMessage>> {
@@ -258,7 +386,158 @@ impl PlatformAdapter for ClawBotAdapter {
     }
 }
 
-#[derive(Debug)]
+impl ClawBotAdapter {
+    async fn send_http_bridge_message(&self, chat_id: &str, text: &str) -> Result<()> {
+        let payload = bridge_send_payload(chat_id, text);
+        let resp = self
+            .auth_request(self.client.post(self.endpoint(&self.config.send_path)))
+            .json(&payload)
+            .send()
+            .await
+            .context("failed to send ClawBot bridge message")?;
+        ensure_success(resp, "ClawBot bridge send_message").await
+    }
+
+    async fn send_http_bridge_message_get_id(
+        &self,
+        chat_id: &str,
+        text: &str,
+    ) -> Result<Option<i64>> {
+        let payload = bridge_send_payload(chat_id, text);
+        let resp = self
+            .auth_request(self.client.post(self.endpoint(&self.config.send_path)))
+            .json(&payload)
+            .send()
+            .await
+            .context("failed to send ClawBot bridge message")?;
+        let body = ensure_success_json(resp, "ClawBot bridge send_message").await?;
+        Ok(extract_i64(&body, &["message_id", "msg_id", "id"]))
+    }
+
+    async fn edit_http_bridge_message(
+        &self,
+        chat_id: &str,
+        message_id: i64,
+        text: &str,
+    ) -> Result<()> {
+        let payload = serde_json::json!({
+            "chat_id": chat_id,
+            "conversation_id": chat_id,
+            "message_id": message_id,
+            "msg_id": message_id,
+            "text": text,
+            "content": text,
+        });
+        let resp = self
+            .auth_request(self.client.post(self.endpoint(&self.config.edit_path)))
+            .json(&payload)
+            .send()
+            .await
+            .context("failed to edit ClawBot bridge message")?;
+        ensure_success(resp, "ClawBot bridge edit_message").await
+    }
+
+    async fn send_weclawbot_api_message(&self, text: &str) -> Result<()> {
+        let path = format!("/bots/{}/messages", self.config.bot_id);
+        let payload = serde_json::json!({ "text": text });
+        let resp = self
+            .auth_request(self.client.post(join_url(&self.config.base_url, &path)))
+            .json(&payload)
+            .send()
+            .await
+            .context("failed to send WeClawBot-API message")?;
+        ensure_success(resp, "WeClawBot-API messages").await
+    }
+
+    async fn send_weclawbot_typing(&self, status: i32) -> Result<()> {
+        let path = format!("/bots/{}/typing", self.config.bot_id);
+        let payload = serde_json::json!({ "status": status });
+        let resp = self
+            .auth_request(self.client.post(join_url(&self.config.base_url, &path)))
+            .json(&payload)
+            .send()
+            .await
+            .context("failed to send WeClawBot-API typing")?;
+        ensure_success(resp, "WeClawBot-API typing").await
+    }
+
+    async fn send_ilink_message(&self, chat_id: &str, text: &str) -> Result<()> {
+        let (base_url, token, context_token) = {
+            let state = self
+                .ilink_state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
+            let context_token = state
+                .context_tokens
+                .get(chat_id)
+                .cloned()
+                .with_context(|| {
+                    format!(
+                        "missing iLink context_token for chat {chat_id}; user must message first"
+                    )
+                })?;
+            (
+                state.base_url_or(&self.config.base_url),
+                state.bot_token.clone(),
+                context_token,
+            )
+        };
+        let payload = build_ilink_sendmessage_payload(
+            chat_id,
+            text,
+            &context_token,
+            &self.config.channel_version,
+        );
+        let resp = ilink_auth_headers(
+            self.client
+                .post(join_url(&base_url, "/ilink/bot/sendmessage")),
+            &self.config,
+            Some(&token),
+        )
+        .json(&payload)
+        .send()
+        .await
+        .context("failed to send iLink message")?;
+        ensure_success(resp, "iLink sendmessage").await
+    }
+
+    async fn send_ilink_typing(&self, chat_id: &str, status: i32) -> Result<()> {
+        let (base_url, token, typing_ticket) = {
+            let state = self
+                .ilink_state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
+            (
+                state.base_url_or(&self.config.base_url),
+                state.bot_token.clone(),
+                state.typing_tickets.get(chat_id).cloned(),
+            )
+        };
+        let ticket = match typing_ticket {
+            Some(ticket) => ticket,
+            None => return Ok(()),
+        };
+        let payload = serde_json::json!({
+            "to_user_id": chat_id,
+            "typing_ticket": ticket,
+            "status": status,
+            "base_info": base_info(&self.config.channel_version),
+        });
+        let resp = ilink_auth_headers(
+            self.client
+                .post(join_url(&base_url, "/ilink/bot/sendtyping")),
+            &self.config,
+            Some(&token),
+        )
+        .json(&payload)
+        .send()
+        .await
+        .context("failed to send iLink typing")?;
+        ensure_success(resp, "iLink sendtyping").await
+    }
+}
+
+#[derive(Debug, Default)]
 struct PollBatch {
     messages: Vec<PollMessageEnvelope>,
     next_offset: Option<String>,
@@ -270,7 +549,7 @@ struct PollMessageEnvelope {
     next_offset: Option<String>,
 }
 
-async fn poll_once(
+async fn poll_http_bridge_once(
     client: &Client,
     config: &ClawBotAdapterConfig,
     offset: Option<&str>,
@@ -289,12 +568,12 @@ async fn poll_once(
     let resp = request
         .send()
         .await
-        .context("failed to poll ClawBot messages")?;
-    let body = ensure_success_json(resp, "ClawBot poll").await?;
-    Ok(parse_poll_batch(body))
+        .context("failed to poll ClawBot bridge messages")?;
+    let body = ensure_success_json(resp, "ClawBot bridge poll").await?;
+    Ok(parse_bridge_poll_batch(body))
 }
 
-fn parse_poll_batch(body: Value) -> PollBatch {
+fn parse_bridge_poll_batch(body: Value) -> PollBatch {
     let next_offset = extract_string(&body, &["next_offset", "nextOffset", "offset", "cursor"]);
     let raw_messages = body
         .get("messages")
@@ -325,7 +604,7 @@ fn parse_poll_batch(body: Value) -> PollBatch {
     }
 }
 
-fn convert_clawbot_message(bot_id: &str, value: &Value) -> Option<GatewayMessage> {
+fn convert_bridge_message(bot_id: &str, value: &Value) -> Option<GatewayMessage> {
     let text = extract_string(value, &["text", "content", "message", "msg", "body"])?;
     let chat_id = extract_string(
         value,
@@ -362,6 +641,305 @@ fn convert_clawbot_message(bot_id: &str, value: &Value) -> Option<GatewayMessage
         text,
         media,
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct IlinkStoredState {
+    #[serde(default)]
+    bot_token: String,
+    #[serde(default)]
+    base_url: String,
+    #[serde(default)]
+    get_updates_buf: String,
+    #[serde(default)]
+    context_tokens: HashMap<String, String>,
+    #[serde(default)]
+    typing_tickets: HashMap<String, String>,
+}
+
+impl IlinkStoredState {
+    fn base_url_or(&self, fallback: &str) -> String {
+        if self.base_url.is_empty() {
+            fallback.to_string()
+        } else {
+            self.base_url.clone()
+        }
+    }
+}
+
+#[derive(Debug)]
+struct IlinkQrCode {
+    qrcode: String,
+    qrcode_img_content: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct IlinkQrStatus {
+    #[serde(default)]
+    bot_token: Option<String>,
+    #[serde(default)]
+    baseurl: Option<String>,
+}
+
+async fn ilink_get_qrcode(client: &Client, config: &ClawBotAdapterConfig) -> Result<IlinkQrCode> {
+    let resp = ilink_auth_headers(
+        client
+            .get(join_url(&config.base_url, "/ilink/bot/get_bot_qrcode"))
+            .query(&[("bot_type", "3")]),
+        config,
+        None,
+    )
+    .send()
+    .await
+    .context("failed to request iLink QR code")?;
+    let body = ensure_success_json(resp, "iLink get_bot_qrcode").await?;
+    parse_ilink_qrcode(&body)
+}
+
+fn parse_ilink_qrcode(body: &Value) -> Result<IlinkQrCode> {
+    let qrcode = extract_string(body, &["qrcode", "qr_code", "qrcode_key"])
+        .context("iLink QR response missing qrcode")?;
+    let qrcode_img_content = extract_string(body, &["qrcode_img_content", "qrcode_url", "url"])
+        .context("iLink QR response missing qrcode_img_content")?;
+    Ok(IlinkQrCode {
+        qrcode,
+        qrcode_img_content,
+    })
+}
+
+async fn ilink_get_qrcode_status(
+    client: &Client,
+    config: &ClawBotAdapterConfig,
+    qrcode: &str,
+) -> Result<IlinkQrStatus> {
+    let resp = ilink_auth_headers(
+        client
+            .get(join_url(&config.base_url, "/ilink/bot/get_qrcode_status"))
+            .query(&[("qrcode", qrcode)]),
+        config,
+        None,
+    )
+    .send()
+    .await
+    .context("failed to request iLink QR status")?;
+    let body = ensure_success_json(resp, "iLink get_qrcode_status").await?;
+    Ok(serde_json::from_value(body).context("failed to parse iLink QR status")?)
+}
+
+async fn ilink_poll_once(
+    client: &Client,
+    config: &ClawBotAdapterConfig,
+    state: &Arc<Mutex<IlinkStoredState>>,
+) -> Result<Vec<GatewayMessage>> {
+    let (base_url, token, cursor) = {
+        let guard = state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
+        (
+            guard.base_url_or(&config.base_url),
+            guard.bot_token.clone(),
+            guard.get_updates_buf.clone(),
+        )
+    };
+    if token.is_empty() {
+        anyhow::bail!("iLink bot_token is empty; login required");
+    }
+    let payload = serde_json::json!({
+        "get_updates_buf": cursor,
+        "base_info": base_info(&config.channel_version),
+    });
+    let resp = ilink_auth_headers(
+        client.post(join_url(&base_url, "/ilink/bot/getupdates")),
+        config,
+        Some(&token),
+    )
+    .json(&payload)
+    .send()
+    .await
+    .context("failed to poll iLink getupdates")?;
+    let body = ensure_success_json(resp, "iLink getupdates").await?;
+    let (next_cursor, messages, context_updates) = parse_ilink_updates(&config.bot_id, &body);
+    {
+        let mut guard = state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
+        if let Some(next) = next_cursor {
+            guard.get_updates_buf = next;
+        }
+        for (chat_id, context_token) in context_updates {
+            guard.context_tokens.insert(chat_id, context_token);
+        }
+        save_ilink_state(config, &guard)?;
+    }
+    Ok(messages)
+}
+
+type IlinkParseResult = (Option<String>, Vec<GatewayMessage>, Vec<(String, String)>);
+
+fn parse_ilink_updates(bot_id: &str, body: &Value) -> IlinkParseResult {
+    let next_cursor = extract_string(body, &["get_updates_buf", "next_buf", "cursor"]);
+    let msgs = body.get("msgs").or_else(|| body.get("messages"));
+    let values = match msgs {
+        Some(Value::Array(items)) => items.clone(),
+        Some(other) => vec![other.clone()],
+        None => Vec::new(),
+    };
+    let mut out = Vec::new();
+    let mut contexts = Vec::new();
+    for msg in values {
+        if extract_i64(&msg, &["message_type"]) == Some(2) {
+            continue;
+        }
+        let Some(chat_id) = extract_string(&msg, &["from_user_id", "from", "sender", "user_id"])
+        else {
+            continue;
+        };
+        let text = extract_ilink_text(&msg);
+        if text.trim().is_empty() {
+            continue;
+        }
+        if let Some(context_token) = extract_string(&msg, &["context_token", "contextToken"]) {
+            contexts.push((chat_id.clone(), context_token));
+        }
+        out.push(GatewayMessage {
+            platform: "clawbot".to_string(),
+            bot_id: bot_id.to_string(),
+            chat_id: chat_id.clone(),
+            user_id: chat_id,
+            text,
+            media: None,
+        });
+    }
+    (next_cursor, out, contexts)
+}
+
+fn extract_ilink_text(msg: &Value) -> String {
+    let Some(Value::Array(items)) = msg.get("item_list") else {
+        return extract_string(msg, &["text", "content", "message"]).unwrap_or_default();
+    };
+    let mut text = String::new();
+    for item in items {
+        let is_text = extract_i64(item, &["type"]) == Some(1);
+        if is_text
+            && let Some(value) = item
+                .get("text_item")
+                .and_then(|v| extract_string(v, &["text", "content"]))
+        {
+            text.push_str(&value);
+        }
+    }
+    text
+}
+
+fn build_ilink_sendmessage_payload(
+    chat_id: &str,
+    text: &str,
+    context_token: &str,
+    channel_version: &str,
+) -> Value {
+    serde_json::json!({
+        "msg": {
+            "from_user_id": "",
+            "to_user_id": chat_id,
+            "client_id": format!("hakimi-{}", uuid::Uuid::new_v4().simple()),
+            "message_type": 2,
+            "message_state": 2,
+            "context_token": context_token,
+            "item_list": [
+                { "type": 1, "text_item": { "text": text } }
+            ]
+        },
+        "base_info": base_info(channel_version),
+    })
+}
+
+fn base_info(channel_version: &str) -> Value {
+    serde_json::json!({ "channel_version": channel_version })
+}
+
+fn ilink_auth_headers(
+    builder: reqwest::RequestBuilder,
+    config: &ClawBotAdapterConfig,
+    token: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let mut builder = builder
+        .header("Content-Type", "application/json")
+        .header("AuthorizationType", "ilink_bot_token")
+        .header("X-WECHAT-UIN", random_wechat_uin())
+        .header("iLink-App-Id", "bot")
+        .header("iLink-App-ClientVersion", &config.app_client_version);
+    if let Some(token) = token
+        && !token.is_empty()
+    {
+        builder = builder.bearer_auth(token);
+    }
+    builder
+}
+
+fn random_wechat_uin() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u32)
+        .unwrap_or(0);
+    base64::engine::general_purpose::STANDARD.encode(nanos.to_be_bytes())
+}
+
+fn bridge_send_payload(chat_id: &str, text: &str) -> Value {
+    serde_json::json!({
+        "chat_id": chat_id,
+        "conversation_id": chat_id,
+        "to": chat_id,
+        "text": text,
+        "content": text,
+        "msgtype": "text",
+    })
+}
+
+fn state_path(config: &ClawBotAdapterConfig) -> PathBuf {
+    expand_home(&config.token_store).join(format!("{}.json", sanitize_filename(&config.bot_id)))
+}
+
+fn load_ilink_state(config: &ClawBotAdapterConfig) -> Result<IlinkStoredState> {
+    let path = state_path(config);
+    if !path.exists() {
+        return Ok(IlinkStoredState::default());
+    }
+    let text = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read iLink state from {}", path.display()))?;
+    Ok(serde_json::from_str(&text).context("failed to parse iLink state")?)
+}
+
+fn save_ilink_state(config: &ClawBotAdapterConfig, state: &IlinkStoredState) -> Result<()> {
+    let path = state_path(config);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create iLink state dir {}", parent.display()))?;
+    }
+    let text = serde_json::to_string_pretty(state).context("failed to serialize iLink state")?;
+    std::fs::write(&path, text)
+        .with_context(|| format!("failed to write iLink state to {}", path.display()))
+}
+
+fn expand_home(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
+    }
+    Path::new(path).to_path_buf()
+}
+
+fn sanitize_filename(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn extract_string(value: &Value, keys: &[&str]) -> Option<String> {
@@ -431,10 +1009,21 @@ mod tests {
     #[test]
     fn default_config_is_local_bridge() {
         let cfg = ClawBotAdapterConfig::default();
+        assert_eq!(cfg.mode, ClawBotMode::HttpBridge);
         assert_eq!(cfg.bot_id, "clawbot");
-        assert_eq!(cfg.base_url, DEFAULT_BASE_URL);
+        assert_eq!(cfg.base_url, HTTP_BRIDGE_BASE_URL);
         assert_eq!(cfg.poll_path, DEFAULT_POLL_PATH);
         assert_eq!(cfg.send_path, DEFAULT_SEND_PATH);
+    }
+
+    #[test]
+    fn ilink_native_rewrites_default_base_url() {
+        let cfg = ClawBotAdapterConfig {
+            mode: ClawBotMode::IlinkNative,
+            ..Default::default()
+        };
+        let adapter = ClawBotAdapter::new(cfg);
+        assert_eq!(adapter.config.base_url, ILINK_BASE_URL);
     }
 
     #[test]
@@ -459,10 +1048,10 @@ mod tests {
                 {"conversation_id": "room2", "sender": "u2", "content": "hi"}
             ]
         });
-        let batch = parse_poll_batch(body);
+        let batch = parse_bridge_poll_batch(body);
         assert_eq!(batch.next_offset.as_deref(), Some("42"));
         assert_eq!(batch.messages.len(), 2);
-        let first = convert_clawbot_message("bot", &batch.messages[0].value).unwrap();
+        let first = convert_bridge_message("bot", &batch.messages[0].value).unwrap();
         assert_eq!(first.platform, "clawbot");
         assert_eq!(first.bot_id, "bot");
         assert_eq!(first.chat_id, "room1");
@@ -478,10 +1067,78 @@ mod tests {
             "message": "ping",
             "media_id": "file-1"
         });
-        let msg = convert_clawbot_message("wx", &value).unwrap();
+        let msg = convert_bridge_message("wx", &value).unwrap();
         assert_eq!(msg.chat_id, "group@chatroom");
         assert_eq!(msg.user_id, "wxid_abc");
         assert_eq!(msg.text, "ping");
         assert_eq!(msg.media.as_deref(), Some("file-1"));
+    }
+
+    #[test]
+    fn parses_ilink_qrcode_response() {
+        let body = serde_json::json!({
+            "qrcode": "qr-key",
+            "qrcode_img_content": "https://example.com/qr"
+        });
+        let qr = parse_ilink_qrcode(&body).unwrap();
+        assert_eq!(qr.qrcode, "qr-key");
+        assert_eq!(qr.qrcode_img_content, "https://example.com/qr");
+    }
+
+    #[test]
+    fn parses_ilink_updates_and_context_tokens() {
+        let body = serde_json::json!({
+            "get_updates_buf": "next-cursor",
+            "msgs": [
+                {
+                    "from_user_id": "user@im.wechat",
+                    "context_token": "ctx-1",
+                    "message_type": 1,
+                    "item_list": [
+                        {"type": 1, "text_item": {"text": "你"}},
+                        {"type": 1, "text_item": {"text": "好"}}
+                    ]
+                },
+                {
+                    "from_user_id": "self@im.wechat",
+                    "context_token": "ctx-self",
+                    "message_type": 2,
+                    "item_list": [{"type": 1, "text_item": {"text": "skip"}}]
+                }
+            ]
+        });
+        let (cursor, messages, contexts) = parse_ilink_updates("bot", &body);
+        assert_eq!(cursor.as_deref(), Some("next-cursor"));
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].chat_id, "user@im.wechat");
+        assert_eq!(messages[0].text, "你好");
+        assert_eq!(
+            contexts,
+            vec![("user@im.wechat".to_string(), "ctx-1".to_string())]
+        );
+    }
+
+    #[test]
+    fn builds_ilink_sendmessage_payload_with_context_token() {
+        let payload = build_ilink_sendmessage_payload("user@im.wechat", "回复", "ctx", "1.0.2");
+        assert_eq!(payload["msg"]["to_user_id"], "user@im.wechat");
+        assert_eq!(payload["msg"]["message_type"], 2);
+        assert_eq!(payload["msg"]["message_state"], 2);
+        assert_eq!(payload["msg"]["context_token"], "ctx");
+        assert_eq!(payload["msg"]["item_list"][0]["text_item"]["text"], "回复");
+        assert_eq!(payload["base_info"]["channel_version"], "1.0.2");
+    }
+
+    #[test]
+    fn state_path_sanitizes_bot_id() {
+        let cfg = ClawBotAdapterConfig {
+            bot_id: "abc@im.bot".to_string(),
+            token_store: "/tmp/hakimi-clawbot-test".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            state_path(&cfg),
+            PathBuf::from("/tmp/hakimi-clawbot-test/abc_im_bot.json")
+        );
     }
 }

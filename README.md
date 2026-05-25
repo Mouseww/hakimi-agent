@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.63-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.64-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,11 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.64 Native WeChat iLink / ClawBot Protocol**:
+  - **Official iLink Mode**: `gateways.clawbot.mode: "ilink_native"` now talks directly to `https://ilinkai.weixin.qq.com` with QR login, `getupdates` long polling, and native `sendmessage` envelopes.
+  - **Persistent Context Tokens**: bot tokens, update cursors, and per-user `context_token` values are stored under `~/.hakimi/clawbot`, so replies include the required iLink context instead of disappearing silently.
+  - **Mode Compatibility**: the original generic `http_bridge` remains the default, while `weclawbot_api` supports Cp0204/WeClawBot-API outbound message/typing endpoints.
+  - **Config + Env Overrides**: `CLAWBOT_MODE=ilink_native` can enable the native path without changing YAML.
 - **v0.3.63 WeChat ClawBot Gateway**:
   - **ClawBot Adapter**: Hakimi can now connect to WeChat through a configurable ClawBot HTTP bridge.
   - **Multi-Platform Gateway Fan-in**: gateway mode now merges receivers from all registered platforms so Telegram and ClawBot can run together.
@@ -178,12 +183,30 @@ These features do not exist in the original Hermes Agent — they are unique to 
 
 Hakimi can run as a long-lived gateway bot and fan-in messages from multiple adapters at the same time.
 
-**WeChat via ClawBot HTTP bridge:**
+**WeChat via ClawBot / iLink:**
 
 ```yaml
 gateways:
   clawbot:
     enabled: true
+    mode: "ilink_native"   # http_bridge | weclawbot_api | ilink_native
+    bot_id: "clawbot"
+    base_url: "https://ilinkai.weixin.qq.com"
+    token: ""              # optional existing bot_token; otherwise QR login
+    token_store: "~/.hakimi/clawbot"
+    channel_version: "1.0.2"
+    app_client_version: "2.4.3"
+```
+
+On first `hakimi --gateway`, native iLink mode prints a WeChat QR URL to scan. Hakimi persists the returned bot token, update cursor, and per-chat `context_token` under `token_store`, then receives inbound messages through `POST /ilink/bot/getupdates` and replies through `POST /ilink/bot/sendmessage`.
+
+**Legacy generic ClawBot HTTP bridge:**
+
+```yaml
+gateways:
+  clawbot:
+    enabled: true
+    mode: "http_bridge"
     bot_id: "clawbot"
     base_url: "http://127.0.0.1:5700"
     token: ""
@@ -194,13 +217,15 @@ gateways:
     poll_limit: 50
 ```
 
+`mode: "weclawbot_api"` targets Cp0204/WeClawBot-API (`/bots/{bot_id}/messages` and `/typing`) for outbound WeChat pushes.
+
 Environment overrides are also supported:
 
 ```bash
-CLAWBOT_BASE_URL=http://127.0.0.1:5700 CLAWBOT_TOKEN=[REDACTED] hakimi --gateway
+CLAWBOT_MODE=ilink_native CLAWBOT_BASE_URL=https://ilinkai.weixin.qq.com CLAWBOT_TOKEN=[REDACTED] hakimi --gateway
 ```
 
-The bridge accepts common inbound aliases such as `messages`/`data`, `chat_id`/`conversation_id`, and `text`/`content`; outbound sends include `chat_id`, `conversation_id`, `to`, `text`, and `content` for broad ClawBot compatibility.
+The legacy bridge accepts common inbound aliases such as `messages`/`data`, `chat_id`/`conversation_id`, and `text`/`content`; outbound sends include `chat_id`, `conversation_id`, `to`, `text`, and `content` for broad ClawBot compatibility.
 
 ### 🔌 Transports
 

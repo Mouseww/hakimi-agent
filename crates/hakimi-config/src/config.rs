@@ -514,6 +514,8 @@ pub struct GatewaysConfig {
 pub struct ClawBotGatewayConfig {
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default = "default_clawbot_mode")]
+    pub mode: String,
     #[serde(default = "default_clawbot_bot_id")]
     pub bot_id: String,
     #[serde(default = "default_clawbot_base_url")]
@@ -530,6 +532,16 @@ pub struct ClawBotGatewayConfig {
     pub poll_interval_ms: u64,
     #[serde(default = "default_clawbot_poll_limit")]
     pub poll_limit: usize,
+    #[serde(default = "default_clawbot_token_store")]
+    pub token_store: String,
+    #[serde(default = "default_clawbot_channel_version")]
+    pub channel_version: String,
+    #[serde(default = "default_clawbot_app_client_version")]
+    pub app_client_version: String,
+}
+
+fn default_clawbot_mode() -> String {
+    "http_bridge".to_string()
 }
 
 fn default_clawbot_bot_id() -> String {
@@ -560,10 +572,23 @@ fn default_clawbot_poll_limit() -> usize {
     50
 }
 
+fn default_clawbot_token_store() -> String {
+    "~/.hakimi/clawbot".to_string()
+}
+
+fn default_clawbot_channel_version() -> String {
+    "1.0.2".to_string()
+}
+
+fn default_clawbot_app_client_version() -> String {
+    "2.4.3".to_string()
+}
+
 impl Default for ClawBotGatewayConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            mode: default_clawbot_mode(),
             bot_id: default_clawbot_bot_id(),
             base_url: default_clawbot_base_url(),
             token: String::new(),
@@ -572,6 +597,9 @@ impl Default for ClawBotGatewayConfig {
             edit_path: default_clawbot_edit_path(),
             poll_interval_ms: default_clawbot_poll_interval_ms(),
             poll_limit: default_clawbot_poll_limit(),
+            token_store: default_clawbot_token_store(),
+            channel_version: default_clawbot_channel_version(),
+            app_client_version: default_clawbot_app_client_version(),
         }
     }
 }
@@ -636,6 +664,8 @@ pub struct RoleGatewaysConfig {
 pub struct RoleClawBotConfig {
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default = "default_clawbot_mode")]
+    pub mode: String,
     #[serde(default = "default_clawbot_bot_id")]
     pub bot_id: String,
     #[serde(default = "default_clawbot_base_url")]
@@ -652,6 +682,12 @@ pub struct RoleClawBotConfig {
     pub poll_interval_ms: u64,
     #[serde(default = "default_clawbot_poll_limit")]
     pub poll_limit: usize,
+    #[serde(default = "default_clawbot_token_store")]
+    pub token_store: String,
+    #[serde(default = "default_clawbot_channel_version")]
+    pub channel_version: String,
+    #[serde(default = "default_clawbot_app_client_version")]
+    pub app_client_version: String,
 }
 
 /// Telegram-specific config for a role gateway binding.
