@@ -152,7 +152,7 @@ if [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "403" ] || [ ! -f "$TMPDIR/hakim
         info "Building hakimi-agent (release mode)..."
         (
             cd "$BUILD_DIR/hakimi-agent"
-            cargo build --release -p hakimi-cli 2>&1 | tail -5
+            cargo build --release -p hakimi-agent 2>&1 | tail -5
         )
 
         if [ -f "$BUILD_DIR/hakimi-agent/target/release/hakimi" ]; then
@@ -201,7 +201,9 @@ else
     printf "    ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n" "$INSTALL_DIR"
     echo ""
 
-    # Try to detect shell profile and offer to add it
+    # Try to detect shell profile and add it automatically. The README install
+    # command is usually a curl|bash pipeline, so stdin is not a TTY; prompting
+    # here leaves most users without a working `hakimi` command.
     SHELL_RC=""
     case "$(basename "${SHELL:-/bin/bash}")" in
         bash)  SHELL_RC="${HOME}/.bashrc" ;;
@@ -210,31 +212,32 @@ else
         *)     SHELL_RC="" ;;
     esac
 
-    if [ -n "$SHELL_RC" ] && [ -f "$SHELL_RC" ]; then
+    if [ -n "$SHELL_RC" ]; then
+        mkdir -p "$(dirname "$SHELL_RC")"
+        touch "$SHELL_RC"
         if ! grep -q '.hakimi/bin' "$SHELL_RC" 2>/dev/null; then
-            # In non-interactive (piped) mode, skip the prompt and just print instructions
-            if [ -t 0 ]; then
-                read -rp "  Add to ${SHELL_RC}? [Y/n] " answer
-                answer="${answer:-Y}"
-                if [ "$answer" != "n" ] && [ "$answer" != "N" ]; then
-                    if [ "$(basename "$SHELL")" = "fish" ]; then
-                        echo 'set -gx PATH $HOME/.hakimi/bin $PATH' >> "$SHELL_RC"
-                    else
-                        echo 'export PATH="$HOME/.hakimi/bin:$PATH"' >> "$SHELL_RC"
-                    fi
-                    success "Added to ${SHELL_RC}. Run 'source ${SHELL_RC}' or open a new terminal."
-                fi
+            if [ "$(basename "${SHELL:-/bin/bash}")" = "fish" ]; then
+                echo 'set -gx PATH $HOME/.hakimi/bin $PATH' >> "$SHELL_RC"
             else
-                echo "  For non-interactive install, add this to ${SHELL_RC}:"
-                echo ""
-                if [ "$(basename "${SHELL:-/bin/bash}")" = "fish" ]; then
-                    echo "    set -gx PATH \$HOME/.hakimi/bin \$PATH"
-                else
-                    echo "    export PATH=\"\$HOME/.hakimi/bin:\$PATH\""
-                fi
+                echo 'export PATH="$HOME/.hakimi/bin:$PATH"' >> "$SHELL_RC"
             fi
+            success "Added ${INSTALL_DIR} to ${SHELL_RC}."
+            warn "Run 'source ${SHELL_RC}' or open a new terminal before typing 'hakimi'."
         else
             success "PATH entry already exists in ${SHELL_RC}."
+        fi
+    fi
+
+    if [ -d "$HOME/.local/bin" ] && echo "$PATH" | tr ':' '\n' | grep -qxF "$HOME/.local/bin"; then
+        ln -sf "$INSTALL_DIR/hakimi" "$HOME/.local/bin/hakimi"
+        success "Linked hakimi into ~/.local/bin."
+    elif [ -w "/usr/local/bin" ]; then
+        ln -sf "$INSTALL_DIR/hakimi" "/usr/local/bin/hakimi"
+        success "Linked hakimi into /usr/local/bin."
+    elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+        sudo ln -sf "$INSTALL_DIR/hakimi" "/usr/local/bin/hakimi" || true
+        if command -v /usr/local/bin/hakimi &>/dev/null; then
+            success "Linked hakimi into /usr/local/bin."
         fi
     fi
 fi
@@ -257,8 +260,8 @@ if [ -t 0 ]; then
     read -rp "Run setup wizard now? [Y/n] " answer
     answer="${answer:-Y}"
     if [ "$answer" != "n" ] && [ "$answer" != "N" ]; then
-        "$INSTALL_DIR/hakimi" --help || true
+        "$INSTALL_DIR/hakimi" --setup || true
     fi
 else
-    info "Run '$INSTALL_DIR/hakimi --help' to get started."
+    info "Run '$INSTALL_DIR/hakimi --setup' to configure your model/API key."
 fi

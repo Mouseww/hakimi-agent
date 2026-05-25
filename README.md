@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.56-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.57-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -42,7 +42,7 @@ irm https://raw.githubusercontent.com/Mouseww/hakimi-agent/main/install.ps1 | ie
 cargo install hakimi-agent
 ```
 
-After install, run the interactive setup wizard:
+After install, the installer automatically adds `~/.hakimi/bin` to your shell PATH when possible and offers to launch the setup wizard. You can also run it manually at any time:
 
 ```bash
 hakimi --setup
@@ -73,6 +73,11 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.57 Installer Setup & Stream Text Polish**:
+  - **First-Run Setup**: `hakimi --setup` is wired into the CLI and the shell installer now offers to run it immediately after install instead of showing help.
+  - **PATH Auto-Configuration**: `install.sh` adds `~/.hakimi/bin` to `.bashrc`, `.zshrc`, or fish config when possible, and also attempts safe symlinks into existing PATH directories.
+  - **Coalesced Gateway Streaming**: Progressive Telegram/Gateway content deltas are appended exactly as received and coalesced into burst updates before editing the message, preventing accidental token spaces and the sluggish one-character-per-edit effect.
+  - **Workspace Install Fix**: Source fallback builds the executable `hakimi` crate and includes the server/knowledge crates in workspace membership.
 - **v0.3.56 Gateway Bubble Boundary Fix**:
   - **Tool Boundaries Freeze Prose**: Telegram/Gateway streaming now treats every tool notice as a hard semantic boundary. The explanation before a tool stays in its own assistant bubble, the tool call is sent as a compact standalone bubble, and later assistant prose starts in a fresh bubble.
   - **No Final Re-Merge**: Removed the final whole-response edit that previously overwrote the initial placeholder with the complete transcript, which could visually recombine prose and tool notices into one oversized message.

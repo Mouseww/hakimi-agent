@@ -11,6 +11,8 @@ members = [
     "crates/hakimi-gateway",
     "crates/hakimi-cli",
     "crates/hakimi",
+    "crates/hakimi-knowledge",
+    "crates/hakimi-server",
     "crates/hakimi-common",
     "crates/hakimi-mcp",
     "crates/hakimi-plugin",
@@ -19,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.56"
+version = "0.3.57"
 edition = "2024"
 
 [workspace.dependencies]

@@ -7,7 +7,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use hakimi_core::loop_impl::append_text_preserving_layout;
+use std::io::{self, Write};
 use tracing::{error, info, warn};
 
 use crate::Command;
@@ -26,7 +26,7 @@ struct GatewayStreamUiState {
 
 impl GatewayStreamUiState {
     fn append_content(&mut self, token: &str) -> Option<GatewayUiContentTarget> {
-        append_text_preserving_layout(&mut self.current_text, token);
+        self.current_text.push_str(token);
         if self.current_text.is_empty() || self.current_text == self.last_edit_text {
             return None;
         }
@@ -252,6 +252,122 @@ fn load_config() -> hakimi_config::HakimiConfig {
             hakimi_config::HakimiConfig::default()
         }
     }
+}
+
+fn hakimi_config_path() -> std::path::PathBuf {
+    dirs::home_dir()
+        .map(|h| h.join(".hakimi").join("config.yaml"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/config.yaml"))
+}
+
+fn prompt_text(label: &str, default: &str) -> Result<String> {
+    if default.is_empty() {
+        print!("{label}: ");
+    } else {
+        print!("{label} [{default}]: ");
+    }
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        Ok(default.to_string())
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn prompt_optional(label: &str, default: &str) -> Result<String> {
+    let value = prompt_text(label, default)?;
+    if value.eq_ignore_ascii_case("skip") {
+        Ok(String::new())
+    } else {
+        Ok(value)
+    }
+}
+
+fn prompt_yes_no(label: &str, default: bool) -> Result<bool> {
+    let suffix = if default { "Y/n" } else { "y/N" };
+    print!("{label} [{suffix}]: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let trimmed = input.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return Ok(default);
+    }
+    Ok(matches!(trimmed.as_str(), "y" | "yes" | "是" | "好" | "1"))
+}
+
+fn write_config_file(config: &hakimi_config::HakimiConfig) -> Result<std::path::PathBuf> {
+    let path = hakimi_config_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let yaml = serde_yaml::to_string(config)?;
+    std::fs::write(&path, yaml)?;
+    Ok(path)
+}
+
+fn run_setup_wizard(mut config: hakimi_config::HakimiConfig) -> Result<()> {
+    println!("🐙 Hakimi Agent setup wizard");
+    println!("This will write ~/.hakimi/config.yaml. Press Enter to accept defaults.");
+    println!("Type 'skip' for optional keys you want to leave empty.\n");
+
+    let provider_default = if config.model.provider.is_empty() {
+        "openrouter"
+    } else {
+        &config.model.provider
+    };
+    config.model.provider = prompt_text(
+        "LLM provider (openrouter/openai/anthropic/custom)",
+        provider_default,
+    )?;
+
+    let model_default = if config.model.default.is_empty() {
+        match config.model.provider.as_str() {
+            "anthropic" => "claude-sonnet-4-20250514",
+            "openai" => "gpt-4o-mini",
+            _ => "anthropic/claude-sonnet-4",
+        }
+    } else {
+        &config.model.default
+    };
+    config.model.default = prompt_text("Default model", model_default)?;
+
+    let base_url_default = if config.model.base_url.is_empty() {
+        match config.model.provider.as_str() {
+            "openrouter" => "https://openrouter.ai/api/v1",
+            "openai" => "https://api.openai.com/v1",
+            "anthropic" => "https://api.anthropic.com",
+            _ => "",
+        }
+    } else {
+        &config.model.base_url
+    };
+    config.model.base_url = prompt_optional("Base URL", base_url_default)?;
+    config.model.api_key = prompt_optional("API key", &config.model.api_key)?;
+
+    if prompt_yes_no("Configure Telegram gateway bot token now?", false)? {
+        config.gateways.telegram.bot_token =
+            prompt_optional("Telegram bot token", &config.gateways.telegram.bot_token)?;
+    }
+
+    config.agent.max_turns = prompt_text(
+        "Max tool-calling turns",
+        &config.agent.max_turns.to_string(),
+    )?
+    .parse()
+    .unwrap_or(config.agent.max_turns);
+
+    let path = write_config_file(&config)?;
+    println!("\n✅ Hakimi configuration saved to {}", path.display());
+    println!("Next steps:");
+    println!("  hakimi --query \"hello\"");
+    println!("  hakimi --gateway   # if you configured Telegram");
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -817,7 +933,7 @@ async fn start_gateway(
     skill_store: hakimi_skills::SkillStore,
     config: hakimi_config::HakimiConfig,
 ) -> Result<()> {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, VecDeque};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -838,7 +954,7 @@ async fn start_gateway(
     // Since Gateway mode shares the agent, we just rely on the transport that was already built
     // with the default role's api_key and base_url.
 
-    if let Some(token) = bot_token
+    if let Some(token) = bot_token.as_ref()
         && !token.is_empty()
     {
         let telegram_config = hakimi_gateway::TelegramAdapterConfig {
@@ -1169,15 +1285,41 @@ async fn start_gateway(
                         let plat = platform.clone();
                         tokio::spawn(async move {
                             let msg = hakimi_gateway::GatewayMessage {
-                                platform: plat,
-                                bot_id: bot,
-                                chat_id: chat,
+                                platform: plat.clone(),
+                                bot_id: bot.clone(),
+                                chat_id: chat.clone(),
                                 user_id: "".to_string(),
                                 text: "🔄 System is updating and restarting, please hold on...".to_string(),
                                 media: None,
                             };
                             let _ = gateway.route_message(&msg).await;
-                            let _ = std::process::Command::new("bash").arg("-c").arg("nohup sh -c 'hakimi --update && pkill -f \"hakimi --gateway\" && hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' &").spawn();
+
+                            let update_result = tokio::task::spawn_blocking(|| {
+                                std::process::Command::new("hakimi").arg("--update").status()
+                            })
+                            .await;
+
+                            let success = matches!(update_result, Ok(Ok(status)) if status.success());
+                            let result_msg = hakimi_gateway::GatewayMessage {
+                                platform: plat,
+                                bot_id: bot,
+                                chat_id: chat,
+                                user_id: "".to_string(),
+                                text: if success {
+                                    "✅ Hakimi 更新成功，正在重启 Gateway...".to_string()
+                                } else {
+                                    "❌ Hakimi 更新失败，请查看日志。".to_string()
+                                },
+                                media: None,
+                            };
+                            let _ = gateway.route_message(&result_msg).await;
+
+                            if success {
+                                let _ = std::process::Command::new("bash")
+                                    .arg("-c")
+                                    .arg("nohup sh -c 'pkill -f \"hakimi --gateway\"; hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' &")
+                                    .spawn();
+                            }
                         });
                         "Update sequence initiated...".to_string()
                     }
@@ -1379,11 +1521,33 @@ async fn start_gateway(
                     let handle = tokio::spawn(async move {
                         let mut current_message_id = Some(msg_id);
                         let mut ui_state = GatewayStreamUiState::default();
+                        let mut pending_events: VecDeque<GatewayStreamUiEvent> = VecDeque::new();
 
-                        while let Some(event) = ui_rx.recv().await {
+                        loop {
+                            let event = if let Some(event) = pending_events.pop_front() {
+                                event
+                            } else {
+                                let Some(event) = ui_rx.recv().await else {
+                                    break;
+                                };
+                                event
+                            };
+
                             match event {
-                                GatewayStreamUiEvent::Content(token) => {
-                                    let Some(target) = ui_state.append_content(&token) else {
+                                GatewayStreamUiEvent::Content(mut text) => {
+                                    while let Ok(next) = ui_rx.try_recv() {
+                                        match next {
+                                            GatewayStreamUiEvent::Content(token) => {
+                                                text.push_str(&token);
+                                            }
+                                            GatewayStreamUiEvent::Tool(_) => {
+                                                pending_events.push_back(next);
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    let Some(target) = ui_state.append_content(&text) else {
                                         continue;
                                     };
 
@@ -1418,7 +1582,7 @@ async fn start_gateway(
                                         }
                                     }
 
-                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                    tokio::time::sleep(std::time::Duration::from_millis(450)).await;
                                 }
                                 GatewayStreamUiEvent::Tool(text) => {
                                     if !text.trim().is_empty() {
@@ -1673,8 +1837,7 @@ pub async fn run() -> Result<()> {
     let config = load_config();
 
     if args.setup {
-        println!("Setup not implemented.");
-        return Ok(());
+        return run_setup_wizard(config);
     }
 
     let agent = build_agent(&args, &config).await?;
@@ -1704,6 +1867,37 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{GatewayStreamUiState, GatewayUiContentTarget};
+
+    #[test]
+    fn streaming_tokens_are_appended_verbatim_without_inserted_spaces() {
+        let mut state = GatewayStreamUiState::default();
+
+        assert_eq!(
+            state.append_content("爸"),
+            Some(GatewayUiContentTarget::EditCurrent)
+        );
+        assert_eq!(
+            state.append_content("爸"),
+            Some(GatewayUiContentTarget::EditCurrent)
+        );
+        assert_eq!(state.current_text, "爸爸");
+
+        let mut ascii_state = GatewayStreamUiState::default();
+        ascii_state.append_content("hel");
+        ascii_state.append_content("lo");
+        assert_eq!(ascii_state.current_text, "hello");
+    }
+
+    #[test]
+    fn coalesced_streaming_burst_updates_one_message_text() {
+        let mut state = GatewayStreamUiState::default();
+        assert_eq!(
+            state.append_content("爸爸，工具跑完了"),
+            Some(GatewayUiContentTarget::EditCurrent)
+        );
+        assert_eq!(state.current_text, "爸爸，工具跑完了");
+        assert_eq!(state.current_text, state.last_edit_text);
+    }
 
     #[test]
     fn tool_boundary_forces_next_content_into_new_message() {

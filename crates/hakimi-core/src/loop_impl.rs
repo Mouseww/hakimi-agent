@@ -35,8 +35,10 @@ const CONTINUE_AFTER_LENGTH_PROMPT: &str = "Your previous response was cut off b
 /// so most chunks should be concatenated exactly. Automatic continuation is
 /// different: the next provider response is a new assistant turn and often
 /// begins without leading whitespace even when the previous turn ended in the
-/// middle of prose. In that case a tiny separator prevents `hello` + `world`
-/// becoming `helloworld`, while preserving explicit newlines and Markdown.
+/// middle of prose. In that case a tiny separator prevents ASCII `hello` +
+/// `world` becoming `helloworld`, while preserving explicit newlines, Markdown,
+/// and CJK text. Do not use `char::is_alphanumeric()` here: it treats Chinese
+/// characters as alphanumeric and would turn streamed text into `爸 爸 ， 更 新`.
 pub fn append_text_preserving_layout(buffer: &mut String, next: &str) {
     if next.is_empty() {
         return;
@@ -49,8 +51,8 @@ pub fn append_text_preserving_layout(buffer: &mut String, next: &str) {
     let prev = buffer.chars().next_back();
     let next_first = next.chars().next();
 
-    let needs_space = matches!(prev, Some(c) if c.is_alphanumeric())
-        && matches!(next_first, Some(c) if c.is_alphanumeric());
+    let needs_space = matches!(prev, Some(c) if c.is_ascii_alphanumeric())
+        && matches!(next_first, Some(c) if c.is_ascii_alphanumeric());
 
     if needs_space {
         buffer.push(' ');
@@ -671,5 +673,26 @@ fn accumulator_to_response(acc: &StreamAccumulator) -> NormalizedResponse {
         finish_reason,
         usage,
         reasoning,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::append_text_preserving_layout;
+
+    #[test]
+    fn append_streamed_cjk_chunks_without_spaces() {
+        let mut out = String::new();
+        for chunk in ["爸", "爸", "，", "/", "update", " ", "现在", "只是"] {
+            append_text_preserving_layout(&mut out, chunk);
+        }
+        assert_eq!(out, "爸爸，/update 现在只是");
+    }
+
+    #[test]
+    fn append_ascii_word_continuations_with_separator() {
+        let mut out = String::from("hello");
+        append_text_preserving_layout(&mut out, "world");
+        assert_eq!(out, "hello world");
     }
 }
