@@ -505,6 +505,75 @@ pub struct HakimiConfig {
 pub struct GatewaysConfig {
     #[serde(default)]
     pub telegram: TelegramGatewayConfig,
+    #[serde(default)]
+    pub clawbot: ClawBotGatewayConfig,
+}
+
+/// WeChat ClawBot bridge gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClawBotGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_clawbot_bot_id")]
+    pub bot_id: String,
+    #[serde(default = "default_clawbot_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default = "default_clawbot_poll_path")]
+    pub poll_path: String,
+    #[serde(default = "default_clawbot_send_path")]
+    pub send_path: String,
+    #[serde(default = "default_clawbot_edit_path")]
+    pub edit_path: String,
+    #[serde(default = "default_clawbot_poll_interval_ms")]
+    pub poll_interval_ms: u64,
+    #[serde(default = "default_clawbot_poll_limit")]
+    pub poll_limit: usize,
+}
+
+fn default_clawbot_bot_id() -> String {
+    "clawbot".to_string()
+}
+
+fn default_clawbot_base_url() -> String {
+    "http://127.0.0.1:5700".to_string()
+}
+
+fn default_clawbot_poll_path() -> String {
+    "/messages".to_string()
+}
+
+fn default_clawbot_send_path() -> String {
+    "/send_message".to_string()
+}
+
+fn default_clawbot_edit_path() -> String {
+    "/edit_message".to_string()
+}
+
+fn default_clawbot_poll_interval_ms() -> u64 {
+    1_000
+}
+
+fn default_clawbot_poll_limit() -> usize {
+    50
+}
+
+impl Default for ClawBotGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_clawbot_bot_id(),
+            base_url: default_clawbot_base_url(),
+            token: String::new(),
+            poll_path: default_clawbot_poll_path(),
+            send_path: default_clawbot_send_path(),
+            edit_path: default_clawbot_edit_path(),
+            poll_interval_ms: default_clawbot_poll_interval_ms(),
+            poll_limit: default_clawbot_poll_limit(),
+        }
+    }
 }
 
 /// Telegram-specific gateway configuration.
@@ -558,6 +627,31 @@ pub struct RoleConfig {
 pub struct RoleGatewaysConfig {
     #[serde(default)]
     pub telegram: Option<RoleTelegramConfig>,
+    #[serde(default)]
+    pub clawbot: Option<RoleClawBotConfig>,
+}
+
+/// ClawBot-specific config for a role gateway binding.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RoleClawBotConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_clawbot_bot_id")]
+    pub bot_id: String,
+    #[serde(default = "default_clawbot_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default = "default_clawbot_poll_path")]
+    pub poll_path: String,
+    #[serde(default = "default_clawbot_send_path")]
+    pub send_path: String,
+    #[serde(default = "default_clawbot_edit_path")]
+    pub edit_path: String,
+    #[serde(default = "default_clawbot_poll_interval_ms")]
+    pub poll_interval_ms: u64,
+    #[serde(default = "default_clawbot_poll_limit")]
+    pub poll_limit: usize,
 }
 
 /// Telegram-specific config for a role gateway binding.
@@ -591,6 +685,8 @@ mod tests {
         assert_eq!(config.embedding.provider, "openai-compatible");
         assert_eq!(config.embedding.model, "BAAI/bge-m3");
         assert_eq!(config.embedding.dimension, 1024);
+        assert!(!config.gateways.clawbot.enabled);
+        assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
     }
 
     #[test]
@@ -635,6 +731,33 @@ mcp_servers:
         assert_eq!(fs.command, "npx");
         assert_eq!(fs.args.len(), 3);
         assert_eq!(fs.env.get("NODE_ENV").unwrap(), "production");
+    }
+
+    #[test]
+    fn test_deserialize_with_clawbot_gateway() {
+        let yaml = r#"
+gateways:
+  clawbot:
+    enabled: true
+    bot_id: "wechat-main"
+    base_url: "http://127.0.0.1:7777"
+    token: "[REDACTED]"
+    poll_path: "/wx/poll"
+    send_path: "/wx/send"
+    edit_path: "/wx/edit"
+    poll_interval_ms: 300
+    poll_limit: 20
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.gateways.clawbot.enabled);
+        assert_eq!(config.gateways.clawbot.bot_id, "wechat-main");
+        assert_eq!(config.gateways.clawbot.base_url, "http://127.0.0.1:7777");
+        assert_eq!(config.gateways.clawbot.token, "[REDACTED]");
+        assert_eq!(config.gateways.clawbot.poll_path, "/wx/poll");
+        assert_eq!(config.gateways.clawbot.send_path, "/wx/send");
+        assert_eq!(config.gateways.clawbot.edit_path, "/wx/edit");
+        assert_eq!(config.gateways.clawbot.poll_interval_ms, 300);
+        assert_eq!(config.gateways.clawbot.poll_limit, 20);
     }
 
     #[test]

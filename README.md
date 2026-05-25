@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.62-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.63-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,12 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.63 WeChat ClawBot Gateway**:
+  - **ClawBot Adapter**: Hakimi can now connect to WeChat through a configurable ClawBot HTTP bridge.
+  - **Multi-Platform Gateway Fan-in**: gateway mode now merges receivers from all registered platforms so Telegram and ClawBot can run together.
+  - **Flexible Bridge Schema**: ClawBot polling accepts common aliases such as `messages`, `data`, `chat_id`, `conversation_id`, `text`, and `content`.
+  - **Config + Env Overrides**: configure `gateways.clawbot` or role-scoped `roles.default.gateways.clawbot`; `CLAWBOT_BASE_URL` / `CLAWBOT_TOKEN` can enable it at runtime.
+
 - **v0.3.62 Delegate Progress Bubbles**:
   - **One Bubble per Delegate/Child Agent**: `delegate_task` now streams progress into stable Telegram bubbles instead of going silent until the final result.
   - **Live Container Updates**: each child agent gets a titled container and the gateway edits that same message with timestamped progress lines.
@@ -167,6 +173,34 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
 - **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
+
+### 🔌 Gateway Platforms
+
+Hakimi can run as a long-lived gateway bot and fan-in messages from multiple adapters at the same time.
+
+**WeChat via ClawBot HTTP bridge:**
+
+```yaml
+gateways:
+  clawbot:
+    enabled: true
+    bot_id: "clawbot"
+    base_url: "http://127.0.0.1:5700"
+    token: ""
+    poll_path: "/messages"
+    send_path: "/send_message"
+    edit_path: "/edit_message"
+    poll_interval_ms: 1000
+    poll_limit: 50
+```
+
+Environment overrides are also supported:
+
+```bash
+CLAWBOT_BASE_URL=http://127.0.0.1:5700 CLAWBOT_TOKEN=[REDACTED] hakimi --gateway
+```
+
+The bridge accepts common inbound aliases such as `messages`/`data`, `chat_id`/`conversation_id`, and `text`/`content`; outbound sends include `chat_id`, `conversation_id`, `to`, `text`, and `content` for broad ClawBot compatibility.
 
 ### 🔌 Transports
 

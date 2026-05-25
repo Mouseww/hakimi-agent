@@ -4,6 +4,7 @@
 //! Telegram, etc.) and a central [`Gateway`] that routes inbound messages
 //! to the agent runtime.
 
+mod clawbot;
 mod dingtalk;
 mod discord;
 mod matrix;
@@ -13,6 +14,7 @@ mod telegram;
 mod webhook;
 mod wecom;
 
+pub use clawbot::{ClawBotAdapter, ClawBotAdapterConfig};
 pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 pub use discord::{DiscordAdapter, DiscordAdapterConfig, DiscordEmbed};
 pub use matrix::{MatrixAdapter, MatrixAdapterConfig};

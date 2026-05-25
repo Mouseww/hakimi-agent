@@ -127,6 +127,83 @@ fn should_edit_initial_gateway_message(
     initial_message_id.is_some() && (is_error || !rendered_stream_content)
 }
 
+fn resolve_clawbot_gateway_config(
+    config: &hakimi_config::HakimiConfig,
+) -> hakimi_config::ClawBotGatewayConfig {
+    let mut resolved = config.gateways.clawbot.clone();
+    if let Some(role_cfg) = config
+        .roles
+        .get("default")
+        .and_then(|role| role.gateways.clawbot.clone())
+    {
+        resolved.enabled = role_cfg.enabled || resolved.enabled;
+        if !role_cfg.bot_id.is_empty() {
+            resolved.bot_id = role_cfg.bot_id;
+        }
+        if !role_cfg.base_url.is_empty() {
+            resolved.base_url = role_cfg.base_url;
+        }
+        if !role_cfg.token.is_empty() {
+            resolved.token = role_cfg.token;
+        }
+        if !role_cfg.poll_path.is_empty() {
+            resolved.poll_path = role_cfg.poll_path;
+        }
+        if !role_cfg.send_path.is_empty() {
+            resolved.send_path = role_cfg.send_path;
+        }
+        if !role_cfg.edit_path.is_empty() {
+            resolved.edit_path = role_cfg.edit_path;
+        }
+        if role_cfg.poll_interval_ms > 0 {
+            resolved.poll_interval_ms = role_cfg.poll_interval_ms;
+        }
+        if role_cfg.poll_limit > 0 {
+            resolved.poll_limit = role_cfg.poll_limit;
+        }
+    }
+
+    if let Ok(url) = std::env::var("CLAWBOT_BASE_URL")
+        && !url.trim().is_empty()
+    {
+        resolved.base_url = url;
+        resolved.enabled = true;
+    }
+    if let Ok(token) = std::env::var("CLAWBOT_TOKEN")
+        && !token.trim().is_empty()
+    {
+        resolved.token = token;
+        resolved.enabled = true;
+    }
+    resolved
+}
+
+fn merge_gateway_receivers(
+    receivers: Vec<(
+        String,
+        String,
+        tokio::sync::mpsc::UnboundedReceiver<hakimi_gateway::GatewayMessage>,
+    )>,
+) -> Result<tokio::sync::mpsc::UnboundedReceiver<hakimi_gateway::GatewayMessage>> {
+    if receivers.is_empty() {
+        anyhow::bail!("no platform adapter receivers available");
+    }
+    let (merged_tx, merged_rx) = tokio::sync::mpsc::unbounded_channel();
+    for (platform, bot_id, mut receiver) in receivers {
+        let tx = merged_tx.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = receiver.recv().await {
+                if tx.send(msg).is_err() {
+                    break;
+                }
+            }
+            tracing::info!(platform = %platform, bot_id = %bot_id, "gateway receiver stream ended");
+        });
+    }
+    drop(merged_tx);
+    Ok(merged_rx)
+}
+
 #[derive(Debug, Default)]
 struct GatewayStreamUiState {
     current_text: String,
@@ -293,6 +370,18 @@ embedding:
   dimension: 1024
   batch_size: 32
   normalize: true
+
+gateways:
+  clawbot:
+    enabled: false
+    bot_id: "clawbot"
+    base_url: "http://127.0.0.1:5700"
+    token: ""
+    poll_path: "/messages"
+    send_path: "/send_message"
+    edit_path: "/edit_message"
+    poll_interval_ms: 1000
+    poll_limit: 50
 
 # Context compression: smart (3-tier) or simple (truncation)
 compression:
@@ -1077,6 +1166,22 @@ async fn start_gateway(
         info!("telegram gateway registered");
     }
 
+    let clawbot_config = resolve_clawbot_gateway_config(&config);
+    if clawbot_config.enabled {
+        let clawbot = hakimi_gateway::ClawBotAdapter::new(hakimi_gateway::ClawBotAdapterConfig {
+            bot_id: clawbot_config.bot_id,
+            base_url: clawbot_config.base_url,
+            token: clawbot_config.token,
+            poll_path: clawbot_config.poll_path,
+            send_path: clawbot_config.send_path,
+            edit_path: clawbot_config.edit_path,
+            poll_interval_ms: clawbot_config.poll_interval_ms,
+            poll_limit: clawbot_config.poll_limit,
+        });
+        gateway.add_adapter(Box::new(clawbot));
+        info!("clawbot gateway registered");
+    }
+
     // Load roles context correctly when receiving messages from specific platforms
     // Agent and conversation history map.
     // We use a Mutex to protect the agent because it maintains state.
@@ -1090,11 +1195,9 @@ async fn start_gateway(
 
     // 3. Connect all platforms.
     gateway.connect_all().await?;
-    let mut receivers = gateway.take_all_receivers();
+    let receivers = gateway.take_all_receivers();
     let gateway = Arc::new(gateway);
-    let (_, _, mut messages) = receivers
-        .pop()
-        .ok_or_else(|| anyhow::anyhow!("no platform adapter receivers available"))?;
+    let mut messages = merge_gateway_receivers(receivers)?;
 
     info!("gateway listening for messages");
 
@@ -1105,13 +1208,16 @@ async fn start_gateway(
             if let Some(queued) = hakimi_tools::builtin_send_message::pop_message() {
                 let mut target_platform = "telegram".to_string();
                 let mut target_chat = queued.session_id.clone();
-                let bot_id = "telegram_bot".to_string();
+                let mut bot_id = "telegram_bot".to_string();
 
                 if queued.target != "origin"
                     && let Some((p, c)) = queued.target.split_once(':')
                 {
                     target_platform = p.to_string();
                     target_chat = c.to_string();
+                    if target_platform == "clawbot" {
+                        bot_id = "clawbot".to_string();
+                    }
                 }
 
                 let msg = hakimi_gateway::GatewayMessage {
@@ -2089,8 +2195,37 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
-        GatewayStreamUiState, GatewayUiContentTarget, should_edit_initial_gateway_message,
+        GatewayStreamUiState, GatewayUiContentTarget, resolve_clawbot_gateway_config,
+        should_edit_initial_gateway_message,
     };
+
+    #[test]
+    fn resolves_clawbot_gateway_config_from_role_binding() {
+        let yaml = r#"
+roles:
+  default:
+    gateways:
+      clawbot:
+        enabled: true
+        bot_id: "wechat-main"
+        base_url: "http://127.0.0.1:7777"
+        poll_path: "/wx/poll"
+        send_path: "/wx/send"
+        edit_path: "/wx/edit"
+        poll_interval_ms: 250
+        poll_limit: 10
+"#;
+        let config: hakimi_config::HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        let resolved = resolve_clawbot_gateway_config(&config);
+        assert!(resolved.enabled);
+        assert_eq!(resolved.bot_id, "wechat-main");
+        assert_eq!(resolved.base_url, "http://127.0.0.1:7777");
+        assert_eq!(resolved.poll_path, "/wx/poll");
+        assert_eq!(resolved.send_path, "/wx/send");
+        assert_eq!(resolved.edit_path, "/wx/edit");
+        assert_eq!(resolved.poll_interval_ms, 250);
+        assert_eq!(resolved.poll_limit, 10);
+    }
 
     #[test]
     fn delegate_progress_bubble_renders_single_container_with_timestamps() {
