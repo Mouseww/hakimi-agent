@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.64-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.65-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.65 Gateway Restart Mode**:
+  - **CLI Restart Shortcut**: `hakimi --gateway restart` restarts the managed systemd gateway service and exits, while plain `hakimi --gateway` still starts gateway mode in the foreground.
+  - **Service Override**: set `HAKIMI_GATEWAY_SERVICE=<service-name>` when the systemd unit is not named `hakimi`.
+  - **Backward Compatibility**: `--gateway start` is accepted explicitly for scripts that prefer a named mode.
 - **v0.3.64 Native WeChat iLink / ClawBot Protocol**:
   - **Official iLink Mode**: `gateways.clawbot.mode: "ilink_native"` now talks directly to `https://ilinkai.weixin.qq.com` with QR login, `getupdates` long polling, and native `sendmessage` envelopes.
   - **Persistent Context Tokens**: bot tokens, update cursors, and per-user `context_token` values are stored under `~/.hakimi/clawbot`, so replies include the required iLink context instead of disappearing silently.
@@ -199,6 +203,16 @@ gateways:
 ```
 
 On first `hakimi --gateway`, native iLink mode prints a WeChat QR URL to scan. Hakimi persists the returned bot token, update cursor, and per-chat `context_token` under `token_store`, then receives inbound messages through `POST /ilink/bot/getupdates` and replies through `POST /ilink/bot/sendmessage`.
+
+**Gateway lifecycle:**
+
+```bash
+hakimi --gateway          # foreground gateway mode (same as --gateway start)
+hakimi --gateway start    # explicit foreground gateway mode
+hakimi --gateway restart  # restart the managed systemd service and exit
+```
+
+By default the restart shortcut targets `hakimi.service`. If your unit uses another name, set `HAKIMI_GATEWAY_SERVICE=<service-name>` before running `hakimi --gateway restart`.
 
 **Legacy generic ClawBot HTTP bridge:**
 

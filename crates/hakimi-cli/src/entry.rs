@@ -6,7 +6,7 @@
 //! implementation.
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::{error, info, warn};
@@ -270,6 +270,14 @@ enum GatewayUiContentTarget {
 // CLI arguments (clap)
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum GatewayMode {
+    /// Start gateway mode in the current foreground process.
+    Start,
+    /// Restart the managed systemd gateway service, then exit.
+    Restart,
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "hakimi",
@@ -310,8 +318,11 @@ pub struct Args {
     pub serve: bool,
 
     /// Start gateway mode (Telegram/Discord/etc.) instead of interactive REPL.
-    #[arg(long)]
-    pub gateway: bool,
+    ///
+    /// Optional mode: `start` (default) runs in the current process; `restart`
+    /// restarts the managed systemd service and exits.
+    #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "start")]
+    pub gateway: Option<GatewayMode>,
 
     /// Address for the HTTP API server (default: 127.0.0.1:3000).
     #[arg(long, default_value = "127.0.0.1:3000")]
@@ -2042,6 +2053,28 @@ async fn start_gateway(
 
     Ok(())
 }
+fn restart_gateway_service() -> Result<()> {
+    use std::process::Command as ProcessCommand;
+
+    let service = std::env::var("HAKIMI_GATEWAY_SERVICE")
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "hakimi".to_string());
+
+    let status = ProcessCommand::new("systemctl")
+        .arg("restart")
+        .arg(&service)
+        .status()?;
+    if !status.success() {
+        anyhow::bail!(
+            "failed to restart gateway service `{service}` (exit status: {status})"
+        );
+    }
+
+    println!("✅ Gateway service `{service}` restarted.");
+    Ok(())
+}
+
 async fn self_update() -> Result<()> {
     use std::env;
     use std::fs;
@@ -2200,12 +2233,16 @@ pub async fn run() -> Result<()> {
         return run_setup_wizard(config);
     }
 
+    if matches!(args.gateway, Some(GatewayMode::Restart)) {
+        return restart_gateway_service();
+    }
+
     let agent = build_agent(&args, &config).await?;
 
     if args.serve {
         return start_server(agent, &args.addr, config);
     }
-    if args.gateway {
+    if args.gateway.is_some() {
         let skill_store = agent
             .skill_store()
             .cloned()
