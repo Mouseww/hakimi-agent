@@ -385,6 +385,27 @@ fn truncate_for_tool_notice(value: &str, max_chars: usize) -> String {
     }
 }
 
+fn self_improvement_notice(message: &Message) -> Option<&'static str> {
+    if message.name.as_deref() != Some("memory") {
+        return None;
+    }
+
+    let content = message.content.as_deref()?;
+    if content.starts_with("Added content to user memory")
+        || content.starts_with("Replaced user memory content")
+        || content.starts_with("Removed matching text from user memory")
+    {
+        Some("💾 Self-improvement review: User profile updated")
+    } else if content.starts_with("Added content to memory memory")
+        || content.starts_with("Replaced memory memory content")
+        || content.starts_with("Removed matching text from memory memory")
+    {
+        Some("💾 Self-improvement review: Memory updated")
+    } else {
+        None
+    }
+}
+
 async fn process_tool_calls(
     agent: &mut AIAgent,
     response: &NormalizedResponse,
@@ -488,6 +509,11 @@ async fn process_tool_calls(
             && let Some(content) = &res.content
         {
             store.observe_tool_result(content);
+        }
+        if let Some(review_notice) = self_improvement_notice(&res)
+            && let Some(ref cb) = agent.streaming_callback
+        {
+            cb(format!("\u{001e}hakimi_review:{review_notice}"));
         }
         agent.messages.push(res);
     }
@@ -685,7 +711,8 @@ fn accumulator_to_response(acc: &StreamAccumulator) -> NormalizedResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_text_preserving_layout, truncate_for_tool_notice};
+    use super::{append_text_preserving_layout, self_improvement_notice, truncate_for_tool_notice};
+    use hakimi_common::Message;
 
     #[test]
     fn append_streamed_cjk_chunks_without_spaces() {
@@ -716,5 +743,26 @@ mod tests {
     #[test]
     fn truncate_tool_notice_replaces_newlines_without_truncating_short_text() {
         assert_eq!(truncate_for_tool_notice("hello\nworld", 40), "hello world");
+    }
+
+    #[test]
+    fn self_improvement_notice_reports_user_profile_updates() {
+        let msg = Message::tool_result(
+            "call-1",
+            "memory",
+            "Added content to user memory (/tmp/user.md).",
+        );
+
+        assert_eq!(
+            self_improvement_notice(&msg),
+            Some("💾 Self-improvement review: User profile updated")
+        );
+    }
+
+    #[test]
+    fn self_improvement_notice_ignores_non_memory_tools() {
+        let msg = Message::tool_result("call-1", "patch", "Added content to user memory");
+
+        assert_eq!(self_improvement_notice(&msg), None);
     }
 }

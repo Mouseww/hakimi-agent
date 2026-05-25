@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.58-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.59-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,9 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.59 Self-Improvement Review Notices**:
+  - **Hermes-Style Memory Feedback**: Successful `memory` tool writes now emit a compact standalone status bubble like `💾 Self-improvement review: User profile updated` after user profile changes.
+  - **Clean Bubble Separation**: Self-improvement review notices use their own structured Gateway side-channel, so they do not get appended to the assistant's main streamed reply.
 - **v0.3.58 UTF-8 Safe Tool Notices**:
   - **No More Chinese Panic**: Tool argument summaries now truncate by Unicode scalar values instead of raw byte offsets, preventing crashes like `end byte index ... is not a char boundary` when Chinese options or proxy/API setup prompts are summarized.
   - **Regression Coverage**: Added tests for Chinese tool notice truncation and newline normalization so compact `⚙️ ...` status bubbles stay safe for multilingual text.

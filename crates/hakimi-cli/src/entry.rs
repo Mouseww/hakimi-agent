@@ -1609,6 +1609,13 @@ async fn start_gateway(
                     updater_handle = Some(handle);
 
                     let callback = move |token: String| {
+                        if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:") {
+                            let text = review_notice.trim().to_string();
+                            if !text.is_empty() {
+                                let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                            }
+                            return;
+                        }
                         if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
                             let text = tool_notice.trim().to_string();
                             if !text.is_empty() {
