@@ -334,6 +334,73 @@ impl Default for MemoryConfig {
     }
 }
 
+/// Embedding configuration section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingConfig {
+    /// Whether embedding support is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Provider type. Currently `openai-compatible` is supported.
+    #[serde(default = "default_embedding_provider")]
+    pub provider: String,
+
+    /// Embedding API base URL. Empty or `same-as-llm` means inherit model.base_url.
+    #[serde(default)]
+    pub base_url: String,
+
+    /// Embedding API key. Empty or `same-as-llm` means inherit resolved model API key.
+    #[serde(default)]
+    pub api_key: String,
+
+    /// Online embedding model identifier.
+    #[serde(default = "default_embedding_model")]
+    pub model: String,
+
+    /// Dense embedding dimension. `BAAI/bge-m3` is normally 1024.
+    #[serde(default = "default_embedding_dimension")]
+    pub dimension: usize,
+
+    /// Batch size for future indexing/search operations.
+    #[serde(default = "default_embedding_batch_size")]
+    pub batch_size: usize,
+
+    /// L2-normalize vectors after receiving them.
+    #[serde(default = "default_true")]
+    pub normalize: bool,
+}
+
+fn default_embedding_provider() -> String {
+    "openai-compatible".to_string()
+}
+
+fn default_embedding_model() -> String {
+    "BAAI/bge-m3".to_string()
+}
+
+fn default_embedding_dimension() -> usize {
+    1024
+}
+
+fn default_embedding_batch_size() -> usize {
+    32
+}
+
+impl Default for EmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            provider: default_embedding_provider(),
+            base_url: String::new(),
+            api_key: String::new(),
+            model: default_embedding_model(),
+            dimension: default_embedding_dimension(),
+            batch_size: default_embedding_batch_size(),
+            normalize: true,
+        }
+    }
+}
+
 /// Voice / TTS configuration section.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceConfig {
@@ -419,6 +486,10 @@ pub struct HakimiConfig {
     /// Memory configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
+
+    /// Embedding configuration.
+    #[serde(default)]
+    pub embedding: EmbeddingConfig,
 
     /// Voice / TTS configuration.
     #[serde(default)]
@@ -516,6 +587,10 @@ mod tests {
         assert_eq!(config.delegation.max_iterations, 45);
         assert!(config.mcp_servers.is_empty());
         assert!(config.credential_pools.is_empty());
+        assert!(config.embedding.enabled);
+        assert_eq!(config.embedding.provider, "openai-compatible");
+        assert_eq!(config.embedding.model, "BAAI/bge-m3");
+        assert_eq!(config.embedding.dimension, 1024);
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use hakimi_common::{HakimiError, Message, Result, ToolContext};
 use hakimi_context::ContextEngine;
 use hakimi_tools::ToolRegistry;
-use hakimi_transports::ProviderTransport;
+use hakimi_transports::{EmbeddingProvider, ProviderTransport};
 use tokio::sync::RwLock;
 use tracing::info;
 use uuid::Uuid;
@@ -33,6 +33,7 @@ pub struct AIAgent {
     pub(crate) streaming: bool,
     pub(crate) streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     pub(crate) knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
+    pub(crate) embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
 }
 
@@ -65,6 +66,21 @@ impl AIAgent {
         self.context_engine = engine;
         self
     }
+
+    /// Set or replace the embedding provider.
+    pub fn with_embedding_provider(mut self, provider: Option<Arc<dyn EmbeddingProvider>>) -> Self {
+        self.embedding_provider = provider;
+        self
+    }
+
+    /// Set or replace the knowledge searcher.
+    pub fn with_knowledge_searcher(
+        mut self,
+        searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
+    ) -> Self {
+        self.knowledge_searcher = searcher;
+        self
+    }
 }
 
 /// Builder for constructing an [`AIAgent`].
@@ -88,6 +104,7 @@ pub struct AIAgentBuilder {
     streaming: Option<bool>,
     streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     skill_store: Option<hakimi_skills::SkillStore>,
 }
 
@@ -110,6 +127,7 @@ impl AIAgentBuilder {
             streaming: None,
             streaming_callback: None,
             knowledge_searcher: None,
+            embedding_provider: None,
             skill_store: None,
         }
     }
@@ -218,6 +236,12 @@ impl AIAgentBuilder {
         self
     }
 
+    /// Set the embedding provider for vector search / RAG features.
+    pub fn embedding_provider(mut self, provider: Arc<dyn EmbeddingProvider>) -> Self {
+        self.embedding_provider = Some(provider);
+        self
+    }
+
     /// Build the [`AIAgent`].
     ///
     /// # Errors
@@ -267,6 +291,7 @@ impl AIAgentBuilder {
             streaming: self.streaming.unwrap_or(false),
             streaming_callback: self.streaming_callback,
             knowledge_searcher: self.knowledge_searcher,
+            embedding_provider: self.embedding_provider,
             skill_store: Some(
                 self.skill_store
                     .unwrap_or_else(hakimi_skills::SkillStore::empty),

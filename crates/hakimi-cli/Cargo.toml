@@ -15,6 +15,7 @@ hakimi-session = { path = "../hakimi-session" }
 hakimi-tools = { path = "../hakimi-tools" }
 hakimi-transports = { path = "../hakimi-transports" }
 hakimi-context = { path = "../hakimi-context" }
+hakimi-knowledge = { path = "../hakimi-knowledge" }
 hakimi-mcp = { path = "../hakimi-mcp" }
 hakimi-plugin = { path = "../hakimi-plugin" }
 hakimi-skills = { path = "../hakimi-skills" }

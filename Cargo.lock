@@ -710,6 +710,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
+name = "fixedbitset"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
+
+[[package]]
 name = "flate2"
 version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -920,7 +926,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "hakimi-agent"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "hakimi-cli",
@@ -929,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cli"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "base64",
@@ -945,6 +951,7 @@ dependencies = [
  "hakimi-core",
  "hakimi-cron",
  "hakimi-gateway",
+ "hakimi-knowledge",
  "hakimi-mcp",
  "hakimi-plugin",
  "hakimi-server",
@@ -969,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-common"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "async-trait",
  "chrono",
@@ -981,7 +988,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-config"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "dirs",
@@ -995,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-context"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1011,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-core"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1035,7 +1042,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cron"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1052,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-gateway"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1065,8 +1072,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "hakimi-knowledge"
+version = "0.3.53"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "hakimi-common",
+ "hakimi-context",
+ "hakimi-tools",
+ "hakimi-transports",
+ "petgraph",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "hakimi-mcp"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1082,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-plugin"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1102,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-server"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1129,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-session"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1144,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-skills"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1158,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tools"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1186,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-transports"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1207,7 +1233,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tui"
-version = "0.3.51"
+version = "0.3.53"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1320,6 +1346,12 @@ dependencies = [
  "http-body",
  "pin-project-lite",
 ]
+
+[[package]]
+name = "http-range-header"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
 name = "httparse"
@@ -1750,6 +1782,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
+name = "mime_guess"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
+dependencies = [
+ "mime",
+ "unicase",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1847,6 +1889,18 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "petgraph"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
+dependencies = [
+ "fixedbitset",
+ "indexmap",
+ "serde",
+ "serde_derive",
+]
 
 [[package]]
 name = "phf"
@@ -2846,10 +2900,19 @@ checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
 dependencies = [
  "bitflags",
  "bytes",
+ "futures-core",
  "futures-util",
  "http",
  "http-body",
+ "http-body-util",
+ "http-range-header",
+ "httpdate",
+ "mime",
+ "mime_guess",
+ "percent-encoding",
  "pin-project-lite",
+ "tokio",
+ "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
@@ -2973,6 +3036,12 @@ name = "typenum"
 version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
+
+[[package]]
+name = "unicase"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "unicode-ident"

@@ -7,6 +7,8 @@ description = "Knowledge graph memory for Hakimi Agent"
 [dependencies]
 hakimi-common = { path = "../hakimi-common" }
 hakimi-context = { path = "../hakimi-context" }
+hakimi-tools = { path = "../hakimi-tools" }
+hakimi-transports = { path = "../hakimi-transports" }
 petgraph = { version = "0.6", features = ["serde-1", "stable_graph"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

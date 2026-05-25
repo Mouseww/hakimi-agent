@@ -1,5 +1,6 @@
 mod anthropic;
 mod chat_completions;
+mod embeddings;
 mod error;
 mod gemini;
 mod params;
@@ -11,6 +12,7 @@ mod trait_def;
 
 pub use anthropic::*;
 pub use chat_completions::*;
+pub use embeddings::*;
 pub use error::*;
 pub use gemini::*;
 pub use params::*;

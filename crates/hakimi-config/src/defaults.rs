@@ -41,6 +41,16 @@ pub fn default_config_value() -> serde_json::Value {
             "provider": "",
             "base_url": "",
             "api_key": ""
+        },
+        "embedding": {
+            "enabled": true,
+            "provider": "openai-compatible",
+            "base_url": "same-as-llm",
+            "api_key": "same-as-llm",
+            "model": "BAAI/bge-m3",
+            "dimension": 1024,
+            "batch_size": 32,
+            "normalize": true
         }
     })
 }

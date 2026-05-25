@@ -607,6 +607,7 @@ mod tests {
             name: None,
             reasoning: None,
             reasoning_content: None,
+            images: None,
             timestamp: None,
             token_count: None,
             finish_reason: None,

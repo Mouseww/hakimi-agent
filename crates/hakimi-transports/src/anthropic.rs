@@ -636,7 +636,9 @@ mod tests {
         let result = AnthropicTransport::convert_messages(&refs);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0]["role"], "user");
-        assert_eq!(result[0]["content"], "hello");
+        assert!(result[0]["content"].is_array());
+        assert_eq!(result[0]["content"][0]["type"], "text");
+        assert_eq!(result[0]["content"][0]["text"], "hello");
         assert_eq!(result[1]["role"], "assistant");
         // Assistant content should be an array of blocks
         assert!(result[1]["content"].is_array());

@@ -84,10 +84,7 @@ impl Tool for TextToSpeechTool {
         }
 
         // Determine provider
-        let config_provider = ctx
-            .tts_provider
-            .clone()
-            .filter(|s| !s.is_empty());
+        let config_provider = ctx.tts_provider.clone().filter(|s| !s.is_empty());
 
         let provider = args
             .get("provider")
@@ -98,10 +95,7 @@ impl Tool for TextToSpeechTool {
                 std::env::var("HAKIMI_TTS_PROVIDER").unwrap_or_else(|_| "openai".to_string())
             });
 
-        let voice = args
-            .get("voice")
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        let voice = args.get("voice").and_then(|v| v.as_str()).map(String::from);
 
         let output_path = args
             .get("output_path")
@@ -156,13 +150,15 @@ async fn generate_openai_tts(
 ) -> Result<PathBuf> {
     let config_api_key: Option<String> = None;
 
-    let api_key = config_api_key.or_else(|| std::env::var("HAKIMI_TTS_API_KEY").ok()).ok_or_else(|| {
-        HakimiError::Tool(
-            "HAKIMI_TTS_API_KEY environment variable not set. \
+    let api_key = config_api_key
+        .or_else(|| std::env::var("HAKIMI_TTS_API_KEY").ok())
+        .ok_or_else(|| {
+            HakimiError::Tool(
+                "HAKIMI_TTS_API_KEY environment variable not set. \
              Set it to your OpenAI API key, or use provider='edge' for free TTS."
-                .into(),
-        )
-    })?;
+                    .into(),
+            )
+        })?;
 
     let config_base_url: Option<String> = None;
 
@@ -170,10 +166,7 @@ async fn generate_openai_tts(
         .or_else(|| std::env::var("HAKIMI_TTS_BASE_URL").ok())
         .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
 
-    let config_model = ctx
-        .tts_model
-        .clone()
-        .filter(|s| !s.is_empty());
+    let config_model = ctx.tts_model.clone().filter(|s| !s.is_empty());
 
     let model = config_model
         .or_else(|| std::env::var("HAKIMI_TTS_MODEL").ok())

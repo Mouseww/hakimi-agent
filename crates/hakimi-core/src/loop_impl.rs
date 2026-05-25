@@ -323,7 +323,8 @@ async fn process_tool_calls(
     let mut halt_message = None;
     // First check guardrails and collect safe tools to dispatch
     for tc in tool_calls {
-        let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
+        let args: serde_json::Value =
+            serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
         let mut arg_summary = String::new();
         if let Some(obj) = args.as_object() {
             let mut parts = Vec::new();
@@ -333,7 +334,11 @@ async fn process_tool_calls(
                     parts.push(format!("{}: [...]", k));
                     continue;
                 }
-                let v_str = if let Some(s) = v.as_str() { s.to_string() } else { v.to_string() };
+                let v_str = if let Some(s) = v.as_str() {
+                    s.to_string()
+                } else {
+                    v.to_string()
+                };
                 // Truncate long strings but keep them readable
                 let v_trunc = if v_str.len() > 40 {
                     format!("{}...", &v_str[..40].replace('\n', " "))
@@ -347,13 +352,14 @@ async fn process_tool_calls(
             }
         }
 
-        let tool_notice = format!("\n⚙️ **tool**: `{}`{}", tc.name, arg_summary);
+        let tool_notice = format!("⚙️ {}{}", tc.name, arg_summary);
         if let Some(ref cb) = agent.streaming_callback {
-            cb(tool_notice.clone());
+            cb(format!("\u{001e}hakimi_tool:{tool_notice}"));
         }
         // Print to stdout as well
         use std::io::Write;
         let _ = std::io::stdout().write_all(tool_notice.as_bytes());
+        let _ = std::io::stdout().write_all(b"\n");
         let _ = std::io::stdout().flush();
 
         if agent.check_interrupt() {

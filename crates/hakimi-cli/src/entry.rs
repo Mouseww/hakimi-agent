@@ -130,6 +130,17 @@ delegation:
   # Sub-agent API key
   api_key: ""
 
+embedding:
+  # Use the same OpenAI-compatible site/key as the main model by default.
+  enabled: true
+  provider: "openai-compatible"
+  base_url: "same-as-llm"
+  api_key: "same-as-llm"
+  model: "BAAI/bge-m3"
+  dimension: 1024
+  batch_size: 32
+  normalize: true
+
 # Context compression: smart (3-tier) or simple (truncation)
 compression:
   engine: smart  # smart | simple
@@ -324,6 +335,40 @@ fn resolve_base_url(args_url: Option<&str>, config: &hakimi_config::HakimiConfig
     "https://openrouter.ai/api".to_string()
 }
 
+fn resolve_embedding_base_url(
+    config: &hakimi_config::HakimiConfig,
+    resolved_llm_base_url: &str,
+) -> String {
+    if let Ok(val) = std::env::var("HAKIMI_EMBEDDING_BASE_URL")
+        && !val.is_empty()
+    {
+        return val;
+    }
+    let configured = config.embedding.base_url.trim();
+    if configured.is_empty() || configured == "same-as-llm" {
+        resolved_llm_base_url.to_string()
+    } else {
+        configured.to_string()
+    }
+}
+
+fn resolve_embedding_api_key(
+    config: &hakimi_config::HakimiConfig,
+    resolved_llm_api_key: &str,
+) -> String {
+    if let Ok(val) = std::env::var("HAKIMI_EMBEDDING_API_KEY")
+        && !val.is_empty()
+    {
+        return val;
+    }
+    let configured = config.embedding.api_key.trim();
+    if configured.is_empty() || configured == "same-as-llm" {
+        resolved_llm_api_key.to_string()
+    } else {
+        configured.to_string()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Resolve model
 // ---------------------------------------------------------------------------
@@ -442,6 +487,45 @@ async fn build_agent(
 
     // Create transport — auto-detect Anthropic vs OpenAI-compatible.
     let client = reqwest::Client::new();
+
+    // Create embedding provider from the same online site/key by default.
+    let embedding_provider: Option<std::sync::Arc<dyn hakimi_transports::EmbeddingProvider>> =
+        if config.embedding.enabled {
+            let embedding_base_url = resolve_embedding_base_url(config, &base_url);
+            let embedding_api_key = resolve_embedding_api_key(config, &api_key);
+            let embedding_model = config.embedding.model.clone();
+            let embedding_provider_name = config.embedding.provider.as_str();
+
+            if embedding_provider_name == "openai-compatible" || embedding_provider_name == "openai"
+            {
+                info!(
+                    base_url = %embedding_base_url,
+                    model = %embedding_model,
+                    dimension = config.embedding.dimension,
+                    "using OpenAI-compatible embeddings provider"
+                );
+                Some(
+                    std::sync::Arc::new(hakimi_transports::OpenAICompatibleEmbeddingProvider::new(
+                        embedding_base_url,
+                        embedding_api_key,
+                        embedding_model,
+                        config.embedding.dimension,
+                        config.embedding.normalize,
+                        client.clone(),
+                    ))
+                        as std::sync::Arc<dyn hakimi_transports::EmbeddingProvider>,
+                )
+            } else {
+                warn!(
+                    provider = %config.embedding.provider,
+                    "unsupported embedding provider; embeddings disabled"
+                );
+                None
+            }
+        } else {
+            None
+        };
+
     let transport: std::sync::Arc<dyn hakimi_transports::ProviderTransport> = {
         // Check explicit api_mode first.
         let mode = config.model.api_mode.as_str();
@@ -539,7 +623,35 @@ async fn build_agent(
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::WebExtractTool))
         .await;
-    // tool_registry.register(std::sync::Arc::new(hakimi_tools::BrowserTool::new())).await;
+    #[cfg(feature = "browser")]
+    {
+        let browser_manager = hakimi_tools::BrowserManager::new();
+        tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserNavigateTool::new(
+                browser_manager.clone(),
+            )))
+            .await;
+        tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserSnapshotTool::new(
+                browser_manager.clone(),
+            )))
+            .await;
+        tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserClickTool::new(
+                browser_manager.clone(),
+            )))
+            .await;
+        tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserTypeTool::new(
+                browser_manager.clone(),
+            )))
+            .await;
+        tool_registry
+            .register(std::sync::Arc::new(
+                hakimi_tools::BrowserScreenshotTool::new(browser_manager),
+            ))
+            .await;
+    }
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::ImageDescribeTool))
         .await;
@@ -549,7 +661,9 @@ async fn build_agent(
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::ImageGenerateTool))
         .await;
-    // tool_registry.register(std::sync::Arc::new(hakimi_tools::TtsTool::new())).await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::TextToSpeechTool))
+        .await;
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::SendMessageTool))
         .await;
@@ -589,9 +703,36 @@ async fn build_agent(
         hakimi_skills::SkillStore::empty()
     };
 
+    // Build knowledge provider with optional vector search and expose its tools/searcher.
+    let knowledge_path = dirs::home_dir()
+        .map(|h| h.join(".hakimi").join("knowledge.json"))
+        .unwrap_or_else(|| std::path::PathBuf::from("/root/.hakimi/knowledge.json"));
+    let knowledge_provider = if let Some(provider) = embedding_provider.clone() {
+        std::sync::Arc::new(hakimi_knowledge::KnowledgeProvider::with_vector_search(
+            knowledge_path,
+            provider,
+        ))
+    } else {
+        std::sync::Arc::new(hakimi_knowledge::KnowledgeProvider::new(knowledge_path))
+    };
+    for definition in
+        hakimi_context::MemoryProvider::get_tool_definitions(knowledge_provider.as_ref())
+    {
+        tool_registry
+            .register(std::sync::Arc::new(hakimi_knowledge::KnowledgeTool::new(
+                knowledge_provider.clone(),
+                definition,
+            )))
+            .await;
+    }
+    let knowledge_searcher: std::sync::Arc<dyn hakimi_common::KnowledgeSearcher> =
+        knowledge_provider.clone();
+
     // Construct agent.
     let mut agent = hakimi_core::AIAgent::new(&model, transport, tool_registry, Some(skill_store))
-        .with_context_engine(context_engine);
+        .with_context_engine(context_engine)
+        .with_embedding_provider(embedding_provider)
+        .with_knowledge_searcher(Some(knowledge_searcher));
     agent.set_model(&model);
     // agent.set_max_turns(config.agent.max_turns);
 
@@ -1188,6 +1329,10 @@ async fn start_gateway(
                     let bot_id_cb = bot_id.clone();
                     let chat_id_cb = chat_id.clone();
                     let gateway_cb = gateway_clone.clone();
+                    let gateway_tool_cb = gateway_clone.clone();
+                    let platform_tool_cb = platform.clone();
+                    let bot_id_tool_cb = bot_id.clone();
+                    let chat_id_tool_cb = chat_id.clone();
 
                     let (tx, mut rx) = tokio::sync::watch::channel(String::new());
 
@@ -1197,7 +1342,15 @@ async fn start_gateway(
                             let text = rx.borrow().clone();
                             if !text.is_empty() && text != last_edit_text {
                                 last_edit_text = text.clone();
-                                let _ = gateway_cb.edit_message(&platform_cb, &bot_id_cb, &chat_id_cb, msg_id, &text).await;
+                                let _ = gateway_cb
+                                    .edit_message(
+                                        &platform_cb,
+                                        &bot_id_cb,
+                                        &chat_id_cb,
+                                        msg_id,
+                                        &text,
+                                    )
+                                    .await;
                             }
                             if rx.changed().await.is_err() {
                                 break;
@@ -1208,6 +1361,27 @@ async fn start_gateway(
                     updater_handle = Some(handle);
 
                     let callback = move |token: String| {
+                        if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
+                            let gateway = gateway_tool_cb.clone();
+                            let platform = platform_tool_cb.clone();
+                            let bot_id = bot_id_tool_cb.clone();
+                            let chat_id = chat_id_tool_cb.clone();
+                            let text = tool_notice.trim().to_string();
+                            if !text.is_empty() {
+                                tokio::spawn(async move {
+                                    let msg = hakimi_gateway::GatewayMessage {
+                                        platform,
+                                        bot_id,
+                                        chat_id,
+                                        user_id: String::new(),
+                                        text,
+                                        media: None,
+                                    };
+                                    let _ = gateway.route_message(&msg).await;
+                                });
+                            }
+                            return;
+                        }
                         let current = tx.borrow().clone();
                         let _ = tx.send(current + &token);
                     };

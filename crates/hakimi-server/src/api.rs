@@ -11,8 +11,10 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Path, Request, State},
+    http::{StatusCode, header},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -94,9 +96,12 @@ pub struct SanitizedConfig {
     pub agent_max_turns: usize,
     pub agent_verbose: bool,
     pub agent_system_prompt: String,
+    pub agent_reasoning_effort: String,
     pub terminal_env_type: String,
     pub terminal_cwd: String,
     pub terminal_timeout: u64,
+    pub terminal_docker_image: String,
+    pub compression_enabled: bool,
     pub compression_engine: String,
     pub compression_context_length: usize,
     pub display_streaming: bool,
@@ -112,6 +117,16 @@ pub struct ConfigUpdate {
     pub agent_max_turns: Option<usize>,
     pub agent_verbose: Option<bool>,
     pub agent_system_prompt: Option<String>,
+    pub terminal_cwd: Option<String>,
+    pub terminal_timeout: Option<u64>,
+    pub terminal_env_type: Option<String>,
+    pub terminal_docker_image: Option<String>,
+    pub agent_reasoning_effort: Option<String>,
+    pub compression_enabled: Option<bool>,
+    pub compression_engine: Option<String>,
+    pub compression_context_length: Option<usize>,
+    pub display_streaming: Option<bool>,
+    pub display_skin: Option<String>,
 }
 
 /// Generic error response.
@@ -124,16 +139,46 @@ pub struct ErrorResponse {
 // Route builder
 // ---------------------------------------------------------------------------
 
+async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let auth_header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok());
+    let password =
+        std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_else(|_| "password123".to_string());
+
+    if let Some(auth) = auth_header {
+        if auth == format!("Bearer {}", password) {
+            return Ok(next.run(req).await);
+        }
+    }
+
+    Err(StatusCode::UNAUTHORIZED)
+}
+
 /// Build the axum Router with all API routes.
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .route("/health", get(health))
+    // API routes that need authentication
+    let mut api_routes = Router::new()
         .route("/chat", post(chat))
         .route("/sessions", get(list_sessions))
         .route("/sessions/{id}", get(get_session))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
-        .route("/config", post(update_config))
+        .route("/config", post(update_config));
+
+    let password =
+        std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_else(|_| "password123".to_string());
+    if !password.is_empty() {
+        api_routes = api_routes.route_layer(middleware::from_fn(auth_middleware));
+    }
+
+    // Health check can be unauthenticated
+    let api_routes = api_routes.route("/health", get(health));
+
+    Router::new()
+        .nest("/api", api_routes)
+        .fallback_service(tower_http::services::ServeDir::new("../hakimi-webui/dist"))
         .with_state(state)
 }
 
@@ -243,9 +288,12 @@ async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
         agent_max_turns: config.agent.max_turns,
         agent_verbose: config.agent.verbose,
         agent_system_prompt: config.agent.system_prompt.clone(),
+        agent_reasoning_effort: config.agent.reasoning_effort.clone(),
         terminal_env_type: config.terminal.env_type.clone(),
         terminal_cwd: config.terminal.cwd.clone(),
         terminal_timeout: config.terminal.timeout,
+        terminal_docker_image: config.terminal.docker_image.clone(),
+        compression_enabled: config.compression.enabled,
         compression_engine: config.compression.engine.clone(),
         compression_context_length: config.compression.context_length,
         display_streaming: config.display.streaming,
@@ -276,6 +324,36 @@ async fn update_config(
     if let Some(v) = update.agent_system_prompt {
         config.agent.system_prompt = v;
     }
+    if let Some(v) = update.terminal_cwd {
+        config.terminal.cwd = v;
+    }
+    if let Some(v) = update.terminal_timeout {
+        config.terminal.timeout = v;
+    }
+    if let Some(v) = update.compression_engine {
+        config.compression.engine = v;
+    }
+    if let Some(v) = update.compression_context_length {
+        config.compression.context_length = v;
+    }
+    if let Some(v) = update.agent_reasoning_effort {
+        config.agent.reasoning_effort = v;
+    }
+    if let Some(v) = update.terminal_env_type {
+        config.terminal.env_type = v;
+    }
+    if let Some(v) = update.terminal_docker_image {
+        config.terminal.docker_image = v;
+    }
+    if let Some(v) = update.compression_enabled {
+        config.compression.enabled = v;
+    }
+    if let Some(v) = update.display_streaming {
+        config.display.streaming = v;
+    }
+    if let Some(v) = update.display_skin {
+        config.display.skin = v;
+    }
 
     // Return the updated config (sanitized).
     let response = SanitizedConfig {
@@ -284,9 +362,12 @@ async fn update_config(
         agent_max_turns: config.agent.max_turns,
         agent_verbose: config.agent.verbose,
         agent_system_prompt: config.agent.system_prompt.clone(),
+        agent_reasoning_effort: config.agent.reasoning_effort.clone(),
         terminal_env_type: config.terminal.env_type.clone(),
         terminal_cwd: config.terminal.cwd.clone(),
         terminal_timeout: config.terminal.timeout,
+        terminal_docker_image: config.terminal.docker_image.clone(),
+        compression_enabled: config.compression.enabled,
         compression_engine: config.compression.engine.clone(),
         compression_context_length: config.compression.context_length,
         display_streaming: config.display.streaming,
@@ -383,7 +464,7 @@ mod tests {
         let app = build_router(state);
 
         let req = Request::builder()
-            .uri("/health")
+            .uri("/api/health")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -411,7 +492,7 @@ mod tests {
 
         let app = build_router(state);
         let req = Request::builder()
-            .uri("/tools")
+            .uri("/api/tools")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -432,7 +513,7 @@ mod tests {
         let app = build_router(state);
 
         let req = Request::builder()
-            .uri("/config")
+            .uri("/api/config")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -455,7 +536,7 @@ mod tests {
         let update = json!({"agent_max_turns": 42, "agent_verbose": true});
         let req = Request::builder()
             .method(http::Method::POST)
-            .uri("/config")
+            .uri("/api/config")
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_vec(&update).unwrap()))
             .unwrap();
@@ -477,7 +558,7 @@ mod tests {
         let app = build_router(state);
 
         let req = Request::builder()
-            .uri("/sessions")
+            .uri("/api/sessions")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -497,7 +578,7 @@ mod tests {
         let app = build_router(state);
 
         let req = Request::builder()
-            .uri("/sessions/nonexistent-id")
+            .uri("/api/sessions/nonexistent-id")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -518,7 +599,7 @@ mod tests {
 
         let app = build_router(state);
         let req = Request::builder()
-            .uri("/sessions")
+            .uri("/api/sessions")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
