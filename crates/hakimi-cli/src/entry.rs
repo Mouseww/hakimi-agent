@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use clap::Parser;
+use hakimi_core::loop_impl::append_text_preserving_layout;
 use tracing::{error, info, warn};
 
 use crate::Command;
@@ -1382,8 +1383,9 @@ async fn start_gateway(
                             }
                             return;
                         }
-                        let current = tx.borrow().clone();
-                        let _ = tx.send(current + &token);
+                        let mut current = tx.borrow().clone();
+                        append_text_preserving_layout(&mut current, &token);
+                        let _ = tx.send(current);
                     };
                     a.set_streaming_callback(Some(std::sync::Arc::new(callback)));
                 }

@@ -165,6 +165,9 @@ fn parse_skill(raw: &str, path: &Path) -> Result<Skill> {
         content: trimmed.to_string(),
         trigger: None,
         tags: Vec::new(),
+        phases: Vec::new(),
+        ttl_steps: 4,
+        max_context_chars: None,
     })
 }
 

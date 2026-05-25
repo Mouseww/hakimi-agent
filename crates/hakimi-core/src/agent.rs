@@ -332,18 +332,11 @@ impl AIAgent {
     /// Returns a [`ConversationResult`] containing the final response, all
     /// messages, accumulated usage, and the number of API calls made.
     pub async fn run_conversation(&mut self, user_message: &str) -> Result<ConversationResult> {
-        // Apply skill prompt additions.
-        let skill_prompt = if let Some(store) = &self.skill_store {
-            store.get_system_prompt_additions(user_message)
-        } else {
-            String::new()
-        };
-        if !skill_prompt.is_empty() {
-            let base = self
-                .system_prompt
-                .clone()
-                .unwrap_or_else(|| crate::DEFAULT_SYSTEM_PROMPT.to_string());
-            self.set_system_prompt(format!("{base}\n\n{skill_prompt}"));
+        // Refresh the runtime skill working set for this turn. Skills are not
+        // appended permanently to `system_prompt`; `build_send_messages` will
+        // render the current working set dynamically on each model call.
+        if let Some(store) = &mut self.skill_store {
+            store.observe(user_message);
         }
 
         // Append the user message to conversation history.
@@ -365,6 +358,12 @@ impl AIAgent {
         &mut self,
         msg: Message,
     ) -> Result<ConversationResult> {
+        if let Some(store) = &mut self.skill_store
+            && let Some(content) = &msg.content
+        {
+            store.observe(content);
+        }
+
         self.messages.push(msg);
 
         let result = if self.streaming {
@@ -410,6 +409,7 @@ impl AIAgent {
                 self.model.clone(),
                 self.tool_registry.clone(),
                 self.workdir.clone(),
+                self.skill_store.clone(),
             )));
 
         ToolContext {

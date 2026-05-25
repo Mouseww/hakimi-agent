@@ -23,6 +23,49 @@ const BASE_DELAY: Duration = Duration::from_secs(1);
 /// Maximum delay cap for backoff.
 const MAX_DELAY: Duration = Duration::from_secs(30);
 
+/// Maximum number of automatic continuation requests after a model response
+/// stops because it hit the provider output-token limit.
+const MAX_LENGTH_CONTINUATIONS: usize = 3;
+
+const CONTINUE_AFTER_LENGTH_PROMPT: &str = "Your previous response was cut off by the output token limit. Continue exactly where you stopped. Do not repeat earlier text. Finish the answer completely.";
+
+/// Append streamed or continuation text without flattening layout.
+///
+/// Providers usually split streamed deltas at arbitrary byte/token boundaries,
+/// so most chunks should be concatenated exactly. Automatic continuation is
+/// different: the next provider response is a new assistant turn and often
+/// begins without leading whitespace even when the previous turn ended in the
+/// middle of prose. In that case a tiny separator prevents `hello` + `world`
+/// becoming `helloworld`, while preserving explicit newlines and Markdown.
+pub fn append_text_preserving_layout(buffer: &mut String, next: &str) {
+    if next.is_empty() {
+        return;
+    }
+    if buffer.is_empty() {
+        buffer.push_str(next);
+        return;
+    }
+
+    let prev = buffer.chars().next_back();
+    let next_first = next.chars().next();
+
+    let needs_space = matches!(prev, Some(c) if c.is_alphanumeric())
+        && matches!(next_first, Some(c) if c.is_alphanumeric());
+
+    if needs_space {
+        buffer.push(' ');
+    }
+    buffer.push_str(next);
+}
+
+fn join_continuation_parts(parts: &[String]) -> String {
+    let mut merged = String::new();
+    for part in parts {
+        append_text_preserving_layout(&mut merged, part);
+    }
+    merged
+}
+
 /// Run the core conversation loop (non-streaming).
 pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
     run_loop_inner(agent, false).await
@@ -38,6 +81,8 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
     let budget = IterationBudget::new(agent.max_iterations);
     let mut total_usage = Usage::default();
     let mut api_call_count: usize = 0;
+    let mut continuation_parts: Vec<String> = Vec::new();
+    let mut length_continuations: usize = 0;
 
     let tool_ctx = agent.build_tool_context();
     let tool_defs = agent.tool_registry.get_definitions().await;
@@ -130,9 +175,38 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             continue;
         }
 
-        // Text response — we're done.
+        // Text response. If the provider stopped because of an output-token
+        // length limit, continue automatically instead of returning a visibly
+        // truncated final_response to the caller.
         let final_text = response.content.unwrap_or_default();
-        agent.messages.push(Message::assistant(&final_text));
+        let stopped_by_length = response.finish_reason == Some(FinishReason::Length);
+        agent.messages.push(build_assistant_message(
+            Some(final_text.clone()),
+            response.reasoning.clone(),
+            response.finish_reason.clone(),
+        ));
+
+        if stopped_by_length && length_continuations < MAX_LENGTH_CONTINUATIONS {
+            warn!(
+                continuation = length_continuations + 1,
+                max_continuations = MAX_LENGTH_CONTINUATIONS,
+                "Assistant response hit output length limit; requesting continuation"
+            );
+            continuation_parts.push(final_text);
+            length_continuations += 1;
+            agent
+                .messages
+                .push(Message::user(CONTINUE_AFTER_LENGTH_PROMPT));
+            budget.use_one();
+            continue;
+        }
+
+        let final_response = if continuation_parts.is_empty() {
+            final_text
+        } else {
+            continuation_parts.push(final_text);
+            join_continuation_parts(&continuation_parts)
+        };
 
         // Notify context engine that the session ended.
         {
@@ -142,12 +216,12 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
 
         info!(
             api_calls = api_call_count,
-            response_len = final_text.len(),
+            response_len = final_response.len(),
             "Agent loop completed"
         );
 
         return Ok(ConversationResult {
-            final_response: final_text,
+            final_response,
             messages: agent.messages.clone(),
             usage: total_usage,
             api_call_count,
@@ -401,6 +475,11 @@ async fn process_tool_calls(
     };
 
     for res in results {
+        if let Some(store) = &mut agent.skill_store
+            && let Some(content) = &res.content
+        {
+            store.observe_tool_result(content);
+        }
         agent.messages.push(res);
     }
 
@@ -410,19 +489,66 @@ async fn process_tool_calls(
 }
 
 /// Build the messages array to send to the API:
-/// system prompt (if set) + full conversation history.
+/// dynamic system prompt + full conversation history.
 fn build_send_messages(agent: &AIAgent) -> Vec<Message> {
     let mut send = Vec::with_capacity(agent.messages.len() + 1);
 
-    // Prepend system prompt if configured.
-    if let Some(ref sp) = agent.system_prompt
-        && !sp.is_empty()
-    {
-        send.push(Message::system(sp.clone()));
+    let base = agent
+        .system_prompt
+        .clone()
+        .unwrap_or_else(|| crate::DEFAULT_SYSTEM_PROMPT.to_string());
+    let skill_context = agent
+        .skill_store
+        .as_ref()
+        .map(|store| store.render_active_skill_context())
+        .unwrap_or_default();
+
+    let system_prompt = if skill_context.is_empty() {
+        base
+    } else {
+        format!("{base}\n\n{skill_context}")
+    };
+
+    if !system_prompt.is_empty() {
+        send.push(Message::system(system_prompt));
     }
 
     send.extend(agent.messages.iter().cloned());
     send
+}
+
+/// Build a plain assistant message while preserving metadata such as reasoning
+/// and finish reason. This is important for continuation handling: a response
+/// with `finish_reason=length` is stored as a partial assistant turn before the
+/// agent asks the model to continue.
+fn build_assistant_message(
+    content: Option<String>,
+    reasoning: Option<String>,
+    finish_reason: Option<FinishReason>,
+) -> Message {
+    Message {
+        role: MessageRole::Assistant,
+        content,
+        images: None,
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+        reasoning: reasoning.clone(),
+        reasoning_content: reasoning,
+        timestamp: None,
+        token_count: None,
+        finish_reason: finish_reason.map(finish_reason_as_str).map(str::to_string),
+    }
+}
+
+fn finish_reason_as_str(reason: FinishReason) -> &'static str {
+    match reason {
+        FinishReason::Stop => "stop",
+        FinishReason::ToolCalls => "tool_calls",
+        FinishReason::Length => "length",
+        FinishReason::ContentFilter => "content_filter",
+        FinishReason::Error => "error",
+    }
 }
 
 /// Build an assistant message that carries tool calls.
@@ -508,6 +634,13 @@ fn accumulator_to_response(acc: &StreamAccumulator) -> NormalizedResponse {
 
     let finish_reason = if tool_calls.is_some() {
         Some(FinishReason::ToolCalls)
+    } else if let Some(reason) = acc.finish_reason.as_deref() {
+        match reason {
+            "stop" | "end_turn" | "STOP" => Some(FinishReason::Stop),
+            "length" | "max_tokens" | "MAX_TOKENS" => Some(FinishReason::Length),
+            "content_filter" | "SAFETY" => Some(FinishReason::ContentFilter),
+            _ => Some(FinishReason::Stop),
+        }
     } else if content.is_some() {
         Some(FinishReason::Stop)
     } else {

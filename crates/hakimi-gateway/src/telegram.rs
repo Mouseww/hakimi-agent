@@ -306,8 +306,9 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> Result<()> {
+        let text = normalize_outbound_text(text);
         // Split messages longer than 4096 characters into multiple sends.
-        let chunks = split_message(text, MAX_MESSAGE_LENGTH);
+        let chunks = split_message(&text, MAX_MESSAGE_LENGTH);
 
         for chunk in chunks {
             let body = serde_json::json!({
@@ -377,6 +378,7 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_message_get_id(&self, chat_id: &str, text: &str) -> Result<Option<i64>> {
+        let text = normalize_outbound_text(text);
         let body = serde_json::json!({
             "chat_id": chat_id,
             "text": text,
@@ -421,6 +423,7 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn edit_message(&self, chat_id: &str, message_id: i64, text: &str) -> Result<()> {
+        let text = normalize_outbound_text(text);
         let body = serde_json::json!({
             "chat_id": chat_id,
             "message_id": message_id,
@@ -543,6 +546,10 @@ async fn poll_once(client: &reqwest::Client, api_url: &str, offset: i64) -> Resu
     Ok(resp.result.unwrap_or_default())
 }
 
+fn normalize_outbound_text(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 /// Convert a [`TgMessage`] into a [`GatewayMessage`].
 ///
 /// Returns `None` if the message has no usable content (no text and no photo).
@@ -644,6 +651,12 @@ mod tests {
         for chunk in &chunks {
             assert!(chunk.len() <= 4096);
         }
+    }
+
+    #[test]
+    fn test_normalize_outbound_text_preserves_line_breaks() {
+        let chunks = split_message(&normalize_outbound_text("line1\r\nline2\rline3"), 4096);
+        assert_eq!(chunks, vec!["line1\nline2\nline3"]);
     }
 
     #[test]

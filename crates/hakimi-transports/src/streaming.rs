@@ -22,6 +22,9 @@ pub enum StreamEvent {
     },
     /// A delta of reasoning content (reasoning models like DeepSeek R1, QwQ).
     ReasoningDelta(String),
+    /// Stream finished with a provider finish reason such as `stop`, `length`,
+    /// `tool_calls`, or `max_tokens`.
+    Finished(String),
     /// Stream finished.
     Done,
 }
@@ -34,6 +37,7 @@ pub struct StreamAccumulator {
     pub tool_calls: Vec<AccumulatedToolCall>,
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
+    pub finish_reason: Option<String>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -76,6 +80,9 @@ impl StreamAccumulator {
             } => {
                 self.prompt_tokens = prompt_tokens;
                 self.completion_tokens = completion_tokens;
+            }
+            StreamEvent::Finished(reason) => {
+                self.finish_reason = Some(reason);
             }
             StreamEvent::Done => {}
         }
@@ -146,6 +153,12 @@ pub fn parse_openai_chunk(json_str: &str) -> Vec<StreamEvent> {
                     });
                 }
             }
+
+            if let Some(reason) = choice["finish_reason"].as_str()
+                && !reason.is_empty()
+            {
+                events.push(StreamEvent::Finished(reason.to_string()));
+            }
         }
     }
 
@@ -211,10 +224,10 @@ pub fn parse_gemini_chunk(json_str: &str) -> Vec<StreamEvent> {
                 }
             }
 
-            // Check for finish reason - emit Done when we see STOP or similar terminal states.
-            if let Some("STOP" | "MAX_TOKENS" | "SAFETY" | "RECITATION" | "OTHER") =
+            if let Some(reason @ ("STOP" | "MAX_TOKENS" | "SAFETY" | "RECITATION" | "OTHER")) =
                 candidate["finishReason"].as_str()
             {
+                events.push(StreamEvent::Finished(reason.to_string()));
                 events.push(StreamEvent::Done);
             }
         }
@@ -293,6 +306,9 @@ pub fn parse_anthropic_event(event_type: &str, json_str: &str) -> Vec<StreamEven
             }
         }
         "message_delta" => {
+            if let Some(reason) = val["delta"]["stop_reason"].as_str() {
+                events.push(StreamEvent::Finished(reason.to_string()));
+            }
             let usage = &val["usage"];
             if let Some(output_tokens) = usage["output_tokens"].as_u64() {
                 events.push(StreamEvent::Usage {
@@ -654,6 +670,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_openai_finish_reason_length() {
+        let json = r#"{"choices":[{"delta":{},"index":0,"finish_reason":"length"}]}"#;
+        let events = parse_openai_chunk(json);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Finished(reason) => assert_eq!(reason, "length"),
+            _ => panic!("expected Finished"),
+        }
+    }
+
+    #[test]
     fn test_parse_openai_empty_content_ignored() {
         let json = r#"{"choices":[{"delta":{"content":""},"index":0}]}"#;
         let events = parse_openai_chunk(json);
@@ -686,6 +713,17 @@ mod tests {
             }
             _ => panic!("expected ToolCallDelta"),
         }
+    }
+
+    #[test]
+    fn test_parse_anthropic_message_delta_stop_reason_max_tokens() {
+        let json = r#"{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":42}}"#;
+        let events = parse_anthropic_event("message_delta", json);
+        assert!(
+            events.iter().any(
+                |event| matches!(event, StreamEvent::Finished(reason) if reason == "max_tokens")
+            )
+        );
     }
 
     #[test]
@@ -847,15 +885,21 @@ mod tests {
         let json =
             r#"{"candidates":[{"content":{"parts":[{"text":"Done"}]},"finishReason":"STOP"}]}"#;
         let events = parse_gemini_chunk(json);
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.len(), 3);
         assert!(matches!(events[0], StreamEvent::ContentDelta(_)));
-        assert!(matches!(events[1], StreamEvent::Done));
+        assert!(matches!(events[1], StreamEvent::Finished(ref reason) if reason == "STOP"));
+        assert!(matches!(events[2], StreamEvent::Done));
     }
 
     #[test]
     fn test_parse_gemini_finish_reason_max_tokens() {
         let json = r#"{"candidates":[{"content":{"parts":[{"text":"Truncated"}]},"finishReason":"MAX_TOKENS"}]}"#;
         let events = parse_gemini_chunk(json);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::Finished(reason) if reason == "MAX_TOKENS"))
+        );
         assert!(events.iter().any(|e| matches!(e, StreamEvent::Done)));
     }
 
@@ -863,10 +907,11 @@ mod tests {
     fn test_parse_gemini_mixed_content_and_usage() {
         let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hello world"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3}}"#;
         let events = parse_gemini_chunk(json);
-        assert_eq!(events.len(), 3); // ContentDelta, Done, Usage
+        assert_eq!(events.len(), 4); // ContentDelta, Finished, Done, Usage
         assert!(matches!(events[0], StreamEvent::ContentDelta(_)));
-        assert!(matches!(events[1], StreamEvent::Done));
-        assert!(matches!(events[2], StreamEvent::Usage { .. }));
+        assert!(matches!(events[1], StreamEvent::Finished(ref reason) if reason == "STOP"));
+        assert!(matches!(events[2], StreamEvent::Done));
+        assert!(matches!(events[3], StreamEvent::Usage { .. }));
     }
 
     #[test]

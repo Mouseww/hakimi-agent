@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.53-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.55-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,9 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.55 Streaming Layout Preservation**:
+  - **Smart Continuation Merge**: Automatic continuation now merges truncated response segments with a layout-preserving append routine, preventing `hello` + `world` from becoming `helloworld` while keeping intentional Markdown and line breaks intact.
+  - **Telegram Newline Safety**: Gateway streaming and Telegram send/edit paths now normalize CRLF/CR into LF without trimming or folding content, so multi-line assistant replies remain multi-line during progressive edits.
 - **v0.3.53 Separated Tool Status Bubbles**:
   - **Clean Tool Notices**: Tool dispatch status is now rendered as a compact one-line message like `⚙️ patch (path: ...)` instead of `tool` / `tool_call` flavored markup.
   - **Bubble Separation**: Gateway streaming treats tool notices as structured side-channel events and sends them as standalone Telegram messages, so descriptive assistant prose remains in the main response bubble instead of being mixed with tool logs.

@@ -116,6 +116,17 @@ impl ProviderTransport for MockTransport {
                 }
             }
 
+            if let Some(ref reason) = resp.finish_reason {
+                let reason = match reason {
+                    FinishReason::Stop => "stop",
+                    FinishReason::ToolCalls => "tool_calls",
+                    FinishReason::Length => "length",
+                    FinishReason::ContentFilter => "content_filter",
+                    FinishReason::Error => "error",
+                };
+                events.push(Ok(StreamEvent::Finished(reason.to_string())));
+            }
+
             events.push(Ok(StreamEvent::Usage {
                 prompt_tokens: 10,
                 completion_tokens: 20,
@@ -222,6 +233,43 @@ async fn test_simple_text_conversation() {
     assert_eq!(result.api_call_count, 1);
     // Should have: user message + assistant message = 2
     assert!(result.messages.len() >= 2);
+}
+
+#[tokio::test]
+async fn test_length_finish_auto_continues_and_merges() {
+    let part1 = NormalizedResponse {
+        content: Some("Line 1\nLine".to_string()),
+        tool_calls: None,
+        finish_reason: Some(FinishReason::Length),
+        usage: Some(Usage::default()),
+        reasoning: None,
+    };
+    let part2 = NormalizedResponse {
+        content: Some("2\nLine 3".to_string()),
+        tool_calls: None,
+        finish_reason: Some(FinishReason::Stop),
+        usage: Some(Usage::default()),
+        reasoning: None,
+    };
+    let transport = Arc::new(MockTransport::new(vec![part1, part2]));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-length-continuation")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    let result = agent.run_conversation("Long answer please").await.unwrap();
+    assert_eq!(result.final_response, "Line 1\nLine 2\nLine 3");
+    assert_eq!(result.api_call_count, 2);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| m.content.as_deref() == Some("Your previous response was cut off by the output token limit. Continue exactly where you stopped. Do not repeat earlier text. Finish the answer completely."))
+    );
 }
 
 #[tokio::test]
@@ -491,6 +539,44 @@ async fn test_streaming_text_conversation() {
     assert_eq!(result.final_response, "Streaming hello!");
     assert_eq!(result.api_call_count, 1);
     assert!(result.messages.len() >= 2);
+}
+
+#[tokio::test]
+async fn test_streaming_length_finish_auto_continues_and_merges() {
+    let part1 = NormalizedResponse {
+        content: Some("Streaming line 1\nLine".to_string()),
+        tool_calls: None,
+        finish_reason: Some(FinishReason::Length),
+        usage: Some(Usage::default()),
+        reasoning: None,
+    };
+    let part2 = NormalizedResponse {
+        content: Some("2\nStreaming line 3".to_string()),
+        tool_calls: None,
+        finish_reason: Some(FinishReason::Stop),
+        usage: Some(Usage::default()),
+        reasoning: None,
+    };
+    let transport = Arc::new(MockTransport::new(vec![part1, part2]));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-streaming-length-continuation")
+        .workdir("/tmp")
+        .streaming(true)
+        .build()
+        .unwrap();
+
+    let result = agent
+        .run_conversation("Long streaming answer")
+        .await
+        .unwrap();
+    assert_eq!(
+        result.final_response,
+        "Streaming line 1\nLine 2\nStreaming line 3"
+    );
+    assert_eq!(result.api_call_count, 2);
 }
 
 #[tokio::test]

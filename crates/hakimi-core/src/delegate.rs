@@ -64,6 +64,7 @@ pub struct CoreDelegateExecutor {
     model: String,
     tool_registry: ToolRegistry,
     workdir: String,
+    skill_store: Option<hakimi_skills::SkillStore>,
     task_queue: Arc<RwLock<TaskQueue>>,
     semaphore: Arc<Semaphore>,
 }
@@ -76,6 +77,7 @@ impl CoreDelegateExecutor {
         model: String,
         tool_registry: ToolRegistry,
         workdir: String,
+        skill_store: Option<hakimi_skills::SkillStore>,
     ) -> Self {
         Self {
             transport,
@@ -83,6 +85,7 @@ impl CoreDelegateExecutor {
             model,
             tool_registry,
             workdir,
+            skill_store,
             task_queue: Arc::new(RwLock::new(TaskQueue::new())),
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_DELEGATIONS)),
         }
@@ -122,6 +125,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
         for (goal, context, toolsets) in tasks {
             let transport = self.transport.clone();
             let parent_model = self.model.clone();
+            let parent_skill_store = self.skill_store.clone();
             let all_tool_names = self.tool_registry.list().await;
 
             // Build a filtered tool registry for this child
@@ -156,21 +160,29 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     attempts += 1;
 
                     // Build the system prompt for the child agent.
+                    let child_instructions = "You are a sub-agent delegated by a parent agent. You have your own local runtime skill working set seeded from this subtask; use relevant local skills when helpful, but do not dump skill text back to the parent. Return only concise task results in this format:\nStatus: success | partial | failed\nSummary:\nFindings:\nFiles inspected:\nCommands run:\nRisks:\nRecommendations:";
                     let system_prompt = if context.is_empty() {
-                        format!(
-                            "You are a sub-agent delegated by a parent agent. Your task: {goal}. Complete this task and return a clear, concise result."
-                        )
+                        format!("{child_instructions}\n\nYour task: {goal}")
                     } else {
                         format!(
-                            "You are a sub-agent delegated by a parent agent.\n\nYour task: {goal}\n\nContext and constraints:\n{context}\n\nComplete this task and return a clear, concise result."
+                            "{child_instructions}\n\nYour task: {goal}\n\nContext and constraints:\n{context}"
                         )
                     };
+
+                    let seed_text = if context.is_empty() {
+                        goal.clone()
+                    } else {
+                        format!("{goal}\n\n{context}")
+                    };
+                    let child_skill_store = parent_skill_store
+                        .as_ref()
+                        .map(|store| store.fork_for_subtask(&seed_text));
 
                     let mut child_agent = crate::AIAgent::new(
                         &parent_model,
                         transport.clone(),
                         child_registry.clone(),
-                        None,
+                        child_skill_store,
                     );
                     child_agent.set_system_prompt(system_prompt);
                     child_agent.set_session_id(child_session_id.clone());
