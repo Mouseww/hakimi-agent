@@ -12,6 +12,48 @@ use tracing::{error, info, warn};
 
 use crate::Command;
 
+enum GatewayStreamUiEvent {
+    Content(String),
+    Tool(String),
+}
+
+#[derive(Debug, Default)]
+struct GatewayStreamUiState {
+    current_text: String,
+    last_edit_text: String,
+    needs_new_message: bool,
+}
+
+impl GatewayStreamUiState {
+    fn append_content(&mut self, token: &str) -> Option<GatewayUiContentTarget> {
+        append_text_preserving_layout(&mut self.current_text, token);
+        if self.current_text.is_empty() || self.current_text == self.last_edit_text {
+            return None;
+        }
+
+        self.last_edit_text = self.current_text.clone();
+        let target = if self.needs_new_message {
+            self.needs_new_message = false;
+            GatewayUiContentTarget::NewMessage
+        } else {
+            GatewayUiContentTarget::EditCurrent
+        };
+        Some(target)
+    }
+
+    fn finish_tool_boundary(&mut self) {
+        self.current_text.clear();
+        self.last_edit_text.clear();
+        self.needs_new_message = true;
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum GatewayUiContentTarget {
+    EditCurrent,
+    NewMessage,
+}
+
 // ---------------------------------------------------------------------------
 // CLI arguments (clap)
 // ---------------------------------------------------------------------------
@@ -1330,62 +1372,87 @@ async fn start_gateway(
                     let bot_id_cb = bot_id.clone();
                     let chat_id_cb = chat_id.clone();
                     let gateway_cb = gateway_clone.clone();
-                    let gateway_tool_cb = gateway_clone.clone();
-                    let platform_tool_cb = platform.clone();
-                    let bot_id_tool_cb = bot_id.clone();
-                    let chat_id_tool_cb = chat_id.clone();
 
-                    let (tx, mut rx) = tokio::sync::watch::channel(String::new());
+                    let (ui_tx, mut ui_rx) =
+                        tokio::sync::mpsc::unbounded_channel::<GatewayStreamUiEvent>();
 
                     let handle = tokio::spawn(async move {
-                        let mut last_edit_text = String::new();
-                        loop {
-                            let text = rx.borrow().clone();
-                            if !text.is_empty() && text != last_edit_text {
-                                last_edit_text = text.clone();
-                                let _ = gateway_cb
-                                    .edit_message(
-                                        &platform_cb,
-                                        &bot_id_cb,
-                                        &chat_id_cb,
-                                        msg_id,
-                                        &text,
-                                    )
-                                    .await;
+                        let mut current_message_id = Some(msg_id);
+                        let mut ui_state = GatewayStreamUiState::default();
+
+                        while let Some(event) = ui_rx.recv().await {
+                            match event {
+                                GatewayStreamUiEvent::Content(token) => {
+                                    let Some(target) = ui_state.append_content(&token) else {
+                                        continue;
+                                    };
+
+                                    match target {
+                                        GatewayUiContentTarget::EditCurrent => {
+                                            if let Some(active_msg_id) = current_message_id {
+                                                let _ = gateway_cb
+                                                    .edit_message(
+                                                        &platform_cb,
+                                                        &bot_id_cb,
+                                                        &chat_id_cb,
+                                                        active_msg_id,
+                                                        &ui_state.current_text,
+                                                    )
+                                                    .await;
+                                            }
+                                        }
+                                        GatewayUiContentTarget::NewMessage => {
+                                            let msg = hakimi_gateway::GatewayMessage {
+                                                platform: platform_cb.clone(),
+                                                bot_id: bot_id_cb.clone(),
+                                                chat_id: chat_id_cb.clone(),
+                                                user_id: String::new(),
+                                                text: ui_state.current_text.clone(),
+                                                media: None,
+                                            };
+                                            current_message_id = gateway_cb
+                                                .route_message_get_id(&msg)
+                                                .await
+                                                .ok()
+                                                .flatten();
+                                        }
+                                    }
+
+                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                }
+                                GatewayStreamUiEvent::Tool(text) => {
+                                    if !text.trim().is_empty() {
+                                        let msg = hakimi_gateway::GatewayMessage {
+                                            platform: platform_cb.clone(),
+                                            bot_id: bot_id_cb.clone(),
+                                            chat_id: chat_id_cb.clone(),
+                                            user_id: String::new(),
+                                            text,
+                                            media: None,
+                                        };
+                                        let _ = gateway_cb.route_message(&msg).await;
+                                    }
+
+                                    // A tool call is a semantic boundary: any later assistant
+                                    // prose should appear in a fresh message bubble instead of
+                                    // being appended to the pre-tool explanation.
+                                    current_message_id = None;
+                                    ui_state.finish_tool_boundary();
+                                }
                             }
-                            if rx.changed().await.is_err() {
-                                break;
-                            }
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         }
                     });
                     updater_handle = Some(handle);
 
                     let callback = move |token: String| {
                         if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
-                            let gateway = gateway_tool_cb.clone();
-                            let platform = platform_tool_cb.clone();
-                            let bot_id = bot_id_tool_cb.clone();
-                            let chat_id = chat_id_tool_cb.clone();
                             let text = tool_notice.trim().to_string();
                             if !text.is_empty() {
-                                tokio::spawn(async move {
-                                    let msg = hakimi_gateway::GatewayMessage {
-                                        platform,
-                                        bot_id,
-                                        chat_id,
-                                        user_id: String::new(),
-                                        text,
-                                        media: None,
-                                    };
-                                    let _ = gateway.route_message(&msg).await;
-                                });
+                                let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
                             }
                             return;
                         }
-                        let mut current = tx.borrow().clone();
-                        append_text_preserving_layout(&mut current, &token);
-                        let _ = tx.send(current);
+                        let _ = ui_tx.send(GatewayStreamUiEvent::Content(token));
                     };
                     a.set_streaming_callback(Some(std::sync::Arc::new(callback)));
                 }
@@ -1403,10 +1470,10 @@ async fn start_gateway(
                     a.chat_streaming_with_message(msg).await
                 };
 
-                if let Some(handle) = updater_handle {
-                    handle.abort();
-                }
                 a.set_streaming_callback(None);
+                if let Some(handle) = updater_handle {
+                    let _ = handle.await;
+                }
 
                 // Final update without the loading indicator
                 if let Some(_msg_id) = initial_message_id {
@@ -1432,16 +1499,10 @@ async fn start_gateway(
 
             typing_handle.abort();
 
+            let is_error = err_msg.is_some();
             let final_text = err_msg.unwrap_or(response_text);
 
-            if let Some(msg_id) = initial_message_id {
-                // The streaming callback appends ⏳ to every frame except the absolute final one,
-                // but since it's throttled to 1s, it may have missed the very last `[DONE]` delta frame.
-                // We MUST do one final `.edit_message()` here with the clean `final_text` (no hourglass).
-                let _ = gateway_clone
-                    .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
-                    .await;
-            } else {
+            if initial_message_id.is_none() || is_error {
                 let reply = hakimi_gateway::GatewayMessage {
                     platform: platform.clone(),
                     bot_id: bot_id.clone(),
@@ -1638,4 +1699,31 @@ pub async fn run() -> Result<()> {
     println!("🚧 Interactive REPL is currently under construction.");
     println!("💡 Tip: Try running with --query \"your prompt\" or use the TUI (hakimi-tui).");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GatewayStreamUiState, GatewayUiContentTarget};
+
+    #[test]
+    fn tool_boundary_forces_next_content_into_new_message() {
+        let mut state = GatewayStreamUiState::default();
+
+        assert_eq!(
+            state.append_content("爸爸，先看入口。"),
+            Some(GatewayUiContentTarget::EditCurrent)
+        );
+
+        state.finish_tool_boundary();
+
+        assert_eq!(
+            state.append_content("爸爸，工具跑完了，继续分析。"),
+            Some(GatewayUiContentTarget::NewMessage)
+        );
+
+        assert_eq!(
+            state.append_content("下一句继续编辑同一个新气泡。"),
+            Some(GatewayUiContentTarget::EditCurrent)
+        );
+    }
 }
