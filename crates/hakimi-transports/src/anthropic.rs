@@ -117,13 +117,13 @@ impl AnthropicTransport {
                 }
                 MessageRole::User => {
                     let mut content_blocks: Vec<JsonValue> = Vec::new();
-                    if let Some(ref text) = msg.content {
-                        if !text.is_empty() {
-                            content_blocks.push(json!({
-                                "type": "text",
-                                "text": text
-                            }));
-                        }
+                    if let Some(ref text) = msg.content
+                        && !text.is_empty()
+                    {
+                        content_blocks.push(json!({
+                            "type": "text",
+                            "text": text
+                        }));
                     }
                     if let Some(ref images) = msg.images {
                         for img in images {

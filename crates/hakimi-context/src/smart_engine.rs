@@ -422,6 +422,7 @@ mod tests {
         Message {
             role: MessageRole::Assistant,
             content: Some("Let me check that for you.".to_string()),
+            images: None,
             tool_calls: Some(vec![ToolCall {
                 id: tool_call_id.to_string(),
                 name: "search".to_string(),
