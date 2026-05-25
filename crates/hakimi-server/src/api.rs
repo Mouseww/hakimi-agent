@@ -106,6 +106,12 @@ pub struct SanitizedConfig {
     pub compression_context_length: usize,
     pub display_streaming: bool,
     pub display_skin: String,
+    pub embedding_enabled: bool,
+    pub embedding_provider: String,
+    pub embedding_model: String,
+    pub embedding_dimension: usize,
+    pub embedding_batch_size: usize,
+    pub embedding_normalize: bool,
     pub mcp_server_count: usize,
 }
 
@@ -127,6 +133,12 @@ pub struct ConfigUpdate {
     pub compression_context_length: Option<usize>,
     pub display_streaming: Option<bool>,
     pub display_skin: Option<String>,
+    pub embedding_enabled: Option<bool>,
+    pub embedding_provider: Option<String>,
+    pub embedding_model: Option<String>,
+    pub embedding_dimension: Option<usize>,
+    pub embedding_batch_size: Option<usize>,
+    pub embedding_normalize: Option<bool>,
 }
 
 /// Generic error response.
@@ -296,6 +308,12 @@ async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
         compression_context_length: config.compression.context_length,
         display_streaming: config.display.streaming,
         display_skin: config.display.skin.clone(),
+        embedding_enabled: config.embedding.enabled,
+        embedding_provider: config.embedding.provider.clone(),
+        embedding_model: config.embedding.model.clone(),
+        embedding_dimension: config.embedding.dimension,
+        embedding_batch_size: config.embedding.batch_size,
+        embedding_normalize: config.embedding.normalize,
         mcp_server_count: config.mcp_servers.len(),
     })
 }
@@ -352,6 +370,24 @@ async fn update_config(
     if let Some(v) = update.display_skin {
         config.display.skin = v;
     }
+    if let Some(v) = update.embedding_enabled {
+        config.embedding.enabled = v;
+    }
+    if let Some(v) = update.embedding_provider {
+        config.embedding.provider = v;
+    }
+    if let Some(v) = update.embedding_model {
+        config.embedding.model = v;
+    }
+    if let Some(v) = update.embedding_dimension {
+        config.embedding.dimension = v;
+    }
+    if let Some(v) = update.embedding_batch_size {
+        config.embedding.batch_size = v;
+    }
+    if let Some(v) = update.embedding_normalize {
+        config.embedding.normalize = v;
+    }
 
     // Return the updated config (sanitized).
     let response = SanitizedConfig {
@@ -370,6 +406,12 @@ async fn update_config(
         compression_context_length: config.compression.context_length,
         display_streaming: config.display.streaming,
         display_skin: config.display.skin.clone(),
+        embedding_enabled: config.embedding.enabled,
+        embedding_provider: config.embedding.provider.clone(),
+        embedding_model: config.embedding.model.clone(),
+        embedding_dimension: config.embedding.dimension,
+        embedding_batch_size: config.embedding.batch_size,
+        embedding_normalize: config.embedding.normalize,
         mcp_server_count: config.mcp_servers.len(),
     };
 
@@ -524,6 +566,8 @@ mod tests {
         let config: SanitizedConfig = serde_json::from_slice(&body).unwrap();
         assert_eq!(config.agent_max_turns, 90);
         assert_eq!(config.compression_engine, "smart");
+        assert!(config.embedding_enabled);
+        assert_eq!(config.embedding_model, "BAAI/bge-m3");
     }
 
     #[tokio::test]
@@ -531,7 +575,8 @@ mod tests {
         let state = test_state();
         let app = build_router(state);
 
-        let update = json!({"agent_max_turns": 42, "agent_verbose": true});
+        let update =
+            json!({"agent_max_turns": 42, "agent_verbose": true, "embedding_enabled": false});
         let req = Request::builder()
             .method(http::Method::POST)
             .uri("/api/config")
@@ -548,6 +593,7 @@ mod tests {
         let config: SanitizedConfig = serde_json::from_slice(&body).unwrap();
         assert_eq!(config.agent_max_turns, 42);
         assert!(config.agent_verbose);
+        assert!(!config.embedding_enabled);
     }
 
     #[tokio::test]

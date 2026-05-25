@@ -37,6 +37,31 @@ pub struct AIAgent {
     pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
 }
 
+impl Clone for AIAgent {
+    fn clone(&self) -> Self {
+        Self {
+            model: self.model.clone(),
+            max_iterations: self.max_iterations,
+            transport: self.transport.clone(),
+            tool_registry: self.tool_registry.clone(),
+            context_engine: self.context_engine.clone(),
+            session_id: self.session_id.clone(),
+            platform: self.platform.clone(),
+            user_id: self.user_id.clone(),
+            chat_id: self.chat_id.clone(),
+            messages: self.messages.clone(),
+            interrupt: Arc::new(AtomicBool::new(false)),
+            workdir: self.workdir.clone(),
+            system_prompt: self.system_prompt.clone(),
+            streaming: self.streaming,
+            streaming_callback: self.streaming_callback.clone(),
+            knowledge_searcher: self.knowledge_searcher.clone(),
+            embedding_provider: self.embedding_provider.clone(),
+            skill_store: self.skill_store.clone(),
+        }
+    }
+}
+
 impl AIAgent {
     /// Create a new agent from its components.
     pub fn new(

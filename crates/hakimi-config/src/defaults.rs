@@ -28,7 +28,9 @@ pub fn default_config_value() -> serde_json::Value {
         "compression": {
             "enabled": true,
             "threshold": 0.50,
-            "target_ratio": 0.20
+            "target_ratio": 0.20,
+            "engine": "smart",
+            "context_length": 128000
         },
         "display": {
             "compact": false,

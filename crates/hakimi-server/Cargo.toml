@@ -22,6 +22,7 @@ hakimi-tools = { path = "../hakimi-tools" }
 hakimi-common = { path = "../hakimi-common" }
 hakimi-context = { path = "../hakimi-context" }
 hakimi-transports = { path = "../hakimi-transports" }
+hakimi-knowledge = { path = "../hakimi-knowledge" }
 axum = { version = "0.8", features = ["json"] }
 tokio = { workspace = true }
 serde = { workspace = true }

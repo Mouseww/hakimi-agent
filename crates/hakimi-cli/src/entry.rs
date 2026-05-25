@@ -18,6 +18,37 @@ enum GatewayStreamUiEvent {
 }
 
 #[derive(Debug, Default)]
+struct GatewayChatTurnTracker {
+    active_turns: usize,
+    seen_concurrent_input: bool,
+}
+
+impl GatewayChatTurnTracker {
+    fn start_turn(&mut self) -> bool {
+        let already_busy = self.active_turns > 0;
+        if already_busy {
+            self.seen_concurrent_input = true;
+        }
+        self.active_turns += 1;
+        already_busy
+    }
+
+    fn finish_turn(&mut self) {
+        self.active_turns = self.active_turns.saturating_sub(1);
+    }
+
+    fn decorate_user_text(&self, text: &str, concurrent: bool) -> String {
+        if concurrent {
+            format!(
+                "[Gateway concurrent input: the user sent this while a previous request in this chat was still running. Treat it as either supplemental context for the ongoing work or as a separate task, based on intent. Do not ignore it.]\n\n{text}"
+            )
+        } else {
+            text.to_string()
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 struct GatewayStreamUiState {
     current_text: String,
     last_edit_text: String,
@@ -974,6 +1005,8 @@ async fn start_gateway(
     let agent_arc = Arc::new(Mutex::new(agent));
     let histories_clone: Arc<Mutex<HashMap<String, Vec<hakimi_common::Message>>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let turn_trackers: Arc<Mutex<HashMap<String, GatewayChatTurnTracker>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let skill_store_ref = Arc::new(skill_store);
 
     // 3. Connect all platforms.
@@ -1111,6 +1144,7 @@ async fn start_gateway(
         let gateway_clone = gateway.clone();
         let skill_store_ref = skill_store_ref.clone();
         let histories_clone = histories_clone.clone();
+        let turn_trackers = turn_trackers.clone();
 
         let config_clone = config.clone();
         tokio::spawn(async move {
@@ -1447,9 +1481,17 @@ async fn start_gateway(
                 return;
             }
 
-            // Process the message with the correct agent.
-            let (response_text, err_msg) = {
-                let mut a = agent_clone.lock().await;
+            // Process the message with an isolated turn agent. Never hold the
+            // shared gateway agent lock across the LLM/tool loop; otherwise a
+            // second Telegram message waits behind the first one and appears
+            // to be ignored.
+            let (mut turn_agent, base_history_len, is_concurrent_turn) = {
+                let mut trackers = turn_trackers.lock().await;
+                let tracker = trackers.entry(chat_id.clone()).or_default();
+                let concurrent = tracker.start_turn();
+                drop(trackers);
+
+                let mut a = agent_clone.lock().await.clone();
 
                 // Enable streaming
                 // We can't clone the MutexGuard, but we can set the field natively if we fix its visibility
@@ -1498,15 +1540,21 @@ async fn start_gateway(
                     a.set_system_prompt(base_prompt);
                 }
 
-                {
+                let base_history_len = {
                     let histories = histories_clone.lock().await;
                     let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
+                    let len = chat_msgs.len();
                     a.clear_messages();
                     for m in chat_msgs {
                         a.add_message(m);
                     }
-                }
+                    len
+                };
 
+                (a, base_history_len, concurrent)
+            };
+
+            let (response_text, err_msg) = {
                 let mut updater_handle = None;
 
                 if let Some(msg_id) = initial_message_id {
@@ -1625,23 +1673,32 @@ async fn start_gateway(
                         }
                         let _ = ui_tx.send(GatewayStreamUiEvent::Content(token));
                     };
-                    a.set_streaming_callback(Some(std::sync::Arc::new(callback)));
+                    turn_agent.set_streaming_callback(Some(std::sync::Arc::new(callback)));
                 }
 
-                let mut msg = hakimi_common::Message::user(&text);
+                let user_text = {
+                    let trackers = turn_trackers.lock().await;
+                    trackers
+                        .get(&chat_id)
+                        .map(|tracker| tracker.decorate_user_text(&text, is_concurrent_turn))
+                        .unwrap_or_else(|| text.clone())
+                };
+
+                let mut msg = hakimi_common::Message::user(&user_text);
                 if !images.is_empty() {
                     msg = msg.with_images(images);
                 }
 
                 let result = if config.model.api_mode.as_str() == "REST" {
-                    a.run_conversation_with_message(msg)
+                    turn_agent
+                        .run_conversation_with_message(msg)
                         .await
                         .map(|r| r.final_response)
                 } else {
-                    a.chat_streaming_with_message(msg).await
+                    turn_agent.chat_streaming_with_message(msg).await
                 };
 
-                a.set_streaming_callback(None);
+                turn_agent.set_streaming_callback(None);
                 if let Some(handle) = updater_handle {
                     let _ = handle.await;
                 }
@@ -1654,10 +1711,15 @@ async fn start_gateway(
 
                 match result {
                     Ok(res) => {
-                        let updated_msgs = a.messages().to_vec();
+                        let updated_msgs = turn_agent.messages().to_vec();
+                        let new_msgs = updated_msgs
+                            .get(base_history_len..)
+                            .map(|msgs| msgs.to_vec())
+                            .unwrap_or_else(Vec::new);
                         {
                             let mut histories = histories_clone.lock().await;
-                            histories.insert(chat_id.clone(), updated_msgs);
+                            let chat_history = histories.entry(chat_id.clone()).or_default();
+                            chat_history.extend(new_msgs);
                         }
                         (res, None)
                     }
@@ -1669,6 +1731,15 @@ async fn start_gateway(
             };
 
             typing_handle.abort();
+            {
+                let mut trackers = turn_trackers.lock().await;
+                if let Some(tracker) = trackers.get_mut(&chat_id) {
+                    tracker.finish_turn();
+                    if tracker.active_turns == 0 && !tracker.seen_concurrent_input {
+                        trackers.remove(&chat_id);
+                    }
+                }
+            }
 
             let is_error = err_msg.is_some();
             let final_text = err_msg.unwrap_or(response_text);
@@ -1873,7 +1944,7 @@ pub async fn run() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayStreamUiState, GatewayUiContentTarget};
+    use super::{GatewayChatTurnTracker, GatewayStreamUiState, GatewayUiContentTarget};
 
     #[test]
     fn streaming_tokens_are_appended_verbatim_without_inserted_spaces() {
@@ -1926,5 +1997,28 @@ mod tests {
             state.append_content("下一句继续编辑同一个新气泡。"),
             Some(GatewayUiContentTarget::EditCurrent)
         );
+    }
+
+    #[test]
+    fn concurrent_turn_tracker_decorates_overlapping_user_input() {
+        let mut tracker = GatewayChatTurnTracker::default();
+
+        assert!(!tracker.start_turn());
+        assert!(
+            !tracker
+                .decorate_user_text("第一件事", false)
+                .contains("Gateway concurrent input")
+        );
+
+        assert!(tracker.start_turn());
+        let decorated = tracker.decorate_user_text("补充：优先改源码", true);
+        assert!(decorated.contains("Gateway concurrent input"));
+        assert!(decorated.contains("supplemental context"));
+        assert!(decorated.ends_with("补充：优先改源码"));
+
+        tracker.finish_turn();
+        assert_eq!(tracker.active_turns, 1);
+        tracker.finish_turn();
+        assert_eq!(tracker.active_turns, 0);
     }
 }

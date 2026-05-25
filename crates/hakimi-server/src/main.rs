@@ -175,14 +175,59 @@ async fn build_agent(
         Arc::new(hakimi_transports::AnthropicTransport::new(
             anthropic_url,
             api_key.clone(),
-            client,
+            client.clone(),
         ))
     } else {
         Arc::new(hakimi_transports::ChatCompletionsTransport::new(
             base_url.clone(),
             api_key.clone(),
-            client,
+            client.clone(),
         ))
+    };
+
+    // Create embedding provider only when enabled.
+    let embedding_provider: Option<Arc<dyn hakimi_transports::EmbeddingProvider>> = if config
+        .embedding
+        .enabled
+    {
+        let embedding_base_url =
+            if config.embedding.base_url.is_empty() || config.embedding.base_url == "same-as-llm" {
+                base_url.clone()
+            } else {
+                config.embedding.base_url.clone()
+            };
+        let embedding_api_key =
+            if config.embedding.api_key.is_empty() || config.embedding.api_key == "same-as-llm" {
+                api_key.clone()
+            } else {
+                config.embedding.api_key.clone()
+            };
+
+        if config.embedding.provider == "openai-compatible" || config.embedding.provider == "openai"
+        {
+            info!(
+                base_url = %embedding_base_url,
+                model = %config.embedding.model,
+                dimension = config.embedding.dimension,
+                "using OpenAI-compatible embeddings provider"
+            );
+            Some(
+                Arc::new(hakimi_transports::OpenAICompatibleEmbeddingProvider::new(
+                    embedding_base_url,
+                    embedding_api_key,
+                    config.embedding.model.clone(),
+                    config.embedding.dimension,
+                    config.embedding.normalize,
+                    client.clone(),
+                )) as Arc<dyn hakimi_transports::EmbeddingProvider>,
+            )
+        } else {
+            warn!(provider = %config.embedding.provider, "unsupported embedding provider; vector search disabled");
+            None
+        }
+    } else {
+        info!("embedding/vector search disabled by config");
+        None
     };
 
     // Context engine
@@ -244,17 +289,44 @@ async fn build_agent(
     for tool in &builtin_tools {
         tool_registry.register(tool.clone()).await;
     }
+
+    // Knowledge tools/searcher; vector index is attached only when embedding is enabled.
+    let knowledge_path = dirs::home_dir()
+        .map(|h| h.join(".hakimi").join("knowledge.json"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/knowledge.json"));
+    let knowledge_provider = if let Some(provider) = embedding_provider.clone() {
+        Arc::new(hakimi_knowledge::KnowledgeProvider::with_vector_search(
+            knowledge_path,
+            provider,
+        ))
+    } else {
+        Arc::new(hakimi_knowledge::KnowledgeProvider::new(knowledge_path))
+    };
+    for definition in
+        hakimi_context::MemoryProvider::get_tool_definitions(knowledge_provider.as_ref())
+    {
+        tool_registry
+            .register(Arc::new(hakimi_knowledge::KnowledgeTool::new(
+                knowledge_provider.clone(),
+                definition,
+            )))
+            .await;
+    }
+    let knowledge_searcher: Arc<dyn hakimi_common::KnowledgeSearcher> = knowledge_provider;
+
     info!(count = builtin_tools.len(), "registered built-in tools");
 
     // Build agent
-    let agent = hakimi_core::AIAgent::builder()
+    let mut agent = hakimi_core::AIAgent::builder()
         .model(&model)
         .transport(transport)
         .context_engine(context_engine)
         .tool_registry(tool_registry)
+        .knowledge_searcher(knowledge_searcher)
         .max_iterations(config.agent.max_turns)
         .workdir(&config.terminal.cwd)
         .build()?;
+    agent = agent.with_embedding_provider(embedding_provider);
 
     info!(model = %model, "agent built successfully");
     Ok(agent)

@@ -5,6 +5,20 @@ use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
 
+const TOOL_CHAT_PREVIEW_CHARS: usize = 120;
+const TOOL_PANEL_PREVIEW_CHARS: usize = 80;
+
+fn compact_one_line(input: &str, max_chars: usize) -> String {
+    let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = compact.chars();
+    let preview: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{preview}…")
+    } else {
+        preview
+    }
+}
+
 /// The main application state.
 pub struct App {
     /// Chat messages displayed in the main panel.
@@ -244,24 +258,15 @@ impl App {
                 }
 
                 AgentEvent::ToolCall { name, arguments } => {
-                    // Show in chat
-                    let args_preview: String = arguments.chars().take(200).collect();
-                    self.messages.push(ChatMessage::tool(
-                        &name,
-                        format!("calling with: {args_preview}"),
-                    ));
+                    // Show a compact one-line summary in chat. Full arguments remain in the model history/logs.
+                    let args_preview = compact_one_line(&arguments, TOOL_CHAT_PREVIEW_CHARS);
+                    self.messages
+                        .push(ChatMessage::tool(&name, format!("call: {args_preview}")));
 
                     // Show in tool activity panel
                     self.tool_activity.push(ToolActivity {
                         name: name.clone(),
-                        arguments_summary: {
-                            let preview: String = arguments.chars().take(80).collect();
-                            if arguments.len() > 80 {
-                                format!("{preview}...")
-                            } else {
-                                preview
-                            }
-                        },
+                        arguments_summary: compact_one_line(&arguments, TOOL_PANEL_PREVIEW_CHARS),
                         status: ToolStatus::Running,
                         timestamp: Utc::now(),
                     });
@@ -288,17 +293,14 @@ impl App {
                         };
                     }
 
-                    // Show result in chat (truncated)
-                    let preview: String = content.chars().take(500).collect();
-                    let suffix = if content.len() > 500 { "..." } else { "" };
+                    // Show a compact one-line result summary in chat.
+                    let preview = compact_one_line(&content, TOOL_CHAT_PREVIEW_CHARS);
                     if is_error {
                         self.messages
-                            .push(ChatMessage::error(format!("[{name}] {preview}{suffix}")));
+                            .push(ChatMessage::error(format!("[{name}] {preview}")));
                     } else {
-                        self.messages.push(ChatMessage::tool(
-                            &name,
-                            format!("result: {preview}{suffix}"),
-                        ));
+                        self.messages
+                            .push(ChatMessage::tool(&name, format!("result: {preview}")));
                     }
 
                     self.scroll_offset = 0;
@@ -393,6 +395,48 @@ mod tests {
     // ---------------------------------------------------------------
     // App::new initial state
     // ---------------------------------------------------------------
+
+    #[test]
+    fn compact_one_line_collapses_whitespace_and_truncates() {
+        let text = "first line\nsecond    line\tthird line and a long tail";
+        let compact = compact_one_line(text, 24);
+        assert_eq!(compact, "first line second line t…");
+        assert!(!compact.contains('\n'));
+        assert!(!compact.contains('\t'));
+    }
+
+    #[test]
+    fn poll_tool_messages_are_single_line_and_short() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+
+        event_tx
+            .send(crate::AgentEvent::ToolCall {
+                name: "bash".to_string(),
+                arguments: "{\n  \"command\": \"printf 'hello\\nworld' && echo done\"\n}".repeat(8),
+            })
+            .unwrap();
+        event_tx
+            .send(crate::AgentEvent::ToolResult {
+                name: "bash".to_string(),
+                content: "line1\nline2\nline3 ".repeat(20),
+                is_error: false,
+            })
+            .unwrap();
+
+        app.poll_agent_events();
+        let tool_messages: Vec<_> = app
+            .messages
+            .iter()
+            .filter(|m| m.role == crate::Role::Tool)
+            .collect();
+        assert_eq!(tool_messages.len(), 2);
+        for msg in tool_messages {
+            assert!(!msg.content.contains('\n'));
+            assert!(msg.content.chars().count() <= TOOL_CHAT_PREVIEW_CHARS + 32);
+        }
+    }
 
     #[test]
     fn new_app_has_welcome_message() {
