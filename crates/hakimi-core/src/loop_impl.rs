@@ -341,7 +341,7 @@ async fn process_tool_calls(
                 };
                 // Truncate long strings but keep them readable
                 let v_trunc = if v_str.len() > 40 {
-                    format!("{}...", &v_str[..40].replace('\n', " "))
+                    format!("{}...", v_str[..40].replace('\n', " "))
                 } else {
                     v_str.replace('\n', " ")
                 };

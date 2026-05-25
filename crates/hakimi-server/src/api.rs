@@ -147,10 +147,10 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCod
     let password =
         std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_else(|_| "password123".to_string());
 
-    if let Some(auth) = auth_header {
-        if auth == format!("Bearer {}", password) {
-            return Ok(next.run(req).await);
-        }
+    if let Some(auth) = auth_header
+        && auth == format!("Bearer {}", password)
+    {
+        return Ok(next.run(req).await);
     }
 
     Err(StatusCode::UNAUTHORIZED)

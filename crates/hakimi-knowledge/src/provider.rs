@@ -167,22 +167,21 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
     }
 
     async fn prefetch(&self, query: &str) -> String {
-        if let Ok(Some(value)) = self.vector_search_json(query, 5).await {
-            if let Some(results) = value.get("results").and_then(|v| v.as_array()) {
-                if !results.is_empty() {
-                    let mut lines = vec!["Knowledge vector matches:".to_string()];
-                    for result in results {
-                        let score = result.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                        let kind = result
-                            .get("kind")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("item");
-                        let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                        lines.push(format!("- [{kind}] score={score:.3} {text}"));
-                    }
-                    return lines.join("\n");
-                }
+        if let Ok(Some(value)) = self.vector_search_json(query, 5).await
+            && let Some(results) = value.get("results").and_then(|v| v.as_array())
+            && !results.is_empty()
+        {
+            let mut lines = vec!["Knowledge vector matches:".to_string()];
+            for result in results {
+                let score = result.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let kind = result
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("item");
+                let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                lines.push(format!("- [{kind}] score={score:.3} {text}"));
             }
+            return lines.join("\n");
         }
 
         let store = self.store.lock().await;
