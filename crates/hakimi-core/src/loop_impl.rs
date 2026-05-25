@@ -374,6 +374,17 @@ async fn fetch_streaming_response(
 }
 
 /// Process tool calls: append assistant message, check guardrails, dispatch tools.
+fn truncate_for_tool_notice(value: &str, max_chars: usize) -> String {
+    let normalized = value.replace('\n', " ");
+    let mut chars = normalized.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
+
 async fn process_tool_calls(
     agent: &mut AIAgent,
     response: &NormalizedResponse,
@@ -416,11 +427,7 @@ async fn process_tool_calls(
                     v.to_string()
                 };
                 // Truncate long strings but keep them readable
-                let v_trunc = if v_str.len() > 40 {
-                    format!("{}...", v_str[..40].replace('\n', " "))
-                } else {
-                    v_str.replace('\n', " ")
-                };
+                let v_trunc = truncate_for_tool_notice(&v_str, 40);
                 parts.push(format!("{}: {}", k, v_trunc));
             }
             if !parts.is_empty() {
@@ -678,7 +685,7 @@ fn accumulator_to_response(acc: &StreamAccumulator) -> NormalizedResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::append_text_preserving_layout;
+    use super::{append_text_preserving_layout, truncate_for_tool_notice};
 
     #[test]
     fn append_streamed_cjk_chunks_without_spaces() {
@@ -694,5 +701,20 @@ mod tests {
         let mut out = String::from("hello");
         append_text_preserving_layout(&mut out, "world");
         assert_eq!(out, "hello world");
+    }
+
+    #[test]
+    fn truncate_tool_notice_is_utf8_safe_for_chinese() {
+        let input = "[\"我想配置 OpenAI 反代 API\",\"我想配置 Anthropic/Claude 反代 API\",\"我需要查看当前的环境变量配置\",\"我不确定，请先帮我看看当前设置\"]";
+        let truncated = truncate_for_tool_notice(input, 40);
+
+        assert!(truncated.ends_with("..."));
+        assert!(truncated.is_char_boundary(truncated.len()));
+        assert!(truncated.contains("我想配置 OpenAI 反代 API"));
+    }
+
+    #[test]
+    fn truncate_tool_notice_replaces_newlines_without_truncating_short_text() {
+        assert_eq!(truncate_for_tool_notice("hello\nworld", 40), "hello world");
     }
 }
