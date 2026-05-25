@@ -2066,9 +2066,7 @@ fn restart_gateway_service() -> Result<()> {
         .arg(&service)
         .status()?;
     if !status.success() {
-        anyhow::bail!(
-            "failed to restart gateway service `{service}` (exit status: {status})"
-        );
+        anyhow::bail!("failed to restart gateway service `{service}` (exit status: {status})");
     }
 
     println!("✅ Gateway service `{service}` restarted.");
