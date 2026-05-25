@@ -33,18 +33,13 @@ const DEFAULT_POLL_LIMIT: usize = 50;
 const DEFAULT_CHANNEL_VERSION: &str = "1.0.2";
 const DEFAULT_APP_CLIENT_VERSION: &str = "2.4.3";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ClawBotMode {
+    #[default]
     HttpBridge,
     WeClawBotApi,
     IlinkNative,
-}
-
-impl Default for ClawBotMode {
-    fn default() -> Self {
-        Self::HttpBridge
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -723,7 +718,7 @@ async fn ilink_get_qrcode_status(
     .await
     .context("failed to request iLink QR status")?;
     let body = ensure_success_json(resp, "iLink get_qrcode_status").await?;
-    Ok(serde_json::from_value(body).context("failed to parse iLink QR status")?)
+    serde_json::from_value(body).context("failed to parse iLink QR status")
 }
 
 async fn ilink_poll_once(
@@ -906,7 +901,7 @@ fn load_ilink_state(config: &ClawBotAdapterConfig) -> Result<IlinkStoredState> {
     }
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("failed to read iLink state from {}", path.display()))?;
-    Ok(serde_json::from_str(&text).context("failed to parse iLink state")?)
+    serde_json::from_str(&text).context("failed to parse iLink state")
 }
 
 fn save_ilink_state(config: &ClawBotAdapterConfig, state: &IlinkStoredState) -> Result<()> {
