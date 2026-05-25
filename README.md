@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.61-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.62-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.62 Delegate Progress Bubbles**:
+  - **One Bubble per Delegate/Child Agent**: `delegate_task` now streams progress into stable Telegram bubbles instead of going silent until the final result.
+  - **Live Container Updates**: each child agent gets a titled container and the gateway edits that same message with timestamped progress lines.
+  - **No Mixed Output**: delegate progress is routed separately from assistant prose and normal tool-call status, preserving clean chat bubbles.
 - **v0.3.61 Processing Placeholder Recovery**:
   - **No Stuck `✨ Processing...`**: Gateway now tracks whether any assistant prose actually rendered through the streaming callback; if providers return final text without content deltas, Hakimi edits the initial placeholder with the final response instead of leaving it visible.
   - **Error Bubble Cleanup**: errors now overwrite the same placeholder message, so Telegram users see the actual failure instead of a permanent loading state.

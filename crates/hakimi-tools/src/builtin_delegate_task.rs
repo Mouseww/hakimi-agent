@@ -122,24 +122,17 @@ impl Tool for DelegateTaskTool {
             "Delegating task(s) via ToolContext"
         );
 
-        if let (Some(target), Ok(mut q)) = (
-            &ctx.user_id,
-            crate::builtin_send_message::MESSAGE_QUEUE.lock(),
-        ) {
-            let msg_text = if batch_tasks.len() == 1 {
-                format!("🤖 Spawning sub-agent task:\n🎯 Goal: {}", batch_tasks[0].0)
+        if let Some(progress) = &ctx.progress_callback {
+            let title = if batch_tasks.len() == 1 {
+                "delegate_task · 1 个子任务".to_string()
             } else {
-                format!(
-                    "🤖 Spawning {} concurrent sub-agent tasks!",
-                    batch_tasks.len()
-                )
+                format!("delegate_task · {} 个并发子任务", batch_tasks.len())
             };
-            q.push_back(crate::builtin_send_message::QueuedMessage {
-                target: target.clone(),
-                message: msg_text,
-                session_id: ctx.session_id.clone(),
-                queued_at: chrono::Utc::now().to_rfc3339(),
-            });
+            progress(format!(
+                "\u{001e}hakimi_delegate:delegate_parent|{}|准备委派任务|{}",
+                title,
+                chrono::Local::now().format("%H:%M:%S")
+            ));
         }
 
         if let Some(executor) = &ctx.delegate_executor {

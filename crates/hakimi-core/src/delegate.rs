@@ -4,11 +4,50 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use hakimi_common::{DelegateExecutor, HakimiError, Result};
+use hakimi_common::{DelegateExecutor, HakimiError, Result, ToolProgressCallback};
 use hakimi_tools::ToolRegistry;
 use hakimi_transports::ProviderTransport;
 use tokio::sync::{RwLock, Semaphore};
 use tracing::info;
+
+fn now_progress_timestamp() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() % 86_400)
+        .unwrap_or(0);
+    let hour = secs / 3_600;
+    let minute = (secs % 3_600) / 60;
+    let second = secs % 60;
+    format!("{hour:02}:{minute:02}:{second:02}")
+}
+
+fn truncate_progress_text(value: &str, max_chars: usize) -> String {
+    let normalized = value.replace('\n', " ");
+    let mut chars = normalized.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
+
+fn emit_delegate_progress(
+    callback: &Option<ToolProgressCallback>,
+    task_id: &str,
+    title: &str,
+    line: impl AsRef<str>,
+) {
+    if let Some(cb) = callback {
+        cb(format!(
+            "\u{001e}hakimi_delegate:{}|{}|{}|{}",
+            task_id,
+            title,
+            line.as_ref(),
+            now_progress_timestamp()
+        ));
+    }
+}
 
 /// Default timeout for child agent execution (60 seconds).
 const DEFAULT_DELEGATION_TIMEOUT: Duration = Duration::from_secs(60);
@@ -65,6 +104,7 @@ pub struct CoreDelegateExecutor {
     tool_registry: ToolRegistry,
     workdir: String,
     skill_store: Option<hakimi_skills::SkillStore>,
+    progress_callback: Option<ToolProgressCallback>,
     task_queue: Arc<RwLock<TaskQueue>>,
     semaphore: Arc<Semaphore>,
 }
@@ -78,6 +118,7 @@ impl CoreDelegateExecutor {
         tool_registry: ToolRegistry,
         workdir: String,
         skill_store: Option<hakimi_skills::SkillStore>,
+        progress_callback: Option<ToolProgressCallback>,
     ) -> Self {
         Self {
             transport,
@@ -86,6 +127,7 @@ impl CoreDelegateExecutor {
             tool_registry,
             workdir,
             skill_store,
+            progress_callback,
             task_queue: Arc::new(RwLock::new(TaskQueue::new())),
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_DELEGATIONS)),
         }
@@ -126,6 +168,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
             let transport = self.transport.clone();
             let parent_model = self.model.clone();
             let parent_skill_store = self.skill_store.clone();
+            let progress_callback = self.progress_callback.clone();
             let all_tool_names = self.tool_registry.list().await;
 
             // Build a filtered tool registry for this child
@@ -143,18 +186,43 @@ impl DelegateExecutor for CoreDelegateExecutor {
 
             // Generate a unique session ID for the child
             let child_session_id = format!("child_{}", uuid::Uuid::new_v4().simple());
+            let child_label = child_session_id.chars().rev().take(6).collect::<String>();
+            let progress_task_id = child_session_id.clone();
+            let progress_title = format!(
+                "子代理 {} · {}",
+                child_label,
+                truncate_progress_text(&goal, 32)
+            );
+            emit_delegate_progress(
+                &progress_callback,
+                &progress_task_id,
+                &progress_title,
+                "已创建子代理",
+            );
 
             // Optionally, we could create an isolated sub-directory for the child's workdir here.
             // For now, we share the parent's workdir but they run in parallel.
 
             let future = async move {
                 // Acquire a permit before spawning a child agent to control concurrency.
+                emit_delegate_progress(
+                    &progress_callback,
+                    &progress_task_id,
+                    &progress_title,
+                    "等待并发执行许可",
+                );
                 let _permit = semaphore.acquire().await.map_err(|e| {
                     HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
                 })?;
 
                 let mut attempts = 0;
                 let max_attempts = 3;
+                emit_delegate_progress(
+                    &progress_callback,
+                    &progress_task_id,
+                    &progress_title,
+                    "开始执行任务",
+                );
 
                 loop {
                     attempts += 1;
@@ -186,17 +254,64 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     );
                     child_agent.set_system_prompt(system_prompt);
                     child_agent.set_session_id(child_session_id.clone());
+                    if let Some(parent_progress) = progress_callback.clone() {
+                        let child_progress_task_id = progress_task_id.clone();
+                        let child_progress_title = progress_title.clone();
+                        child_agent.set_streaming_callback(Some(std::sync::Arc::new(
+                            move |token: String| {
+                                if let Some(tool_notice) =
+                                    token.strip_prefix("\u{001e}hakimi_tool:")
+                                {
+                                    emit_delegate_progress(
+                                        &Some(parent_progress.clone()),
+                                        &child_progress_task_id,
+                                        &child_progress_title,
+                                        tool_notice.trim(),
+                                    );
+                                } else if let Some(review_notice) =
+                                    token.strip_prefix("\u{001e}hakimi_review:")
+                                {
+                                    emit_delegate_progress(
+                                        &Some(parent_progress.clone()),
+                                        &child_progress_task_id,
+                                        &child_progress_title,
+                                        review_notice.trim(),
+                                    );
+                                }
+                            },
+                        )));
+                    }
                     // Not mounting the parent's ContextEngine so the child runs with clean context.
 
                     // Execute
                     match child_agent.run_conversation(&goal).await {
-                        Ok(res) => return Ok(res.final_response),
+                        Ok(res) => {
+                            emit_delegate_progress(
+                                &progress_callback,
+                                &progress_task_id,
+                                &progress_title,
+                                "完成，返回结果",
+                            );
+                            return Ok(res.final_response);
+                        }
                         Err(e) => {
                             if attempts >= max_attempts {
+                                emit_delegate_progress(
+                                    &progress_callback,
+                                    &progress_task_id,
+                                    &progress_title,
+                                    format!("失败: {e}"),
+                                );
                                 return Err(HakimiError::Tool(format!(
                                     "Child agent failed after {max_attempts} attempts: {e}"
                                 )));
                             }
+                            emit_delegate_progress(
+                                &progress_callback,
+                                &progress_task_id,
+                                &progress_title,
+                                format!("第 {} 次失败，准备重试", attempts),
+                            );
                             tracing::warn!(
                                 error = %e,
                                 attempt = attempts,

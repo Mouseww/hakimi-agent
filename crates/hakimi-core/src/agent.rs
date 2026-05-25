@@ -435,6 +435,7 @@ impl AIAgent {
                 self.tool_registry.clone(),
                 self.workdir.clone(),
                 self.skill_store.clone(),
+                self.streaming_callback.clone(),
             )));
 
         ToolContext {
@@ -445,6 +446,7 @@ impl AIAgent {
             model: Some(self.model.clone()),
             delegate_executor,
             knowledge_searcher: self.knowledge_searcher.clone(),
+            progress_callback: self.streaming_callback.clone(),
             tts_provider: None,
             tts_model: None,
         }

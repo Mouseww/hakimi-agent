@@ -16,6 +16,76 @@ use crate::Command;
 enum GatewayStreamUiEvent {
     Content(String),
     Tool(String),
+    Delegate(DelegateProgressEvent),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DelegateProgressEvent {
+    task_id: String,
+    title: String,
+    line: String,
+    timestamp: String,
+}
+
+impl DelegateProgressEvent {
+    fn parse(raw: &str) -> Option<Self> {
+        let mut parts = raw.splitn(4, '|');
+        let task_id = parts.next()?.trim();
+        let title = parts.next()?.trim();
+        let line = parts.next()?.trim();
+        let timestamp = parts.next()?.trim();
+        if task_id.is_empty() || title.is_empty() || line.is_empty() || timestamp.is_empty() {
+            return None;
+        }
+        Some(Self {
+            task_id: task_id.to_string(),
+            title: title.to_string(),
+            line: line.to_string(),
+            timestamp: timestamp.to_string(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct DelegateProgressBubble {
+    title: String,
+    lines: Vec<(String, String)>,
+    message_id: Option<i64>,
+}
+
+impl DelegateProgressBubble {
+    fn push(&mut self, event: DelegateProgressEvent) {
+        self.title = event.title;
+        if self
+            .lines
+            .last()
+            .map(|(line, _)| line.as_str() == event.line.as_str())
+            .unwrap_or(false)
+        {
+            if let Some((_, ts)) = self.lines.last_mut() {
+                *ts = event.timestamp;
+            }
+            return;
+        }
+        self.lines.push((event.line, event.timestamp));
+        const MAX_PROGRESS_LINES: usize = 14;
+        if self.lines.len() > MAX_PROGRESS_LINES {
+            let overflow = self.lines.len() - MAX_PROGRESS_LINES;
+            self.lines.drain(0..overflow);
+        }
+    }
+
+    fn render(&self) -> String {
+        let mut out = format!("**{}**\n```text\n", self.title);
+        for (line, timestamp) in &self.lines {
+            out.push_str(line);
+            out.push_str("  ");
+            out.push_str(timestamp);
+            out.push('\n');
+        }
+        out.push_str("```");
+        out
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1582,6 +1652,8 @@ async fn start_gateway(
                     let handle = tokio::spawn(async move {
                         let mut current_message_id = Some(msg_id);
                         let mut ui_state = GatewayStreamUiState::default();
+                        let mut delegate_bubbles: HashMap<String, DelegateProgressBubble> =
+                            HashMap::new();
                         let mut pending_events: VecDeque<GatewayStreamUiEvent> = VecDeque::new();
 
                         loop {
@@ -1601,7 +1673,8 @@ async fn start_gateway(
                                             GatewayStreamUiEvent::Content(token) => {
                                                 text.push_str(&token);
                                             }
-                                            GatewayStreamUiEvent::Tool(_) => {
+                                            GatewayStreamUiEvent::Tool(_)
+                                            | GatewayStreamUiEvent::Delegate(_) => {
                                                 pending_events.push_back(next);
                                                 break;
                                             }
@@ -1665,6 +1738,41 @@ async fn start_gateway(
                                     current_message_id = None;
                                     ui_state.finish_tool_boundary();
                                 }
+                                GatewayStreamUiEvent::Delegate(event) => {
+                                    let task_id = event.task_id.clone();
+                                    let bubble = delegate_bubbles.entry(task_id).or_default();
+                                    bubble.push(event);
+                                    let rendered = bubble.render();
+
+                                    if let Some(progress_msg_id) = bubble.message_id {
+                                        let _ = gateway_cb
+                                            .edit_message(
+                                                &platform_cb,
+                                                &bot_id_cb,
+                                                &chat_id_cb,
+                                                progress_msg_id,
+                                                &rendered,
+                                            )
+                                            .await;
+                                    } else {
+                                        let msg = hakimi_gateway::GatewayMessage {
+                                            platform: platform_cb.clone(),
+                                            bot_id: bot_id_cb.clone(),
+                                            chat_id: chat_id_cb.clone(),
+                                            user_id: String::new(),
+                                            text: rendered,
+                                            media: None,
+                                        };
+                                        bubble.message_id = gateway_cb
+                                            .route_message_get_id(&msg)
+                                            .await
+                                            .ok()
+                                            .flatten();
+                                    }
+
+                                    current_message_id = None;
+                                    ui_state.finish_tool_boundary();
+                                }
                             }
                         }
                     });
@@ -1682,6 +1790,14 @@ async fn start_gateway(
                             let text = tool_notice.trim().to_string();
                             if !text.is_empty() {
                                 let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                            }
+                            return;
+                        }
+                        if let Some(delegate_notice) =
+                            token.strip_prefix("\u{001e}hakimi_delegate:")
+                        {
+                            if let Some(event) = DelegateProgressEvent::parse(delegate_notice) {
+                                let _ = ui_tx.send(GatewayStreamUiEvent::Delegate(event));
                             }
                             return;
                         }
@@ -1972,9 +2088,43 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        GatewayChatTurnTracker, GatewayStreamUiState, GatewayUiContentTarget,
-        should_edit_initial_gateway_message,
+        DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
+        GatewayStreamUiState, GatewayUiContentTarget, should_edit_initial_gateway_message,
     };
+
+    #[test]
+    fn delegate_progress_bubble_renders_single_container_with_timestamps() {
+        let event =
+            DelegateProgressEvent::parse("child_1|子代理 1 · 检查代码|开始执行任务|09:01:02")
+                .unwrap();
+        let mut bubble = DelegateProgressBubble::default();
+        bubble.push(event);
+        bubble.push(
+            DelegateProgressEvent::parse(
+                "child_1|子代理 1 · 检查代码|⚙️ search_files (pattern: delegate)|09:01:05",
+            )
+            .unwrap(),
+        );
+
+        assert_eq!(bubble.title, "子代理 1 · 检查代码");
+        assert_eq!(bubble.lines.len(), 2);
+        assert_eq!(
+            bubble.render(),
+            "**子代理 1 · 检查代码**\n```text\n开始执行任务  09:01:02\n⚙️ search_files (pattern: delegate)  09:01:05\n```"
+        );
+    }
+
+    #[test]
+    fn delegate_progress_bubble_updates_duplicate_line_timestamp() {
+        let mut bubble = DelegateProgressBubble::default();
+        bubble
+            .push(DelegateProgressEvent::parse("child_1|任务|等待并发执行许可|09:01:02").unwrap());
+        bubble
+            .push(DelegateProgressEvent::parse("child_1|任务|等待并发执行许可|09:01:03").unwrap());
+
+        assert_eq!(bubble.lines.len(), 1);
+        assert_eq!(bubble.lines[0].1, "09:01:03");
+    }
 
     #[test]
     fn streaming_tokens_are_appended_verbatim_without_inserted_spaces() {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hakimi_common::{DelegateExecutor, KnowledgeSearcher, ToolContext};
+use hakimi_common::{DelegateExecutor, KnowledgeSearcher, ToolContext, ToolProgressCallback};
 
 /// Builder for constructing a [`ToolContext`].
 #[derive(Clone, Default)]
@@ -14,6 +14,7 @@ pub struct ToolContextBuilder {
     tts_provider: Option<String>,
     tts_model: Option<String>,
     knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
+    progress_callback: Option<ToolProgressCallback>,
 }
 
 impl std::fmt::Debug for ToolContextBuilder {
@@ -26,6 +27,7 @@ impl std::fmt::Debug for ToolContextBuilder {
             .field("model", &self.model)
             .field("delegate_executor", &self.delegate_executor.is_some())
             .field("knowledge_searcher", &self.knowledge_searcher.is_some())
+            .field("progress_callback", &self.progress_callback.is_some())
             .finish()
     }
 }
@@ -90,6 +92,12 @@ impl ToolContextBuilder {
         self
     }
 
+    /// Set the progress callback for long-running tools.
+    pub fn progress_callback(mut self, callback: ToolProgressCallback) -> Self {
+        self.progress_callback = Some(callback);
+        self
+    }
+
     /// Build the [`ToolContext`].
     ///
     /// # Panics
@@ -105,6 +113,7 @@ impl ToolContextBuilder {
             model: self.model,
             delegate_executor: self.delegate_executor,
             knowledge_searcher: self.knowledge_searcher,
+            progress_callback: self.progress_callback,
             tts_provider: self.tts_provider,
             tts_model: self.tts_model,
         }
@@ -127,6 +136,7 @@ impl ToolContextBuilder {
             model: self.model,
             delegate_executor: self.delegate_executor,
             knowledge_searcher: self.knowledge_searcher,
+            progress_callback: self.progress_callback,
             tts_provider: self.tts_provider,
             tts_model: self.tts_model,
         })

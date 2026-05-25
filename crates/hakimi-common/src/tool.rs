@@ -51,6 +51,10 @@ pub struct ToolDefinition {
     pub parameters: JsonValue,
 }
 
+/// Callback used by long-running tools to surface progress back to the parent
+/// agent UI without waiting for the tool's final result.
+pub type ToolProgressCallback = Arc<dyn Fn(String) + Send + Sync>;
+
 /// Trait for executing delegated sub-tasks via child agents.
 ///
 /// Implementors hold the shared resources (transport, context engine, model,
@@ -123,6 +127,11 @@ pub struct ToolContext {
     /// Searcher for accessing the knowledge base.
     #[serde(skip)]
     pub knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
+
+    /// Optional callback for long-running tools to stream progress/status back
+    /// through the parent agent UI.
+    #[serde(skip)]
+    pub progress_callback: Option<ToolProgressCallback>,
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -135,6 +144,7 @@ impl std::fmt::Debug for ToolContext {
             .field("model", &self.model)
             .field("delegate_executor", &self.delegate_executor.is_some())
             .field("knowledge_searcher", &self.knowledge_searcher.is_some())
+            .field("progress_callback", &self.progress_callback.is_some())
             .finish()
     }
 }
