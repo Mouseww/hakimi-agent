@@ -144,8 +144,7 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCod
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
-    let password =
-        std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_else(|_| "password123".to_string());
+    let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
 
     if let Some(auth) = auth_header
         && auth == format!("Bearer {}", password)
@@ -167,8 +166,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/config", get(get_config))
         .route("/config", post(update_config));
 
-    let password =
-        std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_else(|_| "password123".to_string());
+    let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
         api_routes = api_routes.route_layer(middleware::from_fn(auth_middleware));
     }
