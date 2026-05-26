@@ -95,7 +95,11 @@ impl Tool for TextToSpeechTool {
                 std::env::var("HAKIMI_TTS_PROVIDER").unwrap_or_else(|_| "openai".to_string())
             });
 
-        let voice = args.get("voice").and_then(|v| v.as_str()).map(String::from);
+        let voice = args
+            .get("voice")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or_else(|| ctx.tts_voice.clone().filter(|s| !s.is_empty()));
 
         let output_path = args
             .get("output_path")
@@ -148,9 +152,10 @@ async fn generate_openai_tts(
     output_path: Option<PathBuf>,
     ctx: &ToolContext,
 ) -> Result<PathBuf> {
-    let config_api_key: Option<String> = None;
-
-    let api_key = config_api_key
+    let api_key = ctx
+        .tts_api_key
+        .clone()
+        .filter(|s| !s.is_empty())
         .or_else(|| std::env::var("HAKIMI_TTS_API_KEY").ok())
         .ok_or_else(|| {
             HakimiError::Tool(
@@ -160,9 +165,10 @@ async fn generate_openai_tts(
             )
         })?;
 
-    let config_base_url: Option<String> = None;
-
-    let base_url = config_base_url
+    let base_url = ctx
+        .tts_base_url
+        .clone()
+        .filter(|s| !s.is_empty())
         .or_else(|| std::env::var("HAKIMI_TTS_BASE_URL").ok())
         .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
 

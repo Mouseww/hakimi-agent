@@ -416,6 +416,10 @@ pub struct VoiceConfig {
     #[serde(default)]
     pub voice: String,
 
+    /// Default transcription model (e.g. "whisper-1").
+    #[serde(default)]
+    pub transcription_model: String,
+
     /// Base URL for the TTS API.
     #[serde(default)]
     pub base_url: String,
@@ -439,6 +443,7 @@ impl Default for VoiceConfig {
             provider: default_voice_provider(),
             model: String::new(),
             voice: String::new(),
+            transcription_model: String::new(),
             base_url: String::new(),
             api_key: String::new(),
             auto_play: false,

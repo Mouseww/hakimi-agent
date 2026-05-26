@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.68-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.69-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.69 Speech Transcription Tooling**:
+  - **`transcribe_audio` Built-in Tool**: Hakimi can now transcribe local audio files or remote audio URLs through an OpenAI-compatible `/audio/transcriptions` API.
+  - **Shared Voice Runtime Config**: `voice.provider`, `voice.base_url`, `voice.api_key`, `voice.model`, `voice.voice`, and the new `voice.transcription_model` now flow into media tools instead of relying only on environment variables.
+  - **Clearer Voice Roadmap**: speech-to-text parity is now covered by a real tool, while CLI push-to-talk remains a separate remaining gap.
 - **v0.3.68 Real Telegram Stop/Restart + Reliable Self Update**:
   - **Real `/stop` Cancellation**: Telegram `/stop` now cancels the active per-chat gateway turn instead of only clearing the streaming callback, so long-running LLM/tool operations stop promptly.
   - **Telegram `/restart` Command**: `/restart` is parsed, handled by gateway mode, and exposed through Telegram Bot commands to restart the managed Hakimi gateway service.
@@ -186,7 +190,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - Auto-generates reusable YAML skill files from extracted patterns
 - Pattern merging and confidence scoring
 
-### 🛠️ 30 Built-in Tools
+### 🛠️ 31 Built-in Tools
 
 - **Files**: read_file, write_file, search_files, patch
 - **Shell**: terminal, process (background process management)
@@ -194,7 +198,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
 - **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium automation)
-- **Media**: vision_analyze (image analysis), image_generate, text_to_speech
+- **Media**: vision_analyze (image analysis), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
 - **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
@@ -276,7 +280,7 @@ The legacy bridge accepts common inbound aliases such as `messages`/`data`, `cha
 
 Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
 
-Telegram now uploads generated local images directly and delivers generated TTS files as native audio messages, so `image_generate` / `text_to_speech` results can reach gateway users without manually copying file paths.
+Telegram now uploads generated local images directly and delivers generated TTS files as native audio messages, so `image_generate` / `text_to_speech` results can reach gateway users without manually copying file paths. For voice input flows, Hakimi now also exposes `transcribe_audio` for local files and remote audio URLs; CLI push-to-talk remains future work.
 
 ### 🧠 Smart Context Compression
 
@@ -439,7 +443,7 @@ cargo clippy --workspace
 - [x] **Meta-skill auto-extraction**
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
-- [ ] Voice input/output
+- [ ] CLI voice mode (push-to-talk capture + playback)
 
 ---
 

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{Value as JsonValue, json};
+use std::borrow::Cow;
 use tokio::process::Command;
 use tracing::debug;
 
@@ -75,9 +76,9 @@ impl Tool for CodeExecTool {
 
         // Determine interpreter and file extension
         let (interpreter, extension) = match language {
-            "python" => ("python3", ".py"),
-            "javascript" => ("node", ".js"),
-            "bash" => ("bash", ".sh"),
+            "python" => (resolve_python_interpreter(), ".py"),
+            "javascript" => (Cow::Borrowed("node"), ".js"),
+            "bash" => (resolve_bash_interpreter(), ".sh"),
             _ => {
                 return Err(HakimiError::Tool(format!(
                     "unsupported language '{}'. Supported: python, javascript, bash.",
@@ -196,7 +197,7 @@ def retry(fn, max_attempts=3, delay=2):
         // Execute the code
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
-            Command::new(interpreter)
+            Command::new(interpreter.as_ref())
                 .env("PYTHONPATH", temp_dir.to_str().unwrap_or_default())
                 .arg(&temp_file)
                 .current_dir(&ctx.workdir)
@@ -253,10 +254,48 @@ def retry(fn, max_attempts=3, delay=2):
     }
 }
 
+fn resolve_python_interpreter() -> Cow<'static, str> {
+    #[cfg(windows)]
+    {
+        for candidate in ["python", "python3"] {
+            if command_exists(candidate) {
+                return Cow::Borrowed(candidate);
+            }
+        }
+    }
+    Cow::Borrowed("python3")
+}
+
+fn resolve_bash_interpreter() -> Cow<'static, str> {
+    #[cfg(windows)]
+    {
+        for candidate in [
+            "C:/Program Files/Git/bin/bash.exe",
+            "C:/msys64/usr/bin/bash.exe",
+            "C:/msys64/mingw64/bin/bash.exe",
+        ] {
+            if std::path::Path::new(candidate).exists() {
+                return Cow::Owned(candidate.to_string());
+            }
+        }
+    }
+    Cow::Borrowed("bash")
+}
+
+#[cfg(windows)]
+fn command_exists(command: &str) -> bool {
+    std::process::Command::new("where")
+        .arg(command)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use hakimi_common::ToolContext;
+    use tempfile::TempDir;
 
     fn test_ctx(workdir: &str) -> ToolContext {
         ToolContext {
@@ -268,6 +307,12 @@ mod tests {
             delegate_executor: None,
             ..Default::default()
         }
+    }
+
+    fn make_test_ctx() -> (TempDir, ToolContext) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ctx = test_ctx(&dir.path().to_string_lossy());
+        (dir, ctx)
     }
 
     #[test]
@@ -294,7 +339,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_python_code() {
-        let ctx = test_ctx("/tmp");
+        let (_dir, ctx) = make_test_ctx();
         let args = json!({
             "code": "print('hello from python')",
             "language": "python"
@@ -308,7 +353,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_bash_code() {
-        let ctx = test_ctx("/tmp");
+        let (_dir, ctx) = make_test_ctx();
         let args = json!({
             "code": "echo 'hello from bash'",
             "language": "bash"
@@ -322,7 +367,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_python_default_language() {
-        let ctx = test_ctx("/tmp");
+        let (_dir, ctx) = make_test_ctx();
         let args = json!({
             "code": "print(2 + 2)"
         });
@@ -334,7 +379,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_with_stderr() {
-        let ctx = test_ctx("/tmp");
+        let (_dir, ctx) = make_test_ctx();
         let args = json!({
             "code": "import sys; sys.stderr.write('error output\\n')",
             "language": "python"
@@ -347,7 +392,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_nonzero_exit_code() {
-        let ctx = test_ctx("/tmp");
+        let (_dir, ctx) = make_test_ctx();
         let args = json!({
             "code": "import sys; sys.exit(42)",
             "language": "python"
@@ -359,7 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unsupported_language_error() {
-        let ctx = test_ctx("/tmp");
+        let (_dir, ctx) = make_test_ctx();
         let args = json!({
             "code": "print('hello')",
             "language": "haskell"
@@ -370,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_missing_code_error() {
-        let ctx = test_ctx("/tmp");
+        let (_dir, ctx) = make_test_ctx();
         let args = json!({"language": "python"});
         let err = CodeExecTool.execute(&args, &ctx).await.unwrap_err();
         assert!(format!("{err}").contains("code"));

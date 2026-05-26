@@ -35,6 +35,15 @@ pub struct AIAgent {
     pub(crate) knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
     pub(crate) embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
+    pub(crate) tts_provider: Option<String>,
+    pub(crate) tts_model: Option<String>,
+    pub(crate) tts_base_url: Option<String>,
+    pub(crate) tts_api_key: Option<String>,
+    pub(crate) tts_voice: Option<String>,
+    pub(crate) transcription_provider: Option<String>,
+    pub(crate) transcription_model: Option<String>,
+    pub(crate) transcription_base_url: Option<String>,
+    pub(crate) transcription_api_key: Option<String>,
 }
 
 impl Clone for AIAgent {
@@ -58,6 +67,15 @@ impl Clone for AIAgent {
             knowledge_searcher: self.knowledge_searcher.clone(),
             embedding_provider: self.embedding_provider.clone(),
             skill_store: self.skill_store.clone(),
+            tts_provider: self.tts_provider.clone(),
+            tts_model: self.tts_model.clone(),
+            tts_base_url: self.tts_base_url.clone(),
+            tts_api_key: self.tts_api_key.clone(),
+            tts_voice: self.tts_voice.clone(),
+            transcription_provider: self.transcription_provider.clone(),
+            transcription_model: self.transcription_model.clone(),
+            transcription_base_url: self.transcription_base_url.clone(),
+            transcription_api_key: self.transcription_api_key.clone(),
         }
     }
 }
@@ -106,6 +124,32 @@ impl AIAgent {
         self.knowledge_searcher = searcher;
         self
     }
+
+    /// Apply runtime voice settings used by TTS and transcription tools.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_voice_settings(
+        mut self,
+        tts_provider: Option<String>,
+        tts_model: Option<String>,
+        tts_base_url: Option<String>,
+        tts_api_key: Option<String>,
+        tts_voice: Option<String>,
+        transcription_provider: Option<String>,
+        transcription_model: Option<String>,
+        transcription_base_url: Option<String>,
+        transcription_api_key: Option<String>,
+    ) -> Self {
+        self.tts_provider = tts_provider;
+        self.tts_model = tts_model;
+        self.tts_base_url = tts_base_url;
+        self.tts_api_key = tts_api_key;
+        self.tts_voice = tts_voice;
+        self.transcription_provider = transcription_provider;
+        self.transcription_model = transcription_model;
+        self.transcription_base_url = transcription_base_url;
+        self.transcription_api_key = transcription_api_key;
+        self
+    }
 }
 
 /// Builder for constructing an [`AIAgent`].
@@ -131,6 +175,15 @@ pub struct AIAgentBuilder {
     knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     skill_store: Option<hakimi_skills::SkillStore>,
+    tts_provider: Option<String>,
+    tts_model: Option<String>,
+    tts_base_url: Option<String>,
+    tts_api_key: Option<String>,
+    tts_voice: Option<String>,
+    transcription_provider: Option<String>,
+    transcription_model: Option<String>,
+    transcription_base_url: Option<String>,
+    transcription_api_key: Option<String>,
 }
 
 impl AIAgentBuilder {
@@ -154,6 +207,15 @@ impl AIAgentBuilder {
             knowledge_searcher: None,
             embedding_provider: None,
             skill_store: None,
+            tts_provider: None,
+            tts_model: None,
+            tts_base_url: None,
+            tts_api_key: None,
+            tts_voice: None,
+            transcription_provider: None,
+            transcription_model: None,
+            transcription_base_url: None,
+            transcription_api_key: None,
         }
     }
 
@@ -321,6 +383,15 @@ impl AIAgentBuilder {
                 self.skill_store
                     .unwrap_or_else(hakimi_skills::SkillStore::empty),
             ),
+            tts_provider: self.tts_provider,
+            tts_model: self.tts_model,
+            tts_base_url: self.tts_base_url,
+            tts_api_key: self.tts_api_key,
+            tts_voice: self.tts_voice,
+            transcription_provider: self.transcription_provider,
+            transcription_model: self.transcription_model,
+            transcription_base_url: self.transcription_base_url,
+            transcription_api_key: self.transcription_api_key,
         })
     }
 }
@@ -447,8 +518,15 @@ impl AIAgent {
             delegate_executor,
             knowledge_searcher: self.knowledge_searcher.clone(),
             progress_callback: self.streaming_callback.clone(),
-            tts_provider: None,
-            tts_model: None,
+            tts_provider: self.tts_provider.clone(),
+            tts_model: self.tts_model.clone(),
+            tts_base_url: self.tts_base_url.clone(),
+            tts_api_key: self.tts_api_key.clone(),
+            tts_voice: self.tts_voice.clone(),
+            transcription_provider: self.transcription_provider.clone(),
+            transcription_model: self.transcription_model.clone(),
+            transcription_base_url: self.transcription_base_url.clone(),
+            transcription_api_key: self.transcription_api_key.clone(),
         }
     }
 

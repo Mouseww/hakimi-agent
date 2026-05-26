@@ -24,6 +24,7 @@ Generated: 2026-05-21
 - **web_extract** — URL content extraction with HTML cleaning, readability fallback, markdown/raw output
 - **image_generate** — AI image generation with OpenAI/FAL backends and local file output
 - **text_to_speech** — OpenAI-compatible + Edge TTS with local audio file output
+- **transcribe_audio** — OpenAI-compatible speech-to-text for local audio files and remote audio URLs
 
 ### Agent Loop
 - **Core conversation loop** — Message → LLM → tool dispatch → loop until done
@@ -386,13 +387,8 @@ Generated: 2026-05-21
 #### 47. Voice Mode (Push-to-Talk)
 - **What**: Audio recording and playback for CLI with STT dispatch
 - **Hermes location**: `tools/voice_mode.py`
-- **Details**: sounddevice capture, WAV encoding, STT via transcription_tools, TTS playback.
+- **Details**: sounddevice capture, WAV encoding, STT via transcription_tools, TTS playback. Hakimi now has `text_to_speech` + `transcribe_audio`, but still lacks interactive CLI capture/playback.
 - **Priority**: **Low** — Niche CLI feature
-
-#### 48. Transcription Tools
-- **What**: Speech-to-text transcription
-- **Hermes location**: `tools/transcription_tools.py`
-- **Priority**: **Low** — Voice pipeline component
 
 #### 49. Curator
 - **What**: Conversation curation and quality tracking
@@ -567,7 +563,7 @@ Generated: 2026-05-21
 7. Kanban multi-agent coordination
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing
-10. Voice mode + transcription pipeline
+10. Voice mode (push-to-talk capture + playback)
 
 ---
 

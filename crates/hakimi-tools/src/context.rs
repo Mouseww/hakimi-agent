@@ -13,6 +13,13 @@ pub struct ToolContextBuilder {
     delegate_executor: Option<Arc<dyn DelegateExecutor>>,
     tts_provider: Option<String>,
     tts_model: Option<String>,
+    tts_base_url: Option<String>,
+    tts_api_key: Option<String>,
+    tts_voice: Option<String>,
+    transcription_provider: Option<String>,
+    transcription_model: Option<String>,
+    transcription_base_url: Option<String>,
+    transcription_api_key: Option<String>,
     knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,
     progress_callback: Option<ToolProgressCallback>,
 }
@@ -86,6 +93,48 @@ impl ToolContextBuilder {
         self
     }
 
+    /// Set the TTS base URL.
+    pub fn tts_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.tts_base_url = Some(base_url.into());
+        self
+    }
+
+    /// Set the TTS API key.
+    pub fn tts_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.tts_api_key = Some(api_key.into());
+        self
+    }
+
+    /// Set the default TTS voice.
+    pub fn tts_voice(mut self, voice: impl Into<String>) -> Self {
+        self.tts_voice = Some(voice.into());
+        self
+    }
+
+    /// Set the transcription provider.
+    pub fn transcription_provider(mut self, provider: impl Into<String>) -> Self {
+        self.transcription_provider = Some(provider.into());
+        self
+    }
+
+    /// Set the transcription model.
+    pub fn transcription_model(mut self, model: impl Into<String>) -> Self {
+        self.transcription_model = Some(model.into());
+        self
+    }
+
+    /// Set the transcription base URL.
+    pub fn transcription_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.transcription_base_url = Some(base_url.into());
+        self
+    }
+
+    /// Set the transcription API key.
+    pub fn transcription_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.transcription_api_key = Some(api_key.into());
+        self
+    }
+
     /// Set the knowledge searcher.
     pub fn knowledge_searcher(mut self, searcher: Arc<dyn KnowledgeSearcher>) -> Self {
         self.knowledge_searcher = Some(searcher);
@@ -116,6 +165,13 @@ impl ToolContextBuilder {
             progress_callback: self.progress_callback,
             tts_provider: self.tts_provider,
             tts_model: self.tts_model,
+            tts_base_url: self.tts_base_url,
+            tts_api_key: self.tts_api_key,
+            tts_voice: self.tts_voice,
+            transcription_provider: self.transcription_provider,
+            transcription_model: self.transcription_model,
+            transcription_base_url: self.transcription_base_url,
+            transcription_api_key: self.transcription_api_key,
         }
     }
 
@@ -139,6 +195,13 @@ impl ToolContextBuilder {
             progress_callback: self.progress_callback,
             tts_provider: self.tts_provider,
             tts_model: self.tts_model,
+            tts_base_url: self.tts_base_url,
+            tts_api_key: self.tts_api_key,
+            tts_voice: self.tts_voice,
+            transcription_provider: self.transcription_provider,
+            transcription_model: self.transcription_model,
+            transcription_base_url: self.transcription_base_url,
+            transcription_api_key: self.transcription_api_key,
         })
     }
 }

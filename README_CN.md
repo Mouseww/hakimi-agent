@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.0-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.69-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -105,7 +105,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - 从提取的模式自动生成可复用的 YAML 技能文件
 - 模式合并与置信度评分
 
-### 🛠️ 30 个内置工具
+### 🛠️ 31 个内置工具
 
 - **文件**: read_file, write_file, search_files, patch
 - **终端**: terminal, process (后台进程管理)
@@ -113,7 +113,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **记忆**: memory (持久化), session_search (FTS5 全文检索)
 - **代码**: code_exec (Python/JS/Bash)
 - **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium 自动化)
-- **媒体**: vision_analyze (图片分析), image_generate, text_to_speech
+- **媒体**: vision_analyze (图片分析), image_generate, text_to_speech, transcribe_audio
 - **效率**: todo, clarify, checkpoint (git 快照回滚)
 - **安全**: file_safety (路径保护), secret_redaction (密钥脱敏), prompt_injection_detection
 - **元操作**: delegate_task (子 Agent 委派), skill_manage, send_message
@@ -131,7 +131,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
 
-Telegram 现在会直接上传本地生成图片，并把 TTS 生成的本地音频作为原生音频消息发送，因此 `image_generate` / `text_to_speech` 的结果可以直接投递给 gateway 用户，而不是只返回文件路径。
+Telegram 现在会直接上传本地生成图片，并把 TTS 生成的本地音频作为原生音频消息发送，因此 `image_generate` / `text_to_speech` 的结果可以直接投递给 gateway 用户，而不是只返回文件路径。针对语音输入链路，Hakimi 现在还提供 `transcribe_audio`，可转写本地音频文件或远程音频 URL；CLI 的按键录音模式仍是后续事项。
 
 ### 🧠 智能上下文压缩
 
@@ -293,7 +293,7 @@ cargo clippy --workspace
 - [x] **元技能自动提炼**
 - [ ] WASM 插件运行时
 - [ ] Web 仪表盘
-- [ ] 语音输入/输出
+- [ ] CLI 语音模式（按键录音 + 播放）
 
 ---
 

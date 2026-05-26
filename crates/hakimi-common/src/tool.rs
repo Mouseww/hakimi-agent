@@ -124,6 +124,34 @@ pub struct ToolContext {
     #[serde(skip)]
     pub tts_model: Option<String>,
 
+    /// TTS base URL override.
+    #[serde(skip)]
+    pub tts_base_url: Option<String>,
+
+    /// TTS API key override.
+    #[serde(skip)]
+    pub tts_api_key: Option<String>,
+
+    /// TTS voice override.
+    #[serde(skip)]
+    pub tts_voice: Option<String>,
+
+    /// Transcription provider setting.
+    #[serde(skip)]
+    pub transcription_provider: Option<String>,
+
+    /// Transcription model setting.
+    #[serde(skip)]
+    pub transcription_model: Option<String>,
+
+    /// Transcription base URL override.
+    #[serde(skip)]
+    pub transcription_base_url: Option<String>,
+
+    /// Transcription API key override.
+    #[serde(skip)]
+    pub transcription_api_key: Option<String>,
+
     /// Searcher for accessing the knowledge base.
     #[serde(skip)]
     pub knowledge_searcher: Option<Arc<dyn KnowledgeSearcher>>,

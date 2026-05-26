@@ -19,8 +19,10 @@ struct TodoItem {
 
 /// Get the todos directory path (~/.hakimi/todos/).
 fn todos_dir() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    std::path::PathBuf::from(home).join(".hakimi").join("todos")
+    dirs::home_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(".hakimi")
+        .join("todos")
 }
 
 /// Get the file path for a given session.

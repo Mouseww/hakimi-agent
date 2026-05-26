@@ -1256,6 +1256,9 @@ async fn build_agent(
         .register(std::sync::Arc::new(hakimi_tools::TextToSpeechTool))
         .await;
     tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::TranscribeAudioTool))
+        .await;
+    tool_registry
         .register(std::sync::Arc::new(hakimi_tools::SendMessageTool))
         .await;
     tool_registry
@@ -1323,7 +1326,18 @@ async fn build_agent(
     let mut agent = hakimi_core::AIAgent::new(&model, transport, tool_registry, Some(skill_store))
         .with_context_engine(context_engine)
         .with_embedding_provider(embedding_provider)
-        .with_knowledge_searcher(Some(knowledge_searcher));
+        .with_knowledge_searcher(Some(knowledge_searcher))
+        .with_voice_settings(
+            Some(config.voice.provider.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.model.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.voice.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.provider.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.transcription_model.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
+        );
     agent.set_model(&model);
     // agent.set_max_turns(config.agent.max_turns);
 
