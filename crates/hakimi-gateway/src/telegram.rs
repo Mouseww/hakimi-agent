@@ -5,7 +5,9 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use reqwest::multipart::{Form, Part};
 use serde::Deserialize;
+use std::path::Path;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -74,6 +76,13 @@ const MAX_MESSAGE_LENGTH: usize = 4096;
 
 /// Long-polling timeout in seconds.
 const POLL_TIMEOUT: u64 = 30;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TelegramMediaKind {
+    Photo,
+    Voice,
+    Audio,
+}
 
 // ---------------------------------------------------------------------------
 // TelegramAdapter
@@ -366,52 +375,28 @@ impl PlatformAdapter for TelegramAdapter {
 
     async fn send_media(&self, chat_id: &str, media: &str, caption: &str) -> Result<()> {
         let caption = normalize_outbound_text(caption);
-        let body = serde_json::json!({
-            "chat_id": chat_id,
-            "photo": media,
-            "caption": caption,
-            "parse_mode": "Markdown",
-        });
-        let resp: TgResponse<serde_json::Value> = self
-            .client
-            .post(self.api_url("sendPhoto"))
-            .json(&body)
-            .send()
+        let media_kind = classify_media_kind(media);
+        if is_existing_local_file(media) {
+            send_local_media(
+                &self.client,
+                &self.api_url(method_name(media_kind)),
+                chat_id,
+                media,
+                &caption,
+                media_kind,
+            )
             .await
-            .context("failed to send Telegram photo")?
-            .json()
+        } else {
+            send_remote_media(
+                &self.client,
+                &self.api_url(method_name(media_kind)),
+                chat_id,
+                media,
+                &caption,
+                media_kind,
+            )
             .await
-            .context("failed to parse sendPhoto response")?;
-
-        if !resp.ok {
-            warn!(
-                chat_id = %chat_id,
-                error = resp.description.as_deref().unwrap_or("unknown"),
-                "sendPhoto with Markdown failed, retrying without parse_mode"
-            );
-            let plain_body = serde_json::json!({
-                "chat_id": chat_id,
-                "photo": media,
-                "caption": caption,
-            });
-            let resp: TgResponse<serde_json::Value> = self
-                .client
-                .post(self.api_url("sendPhoto"))
-                .json(&plain_body)
-                .send()
-                .await
-                .context("failed to send Telegram photo (plain)")?
-                .json()
-                .await
-                .context("failed to parse sendPhoto response (plain)")?;
-            if !resp.ok {
-                anyhow::bail!(
-                    "Telegram sendPhoto failed: {}",
-                    resp.description.unwrap_or_else(|| "unknown error".into())
-                );
-            }
         }
-        Ok(())
     }
 
     async fn send_chat_action(&self, chat_id: &str, action: &str) -> Result<()> {
@@ -601,6 +586,213 @@ fn normalize_outbound_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+fn method_name(kind: TelegramMediaKind) -> &'static str {
+    match kind {
+        TelegramMediaKind::Photo => "sendPhoto",
+        TelegramMediaKind::Voice => "sendVoice",
+        TelegramMediaKind::Audio => "sendAudio",
+    }
+}
+
+fn media_field_name(kind: TelegramMediaKind) -> &'static str {
+    match kind {
+        TelegramMediaKind::Photo => "photo",
+        TelegramMediaKind::Voice => "voice",
+        TelegramMediaKind::Audio => "audio",
+    }
+}
+
+fn classify_media_kind(media: &str) -> TelegramMediaKind {
+    let lower = media
+        .split('?')
+        .next()
+        .unwrap_or(media)
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    if lower.ends_with(".png")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+        || lower.ends_with(".webp")
+        || lower.ends_with(".gif")
+    {
+        TelegramMediaKind::Photo
+    } else if lower.ends_with(".ogg") || lower.ends_with(".opus") {
+        TelegramMediaKind::Voice
+    } else {
+        TelegramMediaKind::Audio
+    }
+}
+
+fn is_existing_local_file(media: &str) -> bool {
+    Path::new(media).is_file()
+}
+
+fn file_name_or_default(media: &str, kind: TelegramMediaKind) -> String {
+    Path::new(media)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| match kind {
+            TelegramMediaKind::Photo => "hakimi-image.png".to_string(),
+            TelegramMediaKind::Voice => "hakimi-voice.ogg".to_string(),
+            TelegramMediaKind::Audio => "hakimi-audio.mp3".to_string(),
+        })
+}
+
+fn mime_for_kind(kind: TelegramMediaKind, media: &str) -> &'static str {
+    let lower = media.to_ascii_lowercase();
+    match kind {
+        TelegramMediaKind::Photo if lower.ends_with(".png") => "image/png",
+        TelegramMediaKind::Photo if lower.ends_with(".webp") => "image/webp",
+        TelegramMediaKind::Photo if lower.ends_with(".gif") => "image/gif",
+        TelegramMediaKind::Photo => "image/jpeg",
+        TelegramMediaKind::Voice => "audio/ogg",
+        TelegramMediaKind::Audio if lower.ends_with(".wav") => "audio/wav",
+        TelegramMediaKind::Audio if lower.ends_with(".m4a") => "audio/mp4",
+        TelegramMediaKind::Audio => "audio/mpeg",
+    }
+}
+
+async fn send_remote_media(
+    client: &reqwest::Client,
+    api_url: &str,
+    chat_id: &str,
+    media: &str,
+    caption: &str,
+    kind: TelegramMediaKind,
+) -> Result<()> {
+    let field_name = media_field_name(kind);
+    let body = serde_json::json!({
+        "chat_id": chat_id,
+        field_name: media,
+        "caption": caption,
+        "parse_mode": "Markdown",
+    });
+    let response: TgResponse<serde_json::Value> = client
+        .post(api_url)
+        .json(&body)
+        .send()
+        .await
+        .with_context(|| format!("failed to send Telegram {}", method_name(kind)))?
+        .json()
+        .await
+        .with_context(|| format!("failed to parse {} response", method_name(kind)))?;
+    if response.ok {
+        return Ok(());
+    }
+
+    warn!(
+        chat_id = %chat_id,
+        error = response.description.as_deref().unwrap_or("unknown"),
+        method = method_name(kind),
+        "media send with Markdown failed, retrying without parse_mode"
+    );
+
+    let plain_body = serde_json::json!({
+        "chat_id": chat_id,
+        field_name: media,
+        "caption": caption,
+    });
+    let response: TgResponse<serde_json::Value> = client
+        .post(api_url)
+        .json(&plain_body)
+        .send()
+        .await
+        .with_context(|| format!("failed to send Telegram {} (plain)", method_name(kind)))?
+        .json()
+        .await
+        .with_context(|| format!("failed to parse {} response (plain)", method_name(kind)))?;
+    if !response.ok {
+        anyhow::bail!(
+            "Telegram {} failed: {}",
+            method_name(kind),
+            response
+                .description
+                .unwrap_or_else(|| "unknown error".into())
+        );
+    }
+    Ok(())
+}
+
+async fn send_local_media(
+    client: &reqwest::Client,
+    api_url: &str,
+    chat_id: &str,
+    media: &str,
+    caption: &str,
+    kind: TelegramMediaKind,
+) -> Result<()> {
+    let bytes = std::fs::read(media)
+        .with_context(|| format!("failed to read local media file: {media}"))?;
+    let field_name = media_field_name(kind);
+    let file_name = file_name_or_default(media, kind);
+    let mime = mime_for_kind(kind, media);
+    let part = Part::bytes(bytes)
+        .file_name(file_name)
+        .mime_str(mime)
+        .context("failed to set multipart MIME type")?;
+
+    let form = Form::new()
+        .text("chat_id", chat_id.to_string())
+        .text("caption", caption.to_string())
+        .text("parse_mode", "Markdown".to_string())
+        .part(field_name.to_string(), part);
+    let response: TgResponse<serde_json::Value> = client
+        .post(api_url)
+        .multipart(form)
+        .send()
+        .await
+        .with_context(|| format!("failed to upload Telegram {}", method_name(kind)))?
+        .json()
+        .await
+        .with_context(|| format!("failed to parse {} upload response", method_name(kind)))?;
+    if response.ok {
+        return Ok(());
+    }
+
+    warn!(
+        chat_id = %chat_id,
+        error = response.description.as_deref().unwrap_or("unknown"),
+        method = method_name(kind),
+        "local media upload with Markdown failed, retrying without parse_mode"
+    );
+
+    let bytes = std::fs::read(media)
+        .with_context(|| format!("failed to reread local media file: {media}"))?;
+    let part = Part::bytes(bytes)
+        .file_name(file_name_or_default(media, kind))
+        .mime_str(mime_for_kind(kind, media))
+        .context("failed to set multipart MIME type")?;
+    let form = Form::new()
+        .text("chat_id", chat_id.to_string())
+        .text("caption", caption.to_string())
+        .part(field_name.to_string(), part);
+    let response: TgResponse<serde_json::Value> = client
+        .post(api_url)
+        .multipart(form)
+        .send()
+        .await
+        .with_context(|| format!("failed to upload Telegram {} (plain)", method_name(kind)))?
+        .json()
+        .await
+        .with_context(|| {
+            format!(
+                "failed to parse {} upload response (plain)",
+                method_name(kind)
+            )
+        })?;
+    if !response.ok {
+        anyhow::bail!(
+            "Telegram {} failed: {}",
+            method_name(kind),
+            response
+                .description
+                .unwrap_or_else(|| "unknown error".into())
+        );
+    }
+    Ok(())
+}
+
 /// Convert a [`TgMessage`] into a [`GatewayMessage`].
 ///
 /// Returns `None` if the message has no usable content (no text and no photo).
@@ -784,5 +976,30 @@ mod tests {
     fn test_adapter_name() {
         let adapter = TelegramAdapter::from_token("default", "test:token");
         assert_eq!(adapter.name(), "telegram");
+    }
+
+    #[test]
+    fn classify_media_kind_routes_images_voice_and_audio() {
+        assert_eq!(
+            classify_media_kind("C:/tmp/generated.png"),
+            TelegramMediaKind::Photo
+        );
+        assert_eq!(
+            classify_media_kind("https://example.com/voice.ogg?download=1"),
+            TelegramMediaKind::Voice
+        );
+        assert_eq!(
+            classify_media_kind("C:/tmp/audio.mp3"),
+            TelegramMediaKind::Audio
+        );
+    }
+
+    #[test]
+    fn local_file_detection_only_accepts_existing_paths() {
+        let path = std::env::temp_dir().join(format!("hakimi-tg-media-{}.mp3", std::process::id()));
+        std::fs::write(&path, b"audio").unwrap();
+        assert!(is_existing_local_file(path.to_str().unwrap()));
+        std::fs::remove_file(&path).unwrap();
+        assert!(!is_existing_local_file(path.to_str().unwrap()));
     }
 }

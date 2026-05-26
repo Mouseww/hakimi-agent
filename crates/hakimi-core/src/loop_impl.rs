@@ -406,6 +406,23 @@ fn self_improvement_notice(message: &Message) -> Option<&'static str> {
     }
 }
 
+fn tool_result_media_event(message: &Message) -> Option<String> {
+    let content = message.content.as_deref()?;
+    if let Some(path) = content.strip_prefix("MEDIA:") {
+        let path = path.trim();
+        if !path.is_empty() {
+            return Some(format!("MEDIA:{path}"));
+        }
+    }
+    if let Some(path) = content.strip_prefix("IMAGE:") {
+        let path = path.trim();
+        if !path.is_empty() {
+            return Some(format!("IMAGE:{path}"));
+        }
+    }
+    None
+}
+
 async fn process_tool_calls(
     agent: &mut AIAgent,
     response: &NormalizedResponse,
@@ -509,6 +526,11 @@ async fn process_tool_calls(
             && let Some(content) = &res.content
         {
             store.observe_tool_result(content);
+        }
+        if let Some(media_event) = tool_result_media_event(&res)
+            && let Some(ref cb) = agent.streaming_callback
+        {
+            cb(format!("\u{001e}hakimi_media:{media_event}"));
         }
         if let Some(review_notice) = self_improvement_notice(&res)
             && let Some(ref cb) = agent.streaming_callback
@@ -711,7 +733,10 @@ fn accumulator_to_response(acc: &StreamAccumulator) -> NormalizedResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_text_preserving_layout, self_improvement_notice, truncate_for_tool_notice};
+    use super::{
+        append_text_preserving_layout, self_improvement_notice, tool_result_media_event,
+        truncate_for_tool_notice,
+    };
     use hakimi_common::Message;
 
     #[test]
@@ -764,5 +789,20 @@ mod tests {
         let msg = Message::tool_result("call-1", "patch", "Added content to user memory");
 
         assert_eq!(self_improvement_notice(&msg), None);
+    }
+
+    #[test]
+    fn tool_result_media_event_extracts_media_and_image_prefixes() {
+        let media = Message::tool_result("call-1", "text_to_speech", "MEDIA:/tmp/audio.mp3");
+        let image = Message::tool_result("call-2", "image_generate", "IMAGE:/tmp/image.png");
+
+        assert_eq!(
+            tool_result_media_event(&media).as_deref(),
+            Some("MEDIA:/tmp/audio.mp3")
+        );
+        assert_eq!(
+            tool_result_media_event(&image).as_deref(),
+            Some("IMAGE:/tmp/image.png")
+        );
     }
 }

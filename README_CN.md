@@ -113,7 +113,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **记忆**: memory (持久化), session_search (FTS5 全文检索)
 - **代码**: code_exec (Python/JS/Bash)
 - **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium 自动化)
-- **媒体**: vision_analyze (图片分析), image_generate
+- **媒体**: vision_analyze (图片分析), image_generate, text_to_speech
 - **效率**: todo, clarify, checkpoint (git 快照回滚)
 - **安全**: file_safety (路径保护), secret_redaction (密钥脱敏), prompt_injection_detection
 - **元操作**: delegate_task (子 Agent 委派), skill_manage, send_message
@@ -130,6 +130,8 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 ### 🌐 8 个平台适配器
 
 Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
+
+Telegram 现在会直接上传本地生成图片，并把 TTS 生成的本地音频作为原生音频消息发送，因此 `image_generate` / `text_to_speech` 的结果可以直接投递给 gateway 用户，而不是只返回文件路径。
 
 ### 🧠 智能上下文压缩
 

@@ -35,7 +35,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls", "blocking"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls", "blocking", "multipart"], default-features = false }
 
 # Error handling
 anyhow = "1"

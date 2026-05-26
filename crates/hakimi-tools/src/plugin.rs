@@ -352,6 +352,7 @@ impl PluginManager {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn test_plugin_manifest_deserialization() {
@@ -415,22 +416,7 @@ command: /bin/echo
     async fn test_plugin_tool_execution() {
         // Create a simple plugin script.
         let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("echo-plugin.sh");
-        tokio::fs::write(
-            &script_path,
-            r#"#!/bin/bash
-read -r INPUT
-echo "{\"result\": \"echo: $INPUT\"}"
-"#,
-        )
-        .await
-        .unwrap();
-
-        // Make it executable.
-        use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
-            .await
-            .unwrap();
+        let script_path = create_test_plugin_script(dir.path()).await;
 
         let manifest = PluginManifest {
             name: "echo_plugin".to_string(),
@@ -448,7 +434,7 @@ echo "{\"result\": \"echo: $INPUT\"}"
             session_id: "test".to_string(),
             user_id: None,
             task_id: None,
-            workdir: "/tmp".to_string(),
+            workdir: dir.path().to_string_lossy().to_string(),
             model: None,
             delegate_executor: None,
             ..Default::default()
@@ -456,5 +442,37 @@ echo "{\"result\": \"echo: $INPUT\"}"
 
         let result = tool.execute(&json!({"msg": "hello"}), &ctx).await.unwrap();
         assert!(result.contains("echo:"));
+    }
+
+    #[cfg(unix)]
+    async fn create_test_plugin_script(dir: &Path) -> PathBuf {
+        let script_path = dir.join("echo-plugin.sh");
+        tokio::fs::write(
+            &script_path,
+            r#"#!/bin/sh
+read INPUT
+printf '{"result":"echo: %s"}\n' "$INPUT"
+"#,
+        )
+        .await
+        .unwrap();
+
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+            .await
+            .unwrap();
+        script_path
+    }
+
+    #[cfg(windows)]
+    async fn create_test_plugin_script(dir: &Path) -> PathBuf {
+        let script_path = dir.join("echo-plugin.cmd");
+        tokio::fs::write(
+            &script_path,
+            "@echo off\r\nset /p INPUT=\r\necho {\"result\":\"echo: %INPUT%\"}\r\n",
+        )
+        .await
+        .unwrap();
+        script_path
     }
 }

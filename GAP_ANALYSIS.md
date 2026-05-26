@@ -21,6 +21,9 @@ Generated: 2026-05-21
 - **skill_manage** — Skill loading and management from markdown files
 - **send_message** — Cross-platform messaging via gateway
 - **code_exec** — Code execution tool (similar to execute_code)
+- **web_extract** — URL content extraction with HTML cleaning, readability fallback, markdown/raw output
+- **image_generate** — AI image generation with OpenAI/FAL backends and local file output
+- **text_to_speech** — OpenAI-compatible + Edge TTS with local audio file output
 
 ### Agent Loop
 - **Core conversation loop** — Message → LLM → tool dispatch → loop until done
@@ -128,37 +131,19 @@ Generated: 2026-05-21
 - **Details**: Multi-backend (local Chromium via agent-browser, Browserbase, Browser Use cloud). Session isolation per task. Text-based aria snapshots. Element interaction via ref selectors.
 - **Priority**: **Critical** — Core capability for web interaction beyond search
 
-#### 2. Web Content Extraction (web_extract tool)
-- **What**: Extract and summarize content from specific URLs using LLM-powered extraction
-- **Hermes location**: `tools/web_tools.py` — `web_extract_tool()`
-- **Details**: Multi-backend (Exa, Firecrawl, Tavily, Parallel). LLM compression of extracted content. Supports markdown/raw format output.
-- **Priority**: **Critical** — Essential for research workflows
-
-#### 3. Image Generation
-- **What**: Generate images via FAL.ai with multiple model support (FLUX, etc.)
-- **Hermes location**: `tools/image_generation_tool.py`
-- **Details**: Multiple FAL models, aspect ratio control, upscaling, model selection via config. Provider registry pattern.
-- **Priority**: **Critical** — Key creative capability
-
-#### 4. Text-to-Speech (TTS)
-- **What**: Convert text to audio with 10+ provider backends
-- **Hermes location**: `tools/tts_tool.py`
-- **Details**: Edge TTS (free), ElevenLabs, OpenAI, MiniMax, Mistral, Gemini, xAI, NeuTTS, KittenTTS, Piper. Opus/MP3 output. Custom command providers.
-- **Priority**: **Critical** — Required for voice-based platforms (Telegram voice bubbles)
-
-#### 5. Credential Pool / Multi-Credential Failover
+#### 2. Credential Pool / Multi-Credential Failover
 - **What**: Persistent multi-credential pool for same-provider failover with round-robin and fill-first strategies
 - **Hermes location**: `agent/credential_pool.py`
 - **Details**: OAuth + API key support, automatic exhaustion detection, credential rotation on rate-limit/billing errors. Integrates with error_classifier.
 - **Priority**: **Critical** — Production reliability for high-traffic deployments
 
-#### 6. Error Classifier (Rich Taxonomy)
+#### 3. Error Classifier (Rich Taxonomy)
 - **What**: Structured API error classification with priority-ordered recovery strategies
 - **Hermes location**: `agent/error_classifier.py`
 - **Details**: 20+ FailoverReason enums (auth, billing, rate_limit, overloaded, context_overflow, model_not_found, thinking_signature, etc.). Each maps to a recovery action (retry, rotate, fallback, compress, abort). Hakimi only has basic Transport/IO retry.
 - **Priority**: **Critical** — Production-grade error handling
 
-#### 7. Prompt Caching (Anthropic-specific)
+#### 4. Prompt Caching (Anthropic-specific)
 - **What**: Anthropic prompt caching with TTL-aware cache breakpoints
 - **Hermes location**: `agent/prompt_caching.py`
 - **Details**: Two layouts: `system_and_3` (4 breakpoints, 5m TTL) and `prefix_and_2` (4 breakpoints, split 1h/5m TTL). Reduces input token costs by ~75%.
@@ -574,15 +559,15 @@ Generated: 2026-05-21
 
 ### Top 10 Critical Gaps (by impact)
 1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
-2. Web content extraction (web_extract)
-3. Image generation
-4. TTS / voice output
-5. ~~Credential pool / multi-key failover~~ ✅ DONE (49 tests)
-6. ~~Rich error classification with failover strategies~~ ✅ DONE (62 tests)
-7. ~~Prompt caching (Anthropic)~~ ✅ DONE (11 tests)
-8. Gateway platform breadth (12 missing platforms — webhook/signal/matrix/wecom/dingtalk added)
-9. Plugin ecosystem (memory providers, model providers, context engines)
-10. CLI command completeness (35+ missing commands)
+2. Gateway platform breadth (12 missing platforms — webhook/signal/matrix/wecom/dingtalk added)
+3. Plugin ecosystem (memory providers, model providers, context engines)
+4. CLI command completeness (35+ missing commands)
+5. Bedrock transport
+6. ACP adapter / IDE integration
+7. Kanban multi-agent coordination
+8. Remote MCP sampling + richer server-initiated flows
+9. Observability / usage pricing
+10. Voice mode + transcription pipeline
 
 ---
 
@@ -616,6 +601,7 @@ Generated: 2026-05-21
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs` | 20 | ✅ Shadow git snapshots, rollback, diff, transparent to LLM |
 | 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
+| 18 | Gateway Media Delivery | `hakimi-core/src/loop_impl.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/telegram.rs` | 4 | ✅ `MEDIA:` / `IMAGE:` tool results now stream through gateway side-channel; Telegram uploads local images and generated TTS audio directly |
 
 ### Summary
 - **Total tests**: 939 (all passing, 0 failures)

@@ -51,6 +51,7 @@ async fn send_gateway_text(
 enum GatewayStreamUiEvent {
     Content(String),
     Tool(String),
+    Media(String),
     Delegate(DelegateProgressEvent),
 }
 
@@ -2115,6 +2116,7 @@ async fn start_gateway(
                                                 text.push_str(&token);
                                             }
                                             GatewayStreamUiEvent::Tool(_)
+                                            | GatewayStreamUiEvent::Media(_)
                                             | GatewayStreamUiEvent::Delegate(_) => {
                                                 pending_events.push_back(next);
                                                 break;
@@ -2179,6 +2181,22 @@ async fn start_gateway(
                                     current_message_id = None;
                                     ui_state.finish_tool_boundary();
                                 }
+                                GatewayStreamUiEvent::Media(media) => {
+                                    if !media.trim().is_empty() {
+                                        let msg = hakimi_gateway::GatewayMessage {
+                                            platform: platform_cb.clone(),
+                                            bot_id: bot_id_cb.clone(),
+                                            chat_id: chat_id_cb.clone(),
+                                            user_id: String::new(),
+                                            text: String::new(),
+                                            media: Some(media),
+                                        };
+                                        let _ = gateway_cb.route_message(&msg).await;
+                                    }
+
+                                    current_message_id = None;
+                                    ui_state.finish_tool_boundary();
+                                }
                                 GatewayStreamUiEvent::Delegate(event) => {
                                     let task_id = event.task_id.clone();
                                     let bubble = delegate_bubbles.entry(task_id).or_default();
@@ -2231,6 +2249,19 @@ async fn start_gateway(
                             let text = tool_notice.trim().to_string();
                             if !text.is_empty() {
                                 let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                            }
+                            return;
+                        }
+                        if let Some(media_notice) = token.strip_prefix("\u{001e}hakimi_media:") {
+                            let media = media_notice
+                                .trim()
+                                .strip_prefix("MEDIA:")
+                                .or_else(|| media_notice.trim().strip_prefix("IMAGE:"))
+                                .unwrap_or(media_notice.trim())
+                                .trim()
+                                .to_string();
+                            if !media.is_empty() {
+                                let _ = ui_tx.send(GatewayStreamUiEvent::Media(media));
                             }
                             return;
                         }

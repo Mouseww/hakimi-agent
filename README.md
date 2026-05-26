@@ -194,7 +194,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
 - **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium automation)
-- **Media**: vision_analyze (image analysis), image_generate
+- **Media**: vision_analyze (image analysis), image_generate, text_to_speech
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
 - **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
@@ -275,6 +275,8 @@ The legacy bridge accepts common inbound aliases such as `messages`/`data`, `cha
 ### 🌐 8 Platform Adapters
 
 Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
+
+Telegram now uploads generated local images directly and delivers generated TTS files as native audio messages, so `image_generate` / `text_to_speech` results can reach gateway users without manually copying file paths.
 
 ### 🧠 Smart Context Compression
 
