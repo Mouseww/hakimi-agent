@@ -20,6 +20,8 @@ pub enum Command {
     Help,
     /// Stop ongoing tasks or streaming.
     Stop,
+    /// Restart the managed gateway service.
+    Restart,
     /// Clear the terminal screen.
     Clear,
     /// Switch or display the current model.
@@ -110,6 +112,7 @@ impl Command {
         match cmd.to_lowercase().as_str() {
             "help" | "h" | "?" => Some(Command::Help),
             "stop" => Some(Command::Stop),
+            "restart" => Some(Command::Restart),
             "clear" | "cls" => Some(Command::Clear),
             "model" | "m" => Some(Command::Model(arg.map(String::from))),
             "config" | "cfg" => Some(Command::Config(arg.map(String::from))),
@@ -155,6 +158,7 @@ impl fmt::Display for Command {
         match self {
             Command::Help => write!(f, "/help"),
             Command::Stop => write!(f, "/stop"),
+            Command::Restart => write!(f, "/restart"),
             Command::Clear => write!(f, "/clear"),
             Command::Model(None) => write!(f, "/model"),
             Command::Model(Some(m)) => write!(f, "/model {m}"),
@@ -231,6 +235,7 @@ mod tests {
     fn test_parse_slash_commands() {
         assert_eq!(Command::parse("/help"), Some(Command::Help));
         assert_eq!(Command::parse("/stop"), Some(Command::Stop));
+        assert_eq!(Command::parse("/restart"), Some(Command::Restart));
         assert_eq!(Command::parse("/clear"), Some(Command::Clear));
         assert_eq!(
             Command::parse("/model gpt-4o"),

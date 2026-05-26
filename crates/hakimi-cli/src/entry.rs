@@ -9,9 +9,44 @@ use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracing::{error, info, warn};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info, warn};
 
 use crate::Command;
+
+#[derive(Clone, Default)]
+struct GatewayTaskControl {
+    id: uuid::Uuid,
+    token: CancellationToken,
+}
+
+impl GatewayTaskControl {
+    fn cancel(&self) {
+        self.token.cancel();
+    }
+}
+
+fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
+    format!("{platform}:{bot_id}:{chat_id}")
+}
+
+async fn send_gateway_text(
+    gateway: &hakimi_gateway::Gateway,
+    platform: &str,
+    bot_id: &str,
+    chat_id: &str,
+    text: impl Into<String>,
+) {
+    let msg = hakimi_gateway::GatewayMessage {
+        platform: platform.to_string(),
+        bot_id: bot_id.to_string(),
+        chat_id: chat_id.to_string(),
+        user_id: String::new(),
+        text: text.into(),
+        media: None,
+    };
+    let _ = gateway.route_message(&msg).await;
+}
 
 enum GatewayStreamUiEvent {
     Content(String),
@@ -1406,6 +1441,8 @@ async fn start_gateway(
         Arc::new(Mutex::new(HashMap::new()));
     let turn_trackers: Arc<Mutex<HashMap<String, GatewayChatTurnTracker>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let active_tasks: Arc<Mutex<HashMap<String, GatewayTaskControl>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let skill_store_ref = Arc::new(skill_store);
 
     // 3. Connect all platforms.
@@ -1538,8 +1575,6 @@ async fn start_gateway(
         let text = msg.text.clone();
         let media_id = msg.media.clone();
 
-        info!(platform = %platform, chat_id = %chat_id, has_media = media_id.is_some(), "received message via gateway");
-
         if platform == "__hakimi_system__" {
             let mut routed = msg.clone();
             if let Some((_, target_platform)) = text.rsplit_once("HAKIMI_ROUTE_PLATFORM=") {
@@ -1560,11 +1595,56 @@ async fn start_gateway(
             continue;
         }
 
+        info!(platform = %platform, chat_id = %chat_id, has_media = media_id.is_some(), "received message via gateway");
+
+        if text.starts_with('/') {
+            match Command::parse(&text) {
+                Some(Command::Stop) => {
+                    let key = gateway_task_key(&platform, &bot_id, &chat_id);
+                    let stopped = {
+                        let mut active = active_tasks.lock().await;
+                        active
+                            .remove(&key)
+                            .map(|control| {
+                                control.cancel();
+                            })
+                            .is_some()
+                    };
+                    let response = if stopped {
+                        "⏹️ 已停止当前任务。"
+                    } else {
+                        "ℹ️ 当前没有正在运行的任务。"
+                    };
+                    send_gateway_text(&gateway, &platform, &bot_id, &chat_id, response).await;
+                    continue;
+                }
+                Some(Command::Restart) => {
+                    send_gateway_text(
+                        &gateway,
+                        &platform,
+                        &bot_id,
+                        &chat_id,
+                        "🔄 正在重启 Hakimi Gateway...",
+                    )
+                    .await;
+                    tokio::spawn(async move {
+                        let result = tokio::task::spawn_blocking(restart_gateway_service).await;
+                        if let Err(err) = result {
+                            tracing::error!(error = %err, "failed to join gateway restart task");
+                        }
+                    });
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
         let agent_clone = agent_arc.clone();
         let gateway_clone = gateway.clone();
         let skill_store_ref = skill_store_ref.clone();
         let histories_clone = histories_clone.clone();
         let turn_trackers = turn_trackers.clone();
+        let active_tasks = active_tasks.clone();
 
         let config_clone = config.clone();
         tokio::spawn(async move {
@@ -1574,6 +1654,22 @@ async fn start_gateway(
             let bot_id = bot_id.clone();
             let platform = platform.clone();
             let config = config_clone;
+            let task_key = gateway_task_key(&platform, &bot_id, &chat_id);
+            let task_id = uuid::Uuid::new_v4();
+            let cancellation = CancellationToken::new();
+            {
+                let mut active = active_tasks.lock().await;
+                if let Some(previous) = active.insert(
+                    task_key.clone(),
+                    GatewayTaskControl {
+                        id: task_id,
+                        token: cancellation.clone(),
+                    },
+                ) {
+                    previous.cancel();
+                    debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
+                }
+            }
 
             // Start typing indicator.
             let _ = gateway_clone
@@ -1623,10 +1719,17 @@ async fn start_gateway(
                 let gateway = gateway_clone.clone();
                 let bot_id = bot_id.clone();
                 let chat_id = chat_id.clone();
+                let cancellation = cancellation.clone();
                 tokio::spawn(async move {
                     loop {
-                        let _ = gateway.send_chat_action(&bot_id, &chat_id, "typing").await;
-                        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                        tokio::select! {
+                            _ = cancellation.cancelled() => break,
+                            _ = gateway.send_chat_action(&bot_id, &chat_id, "typing") => {}
+                        }
+                        tokio::select! {
+                            _ = cancellation.cancelled() => break,
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(4)) => {}
+                        }
                     }
                 })
             };
@@ -1644,6 +1747,7 @@ async fn start_gateway(
                         help.push_str("• `/cron` - List scheduled jobs\n");
                         help.push_str("• `/status` - Show agent status\n");
                         help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
+                        help.push_str("• `/restart` - Restart Hakimi Gateway service\n");
                         help.push_str("• `/stop` - Stop current background task or streaming\n");
                         help.push_str("• `/memory` - View or clear persistent memory\n");
                         help.push_str("• `/checkpoints` - Manage file system checkpoints\n");
@@ -1651,13 +1755,8 @@ async fn start_gateway(
                         help
                     }
                     Some(Command::Stop) => {
-                        // In gateway mode, we mainly just tell the user we're stopping
-                        // Real background task cancellation could be implemented here
-                        {
-                            let mut a = agent_clone.lock().await;
-                            a.set_streaming_callback(None);
-                        }
-                        "⏹️ **Stopped current operation.**".to_string()
+                        cancellation.cancel();
+                        "⏹️ 已停止当前任务。".to_string()
                     }
                     Some(Command::Clear) => {
                         {
@@ -1732,6 +1831,7 @@ async fn start_gateway(
                         "📊 Usage tracking is currently only available for individual conversation turns."
                             .to_string()
                     }
+                    Some(Command::Restart) => "🔄 正在重启 Hakimi Gateway...".to_string(),
                     Some(Command::Update) => {
                         let gateway = gateway_clone.clone();
                         let chat = chat_id.clone();
@@ -2160,13 +2260,18 @@ async fn start_gateway(
                     msg = msg.with_images(images);
                 }
 
-                let result = if config.model.api_mode.as_str() == "REST" {
-                    turn_agent
-                        .run_conversation_with_message(msg)
-                        .await
-                        .map(|r| r.final_response)
-                } else {
-                    turn_agent.chat_streaming_with_message(msg).await
+                let result = tokio::select! {
+                    _ = cancellation.cancelled() => Err(hakimi_common::HakimiError::Other("cancelled by /stop".to_string())),
+                    result = async {
+                        if config.model.api_mode.as_str() == "REST" {
+                            turn_agent
+                                .run_conversation_with_message(msg)
+                                .await
+                                .map(|r| r.final_response)
+                        } else {
+                            turn_agent.chat_streaming_with_message(msg).await
+                        }
+                    } => result,
                 };
 
                 turn_agent.set_streaming_callback(None);
@@ -2193,6 +2298,14 @@ async fn start_gateway(
                         }
                         (res, None, stream_rendered)
                     }
+                    Err(e) if e.to_string() == "cancelled by /stop" => {
+                        debug!(platform = %platform, chat_id = %chat_id, "gateway task cancelled by /stop");
+                        (
+                            String::new(),
+                            Some("⏹️ 已停止当前任务。".to_string()),
+                            stream_rendered,
+                        )
+                    }
                     Err(e) => {
                         error!(error = %e, "agent streaming query failed");
                         (
@@ -2205,6 +2318,15 @@ async fn start_gateway(
             };
 
             typing_handle.abort();
+            cancellation.cancel();
+            {
+                let mut active = active_tasks.lock().await;
+                if let Some(control) = active.get(&task_key)
+                    && control.id == task_id
+                {
+                    active.remove(&task_key);
+                }
+            }
             {
                 let mut trackers = turn_trackers.lock().await;
                 if let Some(tracker) = trackers.get_mut(&chat_id) {
@@ -2322,6 +2444,38 @@ fn gateway_service_status() -> Result<()> {
     Ok(())
 }
 
+fn resolve_hakimi_update_target(current_exe: &std::path::Path) -> std::path::PathBuf {
+    if let Ok(path_env) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_env) {
+            let candidate = dir.join("hakimi");
+            if candidate.exists()
+                && let Ok(canonical) = std::fs::canonicalize(&candidate)
+                && canonical == current_exe
+            {
+                return candidate;
+            }
+        }
+    }
+    current_exe.to_path_buf()
+}
+
+async fn latest_release_tag(client: &reqwest::Client) -> Result<String> {
+    let api = "https://api.github.com/repos/Mouseww/hakimi-agent/releases/latest";
+    let value: serde_json::Value = client
+        .get(api)
+        .header(reqwest::header::USER_AGENT, "hakimi-self-update")
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    value
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .map(|tag| tag.to_string())
+        .ok_or_else(|| anyhow::anyhow!("GitHub latest release response missing tag_name"))
+}
+
 async fn self_update() -> Result<()> {
     use std::env;
     use std::fs;
@@ -2344,14 +2498,16 @@ async fn self_update() -> Result<()> {
         _ => anyhow::bail!("Unsupported architecture: {arch}"),
     };
 
-    let url = format!(
-        "https://github.com/Mouseww/hakimi-agent/releases/latest/download/hakimi-{arch_str}-{platform}.{ext}"
-    );
-    println!("Downloading: {url}");
-
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()?;
+    let latest_tag = latest_release_tag(&client).await?;
+    println!("Latest release: {latest_tag}");
+
+    let url = format!(
+        "https://github.com/Mouseww/hakimi-agent/releases/download/{latest_tag}/hakimi-{arch_str}-{platform}.{ext}"
+    );
+    println!("Downloading: {url}");
 
     let resp = client.get(&url).send().await?;
     if !resp.status().is_success() {
@@ -2383,9 +2539,14 @@ async fn self_update() -> Result<()> {
     let binary_data =
         binary_data.ok_or_else(|| anyhow::anyhow!("Binary 'hakimi' not found in archive"))?;
 
-    // Determine current binary path
+    // Determine update target. Prefer the `hakimi` found on PATH so `hakimi --update`
+    // updates the command users actually run, even when current_exe resolves through a
+    // symlink or a renamed wrapper binary.
     let current_exe = env::current_exe()?;
-    let backup_path = format!("{}.bak", current_exe.display());
+    let current_exe = fs::canonicalize(&current_exe).unwrap_or(current_exe);
+    let update_target = resolve_hakimi_update_target(&current_exe);
+    let backup_path = format!("{}.bak", update_target.display());
+    println!("Installing to: {}", update_target.display());
 
     // Important: Backup user/memory state across updates
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
@@ -2408,28 +2569,43 @@ async fn self_update() -> Result<()> {
     }
 
     // Backup current binary
-    fs::copy(&current_exe, &backup_path)?;
+    fs::copy(&update_target, &backup_path)?;
     println!("Backed up current binary to {backup_path}");
 
-    // Instead of fs::write which overwrites (and hits Text file busy), we must remove it first or replace it via rename.
-    let _ = fs::remove_file(&current_exe);
-    fs::write(&current_exe, &binary_data)?;
+    let install_tmp = update_target.with_extension(format!(
+        "hakimi-update-{}",
+        chrono::Local::now().format("%Y%m%d%H%M%S")
+    ));
+    fs::write(&install_tmp, &binary_data)?;
 
     // Set executable permissions (Unix)
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&current_exe, fs::Permissions::from_mode(0o755))?;
+        fs::set_permissions(&install_tmp, fs::Permissions::from_mode(0o755))?;
     }
 
-    // Verify new binary works
-    let output = std::process::Command::new(&current_exe)
-        .arg("--help")
+    fs::rename(&install_tmp, &update_target)?;
+
+    // Verify new binary works and reports the expected latest version.
+    let output = std::process::Command::new(&update_target)
+        .arg("--version")
         .output();
 
     match output {
         Ok(o) if o.status.success() => {
-            println!("✅ Updated successfully! Hakimi Agent — AI-powered coding assistant\n");
+            let version_text = String::from_utf8_lossy(&o.stdout);
+            if !version_text.contains(latest_tag.trim_start_matches('v')) {
+                let _ = fs::copy(&backup_path, &update_target);
+                anyhow::bail!(
+                    "updated binary reported `{}` instead of `{latest_tag}`; previous version restored",
+                    version_text.trim()
+                );
+            }
+            println!(
+                "✅ Updated successfully to {latest_tag}: {}",
+                version_text.trim()
+            );
             let _ = fs::remove_file(&backup_path);
 
             // Try to restore user/memory state if the archive was created
@@ -2447,7 +2623,7 @@ async fn self_update() -> Result<()> {
         _ => {
             // Restore backup
             eprintln!("⚠️ New binary failed verification. Restoring backup...");
-            fs::copy(&backup_path, &current_exe)?;
+            fs::copy(&backup_path, &update_target)?;
             anyhow::bail!("Update failed — previous version restored.");
         }
     }
@@ -2519,7 +2695,7 @@ mod tests {
     use super::{
         DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker, GatewayMode,
         GatewayStreamUiState, GatewayUiContentTarget, resolve_clawbot_gateway_config,
-        should_edit_initial_gateway_message,
+        resolve_hakimi_update_target, should_edit_initial_gateway_message,
     };
     use clap::ValueEnum;
 
@@ -2541,6 +2717,13 @@ mod tests {
             GatewayMode::from_str("status", true).unwrap(),
             GatewayMode::Status
         );
+    }
+
+    #[test]
+    fn update_target_falls_back_to_current_exe_when_path_has_no_match() {
+        let current = std::path::PathBuf::from("/tmp/hakimi-current-test");
+        let resolved = resolve_hakimi_update_target(&current);
+        assert_eq!(resolved, current);
     }
 
     #[test]

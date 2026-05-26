@@ -834,7 +834,8 @@ async fn ilink_poll_once(
     .await
     .context("failed to poll iLink getupdates")?;
     let body = ensure_success_json(resp, "iLink getupdates").await?;
-    let (next_cursor, messages, context_updates) = parse_ilink_updates(&config.bot_id, &body);
+    let (next_cursor, messages, context_updates, typing_updates) =
+        parse_ilink_updates(&config.bot_id, &body);
     {
         let mut guard = state
             .lock()
@@ -845,12 +846,20 @@ async fn ilink_poll_once(
         for (chat_id, context_token) in context_updates {
             guard.context_tokens.insert(chat_id, context_token);
         }
+        for (chat_id, typing_ticket) in typing_updates {
+            guard.typing_tickets.insert(chat_id, typing_ticket);
+        }
         save_ilink_state(config, &guard)?;
     }
     Ok(messages)
 }
 
-type IlinkParseResult = (Option<String>, Vec<GatewayMessage>, Vec<(String, String)>);
+type IlinkParseResult = (
+    Option<String>,
+    Vec<GatewayMessage>,
+    Vec<(String, String)>,
+    Vec<(String, String)>,
+);
 
 fn parse_ilink_updates(bot_id: &str, body: &Value) -> IlinkParseResult {
     let next_cursor = extract_string(body, &["get_updates_buf", "next_buf", "cursor"]);
@@ -862,6 +871,7 @@ fn parse_ilink_updates(bot_id: &str, body: &Value) -> IlinkParseResult {
     };
     let mut out = Vec::new();
     let mut contexts = Vec::new();
+    let mut typing_tickets = Vec::new();
     for msg in values {
         if extract_i64(&msg, &["message_type"]) == Some(2) {
             continue;
@@ -877,6 +887,9 @@ fn parse_ilink_updates(bot_id: &str, body: &Value) -> IlinkParseResult {
         if let Some(context_token) = extract_string(&msg, &["context_token", "contextToken"]) {
             contexts.push((chat_id.clone(), context_token));
         }
+        if let Some(typing_ticket) = extract_string(&msg, &["typing_ticket", "typingTicket"]) {
+            typing_tickets.push((chat_id.clone(), typing_ticket));
+        }
         out.push(GatewayMessage {
             platform: "clawbot".to_string(),
             bot_id: bot_id.to_string(),
@@ -886,7 +899,7 @@ fn parse_ilink_updates(bot_id: &str, body: &Value) -> IlinkParseResult {
             media: None,
         });
     }
-    (next_cursor, out, contexts)
+    (next_cursor, out, contexts, typing_tickets)
 }
 
 fn extract_ilink_text(msg: &Value) -> String {
@@ -1169,6 +1182,7 @@ mod tests {
                 {
                     "from_user_id": "user@im.wechat",
                     "context_token": "ctx-1",
+                    "typing_ticket": "typing-1",
                     "message_type": 1,
                     "item_list": [
                         {"type": 1, "text_item": {"text": "你"}},
@@ -1183,7 +1197,7 @@ mod tests {
                 }
             ]
         });
-        let (cursor, messages, contexts) = parse_ilink_updates("bot", &body);
+        let (cursor, messages, contexts, typing_tickets) = parse_ilink_updates("bot", &body);
         assert_eq!(cursor.as_deref(), Some("next-cursor"));
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].chat_id, "user@im.wechat");
@@ -1191,6 +1205,10 @@ mod tests {
         assert_eq!(
             contexts,
             vec![("user@im.wechat".to_string(), "ctx-1".to_string())]
+        );
+        assert_eq!(
+            typing_tickets,
+            vec![("user@im.wechat".to_string(), "typing-1".to_string())]
         );
     }
 

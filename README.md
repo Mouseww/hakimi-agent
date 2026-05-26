@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.67-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.68-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,13 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.68 Real Telegram Stop/Restart + Reliable Self Update**:
+  - **Real `/stop` Cancellation**: Telegram `/stop` now cancels the active per-chat gateway turn instead of only clearing the streaming callback, so long-running LLM/tool operations stop promptly.
+  - **Telegram `/restart` Command**: `/restart` is parsed, handled by gateway mode, and exposed through Telegram Bot commands to restart the managed Hakimi gateway service.
+  - **Reliable `hakimi --update`**: self-update now resolves GitHub's latest release via API, downloads the exact tag asset, installs to the `hakimi` binary found on `PATH`, and verifies `--version` after replacement to prevent staying on stale versions like 0.3.58.
+  - **WeChat Typing Indicator**: ClawBot/iLink stores `typing_ticket` from getupdates and maps gateway `typing` actions to iLink `sendtyping`, so WeChat shows “对方正在输入...” while Hakimi is working.
+  - **Mouseww/Rust Identity**: the default system prompt now identifies Hakimi as Mouseww's high-performance Rust-native Agent.
+
 - **v0.3.67 One-Command Gateway Setup & Lifecycle**:
   - **Platform Multi-Select Setup**: `hakimi --setup` now lets operators select gateway platforms in one flow and writes real `gateways:` / `roles.default.gateways:` YAML instead of leaving platform tokens as comments.
   - **One-Step ClawBot Configuration**: the setup flow can configure WeChat ClawBot/iLink native mode, token storage, and Telegram QR-login notifications without hand-editing YAML.

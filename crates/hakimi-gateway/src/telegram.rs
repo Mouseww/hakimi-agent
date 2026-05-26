@@ -286,6 +286,7 @@ impl PlatformAdapter for TelegramAdapter {
                 {"command": "cron", "description": "List scheduled jobs"},
                 {"command": "status", "description": "Show agent status"},
                 {"command": "update", "description": "Update Hakimi and restart Gateway"},
+                {"command": "restart", "description": "Restart the Hakimi Gateway service"},
                 {"command": "stop", "description": "Stop current background task or streaming"},
                 {"command": "memory", "description": "View or clear your persistent memory"},
                 {"command": "checkpoints", "description": "Manage file system checkpoints"},
