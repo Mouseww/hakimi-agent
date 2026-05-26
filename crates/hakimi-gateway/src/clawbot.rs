@@ -588,14 +588,6 @@ async fn poll_http_bridge_once(
     Ok(parse_bridge_poll_batch(body))
 }
 
-fn join_url(base: &str, path: &str) -> String {
-    format!(
-        "{}/{}",
-        base.trim_end_matches('/'),
-        path.trim_start_matches('/')
-    )
-}
-
 fn notify_ilink_login_qr(
     msg_tx: &mpsc::UnboundedSender<GatewayMessage>,
     config: &ClawBotAdapterConfig,
