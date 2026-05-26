@@ -286,8 +286,12 @@ enum GatewayUiContentTarget {
 pub enum GatewayMode {
     /// Start gateway mode in the current foreground process.
     Start,
+    /// Install/update the managed systemd gateway service and start it.
+    Install,
     /// Restart the managed systemd gateway service, then exit.
     Restart,
+    /// Show status for the managed systemd gateway service, then exit.
+    Status,
 }
 
 #[derive(Parser, Debug)]
@@ -538,18 +542,24 @@ fn prompt_optional(label: &str, default: &str) -> Result<String> {
     }
 }
 
-fn prompt_yes_no(label: &str, default: bool) -> Result<bool> {
-    let suffix = if default { "Y/n" } else { "y/N" };
-    print!("{label} [{suffix}]: ");
+fn prompt_secret_optional(label: &str, existing: &str) -> Result<String> {
+    if existing.is_empty() {
+        print!("{label} (Enter = skip): ");
+    } else {
+        print!("{label} ([configured], Enter = keep, 'skip' = clear): ");
+    }
     io::stdout().flush()?;
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    let trimmed = input.trim().to_ascii_lowercase();
-    if trimmed.is_empty() {
-        return Ok(default);
+    let trimmed = input.trim();
+    if trimmed.eq_ignore_ascii_case("skip") {
+        Ok(String::new())
+    } else if trimmed.is_empty() {
+        Ok(existing.to_string())
+    } else {
+        Ok(trimmed.to_string())
     }
-    Ok(matches!(trimmed.as_str(), "y" | "yes" | "是" | "好" | "1"))
 }
 
 fn write_config_file(config: &hakimi_config::HakimiConfig) -> Result<std::path::PathBuf> {
@@ -560,6 +570,129 @@ fn write_config_file(config: &hakimi_config::HakimiConfig) -> Result<std::path::
     let yaml = serde_yaml::to_string(config)?;
     std::fs::write(&path, yaml)?;
     Ok(path)
+}
+
+fn prompt_multi_select(label: &str, options: &[&str]) -> Result<Vec<usize>> {
+    println!("{label}");
+    for (idx, option) in options.iter().enumerate() {
+        println!("  {}. {}", idx + 1, option);
+    }
+    print!("Select numbers separated by comma/space (Enter = skip): ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let mut selected = Vec::new();
+    for part in input
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        if let Ok(number) = part.parse::<usize>()
+            && (1..=options.len()).contains(&number)
+        {
+            let idx = number - 1;
+            if !selected.contains(&idx) {
+                selected.push(idx);
+            }
+        }
+    }
+    Ok(selected)
+}
+
+fn configure_telegram_gateway(config: &mut hakimi_config::HakimiConfig) -> Result<()> {
+    println!("\n━━━ Telegram gateway ━━━");
+    config.gateways.telegram.bot_token = prompt_secret_optional(
+        "Telegram bot token (@BotFather)",
+        &config.gateways.telegram.bot_token,
+    )?;
+
+    let default_allowed = config
+        .gateways
+        .telegram
+        .allowed_users
+        .iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let allowed = prompt_optional(
+        "Allowed Telegram user IDs (comma-separated, empty = allow all)",
+        &default_allowed,
+    )?;
+    config.gateways.telegram.allowed_users = allowed
+        .split(',')
+        .filter_map(|value| value.trim().parse::<i64>().ok())
+        .collect();
+
+    let role = config.roles.entry("default".to_string()).or_default();
+    role.gateways.telegram = Some(hakimi_config::RoleTelegramConfig {
+        bot_token: config.gateways.telegram.bot_token.clone(),
+    });
+    if role.allowed_users.is_empty() {
+        role.allowed_users = config.gateways.telegram.allowed_users.clone();
+    }
+    Ok(())
+}
+
+fn configure_clawbot_gateway(config: &mut hakimi_config::HakimiConfig) -> Result<()> {
+    println!("\n━━━ WeChat ClawBot gateway ━━━");
+    println!(
+        "Recommended mode: ilink_native. It performs QR login in the background and keeps other gateways online."
+    );
+
+    config.gateways.clawbot.enabled = true;
+    config.gateways.clawbot.mode = prompt_text(
+        "Mode (ilink_native/http_bridge/weclawbot_api)",
+        "ilink_native",
+    )?;
+    config.gateways.clawbot.bot_id = prompt_text("Bot id", &config.gateways.clawbot.bot_id)?;
+    config.gateways.clawbot.base_url =
+        prompt_text("ClawBot/iLink base URL", &config.gateways.clawbot.base_url)?;
+    config.gateways.clawbot.token = prompt_secret_optional(
+        "Existing ClawBot token (skip for QR login)",
+        &config.gateways.clawbot.token,
+    )?;
+    config.gateways.clawbot.token_store = prompt_text(
+        "Token store directory",
+        &config.gateways.clawbot.token_store,
+    )?;
+
+    let notify_default = if config.gateways.clawbot.login_notify_platform.is_empty() {
+        "telegram"
+    } else {
+        &config.gateways.clawbot.login_notify_platform
+    };
+    config.gateways.clawbot.login_notify_platform =
+        prompt_optional("QR login notify platform", notify_default)?;
+    config.gateways.clawbot.login_notify_bot_id = prompt_optional(
+        "QR login notify bot id (empty = default telegram_bot)",
+        &config.gateways.clawbot.login_notify_bot_id,
+    )?;
+    config.gateways.clawbot.login_notify_chat_id = prompt_optional(
+        "QR login notify chat id (optional)",
+        &config.gateways.clawbot.login_notify_chat_id,
+    )?;
+
+    let role = config.roles.entry("default".to_string()).or_default();
+    role.gateways.clawbot = Some(hakimi_config::RoleClawBotConfig {
+        enabled: true,
+        mode: config.gateways.clawbot.mode.clone(),
+        bot_id: config.gateways.clawbot.bot_id.clone(),
+        base_url: config.gateways.clawbot.base_url.clone(),
+        token: config.gateways.clawbot.token.clone(),
+        poll_path: config.gateways.clawbot.poll_path.clone(),
+        send_path: config.gateways.clawbot.send_path.clone(),
+        edit_path: config.gateways.clawbot.edit_path.clone(),
+        poll_interval_ms: config.gateways.clawbot.poll_interval_ms,
+        poll_limit: config.gateways.clawbot.poll_limit,
+        token_store: config.gateways.clawbot.token_store.clone(),
+        channel_version: config.gateways.clawbot.channel_version.clone(),
+        app_client_version: config.gateways.clawbot.app_client_version.clone(),
+        login_notify_platform: config.gateways.clawbot.login_notify_platform.clone(),
+        login_notify_bot_id: config.gateways.clawbot.login_notify_bot_id.clone(),
+        login_notify_chat_id: config.gateways.clawbot.login_notify_chat_id.clone(),
+    });
+    Ok(())
 }
 
 fn run_setup_wizard(mut config: hakimi_config::HakimiConfig) -> Result<()> {
@@ -601,9 +734,19 @@ fn run_setup_wizard(mut config: hakimi_config::HakimiConfig) -> Result<()> {
     config.model.base_url = prompt_optional("Base URL", base_url_default)?;
     config.model.api_key = prompt_optional("API key", &config.model.api_key)?;
 
-    if prompt_yes_no("Configure Telegram gateway bot token now?", false)? {
-        config.gateways.telegram.bot_token =
-            prompt_optional("Telegram bot token", &config.gateways.telegram.bot_token)?;
+    let selections = prompt_multi_select(
+        "\nConfigure gateway platforms (multi-select):",
+        &[
+            "Telegram — bot token from @BotFather",
+            "WeChat ClawBot — iLink native QR login / HTTP bridge",
+        ],
+    )?;
+    for selection in selections {
+        match selection {
+            0 => configure_telegram_gateway(&mut config)?,
+            1 => configure_clawbot_gateway(&mut config)?,
+            _ => {}
+        }
     }
 
     config.agent.max_turns = prompt_text(
@@ -617,7 +760,9 @@ fn run_setup_wizard(mut config: hakimi_config::HakimiConfig) -> Result<()> {
     println!("\n✅ Hakimi configuration saved to {}", path.display());
     println!("Next steps:");
     println!("  hakimi --query \"hello\"");
-    println!("  hakimi --gateway   # if you configured Telegram");
+    println!("  hakimi --gateway install   # install/start managed gateway service");
+    println!("  hakimi --gateway restart   # restart without loading the agent");
+    println!("  hakimi --gateway           # foreground gateway mode");
     Ok(())
 }
 
@@ -1194,12 +1339,23 @@ async fn start_gateway(
     let mut gateway = hakimi_gateway::Gateway::new();
 
     // Configure Telegram gateway.
-    let bot_token = std::env::var("TELEGRAM_BOT_TOKEN").ok().or_else(|| {
-        config
-            .roles
-            .get("default")
-            .and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone()))
-    });
+    let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
+        .ok()
+        .filter(|token| !token.trim().is_empty())
+        .or_else(|| {
+            config
+                .roles
+                .get("default")
+                .and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone()))
+                .filter(|token| !token.trim().is_empty())
+        })
+        .or_else(|| {
+            if config.gateways.telegram.bot_token.trim().is_empty() {
+                None
+            } else {
+                Some(config.gateways.telegram.bot_token.clone())
+            }
+        });
 
     // Re-resolve API key for Gateway mode from default role
     // Since Gateway mode shares the agent, we just rely on the transport that was already built
@@ -2088,13 +2244,17 @@ async fn start_gateway(
 
     Ok(())
 }
+fn gateway_service_name() -> String {
+    std::env::var("HAKIMI_GATEWAY_SERVICE")
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "hakimi".to_string())
+}
+
 fn restart_gateway_service() -> Result<()> {
     use std::process::Command as ProcessCommand;
 
-    let service = std::env::var("HAKIMI_GATEWAY_SERVICE")
-        .ok()
-        .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| "hakimi".to_string());
+    let service = gateway_service_name();
 
     let status = ProcessCommand::new("systemctl")
         .arg("restart")
@@ -2105,6 +2265,60 @@ fn restart_gateway_service() -> Result<()> {
     }
 
     println!("✅ Gateway service `{service}` restarted.");
+    Ok(())
+}
+
+fn install_gateway_service() -> Result<()> {
+    use std::process::Command as ProcessCommand;
+
+    let service = gateway_service_name();
+    let unit_path = format!("/etc/systemd/system/{service}.service");
+    let exe = std::env::current_exe()?;
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/root"));
+    let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
+    let unit = format!(
+        "[Unit]\nDescription=Hakimi Agent Gateway\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser={user}\nWorkingDirectory={home}\nEnvironment=HOME={home}\nExecStart={exe} --gateway start\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n",
+        user = user,
+        home = home.display(),
+        exe = exe.display()
+    );
+
+    std::fs::write(&unit_path, unit)?;
+    for args in [
+        vec!["daemon-reload"],
+        vec!["enable", &service],
+        vec!["restart", &service],
+    ] {
+        let status = ProcessCommand::new("systemctl").args(args).status()?;
+        if !status.success() {
+            anyhow::bail!("systemctl failed while installing `{service}` (exit status: {status})");
+        }
+    }
+    println!("✅ Gateway service `{service}` installed and started.");
+    println!("   Unit: {unit_path}");
+    Ok(())
+}
+
+fn gateway_service_status() -> Result<()> {
+    use std::process::Command as ProcessCommand;
+
+    let service = gateway_service_name();
+    let output = ProcessCommand::new("systemctl")
+        .arg("status")
+        .arg(&service)
+        .arg("--no-pager")
+        .arg("-l")
+        .output()?;
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    if !output.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+    if !output.status.success() {
+        anyhow::bail!(
+            "gateway service `{service}` is not active (exit status: {})",
+            output.status
+        );
+    }
     Ok(())
 }
 
@@ -2266,8 +2480,14 @@ pub async fn run() -> Result<()> {
         return run_setup_wizard(config);
     }
 
+    if matches!(args.gateway, Some(GatewayMode::Install)) {
+        return install_gateway_service();
+    }
     if matches!(args.gateway, Some(GatewayMode::Restart)) {
         return restart_gateway_service();
+    }
+    if matches!(args.gateway, Some(GatewayMode::Status)) {
+        return gateway_service_status();
     }
 
     let agent = build_agent(&args, &config).await?;
@@ -2297,10 +2517,31 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
+        DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker, GatewayMode,
         GatewayStreamUiState, GatewayUiContentTarget, resolve_clawbot_gateway_config,
         should_edit_initial_gateway_message,
     };
+    use clap::ValueEnum;
+
+    #[test]
+    fn gateway_mode_supports_install_restart_and_status() {
+        assert_eq!(
+            GatewayMode::from_str("start", true).unwrap(),
+            GatewayMode::Start
+        );
+        assert_eq!(
+            GatewayMode::from_str("install", true).unwrap(),
+            GatewayMode::Install
+        );
+        assert_eq!(
+            GatewayMode::from_str("restart", true).unwrap(),
+            GatewayMode::Restart
+        );
+        assert_eq!(
+            GatewayMode::from_str("status", true).unwrap(),
+            GatewayMode::Status
+        );
+    }
 
     #[test]
     fn resolves_clawbot_gateway_config_from_role_binding() {

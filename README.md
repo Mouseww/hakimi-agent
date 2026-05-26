@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.66-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.67-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,11 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.67 One-Command Gateway Setup & Lifecycle**:
+  - **Platform Multi-Select Setup**: `hakimi --setup` now lets operators select gateway platforms in one flow and writes real `gateways:` / `roles.default.gateways:` YAML instead of leaving platform tokens as comments.
+  - **One-Step ClawBot Configuration**: the setup flow can configure WeChat ClawBot/iLink native mode, token storage, and Telegram QR-login notifications without hand-editing YAML.
+  - **Managed Gateway Install**: `hakimi --gateway install` creates/updates the systemd service, enables it on boot, and starts it; `--gateway status` inspects it, while `--gateway restart` remains a fast lifecycle command that does not load model credentials.
+  - **Top-Level Telegram Config Works**: gateway startup now honors `gateways.telegram.bot_token` in addition to env vars and role-scoped config, so setup-generated configs work immediately.
 - **v0.3.66 Non-Blocking ClawBot QR Login**:
   - **Gateway Isolation**: native iLink QR login now runs in the background, so missing/expired WeChat login state no longer prevents Telegram from reaching `gateway listening for messages`.
   - **Telegram QR Image**: configure `login_notify_platform: "telegram"`, `login_notify_bot_id: "telegram_bot"`, and `login_notify_chat_id: "<chat-id>"` to receive the WeChat QR code as a Telegram photo instead of copying a URL from logs.
@@ -214,12 +219,15 @@ On first `hakimi --gateway`, native iLink mode starts the WeChat QR login in the
 **Gateway lifecycle:**
 
 ```bash
+hakimi --setup            # multi-select Telegram / WeChat ClawBot and write real gateway config
+hakimi --gateway install  # create/update systemd service, enable boot start, and start now
 hakimi --gateway          # foreground gateway mode (same as --gateway start)
 hakimi --gateway start    # explicit foreground gateway mode
 hakimi --gateway restart  # restart the managed systemd service and exit
+hakimi --gateway status   # show managed service status and exit
 ```
 
-By default the restart shortcut targets `hakimi.service`. If your unit uses another name, set `HAKIMI_GATEWAY_SERVICE=<service-name>` before running `hakimi --gateway restart`.
+By default the lifecycle shortcuts target `hakimi.service`. If your unit uses another name, set `HAKIMI_GATEWAY_SERVICE=<service-name>` before running `hakimi --gateway install`, `hakimi --gateway restart`, or `hakimi --gateway status`.
 
 **Legacy generic ClawBot HTTP bridge:**
 
