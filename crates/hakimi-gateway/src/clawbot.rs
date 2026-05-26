@@ -286,7 +286,6 @@ impl ClawBotAdapter {
             }
         }
     }
-
 }
 
 #[async_trait]
@@ -327,7 +326,9 @@ impl PlatformAdapter for ClawBotAdapter {
                             Ok(messages) => {
                                 for msg in messages {
                                     if msg_tx.send(msg).is_err() {
-                                        error!("ClawBot receiver dropped; stopping iLink poll loop");
+                                        error!(
+                                            "ClawBot receiver dropped; stopping iLink poll loop"
+                                        );
                                         return;
                                     }
                                 }
@@ -588,7 +589,11 @@ async fn poll_http_bridge_once(
 }
 
 fn join_url(base: &str, path: &str) -> String {
-    format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'))
+    format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    )
 }
 
 fn notify_ilink_login_qr(
@@ -644,7 +649,9 @@ fn notify_ilink_login_complete(
         bot_id: bot_id.to_string(),
         chat_id: config.login_notify_chat_id.clone(),
         user_id: "clawbot-login".to_string(),
-        text: format!("✅ ClawBot 微信登录完成，登录态已保存。\n\nHAKIMI_ROUTE_PLATFORM={platform}"),
+        text: format!(
+            "✅ ClawBot 微信登录完成，登录态已保存。\n\nHAKIMI_ROUTE_PLATFORM={platform}"
+        ),
         media: None,
     };
     let _ = msg_tx.send(msg);

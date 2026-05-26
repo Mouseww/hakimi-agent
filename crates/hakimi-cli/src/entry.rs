@@ -1389,7 +1389,10 @@ async fn start_gateway(
             if let Some((_, target_platform)) = text.rsplit_once("HAKIMI_ROUTE_PLATFORM=") {
                 routed.platform = target_platform.trim().to_string();
                 routed.text = text
-                    .replace(&format!("\n\nHAKIMI_ROUTE_PLATFORM={}", target_platform.trim()), "")
+                    .replace(
+                        &format!("\n\nHAKIMI_ROUTE_PLATFORM={}", target_platform.trim()),
+                        "",
+                    )
                     .trim()
                     .to_string();
             } else {
