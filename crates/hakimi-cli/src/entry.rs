@@ -175,6 +175,15 @@ fn resolve_clawbot_gateway_config(
         if !role_cfg.app_client_version.is_empty() {
             resolved.app_client_version = role_cfg.app_client_version;
         }
+        if !role_cfg.login_notify_platform.is_empty() {
+            resolved.login_notify_platform = role_cfg.login_notify_platform;
+        }
+        if !role_cfg.login_notify_bot_id.is_empty() {
+            resolved.login_notify_bot_id = role_cfg.login_notify_bot_id;
+        }
+        if !role_cfg.login_notify_chat_id.is_empty() {
+            resolved.login_notify_chat_id = role_cfg.login_notify_chat_id;
+        }
     }
 
     if let Ok(url) = std::env::var("CLAWBOT_BASE_URL")
@@ -1224,6 +1233,9 @@ async fn start_gateway(
             token_store: clawbot_config.token_store,
             channel_version: clawbot_config.channel_version,
             app_client_version: clawbot_config.app_client_version,
+            login_notify_platform: clawbot_config.login_notify_platform,
+            login_notify_bot_id: clawbot_config.login_notify_bot_id,
+            login_notify_chat_id: clawbot_config.login_notify_chat_id,
         });
         gateway.add_adapter(Box::new(clawbot));
         info!("clawbot gateway registered");
@@ -1371,6 +1383,23 @@ async fn start_gateway(
         let media_id = msg.media.clone();
 
         info!(platform = %platform, chat_id = %chat_id, has_media = media_id.is_some(), "received message via gateway");
+
+        if platform == "__hakimi_system__" {
+            let mut routed = msg.clone();
+            if let Some((_, target_platform)) = text.rsplit_once("HAKIMI_ROUTE_PLATFORM=") {
+                routed.platform = target_platform.trim().to_string();
+                routed.text = text
+                    .replace(&format!("\n\nHAKIMI_ROUTE_PLATFORM={}", target_platform.trim()), "")
+                    .trim()
+                    .to_string();
+            } else {
+                routed.platform = "telegram".to_string();
+            }
+            if let Err(err) = gateway.route_message(&routed).await {
+                tracing::warn!(error = %err, "failed to route internal gateway notification");
+            }
+            continue;
+        }
 
         let agent_clone = agent_arc.clone();
         let gateway_clone = gateway.clone();

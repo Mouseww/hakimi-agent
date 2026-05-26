@@ -363,6 +363,56 @@ impl PlatformAdapter for TelegramAdapter {
         Ok(())
     }
 
+    async fn send_media(&self, chat_id: &str, media: &str, caption: &str) -> Result<()> {
+        let caption = normalize_outbound_text(caption);
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "photo": media,
+            "caption": caption,
+            "parse_mode": "Markdown",
+        });
+        let resp: TgResponse<serde_json::Value> = self
+            .client
+            .post(self.api_url("sendPhoto"))
+            .json(&body)
+            .send()
+            .await
+            .context("failed to send Telegram photo")?
+            .json()
+            .await
+            .context("failed to parse sendPhoto response")?;
+
+        if !resp.ok {
+            warn!(
+                chat_id = %chat_id,
+                error = resp.description.as_deref().unwrap_or("unknown"),
+                "sendPhoto with Markdown failed, retrying without parse_mode"
+            );
+            let plain_body = serde_json::json!({
+                "chat_id": chat_id,
+                "photo": media,
+                "caption": caption,
+            });
+            let resp: TgResponse<serde_json::Value> = self
+                .client
+                .post(self.api_url("sendPhoto"))
+                .json(&plain_body)
+                .send()
+                .await
+                .context("failed to send Telegram photo (plain)")?
+                .json()
+                .await
+                .context("failed to parse sendPhoto response (plain)")?;
+            if !resp.ok {
+                anyhow::bail!(
+                    "Telegram sendPhoto failed: {}",
+                    resp.description.unwrap_or_else(|| "unknown error".into())
+                );
+            }
+        }
+        Ok(())
+    }
+
     async fn send_chat_action(&self, chat_id: &str, action: &str) -> Result<()> {
         let body = serde_json::json!({
             "chat_id": chat_id,

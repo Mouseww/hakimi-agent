@@ -73,6 +73,22 @@ pub trait PlatformAdapter: Send + Sync {
     /// Send a message to a specific chat / channel.
     async fn send_message(&self, chat_id: &str, text: &str) -> anyhow::Result<()>;
 
+    /// Send a media attachment with an optional caption.
+    ///
+    /// `media` may be a platform file ID, an HTTP(S) URL, or a local path for
+    /// adapters that support uploads. The default implementation degrades to a
+    /// plain text message so non-media platforms remain compatible.
+    async fn send_media(&self, chat_id: &str, media: &str, caption: &str) -> anyhow::Result<()> {
+        let mut text = caption.to_string();
+        if !media.trim().is_empty() {
+            if !text.trim().is_empty() {
+                text.push('\n');
+            }
+            text.push_str(media);
+        }
+        self.send_message(chat_id, &text).await
+    }
+
     /// Send a chat action (e.g. "typing") to indicate the bot is working.
     /// Default: no-op for platforms that don't support it.
     async fn send_chat_action(&self, _chat_id: &str, _action: &str) -> anyhow::Result<()> {
@@ -177,7 +193,13 @@ impl Gateway {
                 )
             })?;
 
-        adapter.send_message(&msg.chat_id, &msg.text).await
+        if let Some(media) = msg.media.as_deref()
+            && !media.trim().is_empty()
+        {
+            adapter.send_media(&msg.chat_id, media, &msg.text).await
+        } else {
+            adapter.send_message(&msg.chat_id, &msg.text).await
+        }
     }
 
     /// Route an outbound message to the correct adapter and get its ID.

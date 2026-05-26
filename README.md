@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.65-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.66-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -73,6 +73,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.66 Non-Blocking ClawBot QR Login**:
+  - **Gateway Isolation**: native iLink QR login now runs in the background, so missing/expired WeChat login state no longer prevents Telegram from reaching `gateway listening for messages`.
+  - **Telegram QR Image**: configure `login_notify_platform: "telegram"`, `login_notify_bot_id: "telegram_bot"`, and `login_notify_chat_id: "<chat-id>"` to receive the WeChat QR code as a Telegram photo instead of copying a URL from logs.
+  - **Login Completion Notice**: after scanning succeeds, Hakimi sends a compact confirmation and persists the iLink token under `token_store` for future restarts.
 - **v0.3.65 Gateway Restart Mode**:
   - **CLI Restart Shortcut**: `hakimi --gateway restart` restarts the managed systemd gateway service and exits, while plain `hakimi --gateway` still starts gateway mode in the foreground.
   - **Service Override**: set `HAKIMI_GATEWAY_SERVICE=<service-name>` when the systemd unit is not named `hakimi`.
@@ -200,9 +204,12 @@ gateways:
     token_store: "~/.hakimi/clawbot"
     channel_version: "1.0.2"
     app_client_version: "2.4.3"
+    login_notify_platform: "telegram"     # optional: send QR login image to Telegram
+    login_notify_bot_id: "telegram_bot"   # optional: target Telegram adapter bot_id
+    login_notify_chat_id: "<telegram-chat-id>"
 ```
 
-On first `hakimi --gateway`, native iLink mode prints a WeChat QR URL to scan. Hakimi persists the returned bot token, update cursor, and per-chat `context_token` under `token_store`, then receives inbound messages through `POST /ilink/bot/getupdates` and replies through `POST /ilink/bot/sendmessage`.
+On first `hakimi --gateway`, native iLink mode starts the WeChat QR login in the background instead of blocking other adapters. If `login_notify_chat_id` is configured, Hakimi routes the QR URL through Telegram `sendPhoto`, so the operator receives an image to scan directly in chat. Hakimi persists the returned bot token, update cursor, and per-chat `context_token` under `token_store`, then receives inbound messages through `POST /ilink/bot/getupdates` and replies through `POST /ilink/bot/sendmessage`.
 
 **Gateway lifecycle:**
 

@@ -80,6 +80,15 @@ pub struct ClawBotAdapterConfig {
     /// iLink client version header.
     #[serde(default = "default_app_client_version")]
     pub app_client_version: String,
+    /// Optional platform that receives iLink login QR notifications.
+    #[serde(default)]
+    pub login_notify_platform: String,
+    /// Optional bot id for login QR notifications.
+    #[serde(default)]
+    pub login_notify_bot_id: String,
+    /// Optional chat id for login QR notifications.
+    #[serde(default)]
+    pub login_notify_chat_id: String,
 }
 
 fn default_clawbot_bot_id() -> String {
@@ -137,6 +146,9 @@ impl Default for ClawBotAdapterConfig {
             token_store: default_token_store(),
             channel_version: default_channel_version(),
             app_client_version: default_app_client_version(),
+            login_notify_platform: String::new(),
+            login_notify_bot_id: String::new(),
+            login_notify_chat_id: String::new(),
         }
     }
 }
@@ -219,24 +231,27 @@ impl ClawBotAdapter {
         })
     }
 
-    async fn ensure_ilink_login(&self) -> Result<()> {
-        if !self.config.token.trim().is_empty() {
-            let mut state = self
-                .ilink_state
+    async fn ensure_ilink_login(
+        client: &Client,
+        config: &ClawBotAdapterConfig,
+        ilink_state: &Arc<Mutex<IlinkStoredState>>,
+        msg_tx: &mpsc::UnboundedSender<GatewayMessage>,
+    ) -> Result<()> {
+        if !config.token.trim().is_empty() {
+            let mut state = ilink_state
                 .lock()
                 .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
             if state.bot_token.is_empty() {
-                state.bot_token = self.config.token.clone();
+                state.bot_token = config.token.clone();
             }
             if state.base_url.is_empty() {
-                state.base_url = self.config.base_url.clone();
+                state.base_url = config.base_url.clone();
             }
-            save_ilink_state(&self.config, &state)?;
+            save_ilink_state(config, &state)?;
             return Ok(());
         }
         {
-            let state = self
-                .ilink_state
+            let state = ilink_state
                 .lock()
                 .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
             if !state.bot_token.is_empty() {
@@ -244,7 +259,7 @@ impl ClawBotAdapter {
             }
         }
 
-        let qr = ilink_get_qrcode(&self.client, &self.config).await?;
+        let qr = ilink_get_qrcode(client, config).await?;
         info!(
             qrcode_url = %qr.qrcode_img_content,
             "WeChat ClawBot login required: scan this QR URL with WeChat"
@@ -253,48 +268,25 @@ impl ClawBotAdapter {
             "\n=== WeChat ClawBot / iLink login ===\nScan with WeChat: {}\n",
             qr.qrcode_img_content
         );
+        notify_ilink_login_qr(msg_tx, config, &qr.qrcode_img_content);
 
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
-            let status = ilink_get_qrcode_status(&self.client, &self.config, &qr.qrcode).await?;
+            let status = ilink_get_qrcode_status(client, config, &qr.qrcode).await?;
             if let Some(token) = status.bot_token {
-                let mut state = self
-                    .ilink_state
+                let mut state = ilink_state
                     .lock()
                     .map_err(|_| anyhow::anyhow!("iLink state lock poisoned"))?;
                 state.bot_token = token;
-                state.base_url = status
-                    .baseurl
-                    .unwrap_or_else(|| self.config.base_url.clone());
-                save_ilink_state(&self.config, &state)?;
+                state.base_url = status.baseurl.unwrap_or_else(|| config.base_url.clone());
+                save_ilink_state(config, &state)?;
+                notify_ilink_login_complete(msg_tx, config);
                 info!("WeChat ClawBot iLink login completed");
                 return Ok(());
             }
         }
     }
 
-    fn spawn_ilink_poll_loop(&self) -> JoinHandle<()> {
-        let client = self.client.clone();
-        let config = self.config.clone();
-        let msg_tx = self.msg_tx.clone();
-        let state = self.ilink_state.clone();
-        tokio::spawn(async move {
-            loop {
-                match ilink_poll_once(&client, &config, &state).await {
-                    Ok(messages) => {
-                        for msg in messages {
-                            if msg_tx.send(msg).is_err() {
-                                error!("ClawBot receiver dropped; stopping iLink poll loop");
-                                return;
-                            }
-                        }
-                    }
-                    Err(err) => warn!(error = %err, "iLink getupdates failed, retrying"),
-                }
-                tokio::time::sleep(Duration::from_millis(config.poll_interval_ms)).await;
-            }
-        })
-    }
 }
 
 #[async_trait]
@@ -316,8 +308,35 @@ impl PlatformAdapter for ClawBotAdapter {
                 tokio::spawn(async { std::future::pending::<()>().await })
             }
             ClawBotMode::IlinkNative => {
-                self.ensure_ilink_login().await?;
-                self.spawn_ilink_poll_loop()
+                let client = self.client.clone();
+                let config = self.config.clone();
+                let state = self.ilink_state.clone();
+                let msg_tx = self.msg_tx.clone();
+                tokio::spawn(async move {
+                    loop {
+                        match Self::ensure_ilink_login(&client, &config, &state, &msg_tx).await {
+                            Ok(()) => break,
+                            Err(err) => {
+                                warn!(error = %err, "iLink login failed, retrying in background");
+                                tokio::time::sleep(Duration::from_secs(15)).await;
+                            }
+                        }
+                    }
+                    loop {
+                        match ilink_poll_once(&client, &config, &state).await {
+                            Ok(messages) => {
+                                for msg in messages {
+                                    if msg_tx.send(msg).is_err() {
+                                        error!("ClawBot receiver dropped; stopping iLink poll loop");
+                                        return;
+                                    }
+                                }
+                            }
+                            Err(err) => warn!(error = %err, "iLink getupdates failed, retrying"),
+                        }
+                        tokio::time::sleep(Duration::from_millis(config.poll_interval_ms)).await;
+                    }
+                })
             }
         };
         self.poll_handle = Some(handle);
@@ -566,6 +585,69 @@ async fn poll_http_bridge_once(
         .context("failed to poll ClawBot bridge messages")?;
     let body = ensure_success_json(resp, "ClawBot bridge poll").await?;
     Ok(parse_bridge_poll_batch(body))
+}
+
+fn join_url(base: &str, path: &str) -> String {
+    format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'))
+}
+
+fn notify_ilink_login_qr(
+    msg_tx: &mpsc::UnboundedSender<GatewayMessage>,
+    config: &ClawBotAdapterConfig,
+    qrcode_img_url: &str,
+) {
+    if config.login_notify_chat_id.trim().is_empty() {
+        return;
+    }
+    let platform = if config.login_notify_platform.trim().is_empty() {
+        "telegram"
+    } else {
+        config.login_notify_platform.trim()
+    };
+    let bot_id = if config.login_notify_bot_id.trim().is_empty() {
+        "telegram_bot"
+    } else {
+        config.login_notify_bot_id.trim()
+    };
+    let msg = GatewayMessage {
+        platform: "__hakimi_system__".to_string(),
+        bot_id: bot_id.to_string(),
+        chat_id: config.login_notify_chat_id.clone(),
+        user_id: "clawbot-login".to_string(),
+        text: format!(
+            "请用微信扫描二维码登录 ClawBot。登录完成后会自动保存状态；Telegram gateway 不会被阻塞。\n\nHAKIMI_ROUTE_PLATFORM={platform}"
+        ),
+        media: Some(qrcode_img_url.to_string()),
+    };
+    let _ = msg_tx.send(msg);
+}
+
+fn notify_ilink_login_complete(
+    msg_tx: &mpsc::UnboundedSender<GatewayMessage>,
+    config: &ClawBotAdapterConfig,
+) {
+    if config.login_notify_chat_id.trim().is_empty() {
+        return;
+    }
+    let platform = if config.login_notify_platform.trim().is_empty() {
+        "telegram"
+    } else {
+        config.login_notify_platform.trim()
+    };
+    let bot_id = if config.login_notify_bot_id.trim().is_empty() {
+        "telegram_bot"
+    } else {
+        config.login_notify_bot_id.trim()
+    };
+    let msg = GatewayMessage {
+        platform: "__hakimi_system__".to_string(),
+        bot_id: bot_id.to_string(),
+        chat_id: config.login_notify_chat_id.clone(),
+        user_id: "clawbot-login".to_string(),
+        text: format!("✅ ClawBot 微信登录完成，登录态已保存。\n\nHAKIMI_ROUTE_PLATFORM={platform}"),
+        media: None,
+    };
+    let _ = msg_tx.send(msg);
 }
 
 fn parse_bridge_poll_batch(body: Value) -> PollBatch {

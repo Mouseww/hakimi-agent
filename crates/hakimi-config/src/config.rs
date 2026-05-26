@@ -538,6 +538,15 @@ pub struct ClawBotGatewayConfig {
     pub channel_version: String,
     #[serde(default = "default_clawbot_app_client_version")]
     pub app_client_version: String,
+    /// Optional platform that receives iLink login QR notifications.
+    #[serde(default)]
+    pub login_notify_platform: String,
+    /// Optional bot id for login QR notifications.
+    #[serde(default)]
+    pub login_notify_bot_id: String,
+    /// Optional chat id for login QR notifications.
+    #[serde(default)]
+    pub login_notify_chat_id: String,
 }
 
 fn default_clawbot_mode() -> String {
@@ -600,6 +609,9 @@ impl Default for ClawBotGatewayConfig {
             token_store: default_clawbot_token_store(),
             channel_version: default_clawbot_channel_version(),
             app_client_version: default_clawbot_app_client_version(),
+            login_notify_platform: String::new(),
+            login_notify_bot_id: String::new(),
+            login_notify_chat_id: String::new(),
         }
     }
 }
@@ -688,6 +700,12 @@ pub struct RoleClawBotConfig {
     pub channel_version: String,
     #[serde(default = "default_clawbot_app_client_version")]
     pub app_client_version: String,
+    #[serde(default)]
+    pub login_notify_platform: String,
+    #[serde(default)]
+    pub login_notify_bot_id: String,
+    #[serde(default)]
+    pub login_notify_chat_id: String,
 }
 
 /// Telegram-specific config for a role gateway binding.
