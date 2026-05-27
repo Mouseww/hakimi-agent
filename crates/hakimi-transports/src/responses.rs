@@ -336,6 +336,10 @@ impl ProviderTransport for ResponsesTransport {
         "openai-responses"
     }
 
+    fn rate_limits(&self) -> Option<RateLimitState> {
+        self.rate_limits.snapshot()
+    }
+
     async fn execute(
         &self,
         model: &str,

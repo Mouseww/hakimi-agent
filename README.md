@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.78-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.79-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1080-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1083-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,13 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1080 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1083 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.79 Gateway `/usage` Display**:
+  - **Hermes-Style Usage Surface**: gateway chats can now run `/usage` after a turn to see the active model, provider, API call count, and prompt/completion/total token usage.
+  - **Rate-Limit Visibility**: the command includes the latest provider `x-ratelimit-*` snapshot when the active transport captured one, matching Hermes' rate-limit display path for remote operators.
+  - **Regression Coverage**: added command-formatting tests for empty state, token counts, cache/reasoning buckets, and rate-limit snapshot rendering without live provider calls.
 - **v0.3.78 Rate Limit Tracking**:
   - **Hermes-Style Header Parsing**: `hakimi-transports` now parses OpenAI/Nous-style `x-ratelimit-*` windows for requests and tokens per minute/hour, including numeric and duration reset values.
   - **Transport-Level Snapshots**: Chat Completions, Responses, Anthropic, and Gemini transports retain the latest rate-limit snapshot for future `/usage` and gateway status surfaces.
@@ -437,7 +441,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1080 |
+| Tests | ~500 | 1083 |
 
 ---
 
@@ -447,7 +451,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1080 tests)
+# Run all tests (1083 tests)
 cargo test --workspace
 
 # Debug logging

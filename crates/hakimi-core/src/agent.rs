@@ -488,6 +488,15 @@ impl AIAgent {
         Ok(result.final_response)
     }
 
+    /// Run a streaming conversation and return the full result, including usage.
+    pub async fn run_conversation_streaming_with_message(
+        &mut self,
+        msg: Message,
+    ) -> Result<ConversationResult> {
+        self.streaming = true;
+        self.run_conversation_with_message(msg).await
+    }
+
     /// Dynamically set the streaming callback for this agent instance.
     pub fn set_streaming_callback(&mut self, callback: Option<Arc<dyn Fn(String) + Send + Sync>>) {
         self.streaming_callback = callback;
@@ -552,6 +561,16 @@ impl AIAgent {
     /// Get the model identifier.
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Get the provider name for the active transport.
+    pub fn provider_name(&self) -> &str {
+        self.transport.provider_name()
+    }
+
+    /// Get the latest provider rate-limit snapshot, if available.
+    pub fn rate_limits(&self) -> Option<hakimi_transports::RateLimitState> {
+        self.transport.rate_limits()
     }
 
     /// Get the platform name, if set.

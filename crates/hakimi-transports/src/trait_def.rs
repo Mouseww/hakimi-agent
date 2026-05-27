@@ -4,6 +4,7 @@ use hakimi_common::{ApiMode, Message, NormalizedResponse, Result, ToolDefinition
 use std::pin::Pin;
 
 use crate::params::RequestParams;
+use crate::rate_limit::RateLimitState;
 use crate::streaming::StreamEvent;
 
 /// Core trait that every LLM transport must implement.
@@ -41,4 +42,9 @@ pub trait ProviderTransport: Send + Sync {
         tools: &[ToolDefinition],
         params: &RequestParams,
     ) -> Result<Pin<Box<dyn Stream<Item = std::result::Result<StreamEvent, String>> + Send>>>;
+
+    /// Return the most recent provider rate-limit snapshot, if this transport captures one.
+    fn rate_limits(&self) -> Option<RateLimitState> {
+        None
+    }
 }

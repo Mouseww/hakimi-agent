@@ -65,6 +65,82 @@ fn gateway_cron_response(command: Option<&str>) -> String {
     gateway_cron_response_for_path(command, &cron_db_path())
 }
 
+#[derive(Debug, Clone)]
+struct GatewayUsageSnapshot {
+    model: String,
+    provider: String,
+    usage: hakimi_common::Usage,
+    api_call_count: usize,
+    rate_limits: Option<hakimi_transports::RateLimitState>,
+}
+
+impl GatewayUsageSnapshot {
+    fn from_result(agent: &hakimi_core::AIAgent, result: &hakimi_core::ConversationResult) -> Self {
+        Self {
+            model: agent.model().to_string(),
+            provider: agent.provider_name().to_string(),
+            usage: result.usage.clone(),
+            api_call_count: result.api_call_count,
+            rate_limits: agent.rate_limits(),
+        }
+    }
+}
+
+fn format_usage_count(value: u32) -> String {
+    if value >= 1_000_000 {
+        format!("{:.1}M", value as f64 / 1_000_000.0)
+    } else if value >= 1_000 {
+        format!("{:.1}K", value as f64 / 1_000.0)
+    } else {
+        value.to_string()
+    }
+}
+
+fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
+    let Some(snapshot) = snapshot else {
+        return "📊 No usage data yet. Send a message first, then run `/usage`.".to_string();
+    };
+
+    let usage = &snapshot.usage;
+    let mut lines = vec![
+        "📊 **Usage**".to_string(),
+        format!("- Model: `{}`", snapshot.model),
+        format!("- Provider: `{}`", snapshot.provider),
+        format!("- API calls: {}", snapshot.api_call_count),
+        format!(
+            "- Tokens: {} prompt + {} completion = {} total",
+            format_usage_count(usage.prompt_tokens),
+            format_usage_count(usage.completion_tokens),
+            format_usage_count(usage.total_tokens)
+        ),
+    ];
+
+    if usage.cached_tokens > 0 {
+        lines.push(format!(
+            "- Cached prompt tokens: {}",
+            format_usage_count(usage.cached_tokens)
+        ));
+    }
+    if usage.reasoning_tokens > 0 {
+        lines.push(format!(
+            "- Reasoning/cache-write tokens: {}",
+            format_usage_count(usage.reasoning_tokens)
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push("**Rate limits**".to_string());
+    if let Some(rate_limits) = &snapshot.rate_limits {
+        lines.push("```text".to_string());
+        lines.push(rate_limits.format_display());
+        lines.push("```".to_string());
+    } else {
+        lines.push("No provider rate-limit headers have been captured yet.".to_string());
+    }
+
+    lines.join("\n")
+}
+
 fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Path) -> String {
     let raw = command.unwrap_or("list").trim();
     let mut parts = raw.split_whitespace();
@@ -1606,6 +1682,8 @@ async fn start_gateway(
         Arc::new(Mutex::new(HashMap::new()));
     let active_tasks: Arc<Mutex<HashMap<String, GatewayTaskControl>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let last_usage: Arc<Mutex<HashMap<String, GatewayUsageSnapshot>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let skill_store_ref = Arc::new(skill_store);
 
     // 3. Connect all platforms.
@@ -1835,6 +1913,7 @@ async fn start_gateway(
         let histories_clone = histories_clone.clone();
         let turn_trackers = turn_trackers.clone();
         let active_tasks = active_tasks.clone();
+        let last_usage = last_usage.clone();
 
         let config_clone = config.clone();
         tokio::spawn(async move {
@@ -1955,6 +2034,10 @@ async fn start_gateway(
                             histories.remove(&chat_id);
                         }
                         {
+                            let mut usage = last_usage.lock().await;
+                            usage.remove(&chat_id);
+                        }
+                        {
                             let mut a = agent_clone.lock().await;
                             a.clear_messages();
                         }
@@ -2010,8 +2093,11 @@ async fn start_gateway(
                         )
                     }
                     Some(Command::Usage) => {
-                        "📊 Usage tracking is currently only available for individual conversation turns."
-                            .to_string()
+                        let snapshot = {
+                            let usage = last_usage.lock().await;
+                            usage.get(&chat_id).cloned()
+                        };
+                        gateway_usage_response(snapshot.as_ref())
                     }
                     Some(Command::Restart) => "🔄 正在重启 Hakimi Gateway...".to_string(),
                     Some(Command::Update) => {
@@ -2479,9 +2565,8 @@ async fn start_gateway(
                             turn_agent
                                 .run_conversation_with_message(msg)
                                 .await
-                                .map(|r| r.final_response)
                         } else {
-                            turn_agent.chat_streaming_with_message(msg).await
+                            turn_agent.run_conversation_streaming_with_message(msg).await
                         }
                     } => result,
                 };
@@ -2498,6 +2583,7 @@ async fn start_gateway(
 
                 match result {
                     Ok(res) => {
+                        let usage_snapshot = GatewayUsageSnapshot::from_result(&turn_agent, &res);
                         let updated_msgs = turn_agent.messages().to_vec();
                         let new_msgs = updated_msgs
                             .get(base_history_len..)
@@ -2508,7 +2594,11 @@ async fn start_gateway(
                             let chat_history = histories.entry(chat_id.clone()).or_default();
                             chat_history.extend(new_msgs);
                         }
-                        (res, None, stream_rendered)
+                        {
+                            let mut usage = last_usage.lock().await;
+                            usage.insert(chat_id.clone(), usage_snapshot);
+                        }
+                        (res.final_response, None, stream_rendered)
                     }
                     Err(e) if e.to_string() == "cancelled by /stop" => {
                         debug!(platform = %platform, chat_id = %chat_id, "gateway task cancelled by /stop");
@@ -3049,12 +3139,13 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker, GatewayMode,
-        GatewayStreamUiState, GatewayUiContentTarget, TopLevelCommand,
-        gateway_cron_response_for_path, resolve_clawbot_gateway_config,
+        GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, TopLevelCommand,
+        gateway_cron_response_for_path, gateway_usage_response, resolve_clawbot_gateway_config,
         resolve_hakimi_update_target, should_edit_initial_gateway_message,
         update_target_from_candidate,
     };
     use clap::ValueEnum;
+    use hakimi_common::Usage;
     use hakimi_cron::{CronJob, CronSchedule, persistence::PersistentCronStore};
     use std::path::PathBuf;
 
@@ -3092,6 +3183,75 @@ mod tests {
             <super::Args as clap::Parser>::try_parse_from(["hakimi", "--doctor"]).unwrap();
         assert!(legacy_doctor.doctor);
         assert_eq!(legacy_doctor.command, None);
+    }
+
+    #[test]
+    fn gateway_usage_response_prompts_for_first_turn() {
+        let response = gateway_usage_response(None);
+
+        assert!(response.contains("No usage data yet"));
+        assert!(response.contains("/usage"));
+    }
+
+    #[test]
+    fn gateway_usage_response_renders_token_counts() {
+        let snapshot = GatewayUsageSnapshot {
+            model: "gpt-4.1".to_string(),
+            provider: "openai-compatible".to_string(),
+            usage: Usage {
+                prompt_tokens: 1_500,
+                completion_tokens: 250,
+                total_tokens: 1_750,
+                cached_tokens: 100,
+                reasoning_tokens: 25,
+            },
+            api_call_count: 2,
+            rate_limits: None,
+        };
+
+        let response = gateway_usage_response(Some(&snapshot));
+
+        assert!(response.contains("Model: `gpt-4.1`"));
+        assert!(response.contains("Provider: `openai-compatible`"));
+        assert!(response.contains("API calls: 2"));
+        assert!(response.contains("1.5K prompt + 250 completion = 1.8K total"));
+        assert!(response.contains("Cached prompt tokens: 100"));
+        assert!(response.contains("Reasoning/cache-write tokens: 25"));
+        assert!(response.contains("No provider rate-limit headers"));
+    }
+
+    #[test]
+    fn gateway_usage_response_includes_rate_limit_snapshot() {
+        let rate_limits = hakimi_transports::parse_rate_limit_headers(
+            [
+                ("x-ratelimit-limit-requests", "100"),
+                ("x-ratelimit-remaining-requests", "80"),
+                ("x-ratelimit-reset-requests", "30"),
+                ("x-ratelimit-limit-tokens-1h", "1000000"),
+                ("x-ratelimit-remaining-tokens-1h", "900000"),
+                ("x-ratelimit-reset-tokens-1h", "1h"),
+            ],
+            "openai-compatible",
+        );
+        let snapshot = GatewayUsageSnapshot {
+            model: "gpt-4.1".to_string(),
+            provider: "openai-compatible".to_string(),
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            },
+            api_call_count: 1,
+            rate_limits,
+        };
+
+        let response = gateway_usage_response(Some(&snapshot));
+
+        assert!(response.contains("openai-compatible rate limits"));
+        assert!(response.contains("Requests/min"));
+        assert!(response.contains("Tokens/hr"));
     }
 
     #[test]
