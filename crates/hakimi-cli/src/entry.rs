@@ -58,7 +58,7 @@ fn find_cron_job_by_id(
     store: &hakimi_cron::persistence::PersistentCronStore,
     job_id: &str,
 ) -> Result<Option<hakimi_cron::CronJob>> {
-    Ok(store.get_job(job_id)?)
+    store.get_job(job_id)
 }
 
 fn cron_name_from_prompt(prompt: &str) -> String {
