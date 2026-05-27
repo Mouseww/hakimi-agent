@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.76-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.77-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1063-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1072-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,14 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1063 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1072 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
-- **v0.3.76 Doctor CLI / Gateway Diagnostics**:
+- **v0.3.77 Think Scrubber Hardening**:
+  - **Hermes-Style Tag Scrubbing**: `ThinkScrubber` now handles `<think>`, `<thinking>`, `<reasoning>`, `<thought>`, and `<REASONING_SCRATCHPAD>` tags case-insensitively, including tags split across SSE deltas.
+  - **Clean Stored Responses**: streaming and non-streaming agent loops now store scrubbed `final_response` and assistant history while preserving hidden reasoning separately.
+  - **Regression Coverage**: added state-machine and agent-loop tests for split tags, tag variants, inline closed pairs, non-streaming responses, and streaming accumulators.- **v0.3.76 Doctor CLI / Gateway Diagnostics**:
   - **Hermes-Style Command Entry**: Added `hakimi doctor` while keeping the legacy `hakimi --doctor` flag, so setup diagnostics are reachable without starting the agent loop.
   - **Gateway `/doctor`**: Remote chats can now run setup diagnostics and receive a plain-text, chat-safe report instead of a placeholder command response.
   - **Regression Coverage**: Added parser coverage for top-level `doctor` / `setup` commands and ANSI-free diagnostic report formatting.
@@ -429,7 +432,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1063 |
+| Tests | ~500 | 1072 |
 
 ---
 
@@ -439,7 +442,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1063 tests)
+# Run all tests (1072 tests)
 cargo test --workspace
 
 # Debug logging
@@ -490,4 +493,3 @@ MIT License — see [LICENSE](LICENSE)
   <b>Built with 🦀 Rust and ❤️</b><br>
   <sub>Inspired by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research</sub>
 </p>
-

@@ -129,7 +129,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         }
 
         // Fetch a response (streaming or non-streaming).
-        let response = match fetch_response(
+        let mut response = match fetch_response(
             agent.transport.as_ref(),
             &agent.model,
             streaming,
@@ -155,6 +155,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                 return Err(e);
             }
         };
+        scrub_response_content(&mut response);
 
         // Track usage.
         if let Some(ref usage) = response.usage {
@@ -348,9 +349,9 @@ async fn fetch_streaming_response(
                     saw_terminal_event = true;
                 }
                 // Print content deltas to stdout in real-time.
-                if let StreamEvent::ContentDelta(ref text) = event {
+                if let StreamEvent::ContentDelta(text) = event {
                     let mut s = scrubber.lock().await;
-                    let (clean_text, _) = s.process(text);
+                    let (clean_text, _) = s.process(&text);
                     if !clean_text.is_empty() {
                         if let Some(ref cb) = callback {
                             cb(clean_text.clone());
@@ -358,15 +359,36 @@ async fn fetch_streaming_response(
                         use std::io::Write;
                         let _ = std::io::stdout().write_all(clean_text.as_bytes());
                         let _ = std::io::stdout().flush();
+                        accumulator.push(StreamEvent::ContentDelta(clean_text));
                     }
+                } else {
+                    accumulator.push(event);
                 }
-                accumulator.push(event);
             }
             Err(e) => {
                 warn!(error = %e, "Error in streaming response");
                 return Err(HakimiError::Transport(format!("Stream error: {e}")));
             }
         }
+    }
+
+    let (tail, scrubbed_reasoning) = {
+        let mut s = scrubber.lock().await;
+        let tail = s.flush();
+        let reasoning = s.reasoning().to_string();
+        (tail, reasoning)
+    };
+    if !tail.is_empty() {
+        if let Some(ref cb) = callback {
+            cb(tail.clone());
+        }
+        use std::io::Write;
+        let _ = std::io::stdout().write_all(tail.as_bytes());
+        let _ = std::io::stdout().flush();
+        accumulator.push(StreamEvent::ContentDelta(tail));
+    }
+    if !scrubbed_reasoning.is_empty() {
+        accumulator.push(StreamEvent::ReasoningDelta(scrubbed_reasoning));
     }
 
     if !saw_terminal_event {
@@ -384,6 +406,31 @@ async fn fetch_streaming_response(
     }
 
     Ok(accumulator_to_response(&accumulator))
+}
+
+fn scrub_response_content(response: &mut NormalizedResponse) {
+    let Some(content) = response.content.take() else {
+        return;
+    };
+
+    let (cleaned, scrubbed_reasoning) =
+        hakimi_transports::scrubber::ThinkScrubber::strip_all_with_reasoning(&content);
+    response.content = if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
+    };
+
+    if !scrubbed_reasoning.is_empty() {
+        match response.reasoning.as_mut() {
+            Some(existing) if !existing.is_empty() => {
+                existing.push('\n');
+                existing.push_str(&scrubbed_reasoning);
+            }
+            Some(existing) => existing.push_str(&scrubbed_reasoning),
+            None => response.reasoning = Some(scrubbed_reasoning),
+        }
+    }
 }
 
 /// Process tool calls: append assistant message, check guardrails, dispatch tools.

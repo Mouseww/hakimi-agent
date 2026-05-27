@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.76-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.77-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1063-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1072-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1063 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1072 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -75,7 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
-- **v0.3.76 Doctor CLI / Gateway 诊断**
+- **v0.3.77 Think Scrubber 强化**
+  - `ThinkScrubber` 现在按 Hermes 语义处理 `<think>`、`<thinking>`、`<reasoning>`、`<thought>`、`<REASONING_SCRATCHPAD>` 等标签，大小写不敏感，并支持 SSE delta 边界拆分标签。
+  - streaming 与非 streaming Agent loop 都会把清理后的文本写入 `final_response` 和 assistant history，同时把隐藏 reasoning 单独保留。
+  - 新增状态机与 Agent loop 回归覆盖：拆分标签、标签变体、行内闭合标签、非流式响应和 streaming accumulator。- **v0.3.76 Doctor CLI / Gateway 诊断**
   - 新增 `hakimi doctor`，并保留兼容的 `hakimi --doctor`，无需启动 Agent loop 即可运行环境诊断。
   - gateway `/doctor` 现在会返回适合聊天窗口展示的纯文本诊断报告，不再落到占位响应。
   - 新增顶层 `doctor` / `setup` 命令解析与无 ANSI 诊断报告格式化回归覆盖。
@@ -281,7 +284,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1063 |
+| 测试 | ~500 | 1072 |
 
 ---
 
@@ -291,7 +294,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1063 tests)
+# 运行全部测试 (1072 tests)
 cargo test --workspace
 
 # Debug 日志
@@ -342,4 +345,3 @@ MIT License — 详见 [LICENSE](LICENSE)
   <b>用 🦀 Rust 和 ❤️ 构建</b><br>
   <sub>源自 <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research</sub>
 </p>
-

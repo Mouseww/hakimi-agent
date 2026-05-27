@@ -608,6 +608,40 @@ async fn test_streaming_text_conversation() {
 }
 
 #[tokio::test]
+async fn test_non_streaming_think_blocks_are_scrubbed_from_final_response() {
+    let response = NormalizedResponse {
+        content: Some("Visible\n<thinking>hidden chain</thinking>Done".to_string()),
+        tool_calls: None,
+        finish_reason: Some(FinishReason::Stop),
+        usage: Some(Usage::default()),
+        reasoning: None,
+    };
+    let transport = Arc::new(MockTransport::single(response));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-non-streaming-think-scrub")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    let result = agent
+        .run_conversation("answer without hidden reasoning")
+        .await
+        .unwrap();
+    assert_eq!(result.final_response, "Visible\nDone");
+    let assistant = result
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == hakimi_common::MessageRole::Assistant)
+        .expect("assistant message");
+    assert_eq!(assistant.content.as_deref(), Some("Visible\nDone"));
+    assert_eq!(assistant.reasoning.as_deref(), Some("hidden chain"));
+}
+
+#[tokio::test]
 async fn test_streaming_length_finish_auto_continues_and_merges() {
     let part1 = NormalizedResponse {
         content: Some("Streaming line 1\nLine".to_string()),
@@ -674,6 +708,42 @@ async fn test_streaming_truncated_stream_retries_before_final_response() {
     assert_eq!(result.final_response, "Recovered response");
     assert_eq!(result.api_call_count, 2);
     assert_eq!(transport.stream_call_count(), 2);
+}
+
+#[tokio::test]
+async fn test_streaming_split_think_tags_are_scrubbed_from_accumulator() {
+    let transport = Arc::new(ScriptedStreamingTransport::new(vec![vec![
+        Ok(StreamEvent::ContentDelta("<thi".to_string())),
+        Ok(StreamEvent::ContentDelta("nk>hidden".to_string())),
+        Ok(StreamEvent::ContentDelta("</think>Visible".to_string())),
+        Ok(StreamEvent::Finished("stop".to_string())),
+        Ok(StreamEvent::Done),
+    ]]));
+
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-streaming-think-scrub")
+        .workdir("/tmp")
+        .streaming(true)
+        .build()
+        .unwrap();
+
+    let result = agent
+        .run_conversation("stream without hidden reasoning")
+        .await
+        .unwrap();
+
+    assert_eq!(result.final_response, "Visible");
+    let assistant = result
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == hakimi_common::MessageRole::Assistant)
+        .expect("assistant message");
+    assert_eq!(assistant.content.as_deref(), Some("Visible"));
+    assert_eq!(assistant.reasoning.as_deref(), Some("hidden"));
 }
 
 #[tokio::test]

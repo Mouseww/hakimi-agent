@@ -90,6 +90,7 @@ Generated: 2026-05-21
 - **should_retry()** — Transport/IO errors retryable, tool/config errors not
 - **HakimiError enum** — Transport, Tool, Config, Session, Context, Io, Json, Other
 - **Responses stream recovery** — Incomplete Responses SSE maps to continuation, and truncated streams retry before surfacing partial output
+- **Think scrubber** — Stateful Hermes-style removal of reasoning/thinking blocks from streaming and non-streaming assistant content
 
 ### Config
 - **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers
@@ -396,10 +397,10 @@ Generated: 2026-05-21
 - **Hermes location**: `agent/curator.py`, `agent/curator_backup.py`, `hermes_cli/curator.py`
 - **Priority**: **Low** — Quality assurance
 
-#### 50. Think Scrubber
-- **What**: Removes reasoning/thinking blocks from responses before display
+#### 50. ~~Think Scrubber~~ ✅ DONE
+- **What**: Removes reasoning/thinking blocks from responses before display and persisted assistant history
 - **Hermes location**: `agent/think_scrubber.py`
-- **Priority**: **Low** — Display cleanliness
+- **Status**: ✅ Done in v0.3.77 — stateful tag scrubber handles `<think>`, `<thinking>`, `<reasoning>`, `<thought>`, and `<REASONING_SCRATCHPAD>` across streaming delta boundaries; non-streaming responses are scrubbed before final_response/session storage
 
 #### 51. Title Generator
 - **What**: Auto-generates session titles from conversation content
@@ -537,7 +538,7 @@ Generated: 2026-05-21
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 0 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
-| Agent Internals | 25+ | 15 | 5 | 5+ |
+| Agent Internals | 25+ | 16 | 5 | 4+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
 | Cron Features | Full | Full | 0 | 0 |
@@ -545,9 +546,9 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~57** (up from ~30)
+**Fully present in Hakimi: ~58** (up from ~30)
 **Partially implemented: ~10**
-**Missing entirely: ~83+**
+**Missing entirely: ~82+**
 
 ### Top 10 Critical Gaps (by impact)
 1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
@@ -596,9 +597,10 @@ Generated: 2026-05-21
 | 18 | Gateway Media Delivery | `hakimi-core/src/loop_impl.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/telegram.rs` | 4 | ✅ `MEDIA:` / `IMAGE:` tool results now stream through gateway side-channel; Telegram uploads local images and generated TTS audio directly |
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
 | 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
+| 21 | Think Scrubber | `hakimi-transports/src/scrubber.rs`, `hakimi-core/src/loop_impl.rs` | 18 | ✅ Hermes-style stateful reasoning tag scrubbing for streaming and non-streaming responses |
 
 ### Summary
-- **Total tests**: 1063 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1072 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

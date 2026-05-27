@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.76"
+version = "0.3.77"
 edition = "2024"
 
 [workspace.dependencies]
@@ -89,4 +89,3 @@ base64 = "0.22"
 
 # Interactive prompts
 dialoguer = "0.11"
-
