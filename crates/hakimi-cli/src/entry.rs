@@ -75,7 +75,7 @@ fn cron_name_from_prompt(prompt: &str) -> String {
 }
 
 const CRON_SILENT_MARKER: &str = "[SILENT]";
-const CRON_DELEGATION_CONTEXT: &str = "Cronjob auto-execution context. Your final response is automatically delivered to the user; do not call send_message or try to deliver the output yourself. If there is genuinely nothing new to report, respond exactly with [SILENT] and nothing else.";
+const CRON_DELEGATION_CONTEXT: &str = "Cronjob auto-execution context. Your final response is returned to the scheduler and delivered to the configured gateway target when delivery is configured; do not call send_message or try to deliver the output yourself. If there is genuinely nothing new to report, respond exactly with [SILENT] and nothing else.";
 
 fn cron_success_output_should_deliver(output: &str) -> bool {
     let trimmed = output.trim();
@@ -90,6 +90,76 @@ fn cron_output_preview(output: &str) -> String {
         preview.push_str("...");
     }
     preview
+}
+
+fn gateway_delivery_target(platform: &str, chat_id: &str) -> Option<String> {
+    let platform = platform.trim();
+    let chat_id = chat_id.trim();
+    if platform.is_empty() || chat_id.is_empty() {
+        None
+    } else {
+        Some(format!("{platform}:{chat_id}"))
+    }
+}
+
+fn cron_delivery_targets(job: &hakimi_cron::CronJob) -> Vec<String> {
+    let Some(raw) = job.deliver.as_deref() else {
+        return Vec::new();
+    };
+
+    let mut targets = Vec::new();
+    for part in raw.split(',').map(str::trim) {
+        if part.is_empty() || part.eq_ignore_ascii_case("local") {
+            continue;
+        }
+        let Some((platform, chat_id)) = part.split_once(':') else {
+            tracing::warn!(
+                job_id = %job.id,
+                target = %part,
+                "skipping cron delivery target without platform:chat_id"
+            );
+            continue;
+        };
+        let Some(target) = gateway_delivery_target(platform, chat_id) else {
+            tracing::warn!(
+                job_id = %job.id,
+                target = %part,
+                "skipping cron delivery target with empty platform or chat_id"
+            );
+            continue;
+        };
+        if !targets.iter().any(|seen| seen == &target) {
+            targets.push(target);
+        }
+    }
+    targets
+}
+
+fn queue_cron_delivery(job: &hakimi_cron::CronJob, message: String) -> usize {
+    let targets = cron_delivery_targets(job);
+    if targets.is_empty() {
+        tracing::debug!(
+            job_id = %job.id,
+            deliver = ?job.deliver,
+            "cron job has no explicit gateway delivery target"
+        );
+        return 0;
+    }
+
+    let queued_at = chrono::Utc::now().to_rfc3339();
+    let mut queued_count = 0usize;
+    if let Ok(mut q) = hakimi_tools::builtin_send_message::MESSAGE_QUEUE.lock() {
+        for target in targets {
+            q.push_back(hakimi_tools::builtin_send_message::QueuedMessage {
+                target,
+                message: message.clone(),
+                session_id: "cron_scheduler".to_string(),
+                queued_at: queued_at.clone(),
+            });
+            queued_count += 1;
+        }
+    }
+    queued_count
 }
 
 fn cron_skill_names(job: &hakimi_cron::CronJob) -> Vec<String> {
@@ -191,6 +261,7 @@ fn parse_cron_schedule_and_prompt(raw: &str) -> Option<(String, String)> {
 fn gateway_cron_create_response(
     store: &hakimi_cron::persistence::PersistentCronStore,
     args: &str,
+    default_deliver: Option<&str>,
 ) -> String {
     let Some((schedule, prompt)) = parse_cron_schedule_and_prompt(args) else {
         return "Usage: /cron add <schedule> <prompt> or /cron add <schedule> | <prompt>"
@@ -205,7 +276,12 @@ fn gateway_cron_create_response(
         Ok(schedule) => schedule,
         Err(err) => return format!("❌ Failed to parse cron schedule `{schedule}`: {err}"),
     };
-    let job = hakimi_cron::CronJob::new(cron_name_from_prompt(&prompt), parsed_schedule, &prompt);
+    let mut job =
+        hakimi_cron::CronJob::new(cron_name_from_prompt(&prompt), parsed_schedule, &prompt);
+    job.deliver = default_deliver
+        .map(str::trim)
+        .filter(|target| !target.is_empty())
+        .map(String::from);
     let job_id = job.id.clone();
     let next_run = format_cron_timestamp(job.next_run);
 
@@ -291,8 +367,17 @@ fn gateway_cron_edit_response(
     }
 }
 
-fn gateway_cron_response(command: Option<&str>) -> String {
-    gateway_cron_response_for_path(command, &cron_db_path())
+fn gateway_cron_response_for_context(
+    command: Option<&str>,
+    platform: &str,
+    chat_id: &str,
+) -> String {
+    let default_deliver = gateway_delivery_target(platform, chat_id);
+    gateway_cron_response_for_path_with_delivery(
+        command,
+        &cron_db_path(),
+        default_deliver.as_deref(),
+    )
 }
 
 fn top_level_cron_response(args: &[String]) -> String {
@@ -567,6 +652,14 @@ fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
 }
 
 fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Path) -> String {
+    gateway_cron_response_for_path_with_delivery(command, db_path, None)
+}
+
+fn gateway_cron_response_for_path_with_delivery(
+    command: Option<&str>,
+    db_path: &std::path::Path,
+    default_deliver: Option<&str>,
+) -> String {
     let raw = command.unwrap_or("list").trim();
     let raw = if raw.is_empty() { "list" } else { raw };
     let mut parts = raw.splitn(2, char::is_whitespace);
@@ -600,7 +693,7 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
             }
             Err(err) => format!("❌ Failed to list cron jobs: {err}"),
         },
-        "add" | "create" => gateway_cron_create_response(&store, rest),
+        "add" | "create" => gateway_cron_create_response(&store, rest, default_deliver),
         "edit" | "update" => {
             let mut edit_parts = rest.splitn(2, char::is_whitespace);
             let Some(job_id) = edit_parts.next().filter(|id| !id.trim().is_empty()) else {
@@ -2205,20 +2298,10 @@ async fn start_gateway(
                             "Cron job blocked by prompt-injection scanner"
                         );
                         let _ = store.set_enabled(&job.id, false);
-                        let target = job
-                            .deliver
-                            .clone()
-                            .unwrap_or_else(|| "telegram".to_string());
-                        let queued = hakimi_tools::builtin_send_message::QueuedMessage {
-                            target,
-                            message: format!("🛡️ **Cronjob '{}' Blocked**\n\n{}", job.name, err),
-                            session_id: "cron_scheduler".to_string(),
-                            queued_at: chrono::Utc::now().to_rfc3339(),
-                        };
-                        if let Ok(mut q) = hakimi_tools::builtin_send_message::MESSAGE_QUEUE.lock()
-                        {
-                            q.push_back(queued);
-                        }
+                        queue_cron_delivery(
+                            &job,
+                            format!("🛡️ **Cronjob '{}' Blocked**\n\n{}", job.name, err),
+                        );
                         continue;
                     }
                     let cron_goal =
@@ -2231,24 +2314,10 @@ async fn start_gateway(
                                     "Cron job blocked by assembled prompt scanner"
                                 );
                                 let _ = store.set_enabled(&job.id, false);
-                                let target = job
-                                    .deliver
-                                    .clone()
-                                    .unwrap_or_else(|| "telegram".to_string());
-                                let queued = hakimi_tools::builtin_send_message::QueuedMessage {
-                                    target,
-                                    message: format!(
-                                        "🛡️ **Cronjob '{}' Blocked**\n\n{}",
-                                        job.name, err
-                                    ),
-                                    session_id: "cron_scheduler".to_string(),
-                                    queued_at: chrono::Utc::now().to_rfc3339(),
-                                };
-                                if let Ok(mut q) =
-                                    hakimi_tools::builtin_send_message::MESSAGE_QUEUE.lock()
-                                {
-                                    q.push_back(queued);
-                                }
+                                queue_cron_delivery(
+                                    &job,
+                                    format!("🛡️ **Cronjob '{}' Blocked**\n\n{}", job.name, err),
+                                );
                                 continue;
                             }
                         };
@@ -2266,7 +2335,7 @@ async fn start_gateway(
                         };
 
                         if let Some(exec) = executor {
-                            let toolsets = job_clone.enabled_toolsets.unwrap_or_default();
+                            let toolsets = job_clone.enabled_toolsets.clone().unwrap_or_default();
                             let res = exec
                                 .execute_delegation(&cron_goal, CRON_DELEGATION_CONTEXT, &toolsets)
                                 .await;
@@ -2274,23 +2343,18 @@ async fn start_gateway(
                             match res {
                                 Ok(output) => {
                                     if cron_success_output_should_deliver(&output) {
-                                        let target = job_clone
-                                            .deliver
-                                            .unwrap_or_else(|| "telegram".to_string());
-                                        let queued =
-                                            hakimi_tools::builtin_send_message::QueuedMessage {
-                                                target,
-                                                message: format!(
-                                                    "⏰ **Cronjob '{}' Finished**\n\n{}",
-                                                    job_clone.name, output
-                                                ),
-                                                session_id: "cron_scheduler".to_string(),
-                                                queued_at: chrono::Utc::now().to_rfc3339(),
-                                            };
-                                        if let Ok(mut q) =
-                                            hakimi_tools::builtin_send_message::MESSAGE_QUEUE.lock()
-                                        {
-                                            q.push_back(queued);
+                                        let queued = queue_cron_delivery(
+                                            &job_clone,
+                                            format!(
+                                                "⏰ **Cronjob '{}' Finished**\n\n{}",
+                                                job_clone.name, output
+                                            ),
+                                        );
+                                        if queued == 0 {
+                                            tracing::info!(
+                                                job_id = %job_clone.id,
+                                                "Cronjob output retained locally; no delivery target configured"
+                                            );
                                         }
                                     } else {
                                         tracing::info!(
@@ -2544,7 +2608,9 @@ async fn start_gateway(
                         }
                         msg
                     }
-                    Some(Command::Cron(cmd)) => gateway_cron_response(cmd.as_deref()),
+                    Some(Command::Cron(cmd)) => {
+                        gateway_cron_response_for_context(cmd.as_deref(), &platform, &chat_id)
+                    }
                     Some(Command::Doctor) => {
                         match tokio::task::spawn_blocking(|| {
                             let results = crate::doctor::run_diagnostics();
@@ -3693,9 +3759,10 @@ mod tests {
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
         GatewayMode, GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot,
         TopLevelCommand, build_cron_delegation_goal, create_hakimi_state_backup,
-        cron_output_preview, cron_success_output_should_deliver, gateway_cron_response_for_path,
-        gateway_usage_response, is_top_level_cron_tick, resolve_clawbot_gateway_config,
-        resolve_hakimi_update_target, restore_hakimi_state_backup,
+        cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
+        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
+        gateway_usage_response, is_top_level_cron_tick, queue_cron_delivery,
+        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
         should_edit_initial_gateway_message, top_level_cron_response_for_path,
         update_target_from_candidate,
     };
@@ -3704,6 +3771,10 @@ mod tests {
     use hakimi_cron::{CronJob, CronSchedule, persistence::PersistentCronStore};
     use hakimi_skills::{Skill, SkillStore};
     use std::path::PathBuf;
+
+    fn drain_gateway_message_queue() {
+        while hakimi_tools::builtin_send_message::pop_message().is_some() {}
+    }
 
     #[test]
     fn gateway_mode_supports_install_restart_and_status() {
@@ -4358,6 +4429,66 @@ roles:
             "[SILENT]\n\nDetails changed"
         ));
         assert!(cron_success_output_should_deliver("Report is ready"));
+    }
+
+    #[test]
+    fn gateway_cron_add_from_chat_stores_delivery_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("cron.db");
+
+        let created = gateway_cron_response_for_path_with_delivery(
+            Some("add 15m refresh docs"),
+            &db_path,
+            Some("telegram:chat-42"),
+        );
+
+        assert!(created.contains("Created cron job"));
+        let jobs = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .load_all()
+            .unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].prompt, "refresh docs");
+        assert_eq!(jobs[0].deliver.as_deref(), Some("telegram:chat-42"));
+    }
+
+    #[test]
+    fn cron_delivery_targets_skip_local_invalid_and_duplicate_targets() {
+        let mut job = CronJob::new("deliver", CronSchedule::IntervalMinutes(15), "report");
+        job.deliver = Some(
+            "local, telegram:chat-42, telegram:chat-42, missingchat, clawbot:user@wx".to_string(),
+        );
+
+        assert_eq!(
+            cron_delivery_targets(&job),
+            vec![
+                "telegram:chat-42".to_string(),
+                "clawbot:user@wx".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn queue_cron_delivery_sends_only_explicit_gateway_targets() {
+        drain_gateway_message_queue();
+        let mut local = CronJob::new("local", CronSchedule::IntervalMinutes(15), "report");
+        local.deliver = Some("local".to_string());
+
+        assert_eq!(queue_cron_delivery(&local, "local report".to_string()), 0);
+        assert!(hakimi_tools::builtin_send_message::pop_message().is_none());
+
+        let mut remote = CronJob::new("remote", CronSchedule::IntervalMinutes(15), "report");
+        remote.deliver = Some("telegram:chat-42,clawbot:user@wx".to_string());
+
+        assert_eq!(queue_cron_delivery(&remote, "remote report".to_string()), 2);
+        let first = hakimi_tools::builtin_send_message::pop_message().unwrap();
+        let second = hakimi_tools::builtin_send_message::pop_message().unwrap();
+        assert_eq!(first.target, "telegram:chat-42");
+        assert_eq!(second.target, "clawbot:user@wx");
+        assert_eq!(first.message, "remote report");
+        assert_eq!(second.message, "remote report");
+        assert_eq!(first.session_id, "cron_scheduler");
+        assert!(hakimi_tools::builtin_send_message::pop_message().is_none());
     }
 
     #[test]

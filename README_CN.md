@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.87-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.88-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1110-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1113-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1110 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1113 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -75,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.88 Cron Gateway 投递**
+  - gateway `/cron add` 现在会把创建任务的平台与聊天 ID 持久化为显式 `deliver` 目标，定时任务输出会回到创建它的会话。
+  - scheduler 投递现在把 `local` 视为本地不投递，只向显式 `platform:chat_id` 目标排队，并支持逗号分隔的多目标去重。
+  - 新增离线回归覆盖 gateway 创建任务的投递元数据、目标解析与 local-only 抑制。
 - **v0.3.87 Cron Tick 执行**
   - 顶层 `hakimi cron tick` 现在会从共享 SQLite cron store 中 claim 当前到期任务，并通过 gateway scheduler 相同的委派 cron 执行路径运行一次。
   - gateway 和独立 tick 共享持久化 tick lock，并在执行前先推进 `next_run`，对齐 Hermes 防重入的调度语义。
@@ -210,7 +214,7 @@ Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
 
 Telegram 现在会直接上传本地生成图片，并把 TTS 生成的本地音频作为原生音频消息发送，因此 `image_generate` / `text_to_speech` 的结果可以直接投递给 gateway 用户，而不是只返回文件路径。针对语音输入链路，Hakimi 现在还提供 `transcribe_audio`，可转写本地音频文件或远程音频 URL；CLI 的按键录音模式仍是后续事项。
 
-在 gateway 会话里，`/cron` 现在已经支持 `list`、`status`、`add`、`edit`、`pause <job-id>`、`resume <job-id>`、`run <job-id>`、`remove <job-id>`，会直接操作共享的 SQLite `cron.db`；宿主机运维侧也可以运行 `hakimi cron tick`，用 gateway scheduler 相同的 tick lock 执行一次到期任务。
+在 gateway 会话里，`/cron` 现在已经支持 `list`、`status`、`add`、`edit`、`pause <job-id>`、`resume <job-id>`、`run <job-id>`、`remove <job-id>`，会直接操作共享的 SQLite `cron.db`；gateway 聊天中创建的任务会保留当前 `platform:chat_id` 作为投递目标，宿主机运维侧也可以运行 `hakimi cron tick`，用 gateway scheduler 相同的 tick lock 执行一次到期任务。
 
 ### 🧠 智能上下文压缩
 
@@ -325,7 +329,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1110 |
+| 测试 | ~500 | 1113 |
 
 ---
 
@@ -335,7 +339,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1110 tests)
+# 运行全部测试 (1113 tests)
 cargo test --workspace
 
 # Debug 日志
