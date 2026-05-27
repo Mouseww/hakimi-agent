@@ -3813,8 +3813,9 @@ roles:
         assert!(
             !PersistentCronStore::open(&db_path)
                 .unwrap()
-                .load_all()
-                .unwrap()[0]
+                .get_job(&job_id)
+                .unwrap()
+                .unwrap()
                 .enabled
         );
 
@@ -3823,8 +3824,9 @@ roles:
         assert!(
             PersistentCronStore::open(&db_path)
                 .unwrap()
-                .load_all()
-                .unwrap()[0]
+                .get_job(&job_id)
+                .unwrap()
+                .unwrap()
                 .enabled
         );
 
@@ -3832,9 +3834,10 @@ roles:
         assert!(triggered.contains("Triggered cron job"));
         let loaded = PersistentCronStore::open(&db_path)
             .unwrap()
-            .load_all()
+            .get_job(&job_id)
+            .unwrap()
             .unwrap();
-        let next_run = loaded[0].next_run.unwrap();
+        let next_run = loaded.next_run.unwrap();
         assert!((chrono::Utc::now() - next_run).num_seconds().abs() <= 1);
 
         let removed = gateway_cron_response_for_path(Some(&format!("remove {job_id}")), &db_path);
@@ -3842,9 +3845,9 @@ roles:
         assert!(
             PersistentCronStore::open(&db_path)
                 .unwrap()
-                .load_all()
+                .get_job(&job_id)
                 .unwrap()
-                .is_empty()
+                .is_none()
         );
     }
 
