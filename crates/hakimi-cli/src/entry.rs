@@ -119,6 +119,12 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
                 },
                 "run" => match find_cron_job_by_id(&store, job_id) {
                     Ok(Some(job)) => {
+                        if let Err(err) = hakimi_cron::validate_cron_prompt(&job.prompt) {
+                            return format!(
+                                "🛡️ Blocked cron job `{}` ({}) before manual trigger: {err}",
+                                job.id, job.name
+                            );
+                        }
                         let now = chrono::Utc::now();
                         match store.trigger_now(&job.id, now) {
                             Ok(true) => format!(
@@ -1638,6 +1644,33 @@ async fn start_gateway(
                     if let Some(next_run) = job.next_run
                         && now >= next_run
                     {
+                        if let Err(err) = hakimi_cron::validate_cron_prompt(&job.prompt) {
+                            tracing::warn!(
+                                job_id = %job.id,
+                                findings = ?err.findings(),
+                                "Cron job blocked by prompt-injection scanner"
+                            );
+                            let _ = store.set_enabled(&job.id, false);
+                            let target = job
+                                .deliver
+                                .clone()
+                                .unwrap_or_else(|| "telegram".to_string());
+                            let queued = hakimi_tools::builtin_send_message::QueuedMessage {
+                                target,
+                                message: format!(
+                                    "🛡️ **Cronjob '{}' Blocked**\n\n{}",
+                                    job.name, err
+                                ),
+                                session_id: "cron_scheduler".to_string(),
+                                queued_at: chrono::Utc::now().to_rfc3339(),
+                            };
+                            if let Ok(mut q) =
+                                hakimi_tools::builtin_send_message::MESSAGE_QUEUE.lock()
+                            {
+                                q.push_back(queued);
+                            }
+                            continue;
+                        }
                         tracing::info!(job_id = %job.id, "Executing scheduled cron job");
 
                         // Update times

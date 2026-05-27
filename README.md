@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.71-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.72-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1037-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1045-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -66,13 +66,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 771 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1045 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.72 Cron Prompt Injection Guard**:
+  - **Hermes-Style Cron Scanning**: user-authored cron prompts are checked for injection, secret-exfiltration, destructive command, and invisible Unicode patterns before they are persisted or manually triggered.
+  - **Runtime Defense-in-Depth**: due cron jobs are re-scanned immediately before auto-execution; unsafe jobs are disabled and a gateway notification is queued instead of running in auto-approved cron context.
+  - **Shared Prompt Security**: broad prompt-injection detection now lives in `hakimi-common`, so core file safety and cron security reuse the same baseline scanner.
 - **v0.3.71 Cron Run Trigger**:
   - **Gateway `/cron run`**: operators can now trigger an existing scheduled job from Telegram/Discord/Slack with `/cron run <job-id>`, matching Hermes' "run on the next scheduler tick" behavior.
   - **Shared Tool Semantics**: the built-in `cronjob` tool now supports `action="run"` instead of advertising an unsupported action.
@@ -80,7 +84,7 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 - **v0.3.70 Gateway Cron Controls**:
   - **Real `/cron` Management in Gateway Chats**: operators can now run `/cron list`, `/cron pause <job-id>`, `/cron resume <job-id>`, and `/cron remove <job-id>` directly from Telegram/Discord/Slack instead of dropping to the host shell.
   - **Shared SQLite Cron State**: gateway commands now operate on the same persistent `~/.hakimi/cron.db` store used by Hakimi's Rust-native cron subsystem, keeping state consistent across restarts.
-  - **Parity Status Clarified**: docs and gap analysis now reflect the real boundary: basic gateway cron lifecycle control is done, while `/cron run`, add/edit flows, delivery wiring, and prompt-injection scanning remain follow-up parity work.
+  - **Parity Status Clarified**: docs and gap analysis now reflect the real boundary: basic gateway cron lifecycle control is done, while add/edit flows, delivery wiring, and skill loading remain follow-up parity work.
 - **v0.3.69 Speech Transcription Tooling**:
   - **`transcribe_audio` Built-in Tool**: Hakimi can now transcribe local audio files or remote audio URLs through an OpenAI-compatible `/audio/transcriptions` API.
   - **Shared Voice Runtime Config**: `voice.provider`, `voice.base_url`, `voice.api_key`, `voice.model`, `voice.voice`, and the new `voice.transcription_model` now flow into media tools instead of relying only on environment variables.
@@ -406,7 +410,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1035 |
+| Tests | ~500 | 1045 |
 
 ---
 
@@ -416,7 +420,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1035 tests)
+# Run all tests (1045 tests)
 cargo test --workspace
 
 # Debug logging

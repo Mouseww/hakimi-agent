@@ -6,6 +6,8 @@
 use regex::Regex;
 use std::path::{Path, PathBuf};
 
+pub use hakimi_common::detect_prompt_injection;
+
 /// Paths that should never be written to by the agent.
 const WRITE_DENIED_PATHS: &[&str] = &[
     "/etc/passwd",
@@ -166,40 +168,6 @@ fn mask_token(token: &str) -> String {
     } else {
         format!("{}…{}", &token[..6], &token[token.len() - 4..])
     }
-}
-
-/// Patterns that indicate prompt injection attempts in context files.
-const INJECTION_PATTERNS: &[&str] = &[
-    r"(?i)ignore\s+(all\s+)?previous\s+instructions",
-    r"(?i)ignore\s+(all\s+)?prior\s+instructions",
-    r"(?i)disregard\s+(all\s+)?previous",
-    r"(?i)do\s+not\s+tell\s+(the\s+)?user",
-    r"(?i)do\s+not\s+reveal",
-    r"(?i)system\s+prompt\s+override",
-    r"(?i)new\s+system\s+prompt",
-    r"(?i)you\s+are\s+now\s+",
-    r"(?i)forget\s+(all\s+)?your\s+instructions",
-    r"(?i)override\s+(your\s+)?instructions",
-    r"(?i)act\s+as\s+if\s+you\s+have\s+no\s+restrictions",
-    r"(?i)jailbreak",
-    r"(?i)\bDAN\b.*mode",
-    r"(?i)developer\s+mode\s+enabled",
-    r"(?i)pretend\s+you\s+are\s+an?\s+evil",
-];
-
-/// Scan a text for prompt injection patterns.
-///
-/// Returns a list of detected patterns (as strings) if any are found.
-pub fn detect_prompt_injection(text: &str) -> Vec<String> {
-    let mut detections = Vec::new();
-    for pattern in INJECTION_PATTERNS {
-        if let Ok(re) = Regex::new(pattern)
-            && re.is_match(text)
-        {
-            detections.push(pattern.to_string());
-        }
-    }
-    detections
 }
 
 /// Check if a file content contains prompt injection attempts.

@@ -71,6 +71,7 @@ Generated: 2026-05-21
 - **CronJob** — Name, schedule, prompt, enabled flag, last/next run
 - **Interval parsing** — `30m`, `2h` syntax
 - **Tick-based execution** — `next_tick()` returns due job IDs
+- **Cron prompt injection scanning** — Strict create/store/run-time scan plus looser assembled-skill scan mirroring Hermes cron security
 
 ### Gateway
 - **PlatformAdapter trait** — connect, send_message, disconnect, take_receiver
@@ -292,10 +293,11 @@ Generated: 2026-05-21
 - **Details**: Detects "ignore previous instructions", "do not tell the user", "system prompt override", etc.
 - **Priority**: **Medium** — Security
 
-#### 31. Cron Prompt Injection Scanning
-- **What**: Scans assembled cron job prompts (including loaded skill content) for injection
-- **Hermes location**: `cron/scheduler.py` (`CronPromptInjectionBlocked`)
-- **Priority**: **Medium** — Security for auto-approved cron execution
+#### 31. ~~Cron Prompt Injection Scanning~~ ✅ DONE
+- **What**: Scans user-authored cron prompts before persistence/manual trigger and again before auto execution; exposes looser assembled-skill scan for future skill-loaded cron prompts
+- **Hakimi implementation**: `hakimi-cron/src/lib.rs`, `hakimi-cron/src/persistence.rs`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs`
+- **Hermes location**: `tools/cronjob_tools.py` (`_scan_cron_prompt`, `_scan_cron_skill_assembled`), `cron/scheduler.py` (`CronPromptInjectionBlocked`)
+- **Status**: ✅ Done in v0.3.72 — unsafe jobs are blocked, disabled on scheduled execution, and reported through gateway queue
 
 #### 32. i18n (Internationalization)
 - **What**: Lightweight i18n for static user-facing messages
@@ -467,8 +469,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/context_compressor.py` — full LLM-based summarization
 
 ### 3. Cron System
-- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|pause|resume|run|remove` 已落地
-- **What's missing**: gateway/CLI `add/edit` 管理入口、prompt injection 扫描、skill 装载、delivery 到指定 gateway session、完整 repeat/status/tick 语义
+- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|pause|resume|run|remove`、prompt injection 扫描已落地
+- **What's missing**: gateway/CLI `add/edit` 管理入口、skill 装载、delivery 到指定 gateway session、完整 repeat/status/tick 语义
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 4. MCP Client
@@ -593,14 +595,14 @@ Generated: 2026-05-21
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
 | 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,matrix,wecom,dingtalk}.rs` | 19 | ✅ 5 new PlatformAdapter implementations |
-| 14 | Cron Persistence | `hakimi-cron/src/persistence.rs` | 16 | ✅ SQLite storage, FileLock, per-job toolset config, CLI commands |
+| 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}` | 22 | ✅ SQLite storage, FileLock, per-job toolset config, CLI commands, strict/assembled cron prompt scanner |
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs` | 20 | ✅ Shadow git snapshots, rollback, diff, transparent to LLM |
 | 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
 | 18 | Gateway Media Delivery | `hakimi-core/src/loop_impl.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/telegram.rs` | 4 | ✅ `MEDIA:` / `IMAGE:` tool results now stream through gateway side-channel; Telegram uploads local images and generated TTS audio directly |
 
 ### Summary
-- **Total tests**: 939 (all passing, 0 failures)
+- **Total tests**: 1045 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

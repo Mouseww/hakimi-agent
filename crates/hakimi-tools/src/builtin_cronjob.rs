@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use hakimi_cron::persistence::PersistentCronStore;
-use hakimi_cron::{CronJob, parse_schedule};
+use hakimi_cron::{CronJob, parse_schedule, validate_cron_prompt};
 use serde_json::{Value as JsonValue, json};
 
 pub struct CronjobTool;
@@ -96,6 +96,7 @@ impl Tool for CronjobTool {
                     .get("prompt")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| HakimiError::Tool("prompt is required".into()))?;
+                validate_cron_prompt(prompt).map_err(|e| HakimiError::Tool(e.to_string()))?;
                 let schedule_str = args
                     .get("schedule")
                     .and_then(|v| v.as_str())
@@ -190,6 +191,7 @@ impl Tool for CronjobTool {
                     .into_iter()
                     .find(|job| job.id == job_id)
                     .ok_or_else(|| HakimiError::Tool("Job not found".into()))?;
+                validate_cron_prompt(&job.prompt).map_err(|e| HakimiError::Tool(e.to_string()))?;
                 let now = Utc::now();
                 store
                     .trigger_now(&job.id, now)
