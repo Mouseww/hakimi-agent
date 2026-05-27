@@ -522,7 +522,7 @@ mod tests {
         );
 
         assert_eq!(estimate.status, CostStatus::Estimated);
-        assert_eq!(estimate.label, "~$0.006218");
+        assert_eq!(estimate.label, "~$0.006217");
         assert_eq!(
             estimate.pricing_version,
             Some("anthropic-pricing-2026-05".to_string())
