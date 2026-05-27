@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.79-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.80-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1083-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -75,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.80 自更新状态恢复修复**
+  - `hakimi --update` 现在只备份用户状态路径：`memory`、`sessions`、`sessions.db*` 和 `profiles`，不再归档整个 `~/.hakimi` 目录。
+  - 恢复更新前的 memory/session 状态时，不会再覆盖刚安装完成的 `~/.hakimi/bin/hakimi` canonical binary。
+  - 新增状态恢复回归测试，验证 memory/session 能恢复，同时新 binary 保持不变。
 - **v0.3.79 Gateway `/usage` 展示**
   - gateway 聊天里现在可以在一次对话后执行 `/usage`，查看当前模型、供应商、API 调用次数，以及 prompt/completion/total token 用量。
   - 如果当前 transport 捕获到了供应商 `x-ratelimit-*` 响应头，`/usage` 会一并展示最近的请求/Token rate-limit 快照，对齐 Hermes 给远程操作者的用量可见性。

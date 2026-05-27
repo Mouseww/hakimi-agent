@@ -2891,6 +2891,69 @@ async fn latest_release_tag(client: &reqwest::Client) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("GitHub latest release response missing tag_name"))
 }
 
+const HAKIMI_STATE_BACKUP_ENTRIES: &[&str] = &[
+    "memory",
+    "sessions",
+    "sessions.db",
+    "sessions.db-wal",
+    "sessions.db-shm",
+    "profiles",
+];
+
+fn create_hakimi_state_backup(
+    home: &std::path::Path,
+    backup_path: &std::path::Path,
+) -> Result<bool> {
+    use std::fs;
+
+    let hakimi_dir = home.join(".hakimi");
+    if !hakimi_dir.is_dir() {
+        return Ok(false);
+    }
+
+    let file = fs::File::create(backup_path)?;
+    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    let mut archive = tar::Builder::new(encoder);
+    let mut has_entries = false;
+
+    for relative_entry in HAKIMI_STATE_BACKUP_ENTRIES {
+        let source = hakimi_dir.join(relative_entry);
+        if !source.exists() {
+            continue;
+        }
+
+        let archive_path = std::path::Path::new(".hakimi").join(relative_entry);
+        if source.is_dir() {
+            archive.append_dir_all(&archive_path, &source)?;
+            has_entries = true;
+        } else if source.is_file() {
+            archive.append_path_with_name(&source, &archive_path)?;
+            has_entries = true;
+        }
+    }
+
+    archive.finish()?;
+    let encoder = archive.into_inner()?;
+    encoder.finish()?;
+
+    if !has_entries {
+        let _ = fs::remove_file(backup_path);
+    }
+
+    Ok(has_entries)
+}
+
+fn restore_hakimi_state_backup(
+    home: &std::path::Path,
+    backup_path: &std::path::Path,
+) -> Result<()> {
+    let file = std::fs::File::open(backup_path)?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(decoder);
+    archive.unpack(home)?;
+    Ok(())
+}
+
 async fn self_update() -> Result<()> {
     use std::env;
     use std::fs;
@@ -2978,17 +3041,12 @@ async fn self_update() -> Result<()> {
         chrono::Local::now().format("%Y%m%d%H%M%S")
     ));
 
-    if hakimi_dir.exists() {
+    let state_backup_created = if hakimi_dir.exists() {
         println!("Creating pre-update backup of memory and sessions...");
-        let _ = std::process::Command::new("tar")
-            .arg("-czf")
-            .arg(&state_backup_tar)
-            .arg("-C")
-            .arg(&home)
-            .arg(".hakimi")
-            .output()
-            .map_err(|e| anyhow::anyhow!("Tar backup failed: {}", e))?;
-    }
+        create_hakimi_state_backup(&home, &state_backup_tar)?
+    } else {
+        false
+    };
 
     if let Some(parent) = update_target.binary_path.parent() {
         fs::create_dir_all(parent)?;
@@ -3049,14 +3107,11 @@ async fn self_update() -> Result<()> {
             let _ = fs::remove_file(&backup_path);
 
             // Try to restore user/memory state if the archive was created
-            if state_backup_tar.exists() {
+            if state_backup_created && state_backup_tar.exists() {
                 println!("Restoring pre-update backup of memory and sessions...");
-                let _ = std::process::Command::new("tar")
-                    .arg("-xzf")
-                    .arg(&state_backup_tar)
-                    .arg("-C")
-                    .arg(&home)
-                    .output();
+                if let Err(err) = restore_hakimi_state_backup(&home, &state_backup_tar) {
+                    eprintln!("⚠️ Failed to restore memory/session backup: {err}");
+                }
                 let _ = fs::remove_file(&state_backup_tar);
             }
         }
@@ -3140,9 +3195,9 @@ mod tests {
     use super::{
         DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker, GatewayMode,
         GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, TopLevelCommand,
-        gateway_cron_response_for_path, gateway_usage_response, resolve_clawbot_gateway_config,
-        resolve_hakimi_update_target, should_edit_initial_gateway_message,
-        update_target_from_candidate,
+        create_hakimi_state_backup, gateway_cron_response_for_path, gateway_usage_response,
+        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
+        should_edit_initial_gateway_message, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
@@ -3309,6 +3364,49 @@ mod tests {
 
         assert_eq!(resolved.binary_path, real);
         assert_eq!(resolved.shim_path, Some(shim));
+    }
+
+    #[test]
+    fn state_backup_restores_user_state_without_reverting_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let hakimi_dir = home.join(".hakimi");
+
+        std::fs::create_dir_all(hakimi_dir.join("bin")).unwrap();
+        std::fs::create_dir_all(hakimi_dir.join("memory")).unwrap();
+        std::fs::create_dir_all(hakimi_dir.join("sessions")).unwrap();
+        std::fs::create_dir_all(hakimi_dir.join("profiles/work/memory")).unwrap();
+
+        let binary_path = hakimi_dir.join("bin/hakimi");
+        let memory_path = hakimi_dir.join("memory/memory.md");
+        let session_path = hakimi_dir.join("sessions.db");
+        let profile_memory_path = hakimi_dir.join("profiles/work/memory/memory.md");
+
+        std::fs::write(&binary_path, "old-binary").unwrap();
+        std::fs::write(&memory_path, "old-memory").unwrap();
+        std::fs::write(&session_path, "old-session-db").unwrap();
+        std::fs::write(&profile_memory_path, "old-profile-memory").unwrap();
+
+        let backup_path = home.join("state-backup.tar.gz");
+        assert!(create_hakimi_state_backup(home, &backup_path).unwrap());
+
+        std::fs::write(&binary_path, "new-binary").unwrap();
+        std::fs::write(&memory_path, "changed-memory").unwrap();
+        std::fs::write(&session_path, "changed-session-db").unwrap();
+        std::fs::write(&profile_memory_path, "changed-profile-memory").unwrap();
+
+        restore_hakimi_state_backup(home, &backup_path).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&binary_path).unwrap(), "new-binary");
+        assert_eq!(std::fs::read_to_string(&memory_path).unwrap(), "old-memory");
+        assert_eq!(
+            std::fs::read_to_string(&session_path).unwrap(),
+            "old-session-db"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&profile_memory_path).unwrap(),
+            "old-profile-memory"
+        );
     }
 
     #[test]

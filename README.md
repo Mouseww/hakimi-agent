@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.79-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.80-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1083-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -74,6 +74,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.80 Reliable Self-Update State Restore**:
+  - **Binary-Safe State Backup**: `hakimi --update` now backs up only user state (`memory`, `sessions`, `sessions.db*`, and `profiles`) instead of archiving the whole `~/.hakimi` directory.
+  - **No Post-Verify Downgrade**: restoring pre-update memory/session state no longer overwrites the newly installed canonical binary under `~/.hakimi/bin/hakimi`.
+  - **Regression Coverage**: added a state-restore test proving memory/session files are restored while the updated binary remains intact.
 - **v0.3.79 Gateway `/usage` Display**:
   - **Hermes-Style Usage Surface**: gateway chats can now run `/usage` after a turn to see the active model, provider, API call count, and prompt/completion/total token usage.
   - **Rate-Limit Visibility**: the command includes the latest provider `x-ratelimit-*` snapshot when the active transport captured one, matching Hermes' rate-limit display path for remote operators.
