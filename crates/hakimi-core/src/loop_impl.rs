@@ -258,6 +258,7 @@ async fn fetch_response(
 ) -> Result<NormalizedResponse> {
     // Maximum retry attempts per fetch.
     let max_retries = MAX_RETRIES;
+    let mut attempt = 0;
 
     loop {
         let result = if streaming {
@@ -283,7 +284,6 @@ async fn fetch_response(
             }
             Err(e) => {
                 *api_call_count += 1;
-                let attempt = (*api_call_count % (max_retries as usize + 1)) as u32;
 
                 let classifier = ErrorClassifier::new();
                 let classification = classifier.classify_transport_error(&e.to_string());
@@ -313,6 +313,7 @@ async fn fetch_response(
                             "Retrying after classified error"
                         );
                         tokio::time::sleep(delay).await;
+                        attempt += 1;
                         continue;
                     }
                     _ => return Err(e),
@@ -338,10 +339,14 @@ async fn fetch_streaming_response(
     let mut accumulator = StreamAccumulator::new();
     let scrubber = hakimi_transports::scrubber::ThinkScrubber::new();
     let scrubber = std::sync::Arc::new(tokio::sync::Mutex::new(scrubber));
+    let mut saw_terminal_event = false;
 
     while let Some(item) = stream.next().await {
         match item {
             Ok(event) => {
+                if matches!(event, StreamEvent::Done | StreamEvent::Finished(_)) {
+                    saw_terminal_event = true;
+                }
                 // Print content deltas to stdout in real-time.
                 if let StreamEvent::ContentDelta(ref text) = event {
                     let mut s = scrubber.lock().await;
@@ -363,6 +368,14 @@ async fn fetch_streaming_response(
             }
         }
     }
+
+    if !saw_terminal_event {
+        warn!("Streaming response ended before provider completion event");
+        return Err(HakimiError::Transport(
+            "stream ended before provider completion event".to_string(),
+        ));
+    }
+
     // Print a newline after the stream completes.
     {
         use std::io::Write;

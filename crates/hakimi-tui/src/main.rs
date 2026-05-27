@@ -156,7 +156,7 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         );
     }
 
-    let client = reqwest::Client::new();
+    let client = hakimi_transports::build_llm_http_client()?;
     let transport = Arc::new(hakimi_transports::ChatCompletionsTransport::new(
         base_url, api_key, client,
     ));

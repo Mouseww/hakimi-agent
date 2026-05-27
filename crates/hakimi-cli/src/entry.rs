@@ -1197,7 +1197,7 @@ async fn build_agent(
     let effective_provider = resolve_provider(args.provider.as_deref(), config, &model);
 
     // Create transport — auto-detect Anthropic vs OpenAI-compatible.
-    let client = reqwest::Client::new();
+    let client = hakimi_transports::build_llm_http_client()?;
 
     // Create embedding provider from the same online site/key by default.
     let embedding_provider: Option<std::sync::Arc<dyn hakimi_transports::EmbeddingProvider>> =

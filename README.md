@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.72-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.73-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1045-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1046-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -66,13 +66,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1045 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1046 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.73 Responses Stream Recovery**:
+  - **Incomplete Means Continue**: OpenAI Responses `response.incomplete` SSE events now map to a `length` finish reason so Hakimi automatically requests a continuation instead of surfacing partial answers.
+  - **Truncated Stream Retry**: streaming providers that close before a terminal `Done` or `Finished` event are classified as transport failures and retried through the existing backoff path.
+  - **Shared LLM HTTP Timeouts**: CLI, server, and TUI transports now use a shared reqwest client with connect/read timeouts that keep long SSE streams alive while avoiding indefinite hangs.
 - **v0.3.72 Cron Prompt Injection Guard**:
   - **Hermes-Style Cron Scanning**: user-authored cron prompts are checked for injection, secret-exfiltration, destructive command, and invisible Unicode patterns before they are persisted or manually triggered.
   - **Runtime Defense-in-Depth**: due cron jobs are re-scanned immediately before auto-execution; unsafe jobs are disabled and a gateway notification is queued instead of running in auto-approved cron context.
@@ -410,7 +414,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1045 |
+| Tests | ~500 | 1046 |
 
 ---
 
@@ -420,7 +424,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1045 tests)
+# Run all tests (1046 tests)
 cargo test --workspace
 
 # Debug logging

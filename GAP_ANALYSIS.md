@@ -88,6 +88,7 @@ Generated: 2026-05-21
 - **Jittered backoff** — Exponential backoff with random jitter
 - **should_retry()** — Transport/IO errors retryable, tool/config errors not
 - **HakimiError enum** — Transport, Tool, Config, Session, Context, Io, Json, Other
+- **Responses stream recovery** — Incomplete Responses SSE maps to continuation, and truncated streams retry before surfacing partial output
 
 ### Config
 - **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers
@@ -600,9 +601,10 @@ Generated: 2026-05-21
 | 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
 | 18 | Gateway Media Delivery | `hakimi-core/src/loop_impl.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/telegram.rs` | 4 | ✅ `MEDIA:` / `IMAGE:` tool results now stream through gateway side-channel; Telegram uploads local images and generated TTS audio directly |
+| 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
 
 ### Summary
-- **Total tests**: 1045 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1046 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

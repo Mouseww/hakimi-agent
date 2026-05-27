@@ -144,6 +144,72 @@ impl ProviderTransport for MockTransport {
     }
 }
 
+struct ScriptedStreamingTransport {
+    streams: Vec<Vec<std::result::Result<StreamEvent, String>>>,
+    call_index: std::sync::atomic::AtomicUsize,
+}
+
+impl ScriptedStreamingTransport {
+    fn new(streams: Vec<Vec<std::result::Result<StreamEvent, String>>>) -> Self {
+        Self {
+            streams,
+            call_index: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    fn stream_call_count(&self) -> usize {
+        self.call_index.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl ProviderTransport for ScriptedStreamingTransport {
+    fn api_mode(&self) -> ApiMode {
+        ApiMode::ChatCompletions
+    }
+
+    fn provider_name(&self) -> &str {
+        "scripted-streaming"
+    }
+
+    async fn execute(
+        &self,
+        _model: &str,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _params: &RequestParams,
+    ) -> Result<NormalizedResponse> {
+        Ok(NormalizedResponse {
+            content: Some("non-streaming fallback".to_string()),
+            tool_calls: None,
+            finish_reason: Some(FinishReason::Stop),
+            usage: Some(Usage::default()),
+            reasoning: None,
+        })
+    }
+
+    async fn execute_streaming(
+        &self,
+        _model: &str,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _params: &RequestParams,
+    ) -> Result<Pin<Box<dyn futures::Stream<Item = std::result::Result<StreamEvent, String>> + Send>>>
+    {
+        let idx = self
+            .call_index
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let events = self.streams.get(idx).cloned().unwrap_or_else(|| {
+            vec![
+                Ok(StreamEvent::ContentDelta("fallback".to_string())),
+                Ok(StreamEvent::Finished("stop".to_string())),
+                Ok(StreamEvent::Done),
+            ]
+        });
+        Ok(Box::pin(stream::iter(events)))
+    }
+}
+
 // ── Helper functions ────────────────────────────────────────────────────────
 
 fn make_context_engine() -> Arc<RwLock<SimpleContextEngine>> {
@@ -577,6 +643,37 @@ async fn test_streaming_length_finish_auto_continues_and_merges() {
         "Streaming line 1\nLine 2\nStreaming line 3"
     );
     assert_eq!(result.api_call_count, 2);
+}
+
+#[tokio::test]
+async fn test_streaming_truncated_stream_retries_before_final_response() {
+    let transport = Arc::new(ScriptedStreamingTransport::new(vec![
+        vec![Ok(StreamEvent::ContentDelta("partial".to_string()))],
+        vec![
+            Ok(StreamEvent::ContentDelta("Recovered response".to_string())),
+            Ok(StreamEvent::Finished("stop".to_string())),
+            Ok(StreamEvent::Done),
+        ],
+    ]));
+
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport.clone())
+        .context_engine(make_context_engine())
+        .session_id("test-streaming-truncated-retry")
+        .workdir("/tmp")
+        .streaming(true)
+        .build()
+        .unwrap();
+
+    let result = agent
+        .run_conversation("Retry after a truncated stream")
+        .await
+        .unwrap();
+
+    assert_eq!(result.final_response, "Recovered response");
+    assert_eq!(result.api_call_count, 2);
+    assert_eq!(transport.stream_call_count(), 2);
 }
 
 #[tokio::test]

@@ -162,7 +162,7 @@ async fn build_agent(
         });
 
     // Create transport
-    let client = reqwest::Client::new();
+    let client = hakimi_transports::build_llm_http_client()?;
     let is_anthropic =
         provider == "anthropic" || provider == "claude" || base_url.contains("api.anthropic.com");
 

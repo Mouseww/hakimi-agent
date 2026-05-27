@@ -531,7 +531,7 @@ impl ResponsesSseEventStream {
                     *current_tool_index += 1;
                 }
             }
-            "response.completed" | "response.incomplete" => {
+            "response.completed" => {
                 // Extract usage from the completed response if present.
                 if let Some(usage) = val.get("response").and_then(|r| r.get("usage")) {
                     let input_tokens = usage["input_tokens"].as_u64().unwrap_or(0) as u32;
@@ -543,6 +543,23 @@ impl ResponsesSseEventStream {
                         });
                     }
                 }
+                events.push(StreamEvent::Done);
+            }
+            "response.incomplete" => {
+                // Treat incomplete Responses API streams like an output length
+                // stop so the agent can request a continuation instead of
+                // returning a partial final answer.
+                if let Some(usage) = val.get("response").and_then(|r| r.get("usage")) {
+                    let input_tokens = usage["input_tokens"].as_u64().unwrap_or(0) as u32;
+                    let output_tokens = usage["output_tokens"].as_u64().unwrap_or(0) as u32;
+                    if input_tokens > 0 || output_tokens > 0 {
+                        events.push(StreamEvent::Usage {
+                            prompt_tokens: input_tokens,
+                            completion_tokens: output_tokens,
+                        });
+                    }
+                }
+                events.push(StreamEvent::Finished("length".to_string()));
                 events.push(StreamEvent::Done);
             }
             _ => {
@@ -987,9 +1004,10 @@ mod tests {
         let mut idx = 0;
         let events =
             ResponsesSseEventStream::process_event("response.incomplete", json_str, &mut idx);
-        assert_eq!(events.len(), 2); // Usage + Done
+        assert_eq!(events.len(), 3); // Usage + Finished(length) + Done
         assert!(matches!(events[0], StreamEvent::Usage { .. }));
-        assert!(matches!(events[1], StreamEvent::Done));
+        assert!(matches!(events[1], StreamEvent::Finished(ref reason) if reason == "length"));
+        assert!(matches!(events[2], StreamEvent::Done));
     }
 
     // -- Message conversion tests --
