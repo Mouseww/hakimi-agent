@@ -2616,19 +2616,133 @@ fn gateway_service_status() -> Result<()> {
     Ok(())
 }
 
-fn resolve_hakimi_update_target(current_exe: &std::path::Path) -> std::path::PathBuf {
-    if let Ok(path_env) = std::env::var("PATH") {
-        for dir in std::env::split_paths(&path_env) {
-            let candidate = dir.join("hakimi");
-            if candidate.exists()
-                && let Ok(canonical) = std::fs::canonicalize(&candidate)
-                && canonical == current_exe
-            {
-                return candidate;
-            }
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HakimiUpdateTarget {
+    binary_path: std::path::PathBuf,
+    shim_path: Option<std::path::PathBuf>,
+}
+
+fn default_hakimi_binary_path() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".hakimi")
+        .join("bin")
+        .join("hakimi")
+}
+
+fn is_usr_local_hakimi(path: &std::path::Path) -> bool {
+    path == std::path::Path::new("/usr/local/bin/hakimi")
+}
+
+fn is_symlink(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+fn update_target_from_candidate(
+    candidate: &std::path::Path,
+    canonical_current: &std::path::Path,
+    managed_binary: &std::path::Path,
+) -> HakimiUpdateTarget {
+    if is_usr_local_hakimi(candidate) {
+        let binary_path = if canonical_current == candidate {
+            managed_binary.to_path_buf()
+        } else {
+            canonical_current.to_path_buf()
+        };
+        return HakimiUpdateTarget {
+            binary_path,
+            shim_path: Some(candidate.to_path_buf()),
+        };
+    }
+
+    if is_symlink(candidate) {
+        return HakimiUpdateTarget {
+            binary_path: canonical_current.to_path_buf(),
+            shim_path: Some(candidate.to_path_buf()),
+        };
+    }
+
+    HakimiUpdateTarget {
+        binary_path: candidate.to_path_buf(),
+        shim_path: None,
+    }
+}
+
+fn resolve_hakimi_update_target_from_path(
+    canonical_current: &std::path::Path,
+    path_env: &str,
+    managed_binary: &std::path::Path,
+) -> Option<HakimiUpdateTarget> {
+    for dir in std::env::split_paths(path_env) {
+        let candidate = dir.join("hakimi");
+        if candidate.exists()
+            && let Ok(canonical) = std::fs::canonicalize(&candidate)
+            && canonical == canonical_current
+        {
+            return Some(update_target_from_candidate(
+                &candidate,
+                canonical_current,
+                managed_binary,
+            ));
         }
     }
-    current_exe.to_path_buf()
+    None
+}
+
+fn resolve_hakimi_update_target(current_exe: &std::path::Path) -> HakimiUpdateTarget {
+    let canonical_current =
+        std::fs::canonicalize(current_exe).unwrap_or_else(|_| current_exe.to_path_buf());
+    let managed_binary = default_hakimi_binary_path();
+
+    if let Ok(path_env) = std::env::var("PATH") {
+        if let Some(target) =
+            resolve_hakimi_update_target_from_path(&canonical_current, &path_env, &managed_binary)
+        {
+            return target;
+        }
+    }
+
+    update_target_from_candidate(current_exe, &canonical_current, &managed_binary)
+}
+
+#[cfg(unix)]
+fn ensure_hakimi_path_shim(shim_path: &std::path::Path, target: &std::path::Path) -> Result<()> {
+    use std::os::unix::fs as unix_fs;
+
+    if shim_path == target {
+        return Ok(());
+    }
+
+    let parent = shim_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("shim path has no parent: {}", shim_path.display()))?;
+    let file_name = shim_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("hakimi");
+    let tmp_link = parent.join(format!(
+        ".{file_name}.tmp-link-{}",
+        chrono::Local::now().format("%Y%m%d%H%M%S")
+    ));
+
+    if tmp_link.exists() {
+        let _ = std::fs::remove_file(&tmp_link);
+    }
+
+    unix_fs::symlink(target, &tmp_link)?;
+    if let Err(err) = std::fs::rename(&tmp_link, shim_path) {
+        let _ = std::fs::remove_file(&tmp_link);
+        return Err(err.into());
+    }
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_hakimi_path_shim(_shim_path: &std::path::Path, _target: &std::path::Path) -> Result<()> {
+    Ok(())
 }
 
 async fn latest_release_tag(client: &reqwest::Client) -> Result<String> {
@@ -2717,8 +2831,15 @@ async fn self_update() -> Result<()> {
     let current_exe = env::current_exe()?;
     let current_exe = fs::canonicalize(&current_exe).unwrap_or(current_exe);
     let update_target = resolve_hakimi_update_target(&current_exe);
-    let backup_path = format!("{}.bak", update_target.display());
-    println!("Installing to: {}", update_target.display());
+    let backup_path = update_target.binary_path.with_extension("bak");
+    println!("Installing to: {}", update_target.binary_path.display());
+    if let Some(shim_path) = &update_target.shim_path {
+        println!(
+            "PATH entry will remain a symlink: {} -> {}",
+            shim_path.display(),
+            update_target.binary_path.display()
+        );
+    }
 
     // Important: Backup user/memory state across updates
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
@@ -2740,11 +2861,21 @@ async fn self_update() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Tar backup failed: {}", e))?;
     }
 
-    // Backup current binary
-    fs::copy(&update_target, &backup_path)?;
-    println!("Backed up current binary to {backup_path}");
+    if let Some(parent) = update_target.binary_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
 
-    let install_tmp = update_target.with_extension(format!(
+    // Backup the managed target when it exists; otherwise preserve the currently
+    // running binary before migrating away from a system PATH copy.
+    let backup_source = if update_target.binary_path.exists() {
+        update_target.binary_path.as_path()
+    } else {
+        current_exe.as_path()
+    };
+    fs::copy(backup_source, &backup_path)?;
+    println!("Backed up current binary to {}", backup_path.display());
+
+    let install_tmp = update_target.binary_path.with_extension(format!(
         "hakimi-update-{}",
         chrono::Local::now().format("%Y%m%d%H%M%S")
     ));
@@ -2757,10 +2888,10 @@ async fn self_update() -> Result<()> {
         fs::set_permissions(&install_tmp, fs::Permissions::from_mode(0o755))?;
     }
 
-    fs::rename(&install_tmp, &update_target)?;
+    fs::rename(&install_tmp, &update_target.binary_path)?;
 
     // Verify new binary works and reports the expected latest version.
-    let output = std::process::Command::new(&update_target)
+    let output = std::process::Command::new(&update_target.binary_path)
         .arg("--version")
         .output();
 
@@ -2768,10 +2899,18 @@ async fn self_update() -> Result<()> {
         Ok(o) if o.status.success() => {
             let version_text = String::from_utf8_lossy(&o.stdout);
             if !version_text.contains(latest_tag.trim_start_matches('v')) {
-                let _ = fs::copy(&backup_path, &update_target);
+                let _ = fs::copy(&backup_path, &update_target.binary_path);
                 anyhow::bail!(
                     "updated binary reported `{}` instead of `{latest_tag}`; previous version restored",
                     version_text.trim()
+                );
+            }
+            if let Some(shim_path) = &update_target.shim_path {
+                ensure_hakimi_path_shim(shim_path, &update_target.binary_path)?;
+                println!(
+                    "✅ PATH shim refreshed: {} -> {}",
+                    shim_path.display(),
+                    update_target.binary_path.display()
                 );
             }
             println!(
@@ -2795,7 +2934,7 @@ async fn self_update() -> Result<()> {
         _ => {
             // Restore backup
             eprintln!("⚠️ New binary failed verification. Restoring backup...");
-            fs::copy(&backup_path, &update_target)?;
+            fs::copy(&backup_path, &update_target.binary_path)?;
             anyhow::bail!("Update failed — previous version restored.");
         }
     }
@@ -2868,10 +3007,11 @@ mod tests {
         DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker, GatewayMode,
         GatewayStreamUiState, GatewayUiContentTarget, gateway_cron_response_for_path,
         resolve_clawbot_gateway_config, resolve_hakimi_update_target,
-        should_edit_initial_gateway_message,
+        should_edit_initial_gateway_message, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_cron::{CronJob, CronSchedule, persistence::PersistentCronStore};
+    use std::path::PathBuf;
 
     #[test]
     fn gateway_mode_supports_install_restart_and_status() {
@@ -2895,9 +3035,59 @@ mod tests {
 
     #[test]
     fn update_target_falls_back_to_current_exe_when_path_has_no_match() {
-        let current = std::path::PathBuf::from("/tmp/hakimi-current-test");
+        let current = PathBuf::from("/tmp/hakimi-current-test");
         let resolved = resolve_hakimi_update_target(&current);
-        assert_eq!(resolved, current);
+        assert_eq!(resolved.binary_path, current);
+        assert_eq!(resolved.shim_path, None);
+    }
+
+    #[test]
+    fn update_target_keeps_usr_local_as_shim_when_it_points_to_managed_binary() {
+        let shim = PathBuf::from("/usr/local/bin/hakimi");
+        let managed = PathBuf::from("/home/test/.hakimi/bin/hakimi");
+
+        let resolved = update_target_from_candidate(&shim, &managed, &managed);
+
+        assert_eq!(resolved.binary_path, managed);
+        assert_eq!(resolved.shim_path, Some(shim));
+    }
+
+    #[test]
+    fn update_target_migrates_usr_local_regular_binary_to_managed_binary() {
+        let shim = PathBuf::from("/usr/local/bin/hakimi");
+        let managed = PathBuf::from("/home/test/.hakimi/bin/hakimi");
+
+        let resolved = update_target_from_candidate(&shim, &shim, &managed);
+
+        assert_eq!(resolved.binary_path, managed);
+        assert_eq!(resolved.shim_path, Some(shim));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn update_target_resolves_path_symlink_to_real_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let real_dir = temp.path().join("managed");
+        let shim_dir = temp.path().join("path");
+        std::fs::create_dir_all(&real_dir).unwrap();
+        std::fs::create_dir_all(&shim_dir).unwrap();
+
+        let real = real_dir.join("hakimi");
+        let shim = shim_dir.join("hakimi");
+        std::fs::write(&real, "binary").unwrap();
+        std::os::unix::fs::symlink(&real, &shim).unwrap();
+
+        let path_env = std::env::join_paths([shim_dir]).unwrap();
+        let managed = temp.path().join(".hakimi/bin/hakimi");
+        let resolved = super::resolve_hakimi_update_target_from_path(
+            &real,
+            path_env.to_str().unwrap(),
+            &managed,
+        )
+        .unwrap();
+
+        assert_eq!(resolved.binary_path, real);
+        assert_eq!(resolved.shim_path, Some(shim));
     }
 
     #[test]

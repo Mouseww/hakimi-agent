@@ -13,8 +13,13 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="Mouseww/hakimi-agent"
-INSTALL_DIR="${HAKIMI_INSTALL_DIR:-$HOME/.hakimi/bin}"
+DEFAULT_INSTALL_DIR="$HOME/.hakimi/bin"
+INSTALL_DIR="${HAKIMI_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+INSTALL_DIR="${INSTALL_DIR%/}"
 VERSION="${HAKIMI_VERSION:-latest}"
+SYSTEM_BIN_DIR="/usr/local/bin"
+SYSTEM_HAKIMI="$SYSTEM_BIN_DIR/hakimi"
+WANT_SYSTEM_LINK=0
 
 # ── Color helpers ────────────────────────────────────────────────────────────
 
@@ -88,6 +93,14 @@ case "$OS" in
 esac
 
 info "Detected platform: ${ARCH}-${PLATFORM}"
+
+if [ "$INSTALL_DIR" = "$SYSTEM_BIN_DIR" ]; then
+    warn "Refusing to install the real binary directly into ${SYSTEM_BIN_DIR}."
+    warn "${SYSTEM_HAKIMI} is reserved for a symlink/launcher only."
+    INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+    WANT_SYSTEM_LINK=1
+    info "Using managed install directory instead: ${INSTALL_DIR}"
+fi
 
 # ── Determine download URL ──────────────────────────────────────────────────
 
@@ -188,6 +201,53 @@ fi
 
 # ── PATH setup ───────────────────────────────────────────────────────────────
 
+link_hakimi_into() {
+    local link_dir="$1"
+    local link_path="${link_dir}/hakimi"
+
+    if [ "$link_path" = "${INSTALL_DIR}/hakimi" ]; then
+        return 0
+    fi
+
+    if ln -sfn "${INSTALL_DIR}/hakimi" "$link_path"; then
+        success "Linked hakimi into ${link_dir}."
+        return 0
+    fi
+
+    return 1
+}
+
+ensure_usr_local_hakimi_is_shim() {
+    local should_create="${1:-0}"
+
+    if [ ! -d "$SYSTEM_BIN_DIR" ]; then
+        return 0
+    fi
+
+    if [ ! -L "$SYSTEM_HAKIMI" ] && [ ! -e "$SYSTEM_HAKIMI" ] && [ "$should_create" != "1" ]; then
+        return 0
+    fi
+
+    if [ -L "$SYSTEM_HAKIMI" ] || [ -e "$SYSTEM_HAKIMI" ]; then
+        if [ -L "$SYSTEM_HAKIMI" ]; then
+            info "Refreshing ${SYSTEM_HAKIMI} symlink."
+        else
+            warn "${SYSTEM_HAKIMI} exists as a regular file; replacing it with a symlink."
+        fi
+    fi
+
+    if [ -w "$SYSTEM_BIN_DIR" ]; then
+        link_hakimi_into "$SYSTEM_BIN_DIR" || true
+    elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+        if sudo ln -sfn "${INSTALL_DIR}/hakimi" "$SYSTEM_HAKIMI"; then
+            success "Linked hakimi into ${SYSTEM_BIN_DIR}."
+        fi
+    elif [ -e "$SYSTEM_HAKIMI" ] && [ ! -L "$SYSTEM_HAKIMI" ]; then
+        warn "${SYSTEM_HAKIMI} is not a symlink and could not be replaced automatically."
+        warn "Remove it or run: sudo ln -sfn \"${INSTALL_DIR}/hakimi\" \"${SYSTEM_HAKIMI}\""
+    fi
+}
+
 echo ""
 info "Installed to: ${INSTALL_DIR}/hakimi"
 echo ""
@@ -229,18 +289,13 @@ else
     fi
 
     if [ -d "$HOME/.local/bin" ] && echo "$PATH" | tr ':' '\n' | grep -qxF "$HOME/.local/bin"; then
-        ln -sf "$INSTALL_DIR/hakimi" "$HOME/.local/bin/hakimi"
-        success "Linked hakimi into ~/.local/bin."
-    elif [ -w "/usr/local/bin" ]; then
-        ln -sf "$INSTALL_DIR/hakimi" "/usr/local/bin/hakimi"
-        success "Linked hakimi into /usr/local/bin."
-    elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
-        sudo ln -sf "$INSTALL_DIR/hakimi" "/usr/local/bin/hakimi" || true
-        if command -v /usr/local/bin/hakimi &>/dev/null; then
-            success "Linked hakimi into /usr/local/bin."
-        fi
+        link_hakimi_into "$HOME/.local/bin" || true
+    else
+        WANT_SYSTEM_LINK=1
     fi
 fi
+
+ensure_usr_local_hakimi_is_shim "$WANT_SYSTEM_LINK"
 
 # ── Verify installation ─────────────────────────────────────────────────────
 
