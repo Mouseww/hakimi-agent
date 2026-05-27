@@ -5,6 +5,7 @@
 use crate::{CronJob, CronSchedule, CronScheduler, validate_cron_prompt};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
+use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -193,6 +194,41 @@ impl PersistentCronStore {
         Ok(changed > 0)
     }
 
+    /// Claim all due jobs under a file lock and advance their next run first.
+    ///
+    /// This mirrors Hermes' tick semantics: once a scheduler process claims due
+    /// jobs, it advances their next run before execution so overlapping gateway
+    /// or standalone ticks do not run the same job twice.
+    pub fn claim_due_jobs(
+        &self,
+        now: DateTime<Utc>,
+        lock_path: &Path,
+    ) -> anyhow::Result<Vec<CronJob>> {
+        if let Some(parent) = lock_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent)?;
+        }
+        let _lock = FileLock::acquire(lock_path)?;
+
+        let mut due_jobs: Vec<CronJob> = self
+            .load_all()?
+            .into_iter()
+            .filter(|job| job.enabled)
+            .filter(|job| job.next_run.map(|next| next <= now).unwrap_or(false))
+            .collect();
+
+        for job in &mut due_jobs {
+            let next_run = job.schedule.next_after(now);
+            self.update_run_times(&job.id, now, next_run)?;
+            job.last_run = Some(now);
+            job.next_run = Some(next_run);
+        }
+
+        Ok(due_jobs)
+    }
+
     /// Update the last_run and next_run for a job.
     pub fn update_run_times(
         &self,
@@ -270,8 +306,13 @@ impl FileLock {
                 );
             }
             warn!("Removing stale lock file at {}", path.display());
+            let _ = std::fs::remove_file(path);
         }
-        std::fs::write(path, std::process::id().to_string())?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        write!(file, "{}", std::process::id())?;
         Ok(Self {
             path: path.to_path_buf(),
         })
@@ -515,6 +556,64 @@ mod tests {
         let next_run = triggered.next_run.unwrap();
         assert!((next_run - triggered_at).num_seconds().abs() <= 1);
         assert!(!store.trigger_now("missing-job", triggered_at).unwrap());
+    }
+
+    #[test]
+    fn test_claim_due_jobs_advances_under_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("claim_cron.db");
+        let lock_path = tmp.path().join("claim.lock");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+        let now = Utc::now();
+
+        let mut due = CronJob::new("due", CronSchedule::IntervalMinutes(15), "prompt");
+        due.next_run = Some(now - chrono::Duration::minutes(1));
+        let due_id = due.id.clone();
+        store.save_job(&due).unwrap();
+
+        let mut future = CronJob::new("future", CronSchedule::IntervalMinutes(15), "later");
+        future.next_run = Some(now + chrono::Duration::minutes(30));
+        store.save_job(&future).unwrap();
+
+        let mut disabled = CronJob::new("disabled", CronSchedule::IntervalMinutes(15), "skip");
+        disabled.enabled = false;
+        disabled.next_run = Some(now - chrono::Duration::minutes(1));
+        store.save_job(&disabled).unwrap();
+
+        let claimed = store.claim_due_jobs(now, &lock_path).unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].id, due_id);
+        assert_eq!(claimed[0].last_run, Some(now));
+        assert_eq!(
+            claimed[0].next_run,
+            Some(now + chrono::Duration::minutes(15))
+        );
+
+        let persisted = store.get_job(&due_id).unwrap().unwrap();
+        assert_eq!(persisted.last_run, Some(now));
+        assert_eq!(
+            persisted.next_run,
+            Some(now + chrono::Duration::minutes(15))
+        );
+
+        let claimed_again = store.claim_due_jobs(now, &lock_path).unwrap();
+        assert!(claimed_again.is_empty());
+    }
+
+    #[test]
+    fn test_claim_due_jobs_respects_existing_tick_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("locked_cron.db");
+        let lock_path = tmp.path().join("claim.lock");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+        let _lock = FileLock::acquire(&lock_path).unwrap();
+
+        let mut due = CronJob::new("due", CronSchedule::IntervalMinutes(15), "prompt");
+        due.next_run = Some(Utc::now() - chrono::Duration::minutes(1));
+        store.save_job(&due).unwrap();
+
+        let err = store.claim_due_jobs(Utc::now(), &lock_path).unwrap_err();
+        assert!(err.to_string().contains("Cron lock file exists"));
     }
 
     #[test]

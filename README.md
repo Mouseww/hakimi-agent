@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.86-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.87-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1107-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1110-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,13 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1107 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1110 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.87 Cron Tick Execution**:
+  - **Standalone Tick Entry**: top-level `hakimi cron tick` now claims due jobs from the shared SQLite store and executes them once through the same delegated cron task path used by the gateway scheduler.
+  - **At-Most-Once Claiming**: gateway and standalone ticks share a persistent tick lock and advance `next_run` before execution, matching Hermes' overlap-safe scheduler semantics.
+  - **Regression Coverage**: added offline coverage for locked due-job claiming, tick-lock contention, tick command parsing, and bounded tick output previews.
 - **v0.3.86 Cron Status Surface**:
   - **Hermes-Style Status Entry**: `/cron status` and top-level `hakimi cron status` now summarize the shared SQLite cron store without starting an agent session.
   - **Operator Counts**: status output reports total, active, paused, and due-now jobs, plus the next scheduled job and gateway scheduler hint.
@@ -311,7 +315,7 @@ hakimi --gateway status   # show managed service status and exit
 
 By default the lifecycle shortcuts target `hakimi.service`. If your unit uses another name, set `HAKIMI_GATEWAY_SERVICE=<service-name>` before running `hakimi --gateway install`, `hakimi --gateway restart`, or `hakimi --gateway status`.
 
-Inside gateway chats, `/cron` now supports `list`, `status`, `add`, `edit`, `pause <job-id>`, `resume <job-id>`, `run <job-id>`, and `remove <job-id>` against the shared SQLite-backed `cron.db`, so operators can manage scheduled jobs without leaving Telegram/Discord/Slack.
+Inside gateway chats, `/cron` now supports `list`, `status`, `add`, `edit`, `pause <job-id>`, `resume <job-id>`, `run <job-id>`, and `remove <job-id>` against the shared SQLite-backed `cron.db`, while host operators can run `hakimi cron tick` to execute due jobs once with the same tick lock used by the gateway scheduler.
 
 **Legacy generic ClawBot HTTP bridge:**
 
@@ -469,7 +473,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1107 |
+| Tests | ~500 | 1110 |
 
 ---
 
@@ -479,7 +483,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1107 tests)
+# Run all tests (1110 tests)
 cargo test --workspace
 
 # Debug logging
