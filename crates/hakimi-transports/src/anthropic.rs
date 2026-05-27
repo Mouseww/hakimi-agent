@@ -11,6 +11,7 @@ use tracing::{debug, warn};
 use crate::error::classify_error;
 use crate::params::RequestParams;
 use crate::prompt_caching::{CACHE_BETA_HEADER_VALUE, CacheLayout, apply_caching};
+use crate::rate_limit::{RateLimitState, RateLimitTracker};
 use crate::streaming::{SseEventStream, StreamEvent};
 use crate::trait_def::ProviderTransport;
 use futures::stream::Stream;
@@ -30,6 +31,7 @@ pub struct AnthropicTransport {
     client: Client,
     enable_caching: bool,
     cache_layout: CacheLayout,
+    rate_limits: RateLimitTracker,
 }
 
 impl AnthropicTransport {
@@ -40,7 +42,13 @@ impl AnthropicTransport {
             client,
             enable_caching: false,
             cache_layout: CacheLayout::SystemAnd3,
+            rate_limits: RateLimitTracker::new(),
         }
+    }
+
+    /// Return the most recently observed provider rate-limit headers.
+    pub fn rate_limits(&self) -> Option<RateLimitState> {
+        self.rate_limits.snapshot()
     }
 
     /// Enable prompt caching with the given layout strategy.
@@ -397,6 +405,8 @@ impl AnthropicTransport {
         })?;
 
         let status = response.status();
+        self.rate_limits
+            .update_from_headers(response.headers(), "anthropic");
         if !status.is_success() {
             let response_text = response.text().await.unwrap_or_default();
             let code = status.as_u16();
@@ -513,6 +523,8 @@ impl ProviderTransport for AnthropicTransport {
         })?;
 
         let status = response.status();
+        self.rate_limits
+            .update_from_headers(response.headers(), "anthropic");
         let response_text = response
             .text()
             .await

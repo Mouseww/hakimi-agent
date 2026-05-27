@@ -10,6 +10,7 @@ use tracing::{debug, warn};
 
 use crate::error::classify_error;
 use crate::params::RequestParams;
+use crate::rate_limit::{RateLimitState, RateLimitTracker};
 use crate::streaming::{SseEventStream, StreamEvent};
 use crate::trait_def::ProviderTransport;
 use futures::stream::Stream;
@@ -23,6 +24,7 @@ pub struct ChatCompletionsTransport {
     base_url: String,
     api_key: String,
     client: Client,
+    rate_limits: RateLimitTracker,
 }
 
 impl ChatCompletionsTransport {
@@ -31,7 +33,13 @@ impl ChatCompletionsTransport {
             base_url,
             api_key,
             client,
+            rate_limits: RateLimitTracker::new(),
         }
+    }
+
+    /// Return the most recently observed provider rate-limit headers.
+    pub fn rate_limits(&self) -> Option<RateLimitState> {
+        self.rate_limits.snapshot()
     }
 
     /// Build the full request URL.
@@ -269,6 +277,8 @@ impl ChatCompletionsTransport {
             })?;
 
         let status = response.status();
+        self.rate_limits
+            .update_from_headers(response.headers(), "openai-compatible");
         if !status.is_success() {
             let response_text = response.text().await.unwrap_or_default();
             let code = status.as_u16();
@@ -330,6 +340,8 @@ impl ProviderTransport for ChatCompletionsTransport {
             })?;
 
         let status = response.status();
+        self.rate_limits
+            .update_from_headers(response.headers(), "openai-compatible");
         let response_text = response
             .text()
             .await

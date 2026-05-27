@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.77-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.78-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1072-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1080-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1072 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1080 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -75,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.78 Rate Limit Tracking**
+  - `hakimi-transports` 现在解析 OpenAI/Nous 风格的 `x-ratelimit-*` 请求/Token 分钟与小时窗口，并支持数字和时长形式的 reset 值。
+  - Chat Completions、Responses、Anthropic、Gemini transport 会保留最近一次 rate-limit 快照，为后续 `/usage` 与 gateway 状态展示提供统一底座。
+  - 新增解析、格式化、热点警告和 tracker 快照回归测试，不调用真实供应商 API。
 - **v0.3.77 Think Scrubber 强化**
   - `ThinkScrubber` 现在按 Hermes 语义处理 `<think>`、`<thinking>`、`<reasoning>`、`<thought>`、`<REASONING_SCRATCHPAD>` 等标签，大小写不敏感，并支持 SSE delta 边界拆分标签。
   - streaming 与非 streaming Agent loop 都会把清理后的文本写入 `final_response` 和 assistant history，同时把隐藏 reasoning 单独保留。
@@ -285,7 +289,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1072 |
+| 测试 | ~500 | 1080 |
 
 ---
 
@@ -295,7 +299,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1072 tests)
+# 运行全部测试 (1080 tests)
 cargo test --workspace
 
 # Debug 日志

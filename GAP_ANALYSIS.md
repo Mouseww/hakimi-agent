@@ -347,10 +347,10 @@ Generated: 2026-05-21
 - **Details**: Rate-limited progressive edits on Telegram/Discord/Slack. Buffer threshold. Edit interval configuration.
 - **Priority**: **Medium** — Real-time streaming UX on messaging platforms
 
-#### 40. Usage Pricing / Rate Limit Tracking
-- **What**: Token usage pricing calculation and rate limit tracking
-- **Hermes location**: `agent/usage_pricing.py`, `agent/rate_limit_tracker.py`, `agent/account_usage.py`
-- **Details**: Per-model pricing. Rate limit window tracking. Account usage aggregation.
+#### 40. Usage Pricing / Account Usage Tracking
+- **What**: Token usage pricing calculation and account usage aggregation
+- **Hermes location**: `agent/usage_pricing.py`, `agent/account_usage.py`
+- **Details**: Per-model pricing and account usage aggregation. Rate-limit header parsing/tracking is now partially implemented in `hakimi-transports`.
 - **Priority**: **Medium** — Cost visibility
 
 #### 41. Model Metadata / Auto-Discovery
@@ -528,6 +528,10 @@ Generated: 2026-05-21
 - **What's missing**: 20+ specific error categories, credential rotation on auth/billing errors, context overflow → compression trigger, model fallback on 404, provider-specific error handling (thinking_signature, long_context_tier, llama_cpp_grammar_pattern), failover reason tracking
 - **Hermes reference**: `agent/error_classifier.py`
 
+### 16. Usage Pricing / Rate Limit Tracking
+- **Status**: `hakimi-transports::RateLimitTracker` parses OpenAI/Nous-style `x-ratelimit-*` request/token windows, formats detailed/compact displays, and Chat Completions, Responses, Anthropic, and Gemini transports retain the latest snapshot.
+- **What's missing**: Per-model pricing, account usage APIs, persisted aggregation, and user-facing `/usage`/gateway display integration.
+- **Hermes reference**: `agent/rate_limit_tracker.py`, `agent/usage_pricing.py`, `agent/account_usage.py`
 ---
 
 ## Summary Statistics
@@ -538,7 +542,7 @@ Generated: 2026-05-21
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 0 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
-| Agent Internals | 25+ | 16 | 5 | 4+ |
+| Agent Internals | 25+ | 16 | 6 | 3+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
 | Cron Features | Full | Full | 0 | 0 |
@@ -547,7 +551,7 @@ Generated: 2026-05-21
 
 **Total unique Hermes features identified: ~150+**
 **Fully present in Hakimi: ~58** (up from ~30)
-**Partially implemented: ~10**
+**Partially implemented: ~11**
 **Missing entirely: ~82+**
 
 ### Top 10 Critical Gaps (by impact)
@@ -559,7 +563,7 @@ Generated: 2026-05-21
 6. ACP adapter / IDE integration
 7. Kanban multi-agent coordination
 8. Remote MCP sampling + richer server-initiated flows
-9. Observability / usage pricing
+9. Observability / usage pricing and account usage display
 10. Voice mode (push-to-talk capture + playback)
 
 ---
@@ -598,9 +602,10 @@ Generated: 2026-05-21
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
 | 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
 | 21 | Think Scrubber | `hakimi-transports/src/scrubber.rs`, `hakimi-core/src/loop_impl.rs` | 18 | ✅ Hermes-style stateful reasoning tag scrubbing for streaming and non-streaming responses |
+| 22 | Rate Limit Tracking | `hakimi-transports/src/rate_limit.rs`, transport adapters | 8 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports |
 
 ### Summary
-- **Total tests**: 1072 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1080 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

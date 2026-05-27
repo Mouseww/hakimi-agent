@@ -10,6 +10,7 @@ use tracing::{debug, warn};
 
 use crate::error::classify_error;
 use crate::params::RequestParams;
+use crate::rate_limit::{RateLimitState, RateLimitTracker};
 use crate::streaming::{SseEventStream, StreamEvent};
 use crate::trait_def::ProviderTransport;
 use futures::stream::Stream;
@@ -31,6 +32,7 @@ pub struct GeminiTransport {
     base_url: String,
     api_key: String,
     client: Client,
+    rate_limits: RateLimitTracker,
 }
 
 impl GeminiTransport {
@@ -39,7 +41,13 @@ impl GeminiTransport {
             base_url,
             api_key,
             client,
+            rate_limits: RateLimitTracker::new(),
         }
+    }
+
+    /// Return the most recently observed provider rate-limit headers.
+    pub fn rate_limits(&self) -> Option<RateLimitState> {
+        self.rate_limits.snapshot()
     }
 
     /// Build the full request URL for non-streaming requests.
@@ -357,6 +365,8 @@ impl GeminiTransport {
             })?;
 
         let status = response.status();
+        self.rate_limits
+            .update_from_headers(response.headers(), "gemini");
         if !status.is_success() {
             let response_text = response.text().await.unwrap_or_default();
             let code = status.as_u16();
@@ -459,6 +469,8 @@ impl ProviderTransport for GeminiTransport {
             })?;
 
         let status = response.status();
+        self.rate_limits
+            .update_from_headers(response.headers(), "gemini");
         let response_text = response
             .text()
             .await
