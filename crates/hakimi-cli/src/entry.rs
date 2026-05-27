@@ -2696,12 +2696,11 @@ fn resolve_hakimi_update_target(current_exe: &std::path::Path) -> HakimiUpdateTa
         std::fs::canonicalize(current_exe).unwrap_or_else(|_| current_exe.to_path_buf());
     let managed_binary = default_hakimi_binary_path();
 
-    if let Ok(path_env) = std::env::var("PATH") {
-        if let Some(target) =
+    if let Ok(path_env) = std::env::var("PATH")
+        && let Some(target) =
             resolve_hakimi_update_target_from_path(&canonical_current, &path_env, &managed_binary)
-        {
-            return target;
-        }
+    {
+        return target;
     }
 
     update_target_from_candidate(current_exe, &canonical_current, &managed_binary)
