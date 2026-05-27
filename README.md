@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.73-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.74-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1046-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1050-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -66,13 +66,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1046 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1050 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.74 Image Describe Vision Alias**:
+  - **Legacy Tool Now Works**: `image_describe` now reuses the `vision_analyze` pipeline instead of returning placeholder text, so older media workflows get the same base64 data-url payload as the dedicated vision tool.
+  - **Hermes Parity Cleanup**: GAP_ANALYSIS no longer lists vision as both missing and complete; the remaining media gap is video analysis.
+  - **Regression Coverage**: image_describe now has metadata, schema, validation, and local-file payload tests.
 - **v0.3.73 Responses Stream Recovery**:
   - **Incomplete Means Continue**: OpenAI Responses `response.incomplete` SSE events now map to a `length` finish reason so Hakimi automatically requests a continuation instead of surfacing partial answers.
   - **Truncated Stream Retry**: streaming providers that close before a terminal `Done` or `Finished` event are classified as transport failures and retried through the existing backoff path.
@@ -214,7 +218,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
 - **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium automation)
-- **Media**: vision_analyze (image analysis), image_generate, text_to_speech, transcribe_audio
+- **Media**: vision_analyze (image analysis), image_describe (legacy alias), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
 - **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
@@ -414,7 +418,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1046 |
+| Tests | ~500 | 1050 |
 
 ---
 
@@ -424,7 +428,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1046 tests)
+# Run all tests (1050 tests)
 cargo test --workspace
 
 # Debug logging

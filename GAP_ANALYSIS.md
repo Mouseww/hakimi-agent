@@ -235,11 +235,10 @@ Generated: 2026-05-21
 
 ### Medium Priority
 
-#### 21. Vision Analysis (vision_analyze tool)
+#### 21. ~~Vision Analysis (vision_analyze tool)~~ ✅ DONE
 - **What**: Image analysis from URLs with custom prompts using vision-capable models
 - **Hermes location**: `tools/vision_tools.py`
-- **Details**: Downloads images, converts to base64, routes through auxiliary vision router. Hakimi has `image_describe` but it's a **placeholder** returning stub responses.
-- **Priority**: **Medium** — Hakimi has the skeleton but no real implementation
+- **Status**: ✅ Done in v0.3.74 — `vision_analyze` and legacy `image_describe` both produce structured base64 data-url vision request payloads for URLs and local files
 
 #### 22. Video Analysis
 - **What**: Video analysis and understanding (opt-in toolset)
@@ -459,32 +458,27 @@ Generated: 2026-05-21
 
 ## PARTIALLY IMPLEMENTED in Hakimi
 
-### 1. Vision Analysis (image_describe)
-- **Status**: Tool exists but returns **placeholder/stub responses**
-- **What's missing**: Actual vision model integration, base64 image encoding, auxiliary vision router
-- **Hermes reference**: `tools/vision_tools.py` — full implementation with multi-provider routing
-
-### 2. Context Compression (SmartContextEngine Tier 2)
+### 1. Context Compression (SmartContextEngine Tier 2)
 - **Status**: 3-tier system exists but Tier 2 (SummarizeOldTurns) does **message dropping, not LLM summarization**
 - **What's missing**: Auxiliary LLM call for structured summarization with Resolved/Pending tracking, iterative updates, tool output pruning
 - **Hermes reference**: `agent/context_compressor.py` — full LLM-based summarization
 
-### 3. Cron System
+### 2. Cron System
 - **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|pause|resume|run|remove`、prompt injection 扫描已落地
 - **What's missing**: gateway/CLI `add/edit` 管理入口、skill 装载、delivery 到指定 gateway session、完整 repeat/status/tick 语义
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
-### 4. MCP Client
+### 3. MCP Client
 - **Status**: stdio transport works
 - **What's missing**: HTTP/StreamableHTTP transport, SSE transport, automatic reconnection with backoff, configurable per-server timeouts, credential stripping in errors, sampling support (server-initiated LLM requests), thread-safe background event loop
 - **Hermes reference**: `tools/mcp_tool.py`
 
-### 5. Skills System
+### 4. Skills System
 - **Status**: Basic loader from markdown files with YAML frontmatter
 - **What's missing**: Skills hub (community sharing), skill provenance tracking, skill preprocessing, skill sync, skills guard (security), conditional skill loading (platform-gated), skill usage tracking, skill slash commands injected as user messages, skill index caching
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
-### 6. Gateway
+### 5. Gateway
 - **Status**: 3 platforms (Telegram, Discord, Slack)
 - **What's missing**: 17+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, slash access control, runtime footer, display config, session context management, sticker cache, stream consumer for progressive edits
 - **Hermes reference**: `gateway/` (entire directory)
@@ -570,7 +564,7 @@ Generated: 2026-05-21
 
 ---
 
-## IMPLEMENTATION STATUS (Updated: 2026-05-21)
+## IMPLEMENTATION STATUS (Updated: 2026-05-27)
 
 ### Phase 1: Critical Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
@@ -578,7 +572,7 @@ Generated: 2026-05-21
 | 1 | Error Classifier | `hakimi-core/src/error_classifier.rs` | 62 | ✅ 20+ FailoverReasons, RecoveryAction, classify(), wired into loop_impl |
 | 2 | Credential Pool | `hakimi-core/src/credential_pool.rs` | 49 | ✅ RoundRobin/FillFirst/Random strategies, exhaustion detection, rotation |
 | 3 | Prompt Caching | `hakimi-transports/src/prompt_caching.rs` | 11 | ✅ CacheControl, TTL (5m/1h), breakpoints on system/tools/messages |
-| 4 | Vision Analysis | `hakimi-tools/src/builtin_vision_analyze.rs` | 12 | ✅ Real vision model integration, base64 encoding, configurable aux model |
+| 4 | Vision Analysis | `hakimi-tools/src/builtin_vision_analyze.rs`, `hakimi-tools/src/builtin_image_describe.rs` | 16 | ✅ Real vision payload generation, base64 encoding, and legacy `image_describe` alias |
 | 5 | Clarify Tool | `hakimi-tools/src/builtin_clarify.rs` | 8 | ✅ Multiple-choice + open-ended, structured JSON output |
 
 ### Phase 2: High Gaps — ALL COMPLETE ✅
@@ -604,7 +598,7 @@ Generated: 2026-05-21
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
 
 ### Summary
-- **Total tests**: 1046 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1050 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
