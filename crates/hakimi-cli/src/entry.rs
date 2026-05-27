@@ -79,7 +79,7 @@ fn cron_success_output_should_deliver(output: &str) -> bool {
 }
 
 fn cron_skill_names(job: &hakimi_cron::CronJob) -> Vec<String> {
-    let mut names = Vec::new();
+    let mut names: Vec<String> = Vec::new();
     for name in &job.skills {
         let trimmed = name.trim();
         if !trimmed.is_empty() && !names.iter().any(|seen| seen.as_str() == trimmed) {
