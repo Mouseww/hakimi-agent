@@ -8,7 +8,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -995,14 +994,6 @@ impl GatewayChatTurnTracker {
     }
 }
 
-fn should_edit_initial_gateway_message(
-    initial_message_id: Option<i64>,
-    is_error: bool,
-    rendered_stream_content: bool,
-) -> bool {
-    initial_message_id.is_some() && (is_error || !rendered_stream_content)
-}
-
 fn resolve_clawbot_gateway_config(
     config: &hakimi_config::HakimiConfig,
 ) -> hakimi_config::ClawBotGatewayConfig {
@@ -1118,10 +1109,58 @@ fn merge_gateway_receivers(
 }
 
 #[derive(Debug, Default)]
+struct GatewayStreamRenderSnapshot {
+    rendered_content: bool,
+    current_message_id: Option<i64>,
+    current_text: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum GatewayFinalDelivery {
+    None,
+    Send(String),
+    Edit { message_id: i64, text: String },
+}
+
+fn plan_gateway_final_delivery(
+    snapshot: &GatewayStreamRenderSnapshot,
+    final_text: &str,
+    is_error: bool,
+) -> GatewayFinalDelivery {
+    if final_text.is_empty() {
+        return GatewayFinalDelivery::None;
+    }
+    if is_error || !snapshot.rendered_content {
+        return GatewayFinalDelivery::Send(final_text.to_string());
+    }
+    let Some(message_id) = snapshot.current_message_id else {
+        return GatewayFinalDelivery::Send(final_text.to_string());
+    };
+    if snapshot.current_text == final_text {
+        return GatewayFinalDelivery::None;
+    }
+
+    GatewayFinalDelivery::Edit {
+        message_id,
+        text: final_text.to_string(),
+    }
+}
+
+#[derive(Debug)]
 struct GatewayStreamUiState {
     current_text: String,
     last_edit_text: String,
     needs_new_message: bool,
+}
+
+impl Default for GatewayStreamUiState {
+    fn default() -> Self {
+        Self {
+            current_text: String::new(),
+            last_edit_text: String::new(),
+            needs_new_message: true,
+        }
+    }
 }
 
 impl GatewayStreamUiState {
@@ -2638,21 +2677,8 @@ async fn start_gateway(
                 }
             }
 
-            // Progressive streaming response logic.
-            // 1. Send initial empty placeholder message to grab a message ID.
-            let placeholder = hakimi_gateway::GatewayMessage {
-                platform: platform.clone(),
-                bot_id: bot_id.clone(),
-                chat_id: chat_id.clone(),
-                user_id: String::new(),
-                text: "✨ Processing...".to_string(),
-                media: None,
-            };
-
-            let initial_message_id = gateway_clone
-                .route_message_get_id(&placeholder)
-                .await
-                .unwrap_or(None);
+            // Progressive streaming response logic starts only after real
+            // assistant content arrives; typing status covers the wait time.
 
             // Keep typing active while agent processes
             let typing_handle = {
@@ -2924,23 +2950,16 @@ async fn start_gateway(
 
                 typing_handle.abort();
 
-                // 4. Send response back via gateway and continue to next message.
-                if let Some(msg_id) = initial_message_id {
-                    let _ = gateway_clone
-                        .edit_message(&platform, &bot_id, &chat_id, msg_id, &response)
-                        .await;
-                } else {
-                    let _ = gateway_clone
-                        .route_message(&hakimi_gateway::GatewayMessage {
-                            platform: platform.clone(),
-                            bot_id: bot_id.clone(),
-                            chat_id: chat_id.clone(),
-                            user_id: String::new(),
-                            text: response,
-                            media: None,
-                        })
-                        .await;
-                }
+                let _ = gateway_clone
+                    .route_message(&hakimi_gateway::GatewayMessage {
+                        platform: platform.clone(),
+                        bot_id: bot_id.clone(),
+                        chat_id: chat_id.clone(),
+                        user_id: String::new(),
+                        text: response,
+                        media: None,
+                    })
+                    .await;
                 return;
             }
 
@@ -3017,208 +3036,203 @@ async fn start_gateway(
                 (a, base_history_len, concurrent)
             };
 
-            let (response_text, err_msg, rendered_stream_content) = {
-                let mut updater_handle = None;
-                let mut rendered_content = None;
+            let (response_text, err_msg, stream_snapshot) = {
+                let platform_cb = platform.clone();
+                let bot_id_cb = bot_id.clone();
+                let chat_id_cb = chat_id.clone();
+                let gateway_cb = gateway_clone.clone();
+                let (ui_tx, mut ui_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<GatewayStreamUiEvent>();
 
-                if let Some(msg_id) = initial_message_id {
-                    let platform_cb = platform.clone();
-                    let bot_id_cb = bot_id.clone();
-                    let chat_id_cb = chat_id.clone();
-                    let gateway_cb = gateway_clone.clone();
-                    let rendered_content_flag = Arc::new(AtomicBool::new(false));
-                    let rendered_content_for_task = rendered_content_flag.clone();
-                    rendered_content = Some(rendered_content_flag.clone());
+                let updater_handle = tokio::spawn(async move {
+                    let mut current_message_id = None;
+                    let mut ui_state = GatewayStreamUiState::default();
+                    let mut rendered_content = false;
+                    let mut delegate_bubbles: HashMap<String, DelegateProgressBubble> =
+                        HashMap::new();
+                    let mut pending_events: VecDeque<GatewayStreamUiEvent> = VecDeque::new();
 
-                    let (ui_tx, mut ui_rx) =
-                        tokio::sync::mpsc::unbounded_channel::<GatewayStreamUiEvent>();
-
-                    let handle = tokio::spawn(async move {
-                        let mut current_message_id = Some(msg_id);
-                        let mut ui_state = GatewayStreamUiState::default();
-                        let mut delegate_bubbles: HashMap<String, DelegateProgressBubble> =
-                            HashMap::new();
-                        let mut pending_events: VecDeque<GatewayStreamUiEvent> = VecDeque::new();
-
-                        loop {
-                            let event = if let Some(event) = pending_events.pop_front() {
-                                event
-                            } else {
-                                let Some(event) = ui_rx.recv().await else {
-                                    break;
-                                };
-                                event
+                    loop {
+                        let event = if let Some(event) = pending_events.pop_front() {
+                            event
+                        } else {
+                            let Some(event) = ui_rx.recv().await else {
+                                break;
                             };
+                            event
+                        };
 
-                            match event {
-                                GatewayStreamUiEvent::Content(mut text) => {
-                                    while let Ok(next) = ui_rx.try_recv() {
-                                        match next {
-                                            GatewayStreamUiEvent::Content(token) => {
-                                                text.push_str(&token);
-                                            }
-                                            GatewayStreamUiEvent::Tool(_)
-                                            | GatewayStreamUiEvent::Media(_)
-                                            | GatewayStreamUiEvent::Delegate(_) => {
-                                                pending_events.push_back(next);
-                                                break;
-                                            }
+                        match event {
+                            GatewayStreamUiEvent::Content(mut text) => {
+                                while let Ok(next) = ui_rx.try_recv() {
+                                    match next {
+                                        GatewayStreamUiEvent::Content(token) => {
+                                            text.push_str(&token);
+                                        }
+                                        GatewayStreamUiEvent::Tool(_)
+                                        | GatewayStreamUiEvent::Media(_)
+                                        | GatewayStreamUiEvent::Delegate(_) => {
+                                            pending_events.push_back(next);
+                                            break;
                                         }
                                     }
-
-                                    let Some(target) = ui_state.append_content(&text) else {
-                                        continue;
-                                    };
-                                    rendered_content_for_task.store(true, Ordering::Relaxed);
-
-                                    match target {
-                                        GatewayUiContentTarget::EditCurrent => {
-                                            if let Some(active_msg_id) = current_message_id {
-                                                let _ = gateway_cb
-                                                    .edit_message(
-                                                        &platform_cb,
-                                                        &bot_id_cb,
-                                                        &chat_id_cb,
-                                                        active_msg_id,
-                                                        &ui_state.current_text,
-                                                    )
-                                                    .await;
-                                            }
-                                        }
-                                        GatewayUiContentTarget::NewMessage => {
-                                            let msg = hakimi_gateway::GatewayMessage {
-                                                platform: platform_cb.clone(),
-                                                bot_id: bot_id_cb.clone(),
-                                                chat_id: chat_id_cb.clone(),
-                                                user_id: String::new(),
-                                                text: ui_state.current_text.clone(),
-                                                media: None,
-                                            };
-                                            current_message_id = gateway_cb
-                                                .route_message_get_id(&msg)
-                                                .await
-                                                .ok()
-                                                .flatten();
-                                        }
-                                    }
-
-                                    tokio::time::sleep(std::time::Duration::from_millis(450)).await;
                                 }
-                                GatewayStreamUiEvent::Tool(text) => {
-                                    if !text.trim().is_empty() {
+
+                                let Some(target) = ui_state.append_content(&text) else {
+                                    continue;
+                                };
+                                rendered_content = true;
+
+                                match target {
+                                    GatewayUiContentTarget::EditCurrent => {
+                                        if let Some(active_msg_id) = current_message_id {
+                                            let _ = gateway_cb
+                                                .edit_message(
+                                                    &platform_cb,
+                                                    &bot_id_cb,
+                                                    &chat_id_cb,
+                                                    active_msg_id,
+                                                    &ui_state.current_text,
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                    GatewayUiContentTarget::NewMessage => {
                                         let msg = hakimi_gateway::GatewayMessage {
                                             platform: platform_cb.clone(),
                                             bot_id: bot_id_cb.clone(),
                                             chat_id: chat_id_cb.clone(),
                                             user_id: String::new(),
-                                            text,
+                                            text: ui_state.current_text.clone(),
                                             media: None,
                                         };
-                                        let _ = gateway_cb.route_message(&msg).await;
-                                    }
-
-                                    // A tool call is a semantic boundary: any later assistant
-                                    // prose should appear in a fresh message bubble instead of
-                                    // being appended to the pre-tool explanation.
-                                    current_message_id = None;
-                                    ui_state.finish_tool_boundary();
-                                }
-                                GatewayStreamUiEvent::Media(media) => {
-                                    if !media.trim().is_empty() {
-                                        let msg = hakimi_gateway::GatewayMessage {
-                                            platform: platform_cb.clone(),
-                                            bot_id: bot_id_cb.clone(),
-                                            chat_id: chat_id_cb.clone(),
-                                            user_id: String::new(),
-                                            text: String::new(),
-                                            media: Some(media),
-                                        };
-                                        let _ = gateway_cb.route_message(&msg).await;
-                                    }
-
-                                    current_message_id = None;
-                                    ui_state.finish_tool_boundary();
-                                }
-                                GatewayStreamUiEvent::Delegate(event) => {
-                                    let task_id = event.task_id.clone();
-                                    let bubble = delegate_bubbles.entry(task_id).or_default();
-                                    bubble.push(event);
-                                    let rendered = bubble.render();
-
-                                    if let Some(progress_msg_id) = bubble.message_id {
-                                        let _ = gateway_cb
-                                            .edit_message(
-                                                &platform_cb,
-                                                &bot_id_cb,
-                                                &chat_id_cb,
-                                                progress_msg_id,
-                                                &rendered,
-                                            )
-                                            .await;
-                                    } else {
-                                        let msg = hakimi_gateway::GatewayMessage {
-                                            platform: platform_cb.clone(),
-                                            bot_id: bot_id_cb.clone(),
-                                            chat_id: chat_id_cb.clone(),
-                                            user_id: String::new(),
-                                            text: rendered,
-                                            media: None,
-                                        };
-                                        bubble.message_id = gateway_cb
+                                        current_message_id = gateway_cb
                                             .route_message_get_id(&msg)
                                             .await
                                             .ok()
                                             .flatten();
                                     }
-
-                                    current_message_id = None;
-                                    ui_state.finish_tool_boundary();
                                 }
-                            }
-                        }
-                    });
-                    updater_handle = Some(handle);
 
-                    let callback = move |token: String| {
-                        if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:") {
-                            let text = review_notice.trim().to_string();
-                            if !text.is_empty() {
-                                let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                                tokio::time::sleep(std::time::Duration::from_millis(450)).await;
                             }
-                            return;
-                        }
-                        if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
-                            let text = tool_notice.trim().to_string();
-                            if !text.is_empty() {
-                                let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                            GatewayStreamUiEvent::Tool(text) => {
+                                if !text.trim().is_empty() {
+                                    let msg = hakimi_gateway::GatewayMessage {
+                                        platform: platform_cb.clone(),
+                                        bot_id: bot_id_cb.clone(),
+                                        chat_id: chat_id_cb.clone(),
+                                        user_id: String::new(),
+                                        text,
+                                        media: None,
+                                    };
+                                    let _ = gateway_cb.route_message(&msg).await;
+                                }
+
+                                // A tool call is a semantic boundary: any later assistant
+                                // prose should appear in a fresh message bubble instead of
+                                // being appended to the pre-tool explanation.
+                                current_message_id = None;
+                                ui_state.finish_tool_boundary();
                             }
-                            return;
-                        }
-                        if let Some(media_notice) = token.strip_prefix("\u{001e}hakimi_media:") {
-                            let media = media_notice
-                                .trim()
-                                .strip_prefix("MEDIA:")
-                                .or_else(|| media_notice.trim().strip_prefix("IMAGE:"))
-                                .unwrap_or(media_notice.trim())
-                                .trim()
-                                .to_string();
-                            if !media.is_empty() {
-                                let _ = ui_tx.send(GatewayStreamUiEvent::Media(media));
+                            GatewayStreamUiEvent::Media(media) => {
+                                if !media.trim().is_empty() {
+                                    let msg = hakimi_gateway::GatewayMessage {
+                                        platform: platform_cb.clone(),
+                                        bot_id: bot_id_cb.clone(),
+                                        chat_id: chat_id_cb.clone(),
+                                        user_id: String::new(),
+                                        text: String::new(),
+                                        media: Some(media),
+                                    };
+                                    let _ = gateway_cb.route_message(&msg).await;
+                                }
+
+                                current_message_id = None;
+                                ui_state.finish_tool_boundary();
                             }
-                            return;
-                        }
-                        if let Some(delegate_notice) =
-                            token.strip_prefix("\u{001e}hakimi_delegate:")
-                        {
-                            if let Some(event) = DelegateProgressEvent::parse(delegate_notice) {
-                                let _ = ui_tx.send(GatewayStreamUiEvent::Delegate(event));
+                            GatewayStreamUiEvent::Delegate(event) => {
+                                let task_id = event.task_id.clone();
+                                let bubble = delegate_bubbles.entry(task_id).or_default();
+                                bubble.push(event);
+                                let rendered = bubble.render();
+
+                                if let Some(progress_msg_id) = bubble.message_id {
+                                    let _ = gateway_cb
+                                        .edit_message(
+                                            &platform_cb,
+                                            &bot_id_cb,
+                                            &chat_id_cb,
+                                            progress_msg_id,
+                                            &rendered,
+                                        )
+                                        .await;
+                                } else {
+                                    let msg = hakimi_gateway::GatewayMessage {
+                                        platform: platform_cb.clone(),
+                                        bot_id: bot_id_cb.clone(),
+                                        chat_id: chat_id_cb.clone(),
+                                        user_id: String::new(),
+                                        text: rendered,
+                                        media: None,
+                                    };
+                                    bubble.message_id = gateway_cb
+                                        .route_message_get_id(&msg)
+                                        .await
+                                        .ok()
+                                        .flatten();
+                                }
+
+                                current_message_id = None;
+                                ui_state.finish_tool_boundary();
                             }
-                            return;
                         }
-                        let _ = ui_tx.send(GatewayStreamUiEvent::Content(token));
-                    };
-                    turn_agent.set_streaming_callback(Some(std::sync::Arc::new(callback)));
-                }
+                    }
+
+                    GatewayStreamRenderSnapshot {
+                        rendered_content,
+                        current_message_id,
+                        current_text: ui_state.current_text,
+                    }
+                });
+
+                let callback = move |token: String| {
+                    if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:") {
+                        let text = review_notice.trim().to_string();
+                        if !text.is_empty() {
+                            let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                        }
+                        return;
+                    }
+                    if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
+                        let text = tool_notice.trim().to_string();
+                        if !text.is_empty() {
+                            let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                        }
+                        return;
+                    }
+                    if let Some(media_notice) = token.strip_prefix("\u{001e}hakimi_media:") {
+                        let media = media_notice
+                            .trim()
+                            .strip_prefix("MEDIA:")
+                            .or_else(|| media_notice.trim().strip_prefix("IMAGE:"))
+                            .unwrap_or(media_notice.trim())
+                            .trim()
+                            .to_string();
+                        if !media.is_empty() {
+                            let _ = ui_tx.send(GatewayStreamUiEvent::Media(media));
+                        }
+                        return;
+                    }
+                    if let Some(delegate_notice) = token.strip_prefix("\u{001e}hakimi_delegate:") {
+                        if let Some(event) = DelegateProgressEvent::parse(delegate_notice) {
+                            let _ = ui_tx.send(GatewayStreamUiEvent::Delegate(event));
+                        }
+                        return;
+                    }
+                    let _ = ui_tx.send(GatewayStreamUiEvent::Content(token));
+                };
+                turn_agent.set_streaming_callback(Some(std::sync::Arc::new(callback)));
 
                 let user_text = {
                     let trackers = turn_trackers.lock().await;
@@ -3247,14 +3261,13 @@ async fn start_gateway(
                 };
 
                 turn_agent.set_streaming_callback(None);
-                if let Some(handle) = updater_handle {
-                    let _ = handle.await;
-                }
-
-                let stream_rendered = rendered_content
-                    .as_ref()
-                    .map(|flag| flag.load(Ordering::Relaxed))
-                    .unwrap_or(false);
+                let stream_snapshot = match updater_handle.await {
+                    Ok(snapshot) => snapshot,
+                    Err(err) => {
+                        warn!(error = %err, "gateway stream updater task failed");
+                        GatewayStreamRenderSnapshot::default()
+                    }
+                };
 
                 match result {
                     Ok(res) => {
@@ -3273,14 +3286,14 @@ async fn start_gateway(
                             let mut usage = last_usage.lock().await;
                             usage.insert(chat_id.clone(), usage_snapshot);
                         }
-                        (res.final_response, None, stream_rendered)
+                        (res.final_response, None, stream_snapshot)
                     }
                     Err(e) if e.to_string() == "cancelled by /stop" => {
                         debug!(platform = %platform, chat_id = %chat_id, "gateway task cancelled by /stop");
                         (
                             String::new(),
                             Some("⏹️ 已停止当前任务。".to_string()),
-                            stream_rendered,
+                            stream_snapshot,
                         )
                     }
                     Err(e) => {
@@ -3288,7 +3301,7 @@ async fn start_gateway(
                         (
                             String::new(),
                             Some(format!("❌ Error: {e}")),
-                            stream_rendered,
+                            stream_snapshot,
                         )
                     }
                 }
@@ -3317,26 +3330,24 @@ async fn start_gateway(
             let is_error = err_msg.is_some();
             let final_text = err_msg.unwrap_or(response_text);
 
-            if should_edit_initial_gateway_message(
-                initial_message_id,
-                is_error,
-                rendered_stream_content,
-            ) {
-                if let Some(msg_id) = initial_message_id {
+            match plan_gateway_final_delivery(&stream_snapshot, &final_text, is_error) {
+                GatewayFinalDelivery::None => {}
+                GatewayFinalDelivery::Edit { message_id, text } => {
                     let _ = gateway_clone
-                        .edit_message(&platform, &bot_id, &chat_id, msg_id, &final_text)
+                        .edit_message(&platform, &bot_id, &chat_id, message_id, &text)
                         .await;
                 }
-            } else if initial_message_id.is_none() {
-                let reply = hakimi_gateway::GatewayMessage {
-                    platform: platform.clone(),
-                    bot_id: bot_id.clone(),
-                    chat_id: chat_id.clone(),
-                    user_id: String::new(),
-                    text: final_text,
-                    media: None,
-                };
-                let _ = gateway_clone.route_message(&reply).await;
+                GatewayFinalDelivery::Send(text) => {
+                    let reply = hakimi_gateway::GatewayMessage {
+                        platform: platform.clone(),
+                        bot_id: bot_id.clone(),
+                        chat_id: chat_id.clone(),
+                        user_id: String::new(),
+                        text,
+                        media: None,
+                    };
+                    let _ = gateway_clone.route_message(&reply).await;
+                }
             }
         });
     }
@@ -3890,14 +3901,14 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
-        GatewayMode, GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot,
-        TopLevelCommand, build_cron_delegation_goal, create_hakimi_state_backup,
-        cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
-        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_usage_response, is_top_level_cron_tick, queue_cron_delivery,
+        GatewayFinalDelivery, GatewayMode, GatewayStreamRenderSnapshot, GatewayStreamUiState,
+        GatewayUiContentTarget, GatewayUsageSnapshot, TopLevelCommand, build_cron_delegation_goal,
+        create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
+        cron_success_output_should_deliver, gateway_cron_response_for_path,
+        gateway_cron_response_for_path_with_delivery, gateway_usage_response,
+        is_top_level_cron_tick, plan_gateway_final_delivery, queue_cron_delivery,
         resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
-        should_edit_initial_gateway_message, top_level_cron_response_for_path,
-        update_target_from_candidate,
+        top_level_cron_response_for_path, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
@@ -4244,7 +4255,7 @@ roles:
 
         assert_eq!(
             state.append_content("爸"),
-            Some(GatewayUiContentTarget::EditCurrent)
+            Some(GatewayUiContentTarget::NewMessage)
         );
         assert_eq!(
             state.append_content("爸"),
@@ -4263,7 +4274,7 @@ roles:
         let mut state = GatewayStreamUiState::default();
         assert_eq!(
             state.append_content("爸爸，工具跑完了"),
-            Some(GatewayUiContentTarget::EditCurrent)
+            Some(GatewayUiContentTarget::NewMessage)
         );
         assert_eq!(state.current_text, "爸爸，工具跑完了");
         assert_eq!(state.current_text, state.last_edit_text);
@@ -4275,7 +4286,7 @@ roles:
 
         assert_eq!(
             state.append_content("爸爸，先看入口。"),
-            Some(GatewayUiContentTarget::EditCurrent)
+            Some(GatewayUiContentTarget::NewMessage)
         );
 
         state.finish_tool_boundary();
@@ -4292,11 +4303,70 @@ roles:
     }
 
     #[test]
-    fn initial_processing_message_is_edited_when_no_stream_content_rendered() {
-        assert!(should_edit_initial_gateway_message(Some(42), false, false));
-        assert!(should_edit_initial_gateway_message(Some(42), true, true));
-        assert!(!should_edit_initial_gateway_message(Some(42), false, true));
-        assert!(!should_edit_initial_gateway_message(None, false, false));
+    fn final_delivery_sends_response_when_no_stream_content_rendered() {
+        assert_eq!(
+            plan_gateway_final_delivery(&GatewayStreamRenderSnapshot::default(), "完整回复", false),
+            GatewayFinalDelivery::Send("完整回复".to_string())
+        );
+    }
+
+    #[test]
+    fn final_delivery_skips_duplicate_when_stream_rendered_complete_message() {
+        let snapshot = GatewayStreamRenderSnapshot {
+            rendered_content: true,
+            current_message_id: Some(42),
+            current_text: "完整回复".to_string(),
+        };
+
+        assert_eq!(
+            plan_gateway_final_delivery(&snapshot, "完整回复", false),
+            GatewayFinalDelivery::None
+        );
+    }
+
+    #[test]
+    fn final_delivery_edits_partial_stream_to_complete_response() {
+        let snapshot = GatewayStreamRenderSnapshot {
+            rendered_content: true,
+            current_message_id: Some(42),
+            current_text: "开头".to_string(),
+        };
+
+        assert_eq!(
+            plan_gateway_final_delivery(&snapshot, "开头和后续完整内容", false),
+            GatewayFinalDelivery::Edit {
+                message_id: 42,
+                text: "开头和后续完整内容".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn final_delivery_sends_complete_response_when_platform_cannot_edit() {
+        let snapshot = GatewayStreamRenderSnapshot {
+            rendered_content: true,
+            current_message_id: None,
+            current_text: "开头".to_string(),
+        };
+
+        assert_eq!(
+            plan_gateway_final_delivery(&snapshot, "开头和后续完整内容", false),
+            GatewayFinalDelivery::Send("开头和后续完整内容".to_string())
+        );
+    }
+
+    #[test]
+    fn final_delivery_sends_error_as_new_message() {
+        let snapshot = GatewayStreamRenderSnapshot {
+            rendered_content: true,
+            current_message_id: Some(42),
+            current_text: "部分回复".to_string(),
+        };
+
+        assert_eq!(
+            plan_gateway_final_delivery(&snapshot, "错误", true),
+            GatewayFinalDelivery::Send("错误".to_string())
+        );
     }
 
     #[test]
