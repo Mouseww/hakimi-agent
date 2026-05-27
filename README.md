@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.70-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.71-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1037-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,6 +73,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.71 Cron Run Trigger**:
+  - **Gateway `/cron run`**: operators can now trigger an existing scheduled job from Telegram/Discord/Slack with `/cron run <job-id>`, matching Hermes' "run on the next scheduler tick" behavior.
+  - **Shared Tool Semantics**: the built-in `cronjob` tool now supports `action="run"` instead of advertising an unsupported action.
+  - **Safer Persistent Update**: `hakimi-cron` updates `enabled` and `next_run` in-place, avoiding a full row rewrite when manually triggering a job.
 - **v0.3.70 Gateway Cron Controls**:
   - **Real `/cron` Management in Gateway Chats**: operators can now run `/cron list`, `/cron pause <job-id>`, `/cron resume <job-id>`, and `/cron remove <job-id>` directly from Telegram/Discord/Slack instead of dropping to the host shell.
   - **Shared SQLite Cron State**: gateway commands now operate on the same persistent `~/.hakimi/cron.db` store used by Hakimi's Rust-native cron subsystem, keeping state consistent across restarts.
@@ -244,7 +248,7 @@ hakimi --gateway status   # show managed service status and exit
 
 By default the lifecycle shortcuts target `hakimi.service`. If your unit uses another name, set `HAKIMI_GATEWAY_SERVICE=<service-name>` before running `hakimi --gateway install`, `hakimi --gateway restart`, or `hakimi --gateway status`.
 
-Inside gateway chats, `/cron` now supports `list`, `pause <job-id>`, `resume <job-id>`, and `remove <job-id>` against the shared SQLite-backed `cron.db`, so operators can manage scheduled jobs without leaving Telegram/Discord/Slack.
+Inside gateway chats, `/cron` now supports `list`, `pause <job-id>`, `resume <job-id>`, `run <job-id>`, and `remove <job-id>` against the shared SQLite-backed `cron.db`, so operators can manage scheduled jobs without leaving Telegram/Discord/Slack.
 
 **Legacy generic ClawBot HTTP bridge:**
 

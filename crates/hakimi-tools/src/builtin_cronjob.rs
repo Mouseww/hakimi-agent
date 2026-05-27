@@ -178,6 +178,29 @@ impl Tool for CronjobTool {
                     .map_err(|e| HakimiError::Tool(e.to_string()))?;
                 Ok(format!("Resumed cron job: {}", job_id))
             }
+            "run" => {
+                let job_id = args
+                    .get("job_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| HakimiError::Tool("job_id is required".into()))?;
+                let jobs = store
+                    .load_all()
+                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                let job = jobs
+                    .into_iter()
+                    .find(|job| job.id == job_id)
+                    .ok_or_else(|| HakimiError::Tool("Job not found".into()))?;
+                let now = Utc::now();
+                store
+                    .trigger_now(&job.id, now)
+                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                Ok(format!(
+                    "Triggered cron job `{}` ({}) for the next scheduler tick at {}",
+                    job.id,
+                    job.name,
+                    now.to_rfc3339()
+                ))
+            }
             _ => Err(HakimiError::Tool(format!("Unsupported action: {}", action))),
         }
     }

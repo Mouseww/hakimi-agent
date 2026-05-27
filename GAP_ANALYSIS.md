@@ -467,8 +467,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/context_compressor.py` — full LLM-based summarization
 
 ### 3. Cron System
-- **Status**: SQLite 持久化、file lock、cronjob tool、gateway `/cron list|pause|resume|remove` 已落地
-- **What's missing**: `run/add/edit` 等 CLI 管理入口、prompt injection 扫描、skill 装载、delivery 到指定 gateway session、真正按 Hermes 语义执行即时 run
+- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|pause|resume|run|remove` 已落地
+- **What's missing**: gateway/CLI `add/edit` 管理入口、prompt injection 扫描、skill 装载、delivery 到指定 gateway session、完整 repeat/status/tick 语义
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 4. MCP Client
@@ -493,7 +493,7 @@ Generated: 2026-05-21
 
 ### 8. CLI Commands
 - **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/cron run`、`/plugins`、`/profile`、`/setup`、`/doctor`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/cron add/edit`、`/plugins`、`/profile`、`/setup`、`/doctor`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 9. Prompt Caching

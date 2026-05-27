@@ -144,6 +144,16 @@ impl PersistentCronStore {
         Ok(changed > 0)
     }
 
+    /// Enable a job and schedule it for the next scheduler tick.
+    pub fn trigger_now(&self, id: &str, at: DateTime<Utc>) -> anyhow::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE cron_jobs SET enabled = 1, next_run = ?2 WHERE id = ?1",
+            params![id, at.to_rfc3339()],
+        )?;
+        Ok(changed > 0)
+    }
+
     /// Update the last_run and next_run for a job.
     pub fn update_run_times(
         &self,
@@ -399,6 +409,29 @@ mod tests {
         // Allow 1-second tolerance for rounding.
         assert!((persisted_last - last).num_seconds().abs() <= 1);
         assert!((persisted_next - next).num_seconds().abs() <= 1);
+    }
+
+    #[test]
+    fn test_trigger_now_enables_and_schedules_job() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test_cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let mut job = CronJob::new("manual-run", CronSchedule::IntervalMinutes(30), "prompt");
+        job.enabled = false;
+        job.next_run = Some(Utc::now() + chrono::Duration::hours(1));
+        let id = job.id.clone();
+        store.save_job(&job).unwrap();
+
+        let triggered_at = Utc::now();
+        assert!(store.trigger_now(&id, triggered_at).unwrap());
+
+        let loaded = store.load_all().unwrap();
+        let triggered = loaded.iter().find(|job| job.id == id).unwrap();
+        assert!(triggered.enabled);
+        let next_run = triggered.next_run.unwrap();
+        assert!((next_run - triggered_at).num_seconds().abs() <= 1);
+        assert!(!store.trigger_now("missing-job", triggered_at).unwrap());
     }
 
     #[test]

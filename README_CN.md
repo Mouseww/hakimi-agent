@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.70-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.71-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1035-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1037-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -74,6 +74,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.71 Cron 手动触发**
+  - gateway 会话里现在可以执行 `/cron run <job-id>`，把既有定时任务安排到下一次 scheduler tick 执行，对齐 Hermes 的即时触发语义。
+  - 内置 `cronjob` 工具现在真正支持 `action="run"`，不再暴露“声明支持但执行时报 unsupported”的动作。
+  - `hakimi-cron` 通过原地更新 `enabled` 与 `next_run` 触发任务，避免为了手动触发而重写整行任务记录。
 - **v0.3.70 Gateway Cron 管理闭环**
   - gateway 会话里现在可以直接执行 `/cron list`、`/cron pause <job-id>`、`/cron resume <job-id>`、`/cron remove <job-id>`。
   - 这些命令直接操作共享的 `~/.hakimi/cron.db`，和 Rust 原生 cron 持久化状态保持一致。
@@ -140,7 +144,7 @@ Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
 
 Telegram 现在会直接上传本地生成图片，并把 TTS 生成的本地音频作为原生音频消息发送，因此 `image_generate` / `text_to_speech` 的结果可以直接投递给 gateway 用户，而不是只返回文件路径。针对语音输入链路，Hakimi 现在还提供 `transcribe_audio`，可转写本地音频文件或远程音频 URL；CLI 的按键录音模式仍是后续事项。
 
-在 gateway 会话里，`/cron` 现在已经支持 `list`、`pause <job-id>`、`resume <job-id>`、`remove <job-id>`，会直接操作共享的 SQLite `cron.db`，运维侧不用离开 Telegram/Discord/Slack 就能管理定时任务。
+在 gateway 会话里，`/cron` 现在已经支持 `list`、`pause <job-id>`、`resume <job-id>`、`run <job-id>`、`remove <job-id>`，会直接操作共享的 SQLite `cron.db`，运维侧不用离开 Telegram/Discord/Slack 就能管理定时任务。
 
 ### 🧠 智能上下文压缩
 

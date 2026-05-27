@@ -54,6 +54,13 @@ fn format_cron_timestamp(timestamp: Option<chrono::DateTime<chrono::Utc>>) -> St
         .unwrap_or_else(|| "never".to_string())
 }
 
+fn find_cron_job_by_id(
+    store: &hakimi_cron::persistence::PersistentCronStore,
+    job_id: &str,
+) -> Result<Option<hakimi_cron::CronJob>> {
+    Ok(store.load_all()?.into_iter().find(|job| job.id == job_id))
+}
+
 fn gateway_cron_response(command: Option<&str>) -> String {
     gateway_cron_response_for_path(command, &cron_db_path())
 }
@@ -90,7 +97,7 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
             }
             Err(err) => format!("❌ Failed to list cron jobs: {err}"),
         },
-        "pause" | "resume" | "remove" => {
+        "pause" | "resume" | "remove" | "run" => {
             let Some(job_id) = job_id else {
                 return format!("Usage: /cron {action} <job-id>");
             };
@@ -110,10 +117,30 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
                     Ok(false) => format!("❌ Cron job `{job_id}` not found."),
                     Err(err) => format!("❌ Failed to remove cron job `{job_id}`: {err}"),
                 },
+                "run" => match find_cron_job_by_id(&store, job_id) {
+                    Ok(Some(job)) => {
+                        let now = chrono::Utc::now();
+                        match store.trigger_now(&job.id, now) {
+                            Ok(true) => format!(
+                                "▶️ Triggered cron job `{}` ({}) for the next scheduler tick.\nNext run: `{}`",
+                                job.id,
+                                job.name,
+                                now.to_rfc3339()
+                            ),
+                            Ok(false) => format!("❌ Cron job `{job_id}` not found."),
+                            Err(err) => {
+                                format!("❌ Failed to trigger cron job `{job_id}`: {err}")
+                            }
+                        }
+                    }
+                    Ok(None) => format!("❌ Cron job `{job_id}` not found."),
+                    Err(err) => format!("❌ Failed to load cron job `{job_id}`: {err}"),
+                },
                 _ => unreachable!(),
             }
         }
-        _ => "Usage: /cron [list|pause <job-id>|resume <job-id>|remove <job-id>]".to_string(),
+        _ => "Usage: /cron [list|pause <job-id>|resume <job-id>|run <job-id>|remove <job-id>]"
+            .to_string(),
     }
 }
 
@@ -1846,7 +1873,7 @@ async fn start_gateway(
                         help.push_str("• `/model [name]` - Get or set model\n");
                         help.push_str("• `/tools` - List available tools\n");
                         help.push_str("• `/skills` - List loaded skills\n");
-                        help.push_str("• `/cron` - List/pause/resume/remove scheduled jobs\n");
+                        help.push_str("• `/cron` - List/pause/resume/run/remove scheduled jobs\n");
                         help.push_str("• `/status` - Show agent status\n");
                         help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
                         help.push_str("• `/restart` - Restart Hakimi Gateway service\n");
@@ -2987,7 +3014,7 @@ roles:
     }
 
     #[test]
-    fn gateway_cron_command_lists_pause_resume_and_remove_jobs() {
+    fn gateway_cron_command_lists_pause_resume_run_and_remove_jobs() {
         let tmp = tempfile::tempdir().unwrap();
         let db_path = tmp.path().join("cron.db");
         let store = PersistentCronStore::open(&db_path).unwrap();
@@ -3025,6 +3052,15 @@ roles:
                 .enabled
         );
 
+        let triggered = gateway_cron_response_for_path(Some(&format!("run {job_id}")), &db_path);
+        assert!(triggered.contains("Triggered cron job"));
+        let loaded = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .load_all()
+            .unwrap();
+        let next_run = loaded[0].next_run.unwrap();
+        assert!((chrono::Utc::now() - next_run).num_seconds().abs() <= 1);
+
         let removed = gateway_cron_response_for_path(Some(&format!("remove {job_id}")), &db_path);
         assert!(removed.contains("Removed cron job"));
         assert!(
@@ -3049,6 +3085,10 @@ roles:
         assert_eq!(
             gateway_cron_response_for_path(Some("resume"), &db_path),
             "Usage: /cron resume <job-id>"
+        );
+        assert_eq!(
+            gateway_cron_response_for_path(Some("run"), &db_path),
+            "Usage: /cron run <job-id>"
         );
         assert_eq!(
             gateway_cron_response_for_path(Some("remove"), &db_path),
