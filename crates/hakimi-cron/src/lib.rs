@@ -309,6 +309,38 @@ pub fn parse_schedule(s: &str) -> anyhow::Result<CronSchedule> {
     Ok(CronSchedule::CronExpr(s.to_string()))
 }
 
+/// Repeat limit and completion count for a cron job.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct CronRepeat {
+    /// Maximum number of runs. `None` means unlimited.
+    pub times: Option<u32>,
+    /// Number of completed runs.
+    pub completed: u32,
+}
+
+impl CronRepeat {
+    /// Create a repeat record, normalizing zero to unlimited.
+    pub fn new(times: Option<u32>) -> Self {
+        Self {
+            times: times.filter(|times| *times > 0),
+            completed: 0,
+        }
+    }
+
+    /// Record one completed run. Returns true when the repeat limit is reached.
+    pub fn record_completion(&mut self) -> bool {
+        self.completed = self.completed.saturating_add(1);
+        self.is_complete()
+    }
+
+    /// Whether the configured repeat limit has been reached.
+    pub fn is_complete(&self) -> bool {
+        self.times
+            .map(|times| times > 0 && self.completed >= times)
+            .unwrap_or(false)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // CronJob
 // ---------------------------------------------------------------------------
@@ -340,6 +372,8 @@ pub struct CronJob {
     pub context_from: Vec<String>,
     #[serde(default)]
     pub deliver: Option<String>,
+    #[serde(default)]
+    pub repeat: CronRepeat,
 }
 
 impl CronJob {
@@ -359,6 +393,7 @@ impl CronJob {
             enabled_toolsets: None,
             context_from: Vec::new(),
             deliver: None,
+            repeat: CronRepeat::default(),
         }
     }
 }
@@ -409,10 +444,15 @@ impl CronScheduler {
 
     /// Mark a job as executed: update `last_run` and recompute `next_run`.
     pub fn mark_executed(&mut self, id: &str) {
+        let mut remove_job = false;
         if let Some(job) = self.jobs.get_mut(id) {
             let now = Utc::now();
             job.last_run = Some(now);
             job.next_run = Some(job.schedule.next_after(now));
+            remove_job = job.repeat.record_completion();
+        }
+        if remove_job {
+            self.jobs.remove(id);
         }
     }
 
@@ -593,6 +633,18 @@ mod tests {
         // next_run should be ~10 minutes after last_run
         let diff = job.next_run.unwrap() - job.last_run.unwrap();
         assert_eq!(diff, chrono::Duration::minutes(10));
+    }
+
+    #[test]
+    fn test_mark_executed_removes_job_at_repeat_limit() {
+        let mut sched = CronScheduler::new();
+        let mut job = CronJob::new("limited", CronSchedule::IntervalMinutes(10), "run");
+        job.repeat = CronRepeat::new(Some(1));
+        let id = sched.add(job);
+
+        sched.mark_executed(&id);
+
+        assert!(sched.list().iter().all(|job| job.id != id));
     }
 
     #[test]

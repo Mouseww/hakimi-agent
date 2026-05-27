@@ -2,9 +2,9 @@
 //!
 //! Provides durable job storage with file-based locking for multi-process safety.
 
-use crate::{CronJob, CronSchedule, CronScheduler, validate_cron_prompt};
+use crate::{CronJob, CronRepeat, CronSchedule, CronScheduler, validate_cron_prompt};
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
@@ -43,6 +43,8 @@ impl PersistentCronStore {
         ensure_column(&conn, "skills", "TEXT")?;
         ensure_column(&conn, "context_from", "TEXT")?;
         ensure_column(&conn, "deliver", "TEXT")?;
+        ensure_column(&conn, "repeat_times", "INTEGER")?;
+        ensure_column(&conn, "repeat_completed", "INTEGER")?;
 
         info!(path = %path.display(), "Persistent cron store opened");
         Ok(Self {
@@ -68,13 +70,15 @@ impl PersistentCronStore {
             .transpose()?;
         let skills_json = serde_json::to_string(&job.skills)?;
         let context_from_json = serde_json::to_string(&job.context_from)?;
+        let repeat_times = job.repeat.times.map(i64::from);
+        let repeat_completed = i64::from(job.repeat.completed);
 
         conn.execute(
             "INSERT OR REPLACE INTO cron_jobs (
                 id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run,
-                toolsets, skills, context_from, deliver
+                toolsets, skills, context_from, deliver, repeat_times, repeat_completed
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 job.id,
                 job.name,
@@ -88,6 +92,8 @@ impl PersistentCronStore {
                 skills_json,
                 context_from_json,
                 job.deliver.as_deref(),
+                repeat_times,
+                repeat_completed,
             ],
         )?;
 
@@ -99,7 +105,7 @@ impl PersistentCronStore {
     pub fn load_all(&self) -> anyhow::Result<Vec<CronJob>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run, toolsets, skills, context_from, deliver FROM cron_jobs",
+            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run, toolsets, skills, context_from, deliver, repeat_times, repeat_completed FROM cron_jobs",
         )?;
 
         let jobs = stmt
@@ -116,6 +122,8 @@ impl PersistentCronStore {
                 let skills: Option<String> = row.get(9)?;
                 let context_from: Option<String> = row.get(10)?;
                 let deliver: Option<String> = row.get(11)?;
+                let repeat_times: Option<i64> = row.get(12)?;
+                let repeat_completed: Option<i64> = row.get(13)?;
 
                 let schedule = match schedule_type.as_str() {
                     "minutes" => {
@@ -145,6 +153,14 @@ impl PersistentCronStore {
                     enabled_toolsets: parse_optional_string_vec(toolsets),
                     context_from: parse_string_vec(context_from),
                     deliver,
+                    repeat: CronRepeat {
+                        times: repeat_times
+                            .and_then(|times| u32::try_from(times).ok())
+                            .filter(|times| *times > 0),
+                        completed: repeat_completed
+                            .and_then(|completed| u32::try_from(completed).ok())
+                            .unwrap_or(0),
+                    },
                 })
             })?
             .filter_map(|r| r.ok())
@@ -216,6 +232,7 @@ impl PersistentCronStore {
             .load_all()?
             .into_iter()
             .filter(|job| job.enabled)
+            .filter(|job| !job.repeat.is_complete())
             .filter(|job| job.next_run.map(|next| next <= now).unwrap_or(false))
             .collect();
 
@@ -227,6 +244,44 @@ impl PersistentCronStore {
         }
 
         Ok(due_jobs)
+    }
+
+    /// Increment a claimed job's completion count and remove it at repeat limit.
+    pub fn complete_claimed_run(&self, id: &str) -> anyhow::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let repeat = conn
+            .query_row(
+                "SELECT repeat_times, repeat_completed FROM cron_jobs WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+            )
+            .optional()?;
+
+        let Some((repeat_times, repeat_completed)) = repeat else {
+            return Ok(false);
+        };
+
+        let repeat_times = repeat_times
+            .and_then(|times| u32::try_from(times).ok())
+            .filter(|times| *times > 0);
+        let repeat_completed = repeat_completed
+            .and_then(|completed| u32::try_from(completed).ok())
+            .unwrap_or(0)
+            .saturating_add(1);
+
+        if repeat_times
+            .map(|times| repeat_completed >= times)
+            .unwrap_or(false)
+        {
+            conn.execute("DELETE FROM cron_jobs WHERE id = ?1", params![id])?;
+            return Ok(true);
+        }
+
+        conn.execute(
+            "UPDATE cron_jobs SET repeat_completed = ?2 WHERE id = ?1",
+            params![id, i64::from(repeat_completed)],
+        )?;
+        Ok(false)
     }
 
     /// Update the last_run and next_run for a job.
@@ -598,6 +653,49 @@ mod tests {
 
         let claimed_again = store.claim_due_jobs(now, &lock_path).unwrap();
         assert!(claimed_again.is_empty());
+    }
+
+    #[test]
+    fn test_repeat_round_trips_and_removes_at_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("repeat_cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let mut job = CronJob::new("limited", CronSchedule::IntervalMinutes(15), "prompt");
+        job.repeat = CronRepeat::new(Some(2));
+        let id = job.id.clone();
+        store.save_job(&job).unwrap();
+
+        let loaded = store.get_job(&id).unwrap().unwrap();
+        assert_eq!(loaded.repeat.times, Some(2));
+        assert_eq!(loaded.repeat.completed, 0);
+
+        assert!(!store.complete_claimed_run(&id).unwrap());
+        let loaded = store.get_job(&id).unwrap().unwrap();
+        assert_eq!(loaded.repeat.completed, 1);
+
+        assert!(store.complete_claimed_run(&id).unwrap());
+        assert!(store.get_job(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_claim_due_jobs_skips_completed_repeat_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("completed_repeat_cron.db");
+        let lock_path = tmp.path().join("completed_repeat.lock");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+        let now = Utc::now();
+
+        let mut job = CronJob::new("complete", CronSchedule::IntervalMinutes(15), "prompt");
+        job.repeat = CronRepeat {
+            times: Some(1),
+            completed: 1,
+        };
+        job.next_run = Some(now - chrono::Duration::minutes(1));
+        store.save_job(&job).unwrap();
+
+        let claimed = store.claim_due_jobs(now, &lock_path).unwrap();
+        assert!(claimed.is_empty());
     }
 
     #[test]

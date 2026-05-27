@@ -58,6 +58,57 @@ fn format_cron_timestamp(timestamp: Option<chrono::DateTime<chrono::Utc>>) -> St
         .unwrap_or_else(|| "never".to_string())
 }
 
+fn format_cron_repeat(repeat: &hakimi_cron::CronRepeat) -> String {
+    repeat
+        .times
+        .map(|times| format!("{}/{}", repeat.completed, times))
+        .unwrap_or_else(|| "∞".to_string())
+}
+
+fn parse_cron_repeat_value(value: &str) -> std::result::Result<Option<u32>, String> {
+    let repeat = value
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| "--repeat must be an integer".to_string())?;
+    if repeat <= 0 {
+        return Ok(None);
+    }
+    u32::try_from(repeat)
+        .map(Some)
+        .map_err(|_| "--repeat is too large".to_string())
+}
+
+fn split_first_token(raw: &str) -> (&str, &str) {
+    let raw = raw.trim_start();
+    raw.find(char::is_whitespace)
+        .map(|idx| (&raw[..idx], raw[idx..].trim_start()))
+        .unwrap_or((raw, ""))
+}
+
+fn take_leading_cron_repeat(raw: &str) -> std::result::Result<(Option<u32>, &str), String> {
+    let raw = raw.trim_start();
+    if let Some(rest) = raw.strip_prefix("--repeat=") {
+        let (value, rest) = split_first_token(rest);
+        return Ok((parse_cron_repeat_value(value)?, rest));
+    }
+    if raw == "--repeat" || raw.starts_with("--repeat ") {
+        let rest = raw
+            .strip_prefix("--repeat")
+            .unwrap_or_default()
+            .trim_start();
+        let (value, rest) = split_first_token(rest);
+        if value.is_empty() {
+            return Err("--repeat requires a value".to_string());
+        }
+        return Ok((parse_cron_repeat_value(value)?, rest));
+    }
+    if let Some(rest) = raw.strip_prefix("repeat=") {
+        let (value, rest) = split_first_token(rest);
+        return Ok((parse_cron_repeat_value(value)?, rest));
+    }
+    Ok((None, raw))
+}
+
 fn find_cron_job_by_id(
     store: &hakimi_cron::persistence::PersistentCronStore,
     job_id: &str,
@@ -233,28 +284,37 @@ fn build_cron_delegation_goal(
     Ok(goal)
 }
 
-fn parse_cron_schedule_and_prompt(raw: &str) -> Option<(String, String)> {
+fn parse_cron_schedule_and_prompt(
+    raw: &str,
+) -> std::result::Result<Option<(String, String, Option<u32>)>, String> {
+    let (repeat, raw) = take_leading_cron_repeat(raw)?;
     let raw = raw.trim();
     if raw.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     if let Some((schedule, prompt)) = raw.split_once('|') {
         let schedule = schedule.trim();
         let prompt = prompt.trim();
         if !schedule.is_empty() && !prompt.is_empty() {
-            return Some((schedule.to_string(), prompt.to_string()));
+            return Ok(Some((schedule.to_string(), prompt.to_string(), repeat)));
         }
-        return None;
+        return Ok(None);
     }
 
     let mut parts = raw.splitn(2, char::is_whitespace);
-    let schedule = parts.next()?.trim();
-    let prompt = parts.next()?.trim();
+    let Some(schedule) = parts.next() else {
+        return Ok(None);
+    };
+    let Some(prompt) = parts.next() else {
+        return Ok(None);
+    };
+    let schedule = schedule.trim();
+    let prompt = prompt.trim();
     if schedule.is_empty() || prompt.is_empty() {
-        None
+        Ok(None)
     } else {
-        Some((schedule.to_string(), prompt.to_string()))
+        Ok(Some((schedule.to_string(), prompt.to_string(), repeat)))
     }
 }
 
@@ -263,9 +323,12 @@ fn gateway_cron_create_response(
     args: &str,
     default_deliver: Option<&str>,
 ) -> String {
-    let Some((schedule, prompt)) = parse_cron_schedule_and_prompt(args) else {
-        return "Usage: /cron add <schedule> <prompt> or /cron add <schedule> | <prompt>"
-            .to_string();
+    let parsed = match parse_cron_schedule_and_prompt(args) {
+        Ok(parsed) => parsed,
+        Err(err) => return format!("❌ Failed to parse cron repeat: {err}"),
+    };
+    let Some((schedule, prompt, repeat)) = parsed else {
+        return "Usage: /cron add [--repeat N] <schedule> <prompt> or /cron add [--repeat N] <schedule> | <prompt>".to_string();
     };
 
     if let Err(err) = hakimi_cron::validate_cron_prompt(&prompt) {
@@ -278,6 +341,7 @@ fn gateway_cron_create_response(
     };
     let mut job =
         hakimi_cron::CronJob::new(cron_name_from_prompt(&prompt), parsed_schedule, &prompt);
+    job.repeat = hakimi_cron::CronRepeat::new(repeat);
     job.deliver = default_deliver
         .map(str::trim)
         .filter(|target| !target.is_empty())
@@ -286,9 +350,17 @@ fn gateway_cron_create_response(
     let next_run = format_cron_timestamp(job.next_run);
 
     match store.save_job(&job) {
-        Ok(()) => format!(
-            "✅ Created cron job `{job_id}`.\nSchedule: `{schedule}`\nNext run: `{next_run}`"
-        ),
+        Ok(()) => {
+            let mut lines = vec![
+                format!("✅ Created cron job `{job_id}`."),
+                format!("Schedule: `{schedule}`"),
+                format!("Next run: `{next_run}`"),
+            ];
+            if job.repeat.times.is_some() {
+                lines.push(format!("Repeat: `{}`", format_cron_repeat(&job.repeat)));
+            }
+            lines.join("\n")
+        }
         Err(err) => format!("❌ Failed to create cron job: {err}"),
     }
 }
@@ -306,7 +378,7 @@ fn gateway_cron_edit_response(
 
     let args = args.trim();
     if args.is_empty() {
-        return format!("Usage: /cron edit {job_id} [schedule|prompt|name] <value>");
+        return format!("Usage: /cron edit {job_id} [schedule|prompt|name|repeat] <value>");
     }
 
     if let Some((schedule, prompt)) = args.split_once('|') {
@@ -332,7 +404,7 @@ fn gateway_cron_edit_response(
         let field = parts.next().unwrap_or_default().to_ascii_lowercase();
         let value = parts.next().unwrap_or_default().trim();
         if value.is_empty() {
-            return format!("Usage: /cron edit {job_id} [schedule|prompt|name] <value>");
+            return format!("Usage: /cron edit {job_id} [schedule|prompt|name|repeat] <value>");
         }
 
         match field.as_str() {
@@ -350,17 +422,24 @@ fn gateway_cron_edit_response(
                 job.prompt = value.to_string();
             }
             "name" => job.name = value.to_string(),
-            _ => return format!("Usage: /cron edit {job_id} [schedule|prompt|name] <value>"),
+            "repeat" => match parse_cron_repeat_value(value) {
+                Ok(repeat) => job.repeat = hakimi_cron::CronRepeat::new(repeat),
+                Err(err) => return format!("❌ Failed to parse cron repeat: {err}"),
+            },
+            _ => {
+                return format!("Usage: /cron edit {job_id} [schedule|prompt|name|repeat] <value>");
+            }
         }
     }
 
     match store.update_job(&job) {
         Ok(true) => format!(
-            "✅ Updated cron job `{}` ({})\nSchedule: `{}`\nNext run: `{}`",
+            "✅ Updated cron job `{}` ({})\nSchedule: `{}`\nNext run: `{}`\nRepeat: `{}`",
             job.id,
             job.name,
             format_cron_schedule(&job.schedule),
-            format_cron_timestamp(job.next_run)
+            format_cron_timestamp(job.next_run),
+            format_cron_repeat(&job.repeat)
         ),
         Ok(false) => format!("❌ Cron job `{job_id}` not found."),
         Err(err) => format!("❌ Failed to update cron job `{job_id}`: {err}"),
@@ -391,14 +470,35 @@ fn is_top_level_cron_tick(args: &[String]) -> bool {
 fn top_level_cron_command(args: &[String]) -> Option<String> {
     let action = args.first()?.to_ascii_lowercase();
     match action.as_str() {
-        "add" | "create" if args.len() >= 3 => Some(format!(
-            "{action} {} | {}",
-            args[1].trim(),
-            args[2..].join(" ")
-        )),
+        "add" | "create" if args.len() >= 3 => {
+            let mut schedule_idx = 1;
+            let mut prefix = action.clone();
+            if args.get(1).map(|arg| arg.as_str()) == Some("--repeat") && args.len() >= 5 {
+                prefix = format!("{prefix} --repeat {}", args[2].trim());
+                schedule_idx = 3;
+            } else if args
+                .get(1)
+                .map(|arg| arg.starts_with("--repeat=") || arg.starts_with("repeat="))
+                .unwrap_or(false)
+                && args.len() >= 4
+            {
+                prefix = format!("{prefix} {}", args[1].trim());
+                schedule_idx = 2;
+            }
+
+            if schedule_idx + 1 >= args.len() {
+                return Some(args.join(" "));
+            }
+
+            Some(format!(
+                "{prefix} {} | {}",
+                args[schedule_idx].trim(),
+                args[schedule_idx + 1..].join(" ")
+            ))
+        }
         "edit" | "update" if args.len() >= 4 => {
             let field = args[2].to_ascii_lowercase();
-            if matches!(field.as_str(), "schedule" | "prompt" | "name") {
+            if matches!(field.as_str(), "schedule" | "prompt" | "name" | "repeat") {
                 Some(args.join(" "))
             } else {
                 Some(format!(
@@ -532,6 +632,7 @@ async fn top_level_cron_tick_response(
         {
             Ok(output) => {
                 executed += 1;
+                let repeat_done = store.complete_claimed_run(&job.id).unwrap_or(false);
                 if cron_success_output_should_deliver(&output) {
                     lines.push(format!(
                         "- ✅ `{}` ({}) ran: {}",
@@ -543,10 +644,23 @@ async fn top_level_cron_tick_response(
                     silent += 1;
                     lines.push(format!("- ✅ `{}` ({}) ran silently.", job.id, job.name));
                 }
+                if repeat_done {
+                    lines.push(format!(
+                        "  Repeat limit reached for `{}`; job removed.",
+                        job.id
+                    ));
+                }
             }
             Err(err) => {
                 failed += 1;
+                let repeat_done = store.complete_claimed_run(&job.id).unwrap_or(false);
                 lines.push(format!("- ❌ `{}` ({}) failed: {err}", job.id, job.name));
+                if repeat_done {
+                    lines.push(format!(
+                        "  Repeat limit reached for `{}`; job removed.",
+                        job.id
+                    ));
+                }
             }
         }
     }
@@ -681,10 +795,11 @@ fn gateway_cron_response_for_path_with_delivery(
                 for job in jobs {
                     let status = if job.enabled { "🟢" } else { "⏸️" };
                     out.push_str(&format!(
-                        "- {} `{}` · `{}` · next `{}`\n",
+                        "- {} `{}` · `{}` · repeat `{}` · next `{}`\n",
                         status,
                         job.id,
                         format_cron_schedule(&job.schedule),
+                        format_cron_repeat(&job.repeat),
                         format_cron_timestamp(job.next_run),
                     ));
                     out.push_str(&format!("  {}\n", job.name));
@@ -697,7 +812,8 @@ fn gateway_cron_response_for_path_with_delivery(
         "edit" | "update" => {
             let mut edit_parts = rest.splitn(2, char::is_whitespace);
             let Some(job_id) = edit_parts.next().filter(|id| !id.trim().is_empty()) else {
-                return "Usage: /cron edit <job-id> [schedule|prompt|name] <value>".to_string();
+                return "Usage: /cron edit <job-id> [schedule|prompt|name|repeat] <value>"
+                    .to_string();
             };
             gateway_cron_edit_response(&store, job_id, edit_parts.next().unwrap_or_default())
         }
@@ -2327,6 +2443,7 @@ async fn start_gateway(
                     // next run under the tick lock before this task is spawned.
                     let job_clone = job.clone();
                     let base = cron_agent_base.clone();
+                    let cron_db_path_for_job = cron_db_path.clone();
 
                     tokio::spawn(async move {
                         let executor = {
@@ -2365,6 +2482,22 @@ async fn start_gateway(
                                 }
                                 Err(e) => {
                                     tracing::error!("Cronjob {} failed: {}", job_clone.id, e);
+                                }
+                            }
+                            if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(
+                                &cron_db_path_for_job,
+                            ) {
+                                match store.complete_claimed_run(&job_clone.id) {
+                                    Ok(true) => tracing::info!(
+                                        job_id = %job_clone.id,
+                                        "Cronjob repeat limit reached; removed job"
+                                    ),
+                                    Ok(false) => {}
+                                    Err(err) => tracing::warn!(
+                                        job_id = %job_clone.id,
+                                        error = %err,
+                                        "Failed to update cron repeat completion"
+                                    ),
                                 }
                             }
                         }
@@ -3838,6 +3971,19 @@ mod tests {
     }
 
     #[test]
+    fn cron_repeat_create_options_parse() {
+        assert_eq!(
+            super::parse_cron_schedule_and_prompt("--repeat 3 15m refresh docs").unwrap(),
+            Some(("15m".to_string(), "refresh docs".to_string(), Some(3)))
+        );
+        assert_eq!(
+            super::parse_cron_schedule_and_prompt("--repeat=0 0 9 * * * | morning report").unwrap(),
+            Some(("0 9 * * *".to_string(), "morning report".to_string(), None))
+        );
+        assert!(super::parse_cron_schedule_and_prompt("--repeat nope 15m refresh").is_err());
+    }
+
+    #[test]
     fn gateway_usage_response_prompts_for_first_turn() {
         let response = gateway_usage_response(None);
 
@@ -4182,8 +4328,10 @@ roles:
         let db_path = tmp.path().join("cron.db");
         let store = PersistentCronStore::open(&db_path).unwrap();
 
-        let created = gateway_cron_response_for_path(Some("add 15m refresh docs"), &db_path);
+        let created =
+            gateway_cron_response_for_path(Some("add --repeat 2 15m refresh docs"), &db_path);
         assert!(created.contains("Created cron job"));
+        assert!(created.contains("Repeat: `0/2`"));
         let created_jobs = PersistentCronStore::open(&db_path)
             .unwrap()
             .load_all()
@@ -4196,6 +4344,7 @@ roles:
             created_job.schedule,
             CronSchedule::IntervalMinutes(15)
         ));
+        assert_eq!(created_job.repeat.times, Some(2));
 
         let edited_prompt = gateway_cron_response_for_path(
             Some(&format!(
@@ -4211,6 +4360,16 @@ roles:
             .unwrap()
             .unwrap();
         assert_eq!(edited.prompt, "refresh docs and changelog");
+
+        let edited_repeat =
+            gateway_cron_response_for_path(Some(&format!("edit {} repeat 3", edited.id)), &db_path);
+        assert!(edited_repeat.contains("Repeat: `0/3`"));
+        let edited = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .get_job(&created_job.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(edited.repeat.times, Some(3));
 
         let edited_schedule = gateway_cron_response_for_path(
             Some(&format!("edit {} 0 9 * * * | daily report", edited.id)),
@@ -4305,11 +4464,11 @@ roles:
         );
         assert_eq!(
             gateway_cron_response_for_path(Some("add 15m"), &db_path),
-            "Usage: /cron add <schedule> <prompt> or /cron add <schedule> | <prompt>"
+            "Usage: /cron add [--repeat N] <schedule> <prompt> or /cron add [--repeat N] <schedule> | <prompt>"
         );
         assert_eq!(
             gateway_cron_response_for_path(Some("edit"), &db_path),
-            "Usage: /cron edit <job-id> [schedule|prompt|name] <value>"
+            "Usage: /cron edit <job-id> [schedule|prompt|name|repeat] <value>"
         );
     }
 
@@ -4549,6 +4708,25 @@ roles:
             CronSchedule::CronExpr(ref expr) if expr == "0 9 * * *"
         ));
 
+        let repeat_args = vec![
+            "add".to_string(),
+            "--repeat".to_string(),
+            "2".to_string(),
+            "30m".to_string(),
+            "check".to_string(),
+            "status".to_string(),
+        ];
+        let repeat_created = top_level_cron_response_for_path(&repeat_args, &db_path);
+        assert!(repeat_created.contains("Repeat: `0/2`"));
+        let repeat_job = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .load_all()
+            .unwrap()
+            .into_iter()
+            .find(|job| job.prompt == "check status")
+            .unwrap();
+        assert_eq!(repeat_job.repeat.times, Some(2));
+
         let edit_args = vec![
             "edit".to_string(),
             created_job.id.clone(),
@@ -4570,14 +4748,14 @@ roles:
 
         let status = top_level_cron_response_for_path(&["status".to_string()], &db_path);
         assert!(status.contains("Cron Status"));
-        assert!(status.contains("Total jobs: 2"));
-        assert!(status.contains("Active jobs: 2"));
+        assert!(status.contains("Total jobs: 3"));
+        assert!(status.contains("Active jobs: 3"));
 
         let bad_add =
             top_level_cron_response_for_path(&["add".to_string(), "15m".to_string()], &db_path);
         assert_eq!(
             bad_add,
-            "Usage: hakimi cron add <schedule> <prompt> or hakimi cron add <schedule> | <prompt>"
+            "Usage: hakimi cron add [--repeat N] <schedule> <prompt> or hakimi cron add [--repeat N] <schedule> | <prompt>"
         );
     }
 }

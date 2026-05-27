@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.88-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.89-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1113-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,13 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1113 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1117 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.89 Cron Repeat Semantics**:
+  - **Hermes-Style Repeat Limits**: cron jobs now persist `repeat` limits and completed-run counts, with `--repeat N` support for gateway and standalone `hakimi cron add`.
+  - **Automatic Completion Cleanup**: scheduled and standalone tick execution now increments repeat completion after each run and removes jobs when the configured limit is reached.
+  - **Regression Coverage**: added offline coverage for repeat persistence, claim filtering, scheduler cleanup, and CLI/gateway repeat parsing.
 - **v0.3.88 Cron Gateway Delivery**:
   - **Origin Chat Persistence**: gateway `/cron add` now stores the creating platform/chat as an explicit `deliver` target, so scheduled output returns to the chat that created the job.
   - **Explicit Delivery Routing**: scheduler delivery now honors `local` as no-delivery and only queues explicit `platform:chat_id` targets, with comma-separated multi-target deduplication.
@@ -319,7 +323,7 @@ hakimi --gateway status   # show managed service status and exit
 
 By default the lifecycle shortcuts target `hakimi.service`. If your unit uses another name, set `HAKIMI_GATEWAY_SERVICE=<service-name>` before running `hakimi --gateway install`, `hakimi --gateway restart`, or `hakimi --gateway status`.
 
-Inside gateway chats, `/cron` now supports `list`, `status`, `add`, `edit`, `pause <job-id>`, `resume <job-id>`, `run <job-id>`, and `remove <job-id>` against the shared SQLite-backed `cron.db`; jobs created from a gateway chat keep that `platform:chat_id` as their delivery target, while host operators can run `hakimi cron tick` to execute due jobs once with the same tick lock used by the gateway scheduler.
+Inside gateway chats, `/cron` now supports `list`, `status`, `add --repeat N`, `edit`, `pause <job-id>`, `resume <job-id>`, `run <job-id>`, and `remove <job-id>` against the shared SQLite-backed `cron.db`; jobs created from a gateway chat keep that `platform:chat_id` as their delivery target, while host operators can run `hakimi cron tick` to execute due jobs once with the same tick lock used by the gateway scheduler. Repeat-limited jobs track completed runs and are removed automatically when the limit is reached.
 
 **Legacy generic ClawBot HTTP bridge:**
 
@@ -477,7 +481,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1113 |
+| Tests | ~500 | 1117 |
 
 ---
 
@@ -487,7 +491,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1113 tests)
+# Run all tests (1117 tests)
 cargo test --workspace
 
 # Debug logging

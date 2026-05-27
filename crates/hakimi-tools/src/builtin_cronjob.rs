@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use hakimi_cron::persistence::PersistentCronStore;
-use hakimi_cron::{CronJob, parse_schedule, validate_cron_prompt};
+use hakimi_cron::{CronJob, CronRepeat, parse_schedule, validate_cron_prompt};
 use serde_json::{Value as JsonValue, json};
 
 pub struct CronjobTool;
@@ -37,6 +37,24 @@ impl CronjobTool {
                 .collect()
         })
     }
+
+    fn repeat_arg(args: &JsonValue) -> Result<Option<Option<u32>>> {
+        let Some(value) = args.get("repeat") else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(Some(None));
+        }
+        if let Some(repeat) = value.as_i64() {
+            if repeat <= 0 {
+                return Ok(Some(None));
+            }
+            return u32::try_from(repeat)
+                .map(|repeat| Some(Some(repeat)))
+                .map_err(|_| HakimiError::Tool("repeat is too large".into()));
+        }
+        Err(HakimiError::Tool("repeat must be an integer".into()))
+    }
 }
 
 #[async_trait]
@@ -66,7 +84,8 @@ impl Tool for CronjobTool {
                 "skills": { "type": "array", "items": { "type": "string" } },
                 "enabled_toolsets": { "type": "array", "items": { "type": "string" } },
                 "context_from": { "type": "array", "items": { "type": "string" } },
-                "deliver": { "type": "string" }
+                "deliver": { "type": "string" },
+                "repeat": { "type": "integer" }
             },
             "required": ["action"]
         })
@@ -95,8 +114,15 @@ impl Tool for CronjobTool {
                         "⏸️ Paused"
                     };
                     out.push_str(&format!(
-                        "- [{}] ID: `{}` | Schedule: `{:?}` | Prompt: `{}`\n",
-                        status, j.id, j.schedule, j.prompt
+                        "- [{}] ID: `{}` | Schedule: `{:?}` | Repeat: `{}` | Prompt: `{}`\n",
+                        status,
+                        j.id,
+                        j.schedule,
+                        j.repeat
+                            .times
+                            .map(|times| format!("{}/{}", j.repeat.completed, times))
+                            .unwrap_or_else(|| "∞".to_string()),
+                        j.prompt
                     ));
                 }
                 Ok(out)
@@ -123,6 +149,9 @@ impl Tool for CronjobTool {
 
                 let mut job = CronJob::new(&name, parsed_schedule, prompt);
                 job.next_run = next_run;
+                if let Some(repeat) = Self::repeat_arg(args)? {
+                    job.repeat = CronRepeat::new(repeat);
+                }
 
                 if let Some(arr) = args.get("skills").and_then(|v| v.as_array()) {
                     job.skills = arr
@@ -205,6 +234,10 @@ impl Tool for CronjobTool {
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                         .map(String::from);
+                    changed = true;
+                }
+                if let Some(repeat) = Self::repeat_arg(args)? {
+                    job.repeat = CronRepeat::new(repeat);
                     changed = true;
                 }
 

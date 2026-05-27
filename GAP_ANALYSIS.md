@@ -232,8 +232,8 @@ Generated: 2026-05-21
 #### 20. Cron — Persistent File-Based with Full CLI
 - **What**: Persistent cron job store with file-based locking, CLI management, slash commands
 - **Hermes location**: `cron/jobs.py`, `cron/scheduler.py`, `hermes_cli/cron.py`, `tools/cronjob_tools.py`
-- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove/status/tick`. Standalone `hakimi cron list/status/add/edit/pause/resume/run/remove/tick`, gateway `/cron status/add/edit/list/pause/resume/run/remove`, and `cronjob create/update/list/pause/resume/run/remove` are now covered in Hakimi; scheduled and standalone tick runs now assemble attached skills with Hermes-style prompt scanning, `[SILENT]` suppression, overlap-safe due-job claiming, and explicit `platform:chat_id` gateway delivery for jobs created from gateway chats. Repeat and deeper delivery expansion remain.
-- **Priority**: **High** — Remaining work is full repeat parity plus home-channel/all/plugin delivery expansion
+- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove/status/tick`. Standalone `hakimi cron list/status/add/edit/pause/resume/run/remove/tick`, gateway `/cron status/add/edit/list/pause/resume/run/remove`, and `cronjob create/update/list/pause/resume/run/remove` are now covered in Hakimi; scheduled and standalone tick runs now assemble attached skills with Hermes-style prompt scanning, `[SILENT]` suppression, overlap-safe due-job claiming, explicit `platform:chat_id` gateway delivery, and Hermes-style repeat limits with completed-run tracking and automatic cleanup at the limit. Deeper delivery expansion remains.
+- **Priority**: **High** — Remaining work is home-channel/all/plugin delivery expansion
 
 ### Medium Priority
 
@@ -465,8 +465,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/context_compressor.py` — full LLM-based summarization
 
 ### 2. Cron System
-- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron status|list|add|edit|pause|resume|run|remove`、独立 CLI `hakimi cron status|list|add|edit|pause|resume|run|remove|tick`、prompt injection 扫描、cron 扩展元数据持久化、skill-loaded scheduled runs、standalone tick 执行、`[SILENT]` 投递抑制与 gateway 创建任务的显式 `platform:chat_id` 定向投递已落地
-- **What's missing**: 完整 repeat 语义、home-channel/all/plugin delivery expansion
+- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron status|list|add|edit|pause|resume|run|remove`、独立 CLI `hakimi cron status|list|add|edit|pause|resume|run|remove|tick`、prompt injection 扫描、cron 扩展元数据持久化、skill-loaded scheduled runs、standalone tick 执行、`[SILENT]` 投递抑制、gateway 创建任务的显式 `platform:chat_id` 定向投递，以及 repeat 上限/完成次数追踪与到达上限自动清理已落地
+- **What's missing**: home-channel/all/plugin delivery expansion
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. MCP Client
@@ -607,7 +607,7 @@ Generated: 2026-05-21
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 
 ### Summary
-- **Total tests**: 1113 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1117 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
