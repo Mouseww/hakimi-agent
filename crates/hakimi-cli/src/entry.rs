@@ -1474,6 +1474,9 @@ async fn build_agent(
         .register(std::sync::Arc::new(hakimi_tools::VisionAnalyzeTool))
         .await;
     tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::VideoAnalyzeTool))
+        .await;
+    tool_registry
         .register(std::sync::Arc::new(hakimi_tools::ImageGenerateTool))
         .await;
     tool_registry

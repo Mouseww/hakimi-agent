@@ -26,6 +26,7 @@ Generated: 2026-05-21
 - **text_to_speech** — OpenAI-compatible + Edge TTS with local audio file output
 - **transcribe_audio** — OpenAI-compatible speech-to-text for local audio files and remote audio URLs
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
+- **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
 
 ### Agent Loop
 - **Core conversation loop** — Message → LLM → tool dispatch → loop until done
@@ -241,10 +242,10 @@ Generated: 2026-05-21
 - **Hermes location**: `tools/vision_tools.py`
 - **Status**: ✅ Done in v0.3.74 — `vision_analyze` and legacy `image_describe` both produce structured base64 data-url vision request payloads for URLs and local files
 
-#### 22. Video Analysis
+#### 22. ~~Video Analysis~~ ✅ DONE
 - **What**: Video analysis and understanding (opt-in toolset)
-- **Hermes location**: `tools/` (referenced in toolsets.py as `video_analyze`)
-- **Priority**: **Medium** — Niche but growing use case
+- **Hermes location**: `tools/vision_tools.py` (`video_analyze`)
+- **Status**: ✅ Done in v0.3.81 — `video_analyze` accepts HTTP/HTTPS, `file://`, and local paths, supports mp4/webm/mov/avi/mkv/mpeg/mpg, and returns structured video-capable model request blocks with raw/base64 size checks
 
 #### 23. RL Training Tools (10 tools)
 - **What**: Reinforcement learning training via Tinker-Atropos
@@ -538,7 +539,7 @@ Generated: 2026-05-21
 
 | Category | Hermes Features | Hakimi Complete | Hakimi Partial | Hakimi Missing |
 |----------|----------------|-----------------|----------------|----------------|
-| Core Tools | 40+ | 22 | 1 | 18+ |
+| Core Tools | 40+ | 23 | 1 | 17+ |
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 0 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
@@ -550,9 +551,9 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~58** (up from ~30)
+**Fully present in Hakimi: ~59** (up from ~30)
 **Partially implemented: ~11**
-**Missing entirely: ~82+**
+**Missing entirely: ~81+**
 
 ### Top 10 Critical Gaps (by impact)
 1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
@@ -603,9 +604,10 @@ Generated: 2026-05-21
 | 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
 | 21 | Think Scrubber | `hakimi-transports/src/scrubber.rs`, `hakimi-core/src/loop_impl.rs` | 18 | ✅ Hermes-style stateful reasoning tag scrubbing for streaming and non-streaming responses |
 | 22 | Rate Limit Tracking + Gateway Usage | `hakimi-transports/src/rate_limit.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 11 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls plus rate-limit display |
+| 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 
 ### Summary
-- **Total tests**: 1083 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1093 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

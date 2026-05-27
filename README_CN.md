@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.80-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.81-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1083-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1093-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1083 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1093 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -75,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.81 Video Analysis 请求**
+  - 新增 Rust 原生 `video_analyze` 媒体工具，支持 HTTP/HTTPS、`file://` 或本地视频路径，并生成可交给视频模型的结构化请求块。
+  - 支持 mp4、webm、mov、avi、mkv、mpeg、mpg，执行 MIME 检测，并在模型调用前阻断过大的原始/base64 载荷。
+  - 新增 schema、MIME 检测、file URL、结构化载荷和大小限制回归测试，不依赖真实供应商 API。
 - **v0.3.80 自更新状态恢复修复**
   - `hakimi --update` 现在只备份用户状态路径：`memory`、`sessions`、`sessions.db*` 和 `profiles`，不再归档整个 `~/.hakimi` 目录。
   - 恢复更新前的 memory/session 状态时，不会再覆盖刚安装完成的 `~/.hakimi/bin/hakimi` canonical binary。
@@ -101,7 +105,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
   - 新增离线回归覆盖：输入校验、实体/服务摘要、payload 解析、schema、阻断域和服务响应解析，不依赖真实 Home Assistant 实例。
 - **v0.3.74 Image Describe Vision Alias**
   - `image_describe` 现在复用 `vision_analyze` 管线，不再返回占位文本；旧媒体工作流会得到同样的 base64 data-url 视觉请求载荷。
-  - `GAP_ANALYSIS` 不再把 Vision 同时列为缺失与完成；媒体剩余缺口收敛到视频分析。
+  - `GAP_ANALYSIS` 不再把 Vision 同时列为缺失与完成。
   - 为 `image_describe` 补充元数据、schema、参数校验和本地文件载荷回归测试。
 - **v0.3.73 Responses 流恢复**
   - OpenAI Responses 的 `response.incomplete` SSE 事件现在映射为 `length` 结束原因，Hakimi 会自动续写，不再把半截答案当作最终回复。
@@ -153,7 +157,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - 从提取的模式自动生成可复用的 YAML 技能文件
 - 模式合并与置信度评分
 
-### 🛠️ 35 个内置工具
+### 🛠️ 36 个内置工具
 
 - **文件**: read_file, write_file, search_files, patch
 - **终端**: terminal, process (后台进程管理)
@@ -162,7 +166,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **记忆**: memory (持久化), session_search (FTS5 全文检索)
 - **代码**: code_exec (Python/JS/Bash)
 - **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium 自动化)
-- **媒体**: vision_analyze (图片分析), image_describe (旧工具兼容别名), image_generate, text_to_speech, transcribe_audio
+- **媒体**: vision_analyze (图片分析), video_analyze (视频分析请求), image_describe (旧工具兼容别名), image_generate, text_to_speech, transcribe_audio
 - **效率**: todo, clarify, checkpoint (git 快照回滚)
 - **安全**: file_safety (路径保护), secret_redaction (密钥脱敏), prompt_injection_detection
 - **元操作**: delegate_task (子 Agent 委派), skill_manage, send_message
@@ -239,7 +243,7 @@ hakimi-agent/
 │   ├── hakimi-context/     # 上下文引擎，压缩，意图推理，角色适配
 │   ├── hakimi-core/        # Agent 循环，错误分类器，凭证池，护栏
 │   ├── hakimi-transports/  # LLM 传输 (OpenAI/Anthropic/Gemini) + Prompt 缓存
-│   ├── hakimi-tools/       # 35 个内置工具 + 注册表
+│   ├── hakimi-tools/       # 36 个内置工具 + 注册表
 │   ├── hakimi-knowledge/   # 知识图谱记忆 (petgraph)
 │   ├── hakimi-skills/      # 技能系统 + 元技能提炼
 │   ├── hakimi-cron/        # 定时任务调度器 (SQLite 持久化)
@@ -297,7 +301,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1083 |
+| 测试 | ~500 | 1093 |
 
 ---
 
@@ -307,7 +311,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1083 tests)
+# 运行全部测试 (1093 tests)
 cargo test --workspace
 
 # Debug 日志
@@ -323,7 +327,7 @@ cargo clippy --workspace
 
 - [x] 核心 Agent 循环 + 工具分发
 - [x] OpenAI / Anthropic / Gemini 传输 + SSE 流式
-- [x] 35 个内置工具
+- [x] 36 个内置工具
 - [x] 8 个平台适配器
 - [x] MCP 客户端 (stdio/HTTP/SSE) + 服务器目录
 - [x] 插件系统 + 模板
