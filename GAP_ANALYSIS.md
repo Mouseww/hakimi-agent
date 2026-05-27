@@ -232,8 +232,8 @@ Generated: 2026-05-21
 #### 20. Cron — Persistent File-Based with Full CLI
 - **What**: Persistent cron job store with file-based locking, CLI management, slash commands
 - **Hermes location**: `cron/jobs.py`, `cron/scheduler.py`, `hermes_cli/cron.py`, `tools/cronjob_tools.py`
-- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove`. Standalone `hakimi cron list/add/edit/pause/resume/run/remove`, gateway `/cron add/edit/list/pause/resume/run/remove`, and `cronjob create/update/list/pause/resume/run/remove` are now covered in Hakimi; skill loading, repeat/status/tick, and gateway delivery semantics remain.
-- **Priority**: **High** — Remaining work is delivery semantics, skill-loaded scheduled runs, and full repeat/status/tick parity
+- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove`. Standalone `hakimi cron list/add/edit/pause/resume/run/remove`, gateway `/cron add/edit/list/pause/resume/run/remove`, and `cronjob create/update/list/pause/resume/run/remove` are now covered in Hakimi; scheduled runs now assemble attached skills with Hermes-style prompt scanning and `[SILENT]` delivery suppression. Repeat/status/tick and deeper gateway delivery semantics remain.
+- **Priority**: **High** — Remaining work is delivery semantics and full repeat/status/tick parity
 
 ### Medium Priority
 
@@ -296,7 +296,7 @@ Generated: 2026-05-21
 - **Priority**: **Medium** — Security
 
 #### 31. ~~Cron Prompt Injection Scanning~~ ✅ DONE
-- **What**: Scans user-authored cron prompts before persistence/manual trigger and again before auto execution; exposes looser assembled-skill scan for future skill-loaded cron prompts
+- **What**: Scans user-authored cron prompts before persistence/manual trigger and again before auto execution; uses looser assembled-skill scan for skill-loaded cron prompts
 - **Hakimi implementation**: `hakimi-cron/src/lib.rs`, `hakimi-cron/src/persistence.rs`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs`
 - **Hermes location**: `tools/cronjob_tools.py` (`_scan_cron_prompt`, `_scan_cron_skill_assembled`), `cron/scheduler.py` (`CronPromptInjectionBlocked`)
 - **Status**: ✅ Done in v0.3.72 — unsafe jobs are blocked, disabled on scheduled execution, and reported through gateway queue
@@ -465,8 +465,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/context_compressor.py` — full LLM-based summarization
 
 ### 2. Cron System
-- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|add|edit|pause|resume|run|remove`、独立 CLI `hakimi cron list|add|edit|pause|resume|run|remove`、prompt injection 扫描、cron 扩展元数据持久化已落地
-- **What's missing**: skill 装载、delivery 到指定 gateway session、完整 repeat/status/tick 语义
+- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|add|edit|pause|resume|run|remove`、独立 CLI `hakimi cron list|add|edit|pause|resume|run|remove`、prompt injection 扫描、cron 扩展元数据持久化、skill-loaded scheduled runs 与 `[SILENT]` 投递抑制已落地
+- **What's missing**: delivery 到指定 gateway session、完整 repeat/status/tick 语义
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. MCP Client
@@ -595,7 +595,7 @@ Generated: 2026-05-21
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
 | 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,matrix,wecom,dingtalk}.rs` | 19 | ✅ 5 new PlatformAdapter implementations |
-| 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 25 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron add/edit`, standalone `hakimi cron` management, strict/assembled cron prompt scanner |
+| 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 29 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron add/edit`, standalone `hakimi cron` management, strict/assembled cron prompt scanner, skill-loaded scheduled runs |
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs` | 20 | ✅ Shadow git snapshots, rollback, diff, transparent to LLM |
 | 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
@@ -607,7 +607,7 @@ Generated: 2026-05-21
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 
 ### Summary
-- **Total tests**: 1102 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1106 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

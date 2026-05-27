@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.84-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.85-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1102-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1106-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,13 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1102 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1106 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.85 Cron Skill-Loaded Runs**:
+  - **Runtime Skill Assembly**: scheduled cron jobs now honor persisted `skills` metadata by loading matching Hakimi skill content into the delegated cron task before execution.
+  - **Assembled Prompt Guard**: skill-loaded cron prompts use the looser Hermes assembled-skill scanner, allowing security runbooks while still blocking explicit prompt-injection directives.
+  - **Silent Delivery Guard**: cron jobs can return exactly `[SILENT]` or an empty response to suppress automatic gateway delivery when there is nothing new to report.
 - **v0.3.84 Standalone Cron CLI**:
   - **Hermes-Style `hakimi cron` Entry**: top-level `hakimi cron` now manages the same persistent job store as gateway `/cron`, covering list/add/edit/pause/resume/run/remove without starting an agent session.
   - **Shared Safety Path**: CLI add/edit reuse the existing schedule parser, prompt-injection scan, SQLite persistence, and next-run recomputation instead of duplicating cron logic.
@@ -81,7 +85,7 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 - **v0.3.83 Gateway Cron Add/Edit**:
   - **Hermes-Style Remote Scheduling**: gateway chats can now create jobs with `/cron add <schedule> <prompt>` or `/cron add <cron expr> | <prompt>`, then adjust them with `/cron edit <job-id> schedule|prompt|name <value>`.
   - **Real Tool Update Path**: the built-in `cronjob` tool now implements `action="update"` instead of only advertising it, including prompt scanning and next-run recomputation on schedule changes.
-  - **Persistent Cron Metadata**: `skills`, `enabled_toolsets`, `context_from`, and `deliver` fields round-trip through the SQLite store for future skill-loaded and gateway-delivered cron runs.
+  - **Persistent Cron Metadata**: `skills`, `enabled_toolsets`, `context_from`, and `deliver` fields round-trip through the SQLite store for skill-loaded and gateway-delivered cron runs.
 - **v0.3.82 Usage Pricing Estimates**:
   - **Hermes-Style Cost Surface**: gateway `/usage` now shows an estimated per-turn USD cost next to token counts and rate-limit data.
   - **Native Pricing Snapshot**: `hakimi-common` includes an offline pricing catalog for common OpenAI, Anthropic, Gemini, DeepSeek, and MiniMax routes, including cached-token handling where provider semantics expose it.
@@ -461,7 +465,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1102 |
+| Tests | ~500 | 1106 |
 
 ---
 
@@ -471,7 +475,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1102 tests)
+# Run all tests (1106 tests)
 cargo test --workspace
 
 # Debug logging
