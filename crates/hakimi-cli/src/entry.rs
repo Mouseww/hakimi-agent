@@ -3626,11 +3626,11 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    if let Some(TopLevelCommand::Cron(cron_args)) = &args.command {
-        if !is_top_level_cron_tick(&cron_args.args) {
-            println!("{}", top_level_cron_response(&cron_args.args));
-            return Ok(());
-        }
+    if let Some(TopLevelCommand::Cron(cron_args)) = &args.command
+        && !is_top_level_cron_tick(&cron_args.args)
+    {
+        println!("{}", top_level_cron_response(&cron_args.args));
+        return Ok(());
     }
 
     let config = load_config();
@@ -3651,19 +3651,18 @@ pub async fn run() -> Result<()> {
 
     let agent = build_agent(&args, &config).await?;
 
-    if let Some(TopLevelCommand::Cron(cron_args)) = &args.command {
-        if is_top_level_cron_tick(&cron_args.args) {
-            let tick_skill_store = agent
-                .skill_store()
-                .cloned()
-                .unwrap_or_else(hakimi_skills::SkillStore::empty);
-            println!(
-                "{}",
-                top_level_cron_tick_response(&agent, Some(&tick_skill_store), &cron_db_path())
-                    .await
-            );
-            return Ok(());
-        }
+    if let Some(TopLevelCommand::Cron(cron_args)) = &args.command
+        && is_top_level_cron_tick(&cron_args.args)
+    {
+        let tick_skill_store = agent
+            .skill_store()
+            .cloned()
+            .unwrap_or_else(hakimi_skills::SkillStore::empty);
+        println!(
+            "{}",
+            top_level_cron_tick_response(&agent, Some(&tick_skill_store), &cron_db_path()).await
+        );
+        return Ok(());
     }
 
     if args.serve {
