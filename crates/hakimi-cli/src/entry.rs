@@ -70,15 +70,19 @@ struct GatewayUsageSnapshot {
     model: String,
     provider: String,
     usage: hakimi_common::Usage,
+    cost: hakimi_common::CostEstimate,
     api_call_count: usize,
     rate_limits: Option<hakimi_transports::RateLimitState>,
 }
 
 impl GatewayUsageSnapshot {
     fn from_result(agent: &hakimi_core::AIAgent, result: &hakimi_core::ConversationResult) -> Self {
+        let model = agent.model().to_string();
+        let provider = agent.provider_name().to_string();
         Self {
-            model: agent.model().to_string(),
-            provider: agent.provider_name().to_string(),
+            cost: hakimi_common::estimate_usage_cost(&model, &provider, &result.usage),
+            model,
+            provider,
             usage: result.usage.clone(),
             api_call_count: result.api_call_count,
             rate_limits: agent.rate_limits(),
@@ -126,6 +130,20 @@ fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
             "- Reasoning/cache-write tokens: {}",
             format_usage_count(usage.reasoning_tokens)
         ));
+    }
+    match snapshot.cost.status {
+        hakimi_common::CostStatus::Estimated => {
+            lines.push(format!("- Estimated cost: {}", snapshot.cost.label));
+            if let Some(version) = snapshot.cost.pricing_version.as_deref() {
+                lines.push(format!("  Pricing: `{version}`"));
+            }
+        }
+        hakimi_common::CostStatus::Included => {
+            lines.push("- Estimated cost: included".to_string());
+        }
+        hakimi_common::CostStatus::Unknown => {
+            lines.push("- Estimated cost: n/a".to_string());
+        }
     }
 
     lines.push(String::new());
@@ -3263,6 +3281,17 @@ mod tests {
                 cached_tokens: 100,
                 reasoning_tokens: 25,
             },
+            cost: hakimi_common::estimate_usage_cost(
+                "gpt-4.1",
+                "openai-compatible",
+                &Usage {
+                    prompt_tokens: 1_500,
+                    completion_tokens: 250,
+                    total_tokens: 1_750,
+                    cached_tokens: 100,
+                    reasoning_tokens: 25,
+                },
+            ),
             api_call_count: 2,
             rate_limits: None,
         };
@@ -3275,6 +3304,8 @@ mod tests {
         assert!(response.contains("1.5K prompt + 250 completion = 1.8K total"));
         assert!(response.contains("Cached prompt tokens: 100"));
         assert!(response.contains("Reasoning/cache-write tokens: 25"));
+        assert!(response.contains("Estimated cost: ~$0.004850"));
+        assert!(response.contains("Pricing: `openai-pricing-2026-03-16`"));
         assert!(response.contains("No provider rate-limit headers"));
     }
 
@@ -3301,6 +3332,17 @@ mod tests {
                 cached_tokens: 0,
                 reasoning_tokens: 0,
             },
+            cost: hakimi_common::estimate_usage_cost(
+                "gpt-4.1",
+                "openai-compatible",
+                &Usage {
+                    prompt_tokens: 10,
+                    completion_tokens: 5,
+                    total_tokens: 15,
+                    cached_tokens: 0,
+                    reasoning_tokens: 0,
+                },
+            ),
             api_call_count: 1,
             rate_limits,
         };

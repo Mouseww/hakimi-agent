@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.81-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.82-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1093-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1099-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,13 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1093 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1099 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.82 Usage Pricing Estimates**:
+  - **Hermes-Style Cost Surface**: gateway `/usage` now shows an estimated per-turn USD cost next to token counts and rate-limit data.
+  - **Native Pricing Snapshot**: `hakimi-common` includes an offline pricing catalog for common OpenAI, Anthropic, Gemini, DeepSeek, and MiniMax routes, including cached-token handling where provider semantics expose it.
+  - **Regression Coverage**: added pricing tests for cached OpenAI tokens, Anthropic cache read/write buckets, provider-prefixed models, included subscription routes, unknown models, and unavailable cache pricing.
 - **v0.3.81 Video Analysis Requests**:
   - **Hermes-Style `video_analyze` Tool**: Added a Rust-native media tool that accepts HTTP/HTTPS, `file://`, or local video paths and prepares video-capable model request blocks.
   - **Format and Size Guardrails**: Supports mp4, webm, mov, avi, mkv, mpeg, and mpg inputs, detects MIME types, and rejects oversized raw/base64 payloads before model dispatch.
@@ -449,7 +453,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1093 |
+| Tests | ~500 | 1099 |
 
 ---
 
@@ -459,7 +463,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1093 tests)
+# Run all tests (1099 tests)
 cargo test --workspace
 
 # Debug logging

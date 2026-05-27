@@ -351,7 +351,7 @@ Generated: 2026-05-21
 #### 40. Usage Pricing / Account Usage Tracking
 - **What**: Token usage pricing calculation and account usage aggregation
 - **Hermes location**: `agent/usage_pricing.py`, `agent/account_usage.py`
-- **Details**: Per-model pricing and account usage aggregation. Rate-limit header parsing/tracking and gateway `/usage` display are now implemented; cost estimation and provider account usage APIs are still missing.
+- **Details**: Per-model cost estimation, account usage aggregation, and provider usage surfaces. Rate-limit header parsing/tracking, gateway `/usage`, and offline per-turn cost estimates are implemented; provider account usage APIs, persisted aggregation, and live model pricing discovery are still missing.
 - **Priority**: **Medium** — Cost visibility
 
 #### 41. Model Metadata / Auto-Discovery
@@ -530,8 +530,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/error_classifier.py`
 
 ### 16. Usage Pricing / Rate Limit Tracking
-- **Status**: `hakimi-transports::RateLimitTracker` parses OpenAI/Nous-style `x-ratelimit-*` request/token windows, formats detailed/compact displays, and Chat Completions, Responses, Anthropic, and Gemini transports retain the latest snapshot.
-- **What's missing**: Per-model pricing, account usage APIs, persisted aggregation, and user-facing `/usage`/gateway display integration.
+- **Status**: `hakimi-transports::RateLimitTracker` parses OpenAI/Nous-style `x-ratelimit-*` request/token windows, formats detailed/compact displays, and Chat Completions, Responses, Anthropic, and Gemini transports retain the latest snapshot. `hakimi-common::estimate_usage_cost()` adds Hermes-style static pricing estimates for common OpenAI, Anthropic, Gemini, DeepSeek, and MiniMax routes; gateway `/usage` shows token counts, estimated cost, pricing snapshot version, and rate limits.
+- **What's missing**: Provider account usage APIs, persisted aggregation, OpenRouter/provider live pricing discovery, and reconciliation with actual billed costs.
 - **Hermes reference**: `agent/rate_limit_tracker.py`, `agent/usage_pricing.py`, `agent/account_usage.py`
 ---
 
@@ -603,11 +603,11 @@ Generated: 2026-05-21
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
 | 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
 | 21 | Think Scrubber | `hakimi-transports/src/scrubber.rs`, `hakimi-core/src/loop_impl.rs` | 18 | ✅ Hermes-style stateful reasoning tag scrubbing for streaming and non-streaming responses |
-| 22 | Rate Limit Tracking + Gateway Usage | `hakimi-transports/src/rate_limit.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 11 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls plus rate-limit display |
+| 22 | Rate Limit Tracking + Gateway Usage + Cost Estimates | `hakimi-transports/src/rate_limit.rs`, `hakimi-common/src/usage_pricing.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 17 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls, Hermes-style estimated cost, pricing snapshot version, plus rate-limit display |
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 
 ### Summary
-- **Total tests**: 1093 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1099 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
