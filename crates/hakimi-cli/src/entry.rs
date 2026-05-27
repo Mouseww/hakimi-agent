@@ -315,6 +315,53 @@ fn top_level_cron_response_for_path(args: &[String], db_path: &std::path::Path) 
     gateway_cron_response_for_path(command.as_deref(), db_path).replace("/cron", "hakimi cron")
 }
 
+fn gateway_cron_status_response(
+    store: &hakimi_cron::persistence::PersistentCronStore,
+    now: chrono::DateTime<chrono::Utc>,
+) -> String {
+    let jobs = match store.load_all() {
+        Ok(jobs) => jobs,
+        Err(err) => return format!("❌ Failed to load cron status: {err}"),
+    };
+
+    let total = jobs.len();
+    let active = jobs.iter().filter(|job| job.enabled).count();
+    let paused = total.saturating_sub(active);
+    let due = jobs
+        .iter()
+        .filter(|job| job.enabled && job.next_run.map(|next| next <= now).unwrap_or(false))
+        .count();
+    let next_job = jobs
+        .iter()
+        .filter(|job| job.enabled)
+        .filter_map(|job| job.next_run.map(|next| (next, job)))
+        .min_by(|(left, _), (right, _)| left.cmp(right));
+
+    let mut lines = vec![
+        "⏰ **Cron Status**".to_string(),
+        format!("- Total jobs: {total}"),
+        format!("- Active jobs: {active}"),
+        format!("- Paused jobs: {paused}"),
+        format!("- Due now: {due}"),
+    ];
+
+    if let Some((next_run, job)) = next_job {
+        lines.push(format!(
+            "- Next due: `{}` ({}) at `{}`",
+            job.id,
+            job.name,
+            next_run.to_rfc3339()
+        ));
+    } else {
+        lines.push("- Next due: none".to_string());
+    }
+
+    lines.push(
+        "Gateway scheduler: runs from `hakimi --gateway start` or the managed service.".to_string(),
+    );
+    lines.join("\n")
+}
+
 #[derive(Debug, Clone)]
 struct GatewayUsageSnapshot {
     model: String,
@@ -422,6 +469,7 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
     };
 
     match action.as_str() {
+        "status" => gateway_cron_status_response(&store, chrono::Utc::now()),
         "list" => match store.load_all() {
             Ok(jobs) if jobs.is_empty() => "⏰ No scheduled cron jobs.".to_string(),
             Ok(mut jobs) => {
@@ -499,7 +547,7 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
                 _ => unreachable!(),
             }
         }
-        _ => "Usage: /cron [list|add|edit|pause|resume|run|remove]".to_string(),
+        _ => "Usage: /cron [list|status|add|edit|pause|resume|run|remove]".to_string(),
     }
 }
 
@@ -2344,7 +2392,9 @@ async fn start_gateway(
                         help.push_str("• `/model [name]` - Get or set model\n");
                         help.push_str("• `/tools` - List available tools\n");
                         help.push_str("• `/skills` - List loaded skills\n");
-                        help.push_str("• `/cron` - List/pause/resume/run/remove scheduled jobs\n");
+                        help.push_str(
+                            "• `/cron` - List/status/add/edit/pause/resume/run/remove scheduled jobs\n",
+                        );
                         help.push_str("• `/doctor` - Run setup diagnostics\n");
                         help.push_str("• `/status` - Show agent status\n");
                         help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
@@ -4072,6 +4122,50 @@ roles:
     }
 
     #[test]
+    fn gateway_cron_status_reports_counts_due_jobs_and_next_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("cron.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+        let now = chrono::Utc::now();
+
+        let mut due_job = CronJob::new(
+            "overdue report",
+            CronSchedule::IntervalMinutes(15),
+            "summarize alerts",
+        );
+        due_job.next_run = Some(now - chrono::Duration::minutes(2));
+        let due_id = due_job.id.clone();
+        store.save_job(&due_job).unwrap();
+
+        let mut future_job = CronJob::new(
+            "future report",
+            CronSchedule::IntervalMinutes(30),
+            "summarize metrics",
+        );
+        future_job.next_run = Some(now + chrono::Duration::minutes(30));
+        store.save_job(&future_job).unwrap();
+
+        let mut paused_job = CronJob::new(
+            "paused report",
+            CronSchedule::IntervalHours(1),
+            "summarize docs",
+        );
+        paused_job.enabled = false;
+        paused_job.next_run = Some(now - chrono::Duration::minutes(5));
+        store.save_job(&paused_job).unwrap();
+
+        let status = gateway_cron_response_for_path(Some("status"), &db_path);
+
+        assert!(status.contains("Cron Status"));
+        assert!(status.contains("Total jobs: 3"));
+        assert!(status.contains("Active jobs: 2"));
+        assert!(status.contains("Paused jobs: 1"));
+        assert!(status.contains("Due now: 1"));
+        assert!(status.contains(&due_id));
+        assert!(status.contains("overdue report"));
+    }
+
+    #[test]
     fn cron_delegation_goal_loads_attached_skills() {
         let mut job = CronJob::new(
             "release check",
@@ -4209,6 +4303,11 @@ roles:
             .unwrap()
             .unwrap();
         assert_eq!(loaded.prompt, "refresh docs and changelog");
+
+        let status = top_level_cron_response_for_path(&["status".to_string()], &db_path);
+        assert!(status.contains("Cron Status"));
+        assert!(status.contains("Total jobs: 2"));
+        assert!(status.contains("Active jobs: 2"));
 
         let bad_add =
             top_level_cron_response_for_path(&["add".to_string(), "15m".to_string()], &db_path);

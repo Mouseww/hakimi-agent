@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.85-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.86-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1106-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1107-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1106 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1107 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -75,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.86 Cron 状态视图**
+  - `/cron status` 与顶层 `hakimi cron status` 现在会读取共享 SQLite cron store，不启动 agent 会话即可查看调度状态。
+  - 状态输出展示总任务数、启用任务、暂停任务、当前到期任务，以及下一条将到期任务和 gateway scheduler 提示。
+  - 新增离线回归覆盖 gateway 与独立 CLI cron status 的持久化状态格式化。
 - **v0.3.85 Cron Skill 装载执行**
   - 定时任务现在会在自动执行时读取已持久化的 `skills` 元数据，把匹配到的 Hakimi skill 内容装配进委派任务。
   - skill 装载后的组合 prompt 使用 Hermes 风格的宽松 assembled-skill 扫描，允许安全 runbook 内容，同时继续阻断明确 prompt injection 指令。
@@ -202,7 +206,7 @@ Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
 
 Telegram 现在会直接上传本地生成图片，并把 TTS 生成的本地音频作为原生音频消息发送，因此 `image_generate` / `text_to_speech` 的结果可以直接投递给 gateway 用户，而不是只返回文件路径。针对语音输入链路，Hakimi 现在还提供 `transcribe_audio`，可转写本地音频文件或远程音频 URL；CLI 的按键录音模式仍是后续事项。
 
-在 gateway 会话里，`/cron` 现在已经支持 `list`、`pause <job-id>`、`resume <job-id>`、`run <job-id>`、`remove <job-id>`，会直接操作共享的 SQLite `cron.db`，运维侧不用离开 Telegram/Discord/Slack 就能管理定时任务。
+在 gateway 会话里，`/cron` 现在已经支持 `list`、`status`、`add`、`edit`、`pause <job-id>`、`resume <job-id>`、`run <job-id>`、`remove <job-id>`，会直接操作共享的 SQLite `cron.db`，运维侧不用离开 Telegram/Discord/Slack 就能管理定时任务。
 
 ### 🧠 智能上下文压缩
 
@@ -317,7 +321,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1106 |
+| 测试 | ~500 | 1107 |
 
 ---
 
@@ -327,7 +331,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1106 tests)
+# 运行全部测试 (1107 tests)
 cargo test --workspace
 
 # Debug 日志
