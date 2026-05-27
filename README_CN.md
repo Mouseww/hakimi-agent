@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.74-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.75-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1050-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1061-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -66,7 +66,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1050 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1061 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -74,6 +74,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.75 Home Assistant 工具组**
+  - 新增 `ha_list_entities`、`ha_get_state`、`ha_list_services`、`ha_call_service`，用 Rust 原生 async REST 实现对齐 Hermes 的 Home Assistant 工具面。
+  - 调用服务前校验 domain/service/entity_id，阻断 `shell_command`、`python_script`、`hassio`、`rest_command` 等高风险 HA 域。
+  - 新增离线回归覆盖：输入校验、实体/服务摘要、payload 解析、schema、阻断域和服务响应解析，不依赖真实 Home Assistant 实例。
 - **v0.3.74 Image Describe Vision Alias**
   - `image_describe` 现在复用 `vision_analyze` 管线，不再返回占位文本；旧媒体工作流会得到同样的 base64 data-url 视觉请求载荷。
   - `GAP_ANALYSIS` 不再把 Vision 同时列为缺失与完成；媒体剩余缺口收敛到视频分析。
@@ -128,11 +132,12 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - 从提取的模式自动生成可复用的 YAML 技能文件
 - 模式合并与置信度评分
 
-### 🛠️ 31 个内置工具
+### 🛠️ 35 个内置工具
 
 - **文件**: read_file, write_file, search_files, patch
 - **终端**: terminal, process (后台进程管理)
 - **Web**: web_search, web_extract
+- **Home Assistant**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service
 - **记忆**: memory (持久化), session_search (FTS5 全文检索)
 - **代码**: code_exec (Python/JS/Bash)
 - **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium 自动化)
@@ -213,7 +218,7 @@ hakimi-agent/
 │   ├── hakimi-context/     # 上下文引擎，压缩，意图推理，角色适配
 │   ├── hakimi-core/        # Agent 循环，错误分类器，凭证池，护栏
 │   ├── hakimi-transports/  # LLM 传输 (OpenAI/Anthropic/Gemini) + Prompt 缓存
-│   ├── hakimi-tools/       # 25 个内置工具 + 注册表
+│   ├── hakimi-tools/       # 35 个内置工具 + 注册表
 │   ├── hakimi-knowledge/   # 知识图谱记忆 (petgraph)
 │   ├── hakimi-skills/      # 技能系统 + 元技能提炼
 │   ├── hakimi-cron/        # 定时任务调度器 (SQLite 持久化)
@@ -271,7 +276,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1050 |
+| 测试 | ~500 | 1061 |
 
 ---
 
@@ -281,7 +286,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1050 tests)
+# 运行全部测试 (1061 tests)
 cargo test --workspace
 
 # Debug 日志
@@ -297,7 +302,7 @@ cargo clippy --workspace
 
 - [x] 核心 Agent 循环 + 工具分发
 - [x] OpenAI / Anthropic / Gemini 传输 + SSE 流式
-- [x] 25 个内置工具
+- [x] 35 个内置工具
 - [x] 8 个平台适配器
 - [x] MCP 客户端 (stdio/HTTP/SSE) + 服务器目录
 - [x] 插件系统 + 模板

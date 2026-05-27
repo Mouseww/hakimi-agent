@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.74-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.75-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1050-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1061-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -66,13 +66,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1050 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1061 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.75 Home Assistant Tools**:
+  - **Smart Home REST Parity**: Added `ha_list_entities`, `ha_get_state`, `ha_list_services`, and `ha_call_service`, matching Hermes' Home Assistant tool surface through native async Rust.
+  - **Guarded Service Calls**: Domain/service/entity IDs are validated before URL construction, and high-risk HA domains such as `shell_command`, `python_script`, `hassio`, and `rest_command` are blocked.
+  - **Offline Regression Coverage**: Added validation, summarization, payload parsing, schema, blocked-domain, and service-response tests without requiring a live Home Assistant server.
 - **v0.3.74 Image Describe Vision Alias**:
   - **Legacy Tool Now Works**: `image_describe` now reuses the `vision_analyze` pipeline instead of returning placeholder text, so older media workflows get the same base64 data-url payload as the dedicated vision tool.
   - **Hermes Parity Cleanup**: GAP_ANALYSIS no longer lists vision as both missing and complete; the remaining media gap is video analysis.
@@ -210,11 +214,12 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - Auto-generates reusable YAML skill files from extracted patterns
 - Pattern merging and confidence scoring
 
-### 🛠️ 31 Built-in Tools
+### 🛠️ 35 Built-in Tools
 
 - **Files**: read_file, write_file, search_files, patch
 - **Shell**: terminal, process (background process management)
 - **Web**: web_search, web_extract
+- **Home Assistant**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
 - **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium automation)
@@ -359,7 +364,7 @@ hakimi-agent/
 │   ├── hakimi-context/     # Context engine, compression, intent reasoning, role adaptation
 │   ├── hakimi-core/        # Agent loop, error classifier, credential pool, guardrails
 │   ├── hakimi-transports/  # LLM transports (OpenAI, Anthropic, Gemini) + prompt caching
-│   ├── hakimi-tools/       # 25 built-in tools + registry
+│   ├── hakimi-tools/       # 35 built-in tools + registry
 │   ├── hakimi-knowledge/   # Knowledge graph memory (petgraph)
 │   ├── hakimi-skills/      # Skill system + meta-skill extraction
 │   ├── hakimi-cron/        # Cron scheduler (SQLite persistent)
@@ -418,7 +423,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1050 |
+| Tests | ~500 | 1061 |
 
 ---
 
@@ -428,7 +433,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1050 tests)
+# Run all tests (1061 tests)
 cargo test --workspace
 
 # Debug logging
@@ -444,7 +449,7 @@ cargo clippy --workspace
 
 - [x] Core agent loop + tool dispatch
 - [x] OpenAI / Anthropic / Gemini transports + SSE streaming
-- [x] 25 built-in tools
+- [x] 35 built-in tools
 - [x] 8 platform adapters
 - [x] MCP client (stdio/HTTP/SSE) + server catalog
 - [x] Plugin system + templates

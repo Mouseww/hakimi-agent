@@ -25,6 +25,7 @@ Generated: 2026-05-21
 - **image_generate** — AI image generation with OpenAI/FAL backends and local file output
 - **text_to_speech** — OpenAI-compatible + Edge TTS with local audio file output
 - **transcribe_audio** — OpenAI-compatible speech-to-text for local audio files and remote audio URLs
+- **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 
 ### Agent Loop
 - **Core conversation loop** — Message → LLM → tool dispatch → loop until done
@@ -160,11 +161,10 @@ Generated: 2026-05-21
 - **Details**: CLI: arrow-key navigation. Gateway: numbered list. Max 4 choices + "Other" option.
 - **Priority**: **High** — Important for interactive workflows
 
-#### 9. Home Assistant Integration (4 tools)
+#### 9. ~~Home Assistant Integration (4 tools)~~ ✅ DONE
 - **What**: Smart home control via Home Assistant REST API
 - **Hermes location**: `tools/homeassistant_tool.py`
-- **Details**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service. Auth via HASS_TOKEN.
-- **Priority**: **High** — Key IoT/smart-home integration
+- **Status**: ✅ Done in v0.3.75 — `ha_list_entities`, `ha_get_state`, `ha_list_services`, and `ha_call_service` use `HASS_TOKEN` / `HASS_URL`, validate path components, block high-risk HA domains, and return compact JSON summaries
 
 #### 10. Computer Use (macOS Desktop Control)
 - **What**: Background macOS desktop control via cua-driver
@@ -534,7 +534,7 @@ Generated: 2026-05-21
 
 | Category | Hermes Features | Hakimi Complete | Hakimi Partial | Hakimi Missing |
 |----------|----------------|-----------------|----------------|----------------|
-| Core Tools | 40+ | 18 | 1 | 22+ |
+| Core Tools | 40+ | 22 | 1 | 18+ |
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 0 | 12+ |
 | CLI Commands | 50+ | 15 | 0 | 35+ |
@@ -546,9 +546,9 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~55** (up from ~30)
+**Fully present in Hakimi: ~56** (up from ~30)
 **Partially implemented: ~10**
-**Missing entirely: ~85+**
+**Missing entirely: ~84+**
 
 ### Top 10 Critical Gaps (by impact)
 1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
@@ -596,9 +596,10 @@ Generated: 2026-05-21
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
 | 18 | Gateway Media Delivery | `hakimi-core/src/loop_impl.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/telegram.rs` | 4 | ✅ `MEDIA:` / `IMAGE:` tool results now stream through gateway side-channel; Telegram uploads local images and generated TTS audio directly |
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
+| 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
 
 ### Summary
-- **Total tests**: 1050 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1061 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

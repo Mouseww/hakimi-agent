@@ -1334,6 +1334,18 @@ async fn build_agent(
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::WebExtractTool))
         .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::HaListEntitiesTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::HaGetStateTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::HaListServicesTool))
+        .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::HaCallServiceTool))
+        .await;
     #[cfg(feature = "browser")]
     {
         let browser_manager = hakimi_tools::BrowserManager::new();
