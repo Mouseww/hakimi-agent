@@ -311,11 +311,10 @@ Generated: 2026-05-21
 - **Details**: One-time hints triggered by behavior forks. Tracked in config.yaml under `onboarding.seen.<flag>`.
 - **Priority**: **Medium** — User experience
 
-#### 34. Doctor Diagnostics
+#### 34. ~~Doctor Diagnostics~~ ✅ DONE
 - **What**: CLI command to diagnose setup issues
 - **Hermes location**: `hermes_cli/doctor.py`
-- **Details**: Checks dependencies, config, env vars, paths, API connectivity.
-- **Priority**: **Medium** — Troubleshooting
+- **Status**: ✅ Done in v0.3.76 — `hakimi doctor`, `hakimi --doctor`, and gateway `/doctor` run diagnostics for dependencies, config, env vars, paths, and API connectivity; gateway output is ANSI-free for chat surfaces
 
 #### 35. Batch Runner
 - **What**: Parallel batch processing across multiple prompts from a dataset
@@ -490,7 +489,7 @@ Generated: 2026-05-21
 
 ### 8. CLI Commands
 - **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/cron add/edit`、`/plugins`、`/profile`、`/setup`、`/doctor`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/cron add/edit`、`/plugins`、`/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 9. Prompt Caching
@@ -537,7 +536,7 @@ Generated: 2026-05-21
 | Core Tools | 40+ | 22 | 1 | 18+ |
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 0 | 12+ |
-| CLI Commands | 50+ | 15 | 0 | 35+ |
+| CLI Commands | 50+ | 16 | 0 | 34+ |
 | Agent Internals | 25+ | 15 | 5 | 5+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
@@ -546,15 +545,15 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~56** (up from ~30)
+**Fully present in Hakimi: ~57** (up from ~30)
 **Partially implemented: ~10**
-**Missing entirely: ~84+**
+**Missing entirely: ~83+**
 
 ### Top 10 Critical Gaps (by impact)
 1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
 2. Gateway platform breadth (12 missing platforms — webhook/signal/matrix/wecom/dingtalk added)
 3. Plugin ecosystem (memory providers, model providers, context engines)
-4. CLI command completeness (35+ missing commands)
+4. CLI command completeness (34+ missing commands)
 5. Bedrock transport
 6. ACP adapter / IDE integration
 7. Kanban multi-agent coordination
@@ -584,7 +583,7 @@ Generated: 2026-05-21
 | 9 | LLM Context Compression | `hakimi-context/src/smart_engine.rs` | 22 | ✅ Auxiliary LLM summarization, Resolved/Pending tracking, tool output pruning |
 | 10 | Profiles | `hakimi-cli/src/profiles.rs` | 10 | ✅ ~/.hakimi/profiles/, create/delete/use, separate config/memory/sessions |
 | 11 | Setup Wizard | `hakimi-cli/src/setup_wizard.rs` | 15 | ✅ Model/Provider selection, API key input, platform config |
-| 12 | Doctor | `hakimi-cli/src/doctor.rs` | 15 | ✅ Dependencies, config, env vars, API connectivity checks |
+| 12 | Doctor | `hakimi-cli/src/doctor.rs`, `hakimi-cli/src/entry.rs` | 17 | ✅ Dependencies, config, env vars, API connectivity checks, `hakimi doctor`, gateway `/doctor` |
 
 ### Phase 3: Medium Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
@@ -599,7 +598,7 @@ Generated: 2026-05-21
 | 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
 
 ### Summary
-- **Total tests**: 1061 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1063 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

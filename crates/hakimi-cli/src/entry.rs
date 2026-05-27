@@ -450,6 +450,14 @@ pub enum GatewayMode {
     Status,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TopLevelCommand {
+    /// Run setup diagnostics and print remediation hints.
+    Doctor,
+    /// Run the interactive setup wizard.
+    Setup,
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "hakimi",
@@ -504,6 +512,10 @@ pub struct Args {
     #[arg(long)]
     pub setup: bool,
 
+    /// Run setup diagnostics and print remediation hints.
+    #[arg(long)]
+    pub doctor: bool,
+
     /// Self-update: download and install the latest release from GitHub.
     #[arg(long)]
     pub update: bool,
@@ -511,6 +523,10 @@ pub struct Args {
     /// Install and enable a plugin by URL or path
     #[arg(long)]
     pub plugin_install: Option<String>,
+
+    /// Hermes-style top-level command.
+    #[arg(value_enum)]
+    pub command: Option<TopLevelCommand>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1919,6 +1935,7 @@ async fn start_gateway(
                         help.push_str("• `/tools` - List available tools\n");
                         help.push_str("• `/skills` - List loaded skills\n");
                         help.push_str("• `/cron` - List/pause/resume/run/remove scheduled jobs\n");
+                        help.push_str("• `/doctor` - Run setup diagnostics\n");
                         help.push_str("• `/status` - Show agent status\n");
                         help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
                         help.push_str("• `/restart` - Restart Hakimi Gateway service\n");
@@ -1969,6 +1986,17 @@ async fn start_gateway(
                         msg
                     }
                     Some(Command::Cron(cmd)) => gateway_cron_response(cmd.as_deref()),
+                    Some(Command::Doctor) => {
+                        match tokio::task::spawn_blocking(|| {
+                            let results = crate::doctor::run_diagnostics();
+                            crate::doctor::format_plain_report(&results)
+                        })
+                        .await
+                        {
+                            Ok(report) => format!("```text\n{}\n```", report.trim()),
+                            Err(err) => format!("❌ Failed to run diagnostics: {err}"),
+                        }
+                    }
                     Some(Command::Status) => {
                         let a = agent_clone.lock().await;
                         format!(
@@ -2972,9 +3000,14 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
+    if args.doctor || matches!(args.command, Some(TopLevelCommand::Doctor)) {
+        crate::doctor::run_and_print_diagnostics();
+        return Ok(());
+    }
+
     let config = load_config();
 
-    if args.setup {
+    if args.setup || matches!(args.command, Some(TopLevelCommand::Setup)) {
         return run_setup_wizard(config);
     }
 
@@ -3016,9 +3049,10 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker, GatewayMode,
-        GatewayStreamUiState, GatewayUiContentTarget, gateway_cron_response_for_path,
-        resolve_clawbot_gateway_config, resolve_hakimi_update_target,
-        should_edit_initial_gateway_message, update_target_from_candidate,
+        GatewayStreamUiState, GatewayUiContentTarget, TopLevelCommand,
+        gateway_cron_response_for_path, resolve_clawbot_gateway_config,
+        resolve_hakimi_update_target, should_edit_initial_gateway_message,
+        update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_cron::{CronJob, CronSchedule, persistence::PersistentCronStore};
@@ -3042,6 +3076,22 @@ mod tests {
             GatewayMode::from_str("status", true).unwrap(),
             GatewayMode::Status
         );
+    }
+
+    #[test]
+    fn top_level_doctor_and_setup_commands_parse_like_hermes() {
+        let doctor = <super::Args as clap::Parser>::try_parse_from(["hakimi", "doctor"]).unwrap();
+        assert_eq!(doctor.command, Some(TopLevelCommand::Doctor));
+        assert!(!doctor.doctor);
+
+        let setup = <super::Args as clap::Parser>::try_parse_from(["hakimi", "setup"]).unwrap();
+        assert_eq!(setup.command, Some(TopLevelCommand::Setup));
+        assert!(!setup.setup);
+
+        let legacy_doctor =
+            <super::Args as clap::Parser>::try_parse_from(["hakimi", "--doctor"]).unwrap();
+        assert!(legacy_doctor.doctor);
+        assert_eq!(legacy_doctor.command, None);
     }
 
     #[test]

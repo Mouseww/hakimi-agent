@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.75-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.76-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1061-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1063-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -45,7 +45,8 @@ cargo install hakimi-agent
 安装后运行交互式配置向导：
 
 ```bash
-hakimi --setup
+hakimi setup
+hakimi doctor
 ```
 
 向导引导你完成 LLM 提供商、API Key、模型、平台适配器、MCP 服务器的配置，全部保存到 `~/.hakimi/config.yaml`。
@@ -66,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1061 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1063 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -74,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.76 Doctor CLI / Gateway 诊断**
+  - 新增 `hakimi doctor`，并保留兼容的 `hakimi --doctor`，无需启动 Agent loop 即可运行环境诊断。
+  - gateway `/doctor` 现在会返回适合聊天窗口展示的纯文本诊断报告，不再落到占位响应。
+  - 新增顶层 `doctor` / `setup` 命令解析与无 ANSI 诊断报告格式化回归覆盖。
 - **v0.3.75 Home Assistant 工具组**
   - 新增 `ha_list_entities`、`ha_get_state`、`ha_list_services`、`ha_call_service`，用 Rust 原生 async REST 实现对齐 Hermes 的 Home Assistant 工具面。
   - 调用服务前校验 domain/service/entity_id，阻断 `shell_command`、`python_script`、`hassio`、`rest_command` 等高风险 HA 域。
@@ -276,7 +281,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1061 |
+| 测试 | ~500 | 1063 |
 
 ---
 
@@ -286,7 +291,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1061 tests)
+# 运行全部测试 (1063 tests)
 cargo test --workspace
 
 # Debug 日志

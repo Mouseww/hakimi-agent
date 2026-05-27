@@ -493,6 +493,58 @@ pub fn format_report(results: &[DiagnosticResult]) -> String {
     report
 }
 
+/// Format diagnostic results without ANSI color codes for gateway/chat output.
+pub fn format_plain_report(results: &[DiagnosticResult]) -> String {
+    let mut report = String::new();
+
+    report.push_str("Hakimi Agent Diagnostics\n\n");
+
+    for result in results {
+        let icon = match result.status {
+            CheckStatus::Pass => "PASS",
+            CheckStatus::Fail => "FAIL",
+            CheckStatus::Warn => "WARN",
+        };
+
+        report.push_str(&format!(
+            "  [{icon}] {} - {}\n",
+            result.name, result.message
+        ));
+
+        if let Some(ref fix) = result.fix
+            && result.status != CheckStatus::Pass
+        {
+            report.push_str(&format!("    -> {}\n", fix));
+        }
+    }
+
+    let passed = results
+        .iter()
+        .filter(|r| r.status == CheckStatus::Pass)
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| r.status == CheckStatus::Fail)
+        .count();
+    let warned = results
+        .iter()
+        .filter(|r| r.status == CheckStatus::Warn)
+        .count();
+
+    report.push_str(&format!(
+        "\n  Summary: {} passed, {} failed, {} warnings\n",
+        passed, failed, warned
+    ));
+
+    if failed == 0 {
+        report.push_str("\n  All critical checks passed!\n");
+    } else {
+        report.push_str("\n  Some checks failed - see fixes above.\n");
+    }
+
+    report
+}
+
 /// Run diagnostics and print the report. Returns the results.
 pub fn run_and_print_diagnostics() -> Vec<DiagnosticResult> {
     let results = run_diagnostics();
@@ -545,6 +597,29 @@ mod tests {
         assert!(report.contains("✗"));
         assert!(report.contains("⚠"));
         assert!(report.contains("1 passed, 1 failed, 1 warnings"));
+    }
+
+    #[test]
+    fn test_format_plain_report_uses_chat_safe_text() {
+        let results = vec![
+            DiagnosticResult {
+                name: "test-pass".to_string(),
+                status: CheckStatus::Pass,
+                message: "OK".to_string(),
+                fix: None,
+            },
+            DiagnosticResult {
+                name: "test-fail".to_string(),
+                status: CheckStatus::Fail,
+                message: "Failed".to_string(),
+                fix: Some("Fix it".to_string()),
+            },
+        ];
+        let report = format_plain_report(&results);
+        assert!(report.contains("[PASS] test-pass - OK"));
+        assert!(report.contains("[FAIL] test-fail - Failed"));
+        assert!(report.contains("-> Fix it"));
+        assert!(!report.contains("\x1b["));
     }
 
     #[test]

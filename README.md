@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.75-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.76-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1061-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1063-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -45,7 +45,8 @@ cargo install hakimi-agent
 After install, the installer automatically adds `~/.hakimi/bin` to your shell PATH when possible and offers to launch the setup wizard. You can also run it manually at any time:
 
 ```bash
-hakimi --setup
+hakimi setup
+hakimi doctor
 ```
 
 The wizard walks you through LLM provider, API key, model, platform adapters, and MCP server configuration — all saved to `~/.hakimi/config.yaml`.
@@ -66,13 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1061 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1063 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.76 Doctor CLI / Gateway Diagnostics**:
+  - **Hermes-Style Command Entry**: Added `hakimi doctor` while keeping the legacy `hakimi --doctor` flag, so setup diagnostics are reachable without starting the agent loop.
+  - **Gateway `/doctor`**: Remote chats can now run setup diagnostics and receive a plain-text, chat-safe report instead of a placeholder command response.
+  - **Regression Coverage**: Added parser coverage for top-level `doctor` / `setup` commands and ANSI-free diagnostic report formatting.
 - **v0.3.75 Home Assistant Tools**:
   - **Smart Home REST Parity**: Added `ha_list_entities`, `ha_get_state`, `ha_list_services`, and `ha_call_service`, matching Hermes' Home Assistant tool surface through native async Rust.
   - **Guarded Service Calls**: Domain/service/entity IDs are validated before URL construction, and high-risk HA domains such as `shell_command`, `python_script`, `hassio`, and `rest_command` are blocked.
@@ -255,7 +260,8 @@ On first `hakimi --gateway`, native iLink mode starts the WeChat QR login in the
 **Gateway lifecycle:**
 
 ```bash
-hakimi --setup            # multi-select Telegram / WeChat ClawBot and write real gateway config
+hakimi setup              # multi-select Telegram / WeChat ClawBot and write real gateway config
+hakimi doctor             # diagnose config, dependencies, and API connectivity
 hakimi --gateway install  # create/update systemd service, enable boot start, and start now
 hakimi --gateway          # foreground gateway mode (same as --gateway start)
 hakimi --gateway start    # explicit foreground gateway mode
@@ -423,7 +429,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1061 |
+| Tests | ~500 | 1063 |
 
 ---
 
@@ -433,7 +439,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1061 tests)
+# Run all tests (1063 tests)
 cargo test --workspace
 
 # Debug logging
