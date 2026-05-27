@@ -6,7 +6,7 @@
 //! implementation.
 
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio_util::sync::CancellationToken;
@@ -200,6 +200,41 @@ fn gateway_cron_edit_response(
 
 fn gateway_cron_response(command: Option<&str>) -> String {
     gateway_cron_response_for_path(command, &cron_db_path())
+}
+
+fn top_level_cron_response(args: &[String]) -> String {
+    top_level_cron_response_for_path(args, &cron_db_path())
+}
+
+fn top_level_cron_command(args: &[String]) -> Option<String> {
+    let action = args.first()?.to_ascii_lowercase();
+    match action.as_str() {
+        "add" | "create" if args.len() >= 3 => Some(format!(
+            "{action} {} | {}",
+            args[1].trim(),
+            args[2..].join(" ")
+        )),
+        "edit" | "update" if args.len() >= 4 => {
+            let field = args[2].to_ascii_lowercase();
+            if matches!(field.as_str(), "schedule" | "prompt" | "name") {
+                Some(args.join(" "))
+            } else {
+                Some(format!(
+                    "edit {} {} | {}",
+                    args[1],
+                    args[2].trim(),
+                    args[3..].join(" ")
+                ))
+            }
+        }
+        _ => Some(args.join(" ")),
+    }
+}
+
+fn top_level_cron_response_for_path(args: &[String], db_path: &std::path::Path) -> String {
+    let command = top_level_cron_command(args);
+    gateway_cron_response_for_path(command.as_deref(), db_path)
+        .replace("Usage: /cron", "Usage: hakimi cron")
 }
 
 #[derive(Debug, Clone)]
@@ -690,12 +725,21 @@ pub enum GatewayMode {
     Status,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct CronCommandArgs {
+    /// Cron action and arguments, e.g. `add 30m "refresh docs"` or `edit <id> prompt "new prompt"`.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum TopLevelCommand {
     /// Run setup diagnostics and print remediation hints.
     Doctor,
     /// Run the interactive setup wizard.
     Setup,
+    /// Manage cron jobs.
+    Cron(CronCommandArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -765,7 +809,7 @@ pub struct Args {
     pub plugin_install: Option<String>,
 
     /// Hermes-style top-level command.
-    #[arg(value_enum)]
+    #[command(subcommand)]
     pub command: Option<TopLevelCommand>,
 }
 
@@ -3312,14 +3356,19 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    if args.doctor || matches!(args.command, Some(TopLevelCommand::Doctor)) {
+    if args.doctor || matches!(&args.command, Some(TopLevelCommand::Doctor)) {
         crate::doctor::run_and_print_diagnostics();
+        return Ok(());
+    }
+
+    if let Some(TopLevelCommand::Cron(cron_args)) = &args.command {
+        println!("{}", top_level_cron_response(&cron_args.args));
         return Ok(());
     }
 
     let config = load_config();
 
-    if args.setup || matches!(args.command, Some(TopLevelCommand::Setup)) {
+    if args.setup || matches!(&args.command, Some(TopLevelCommand::Setup)) {
         return run_setup_wizard(config);
     }
 
@@ -3360,11 +3409,12 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker, GatewayMode,
-        GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, TopLevelCommand,
-        create_hakimi_state_backup, gateway_cron_response_for_path, gateway_usage_response,
-        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
-        should_edit_initial_gateway_message, update_target_from_candidate,
+        CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
+        GatewayMode, GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot,
+        TopLevelCommand, create_hakimi_state_backup, gateway_cron_response_for_path,
+        gateway_usage_response, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
+        restore_hakimi_state_backup, should_edit_initial_gateway_message,
+        top_level_cron_response_for_path, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
@@ -3400,6 +3450,22 @@ mod tests {
         let setup = <super::Args as clap::Parser>::try_parse_from(["hakimi", "setup"]).unwrap();
         assert_eq!(setup.command, Some(TopLevelCommand::Setup));
         assert!(!setup.setup);
+
+        let cron = <super::Args as clap::Parser>::try_parse_from([
+            "hakimi", "cron", "add", "15m", "refresh", "docs",
+        ])
+        .unwrap();
+        assert_eq!(
+            cron.command,
+            Some(TopLevelCommand::Cron(CronCommandArgs {
+                args: vec![
+                    "add".to_string(),
+                    "15m".to_string(),
+                    "refresh".to_string(),
+                    "docs".to_string()
+                ]
+            }))
+        );
 
         let legacy_doctor =
             <super::Args as clap::Parser>::try_parse_from(["hakimi", "--doctor"]).unwrap();
@@ -3880,6 +3946,79 @@ roles:
         assert_eq!(
             gateway_cron_response_for_path(Some("edit"), &db_path),
             "Usage: /cron edit <job-id> [schedule|prompt|name] <value>"
+        );
+    }
+
+    #[test]
+    fn top_level_cron_command_delegates_to_persistent_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("cron.db");
+
+        let create_args = vec![
+            "add".to_string(),
+            "15m".to_string(),
+            "refresh".to_string(),
+            "docs".to_string(),
+        ];
+        let created = top_level_cron_response_for_path(&create_args, &db_path);
+        assert!(created.contains("Created cron job"));
+
+        let created_job = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .load_all()
+            .unwrap()
+            .into_iter()
+            .find(|job| job.prompt == "refresh docs")
+            .unwrap();
+        assert!(matches!(
+            created_job.schedule,
+            CronSchedule::IntervalMinutes(15)
+        ));
+
+        let cron_expr_args = vec![
+            "add".to_string(),
+            "0 9 * * *".to_string(),
+            "daily".to_string(),
+            "report".to_string(),
+        ];
+        let cron_expr_created = top_level_cron_response_for_path(&cron_expr_args, &db_path);
+        assert!(cron_expr_created.contains("Created cron job"));
+        let cron_expr_job = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .load_all()
+            .unwrap()
+            .into_iter()
+            .find(|job| job.prompt == "daily report")
+            .unwrap();
+        assert!(matches!(
+            cron_expr_job.schedule,
+            CronSchedule::CronExpr(ref expr) if expr == "0 9 * * *"
+        ));
+
+        let edit_args = vec![
+            "edit".to_string(),
+            created_job.id.clone(),
+            "prompt".to_string(),
+            "refresh".to_string(),
+            "docs".to_string(),
+            "and".to_string(),
+            "changelog".to_string(),
+        ];
+        let edited = top_level_cron_response_for_path(&edit_args, &db_path);
+        assert!(edited.contains("Updated cron job"));
+
+        let loaded = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .get_job(&created_job.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.prompt, "refresh docs and changelog");
+
+        let bad_add =
+            top_level_cron_response_for_path(&["add".to_string(), "15m".to_string()], &db_path);
+        assert_eq!(
+            bad_add,
+            "Usage: hakimi cron add <schedule> <prompt> or hakimi cron add <schedule> | <prompt>"
         );
     }
 }

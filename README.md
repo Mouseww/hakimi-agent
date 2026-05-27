@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.83-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.84-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1101-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1102-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,13 +67,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1101 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1102 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.84 Standalone Cron CLI**:
+  - **Hermes-Style `hakimi cron` Entry**: top-level `hakimi cron` now manages the same persistent job store as gateway `/cron`, covering list/add/edit/pause/resume/run/remove without starting an agent session.
+  - **Shared Safety Path**: CLI add/edit reuse the existing schedule parser, prompt-injection scan, SQLite persistence, and next-run recomputation instead of duplicating cron logic.
+  - **Regression Coverage**: added top-level parsing and persistent-store delegation coverage for `hakimi cron add` and `hakimi cron edit`.
 - **v0.3.83 Gateway Cron Add/Edit**:
   - **Hermes-Style Remote Scheduling**: gateway chats can now create jobs with `/cron add <schedule> <prompt>` or `/cron add <cron expr> | <prompt>`, then adjust them with `/cron edit <job-id> schedule|prompt|name <value>`.
   - **Real Tool Update Path**: the built-in `cronjob` tool now implements `action="update"` instead of only advertising it, including prompt scanning and next-run recomputation on schedule changes.
@@ -457,7 +461,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1101 |
+| Tests | ~500 | 1102 |
 
 ---
 
@@ -467,7 +471,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1101 tests)
+# Run all tests (1102 tests)
 cargo test --workspace
 
 # Debug logging

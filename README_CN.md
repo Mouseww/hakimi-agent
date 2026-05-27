@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.83-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.84-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1101-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1102-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1101 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1102 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -75,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.84 独立 Cron CLI**
+  - 顶层 `hakimi cron` 现在能管理与 gateway `/cron` 相同的持久化任务库，覆盖 list/add/edit/pause/resume/run/remove，不需要启动 agent 会话。
+  - CLI 新增与编辑复用既有 schedule parser、prompt 注入扫描、SQLite 持久化和 `next_run` 重算路径，避免重复实现 cron 逻辑。
+  - 新增顶层命令解析与持久化 store 委托回归，覆盖 `hakimi cron add` 和 `hakimi cron edit`。
 - **v0.3.83 Gateway Cron 新增与编辑**
   - gateway 会话现在可以用 `/cron add <schedule> <prompt>` 或 `/cron add <cron expr> | <prompt>` 创建任务，并用 `/cron edit <job-id> schedule|prompt|name <value>` 调整既有任务。
   - 内置 `cronjob` 工具现在真正实现 `action="update"`，会在 prompt 更新时执行注入扫描，在 schedule 更新时重新计算 `next_run`。
@@ -309,7 +313,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1101 |
+| 测试 | ~500 | 1102 |
 
 ---
 
@@ -319,7 +323,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1101 tests)
+# 运行全部测试 (1102 tests)
 cargo test --workspace
 
 # Debug 日志
