@@ -233,8 +233,7 @@ fn top_level_cron_command(args: &[String]) -> Option<String> {
 
 fn top_level_cron_response_for_path(args: &[String], db_path: &std::path::Path) -> String {
     let command = top_level_cron_command(args);
-    gateway_cron_response_for_path(command.as_deref(), db_path)
-        .replace("Usage: /cron", "Usage: hakimi cron")
+    gateway_cron_response_for_path(command.as_deref(), db_path).replace("/cron", "hakimi cron")
 }
 
 #[derive(Debug, Clone)]
