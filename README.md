@@ -77,7 +77,8 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 - **v0.3.77 Think Scrubber Hardening**:
   - **Hermes-Style Tag Scrubbing**: `ThinkScrubber` now handles `<think>`, `<thinking>`, `<reasoning>`, `<thought>`, and `<REASONING_SCRATCHPAD>` tags case-insensitively, including tags split across SSE deltas.
   - **Clean Stored Responses**: streaming and non-streaming agent loops now store scrubbed `final_response` and assistant history while preserving hidden reasoning separately.
-  - **Regression Coverage**: added state-machine and agent-loop tests for split tags, tag variants, inline closed pairs, non-streaming responses, and streaming accumulators.- **v0.3.76 Doctor CLI / Gateway Diagnostics**:
+  - **Regression Coverage**: added state-machine and agent-loop tests for split tags, tag variants, inline closed pairs, non-streaming responses, and streaming accumulators.
+- **v0.3.76 Doctor CLI / Gateway Diagnostics**:
   - **Hermes-Style Command Entry**: Added `hakimi doctor` while keeping the legacy `hakimi --doctor` flag, so setup diagnostics are reachable without starting the agent loop.
   - **Gateway `/doctor`**: Remote chats can now run setup diagnostics and receive a plain-text, chat-safe report instead of a placeholder command response.
   - **Regression Coverage**: Added parser coverage for top-level `doctor` / `setup` commands and ANSI-free diagnostic report formatting.
@@ -493,3 +494,4 @@ MIT License — see [LICENSE](LICENSE)
   <b>Built with 🦀 Rust and ❤️</b><br>
   <sub>Inspired by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research</sub>
 </p>
+

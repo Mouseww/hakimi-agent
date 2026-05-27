@@ -78,7 +78,8 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **v0.3.77 Think Scrubber 强化**
   - `ThinkScrubber` 现在按 Hermes 语义处理 `<think>`、`<thinking>`、`<reasoning>`、`<thought>`、`<REASONING_SCRATCHPAD>` 等标签，大小写不敏感，并支持 SSE delta 边界拆分标签。
   - streaming 与非 streaming Agent loop 都会把清理后的文本写入 `final_response` 和 assistant history，同时把隐藏 reasoning 单独保留。
-  - 新增状态机与 Agent loop 回归覆盖：拆分标签、标签变体、行内闭合标签、非流式响应和 streaming accumulator。- **v0.3.76 Doctor CLI / Gateway 诊断**
+  - 新增状态机与 Agent loop 回归覆盖：拆分标签、标签变体、行内闭合标签、非流式响应和 streaming accumulator。
+- **v0.3.76 Doctor CLI / Gateway 诊断**
   - 新增 `hakimi doctor`，并保留兼容的 `hakimi --doctor`，无需启动 Agent loop 即可运行环境诊断。
   - gateway `/doctor` 现在会返回适合聊天窗口展示的纯文本诊断报告，不再落到占位响应。
   - 新增顶层 `doctor` / `setup` 命令解析与无 ANSI 诊断报告格式化回归覆盖。
@@ -345,3 +346,4 @@ MIT License — 详见 [LICENSE](LICENSE)
   <b>用 🦀 Rust 和 ❤️ 构建</b><br>
   <sub>源自 <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research</sub>
 </p>
+
