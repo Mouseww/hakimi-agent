@@ -27,6 +27,16 @@ impl CronjobTool {
         PersistentCronStore::open(&cron_db_path)
             .map_err(|e| HakimiError::Tool(format!("Failed to open cron DB: {e}")))
     }
+
+    fn string_array(args: &JsonValue, key: &str) -> Option<Vec<String>> {
+        args.get(key).and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::trim))
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect()
+        })
+    }
 }
 
 #[async_trait]
@@ -143,6 +153,71 @@ impl Tool for CronjobTool {
                 Ok(format!(
                     "Created cron job `{}` with schedule `{}`. Next run at: {:?}",
                     job.id, schedule_str, job.next_run
+                ))
+            }
+            "update" => {
+                let job_id = args
+                    .get("job_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| HakimiError::Tool("job_id is required".into()))?;
+                let mut job = store
+                    .get_job(job_id)
+                    .map_err(|e| HakimiError::Tool(e.to_string()))?
+                    .ok_or_else(|| HakimiError::Tool("Job not found".into()))?;
+                let mut changed = false;
+
+                if let Some(name) = args.get("name").and_then(|v| v.as_str()) {
+                    job.name = name.trim().to_string();
+                    changed = true;
+                }
+                if let Some(prompt) = args.get("prompt").and_then(|v| v.as_str()) {
+                    validate_cron_prompt(prompt).map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    job.prompt = prompt.to_string();
+                    changed = true;
+                }
+                if let Some(schedule_str) = args.get("schedule").and_then(|v| v.as_str()) {
+                    let parsed_schedule = parse_schedule(schedule_str)
+                        .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    job.schedule = parsed_schedule;
+                    job.next_run = Some(job.schedule.next_after(Utc::now()));
+                    changed = true;
+                }
+                if let Some(skills) = Self::string_array(args, "skills") {
+                    job.skills = skills;
+                    changed = true;
+                }
+                if let Some(toolsets) = Self::string_array(args, "enabled_toolsets") {
+                    job.enabled_toolsets = if toolsets.is_empty() {
+                        None
+                    } else {
+                        Some(toolsets)
+                    };
+                    changed = true;
+                }
+                if let Some(context_from) = Self::string_array(args, "context_from") {
+                    job.context_from = context_from;
+                    changed = true;
+                }
+                if args.get("deliver").is_some() {
+                    job.deliver = args
+                        .get("deliver")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(String::from);
+                    changed = true;
+                }
+
+                if !changed {
+                    return Err(HakimiError::Tool("No updates provided".into()));
+                }
+
+                store
+                    .update_job(&job)
+                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                Ok(format!(
+                    "Updated cron job `{}` ({}). Next run at: {:?}",
+                    job.id, job.name, job.next_run
                 ))
             }
             "remove" => {

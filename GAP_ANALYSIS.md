@@ -232,8 +232,8 @@ Generated: 2026-05-21
 #### 20. Cron — Persistent File-Based with Full CLI
 - **What**: Persistent cron job store with file-based locking, CLI management, slash commands
 - **Hermes location**: `cron/jobs.py`, `cron/scheduler.py`, `hermes_cli/cron.py`, `tools/cronjob_tools.py`
-- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove`. `/cron` slash command. Per-job toolset configuration. Prompt injection scanning. Skill loading in cron prompts. Delivery to gateway sessions.
-- **Priority**: **High** — Hakimi has in-memory only, no persistence, no CLI management
+- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove`. `/cron add/edit/list/pause/resume/run/remove` and `cronjob create/update/list/pause/resume/run/remove` are now covered in Hakimi; standalone `hakimi cron add/edit`, skill loading, repeat/status/tick, and gateway delivery semantics remain.
+- **Priority**: **High** — Remaining work is full standalone CLI parity, delivery semantics, and skill-loaded scheduled runs
 
 ### Medium Priority
 
@@ -465,8 +465,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/context_compressor.py` — full LLM-based summarization
 
 ### 2. Cron System
-- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|pause|resume|run|remove`、prompt injection 扫描已落地
-- **What's missing**: gateway/CLI `add/edit` 管理入口、skill 装载、delivery 到指定 gateway session、完整 repeat/status/tick 语义
+- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron list|add|edit|pause|resume|run|remove`、prompt injection 扫描、cron 扩展元数据持久化已落地
+- **What's missing**: 独立 CLI `hakimi cron add/edit` 管理入口、skill 装载、delivery 到指定 gateway session、完整 repeat/status/tick 语义
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. MCP Client
@@ -491,7 +491,7 @@ Generated: 2026-05-21
 
 ### 8. CLI Commands
 - **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/cron add/edit`、`/plugins`、`/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/plugins`、`/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 9. Prompt Caching
@@ -569,7 +569,7 @@ Generated: 2026-05-21
 
 ---
 
-## IMPLEMENTATION STATUS (Updated: 2026-05-27)
+## IMPLEMENTATION STATUS (Updated: 2026-05-28)
 
 ### Phase 1: Critical Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
@@ -595,7 +595,7 @@ Generated: 2026-05-21
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
 | 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,matrix,wecom,dingtalk}.rs` | 19 | ✅ 5 new PlatformAdapter implementations |
-| 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}` | 22 | ✅ SQLite storage, FileLock, per-job toolset config, CLI commands, strict/assembled cron prompt scanner |
+| 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 24 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron add/edit`, strict/assembled cron prompt scanner |
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs` | 20 | ✅ Shadow git snapshots, rollback, diff, transparent to LLM |
 | 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
@@ -607,7 +607,7 @@ Generated: 2026-05-21
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 
 ### Summary
-- **Total tests**: 1099 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1101 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

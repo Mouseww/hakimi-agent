@@ -58,7 +58,144 @@ fn find_cron_job_by_id(
     store: &hakimi_cron::persistence::PersistentCronStore,
     job_id: &str,
 ) -> Result<Option<hakimi_cron::CronJob>> {
-    Ok(store.load_all()?.into_iter().find(|job| job.id == job_id))
+    Ok(store.get_job(job_id)?)
+}
+
+fn cron_name_from_prompt(prompt: &str) -> String {
+    let name = prompt.trim().chars().take(50).collect::<String>();
+    if name.is_empty() {
+        "cron job".to_string()
+    } else {
+        name
+    }
+}
+
+fn parse_cron_schedule_and_prompt(raw: &str) -> Option<(String, String)> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    if let Some((schedule, prompt)) = raw.split_once('|') {
+        let schedule = schedule.trim();
+        let prompt = prompt.trim();
+        if !schedule.is_empty() && !prompt.is_empty() {
+            return Some((schedule.to_string(), prompt.to_string()));
+        }
+        return None;
+    }
+
+    let mut parts = raw.splitn(2, char::is_whitespace);
+    let schedule = parts.next()?.trim();
+    let prompt = parts.next()?.trim();
+    if schedule.is_empty() || prompt.is_empty() {
+        None
+    } else {
+        Some((schedule.to_string(), prompt.to_string()))
+    }
+}
+
+fn gateway_cron_create_response(
+    store: &hakimi_cron::persistence::PersistentCronStore,
+    args: &str,
+) -> String {
+    let Some((schedule, prompt)) = parse_cron_schedule_and_prompt(args) else {
+        return "Usage: /cron add <schedule> <prompt> or /cron add <schedule> | <prompt>"
+            .to_string();
+    };
+
+    if let Err(err) = hakimi_cron::validate_cron_prompt(&prompt) {
+        return format!("🛡️ Blocked cron prompt before create: {err}");
+    }
+
+    let parsed_schedule = match hakimi_cron::parse_schedule(&schedule) {
+        Ok(schedule) => schedule,
+        Err(err) => return format!("❌ Failed to parse cron schedule `{schedule}`: {err}"),
+    };
+    let job = hakimi_cron::CronJob::new(cron_name_from_prompt(&prompt), parsed_schedule, &prompt);
+    let job_id = job.id.clone();
+    let next_run = format_cron_timestamp(job.next_run);
+
+    match store.save_job(&job) {
+        Ok(()) => format!(
+            "✅ Created cron job `{job_id}`.\nSchedule: `{schedule}`\nNext run: `{next_run}`"
+        ),
+        Err(err) => format!("❌ Failed to create cron job: {err}"),
+    }
+}
+
+fn gateway_cron_edit_response(
+    store: &hakimi_cron::persistence::PersistentCronStore,
+    job_id: &str,
+    args: &str,
+) -> String {
+    let mut job = match find_cron_job_by_id(store, job_id) {
+        Ok(Some(job)) => job,
+        Ok(None) => return format!("❌ Cron job `{job_id}` not found."),
+        Err(err) => return format!("❌ Failed to load cron job `{job_id}`: {err}"),
+    };
+
+    let args = args.trim();
+    if args.is_empty() {
+        return format!("Usage: /cron edit {job_id} [schedule|prompt|name] <value>");
+    }
+
+    if let Some((schedule, prompt)) = args.split_once('|') {
+        let schedule = schedule.trim();
+        let prompt = prompt.trim();
+        if schedule.is_empty() || prompt.is_empty() {
+            return format!("Usage: /cron edit {job_id} <schedule> | <prompt>");
+        }
+        if let Err(err) = hakimi_cron::validate_cron_prompt(prompt) {
+            return format!("🛡️ Blocked cron prompt before edit: {err}");
+        }
+        match hakimi_cron::parse_schedule(schedule) {
+            Ok(schedule) => {
+                job.schedule = schedule;
+                job.next_run = Some(job.schedule.next_after(chrono::Utc::now()));
+                job.prompt = prompt.to_string();
+                job.name = cron_name_from_prompt(prompt);
+            }
+            Err(err) => return format!("❌ Failed to parse cron schedule `{schedule}`: {err}"),
+        }
+    } else {
+        let mut parts = args.splitn(2, char::is_whitespace);
+        let field = parts.next().unwrap_or_default().to_ascii_lowercase();
+        let value = parts.next().unwrap_or_default().trim();
+        if value.is_empty() {
+            return format!("Usage: /cron edit {job_id} [schedule|prompt|name] <value>");
+        }
+
+        match field.as_str() {
+            "schedule" => match hakimi_cron::parse_schedule(value) {
+                Ok(schedule) => {
+                    job.schedule = schedule;
+                    job.next_run = Some(job.schedule.next_after(chrono::Utc::now()));
+                }
+                Err(err) => return format!("❌ Failed to parse cron schedule `{value}`: {err}"),
+            },
+            "prompt" => {
+                if let Err(err) = hakimi_cron::validate_cron_prompt(value) {
+                    return format!("🛡️ Blocked cron prompt before edit: {err}");
+                }
+                job.prompt = value.to_string();
+            }
+            "name" => job.name = value.to_string(),
+            _ => return format!("Usage: /cron edit {job_id} [schedule|prompt|name] <value>"),
+        }
+    }
+
+    match store.update_job(&job) {
+        Ok(true) => format!(
+            "✅ Updated cron job `{}` ({})\nSchedule: `{}`\nNext run: `{}`",
+            job.id,
+            job.name,
+            format_cron_schedule(&job.schedule),
+            format_cron_timestamp(job.next_run)
+        ),
+        Ok(false) => format!("❌ Cron job `{job_id}` not found."),
+        Err(err) => format!("❌ Failed to update cron job `{job_id}`: {err}"),
+    }
 }
 
 fn gateway_cron_response(command: Option<&str>) -> String {
@@ -161,9 +298,10 @@ fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
 
 fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Path) -> String {
     let raw = command.unwrap_or("list").trim();
-    let mut parts = raw.split_whitespace();
+    let raw = if raw.is_empty() { "list" } else { raw };
+    let mut parts = raw.splitn(2, char::is_whitespace);
     let action = parts.next().unwrap_or("list").to_ascii_lowercase();
-    let job_id = parts.next();
+    let rest = parts.next().unwrap_or_default().trim();
 
     let store = match hakimi_cron::persistence::PersistentCronStore::open(db_path) {
         Ok(store) => store,
@@ -191,7 +329,16 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
             }
             Err(err) => format!("❌ Failed to list cron jobs: {err}"),
         },
+        "add" | "create" => gateway_cron_create_response(&store, rest),
+        "edit" | "update" => {
+            let mut edit_parts = rest.splitn(2, char::is_whitespace);
+            let Some(job_id) = edit_parts.next().filter(|id| !id.trim().is_empty()) else {
+                return "Usage: /cron edit <job-id> [schedule|prompt|name] <value>".to_string();
+            };
+            gateway_cron_edit_response(&store, job_id, edit_parts.next().unwrap_or_default())
+        }
         "pause" | "resume" | "remove" | "run" => {
+            let job_id = rest.split_whitespace().next();
             let Some(job_id) = job_id else {
                 return format!("Usage: /cron {action} <job-id>");
             };
@@ -239,8 +386,7 @@ fn gateway_cron_response_for_path(command: Option<&str>, db_path: &std::path::Pa
                 _ => unreachable!(),
             }
         }
-        _ => "Usage: /cron [list|pause <job-id>|resume <job-id>|run <job-id>|remove <job-id>]"
-            .to_string(),
+        _ => "Usage: /cron [list|add|edit|pause|resume|run|remove]".to_string(),
     }
 }
 
@@ -3601,10 +3747,53 @@ roles:
     }
 
     #[test]
-    fn gateway_cron_command_lists_pause_resume_run_and_remove_jobs() {
+    fn gateway_cron_command_creates_edits_lists_pause_resume_run_and_remove_jobs() {
         let tmp = tempfile::tempdir().unwrap();
         let db_path = tmp.path().join("cron.db");
         let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let created = gateway_cron_response_for_path(Some("add 15m refresh docs"), &db_path);
+        assert!(created.contains("Created cron job"));
+        let created_jobs = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .load_all()
+            .unwrap();
+        let created_job = created_jobs
+            .iter()
+            .find(|job| job.prompt == "refresh docs")
+            .unwrap();
+        assert!(matches!(
+            created_job.schedule,
+            CronSchedule::IntervalMinutes(15)
+        ));
+
+        let edited_prompt = gateway_cron_response_for_path(
+            Some(&format!(
+                "edit {} prompt refresh docs and changelog",
+                created_job.id
+            )),
+            &db_path,
+        );
+        assert!(edited_prompt.contains("Updated cron job"));
+        let edited = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .get_job(&created_job.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(edited.prompt, "refresh docs and changelog");
+
+        let edited_schedule = gateway_cron_response_for_path(
+            Some(&format!("edit {} 0 9 * * * | daily report", edited.id)),
+            &db_path,
+        );
+        assert!(edited_schedule.contains("Updated cron job"));
+        let edited = PersistentCronStore::open(&db_path)
+            .unwrap()
+            .get_job(&edited.id)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(edited.schedule, CronSchedule::CronExpr(ref expr) if expr == "0 9 * * *"));
+        assert_eq!(edited.prompt, "daily report");
 
         let job = CronJob::new(
             "nightly sync",
@@ -3680,6 +3869,14 @@ roles:
         assert_eq!(
             gateway_cron_response_for_path(Some("remove"), &db_path),
             "Usage: /cron remove <job-id>"
+        );
+        assert_eq!(
+            gateway_cron_response_for_path(Some("add 15m"), &db_path),
+            "Usage: /cron add <schedule> <prompt> or /cron add <schedule> | <prompt>"
+        );
+        assert_eq!(
+            gateway_cron_response_for_path(Some("edit"), &db_path),
+            "Usage: /cron edit <job-id> [schedule|prompt|name] <value>"
         );
     }
 }

@@ -38,6 +38,10 @@ impl PersistentCronStore {
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );",
         )?;
+        ensure_column(&conn, "toolsets", "TEXT")?;
+        ensure_column(&conn, "skills", "TEXT")?;
+        ensure_column(&conn, "context_from", "TEXT")?;
+        ensure_column(&conn, "deliver", "TEXT")?;
 
         info!(path = %path.display(), "Persistent cron store opened");
         Ok(Self {
@@ -56,9 +60,20 @@ impl PersistentCronStore {
             CronSchedule::CronExpr(expr) => ("cron", expr.clone()),
         };
 
+        let toolsets_json = job
+            .enabled_toolsets
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        let skills_json = serde_json::to_string(&job.skills)?;
+        let context_from_json = serde_json::to_string(&job.context_from)?;
+
         conn.execute(
-            "INSERT OR REPLACE INTO cron_jobs (id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO cron_jobs (
+                id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run,
+                toolsets, skills, context_from, deliver
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 job.id,
                 job.name,
@@ -68,6 +83,10 @@ impl PersistentCronStore {
                 job.enabled as i32,
                 job.last_run.map(|t| t.to_rfc3339()),
                 job.next_run.map(|t| t.to_rfc3339()),
+                toolsets_json,
+                skills_json,
+                context_from_json,
+                job.deliver.as_deref(),
             ],
         )?;
 
@@ -79,7 +98,7 @@ impl PersistentCronStore {
     pub fn load_all(&self) -> anyhow::Result<Vec<CronJob>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run FROM cron_jobs",
+            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run, toolsets, skills, context_from, deliver FROM cron_jobs",
         )?;
 
         let jobs = stmt
@@ -92,6 +111,10 @@ impl PersistentCronStore {
                 let enabled: i32 = row.get(5)?;
                 let last_run: Option<String> = row.get(6)?;
                 let next_run: Option<String> = row.get(7)?;
+                let toolsets: Option<String> = row.get(8)?;
+                let skills: Option<String> = row.get(9)?;
+                let context_from: Option<String> = row.get(10)?;
+                let deliver: Option<String> = row.get(11)?;
 
                 let schedule = match schedule_type.as_str() {
                     "minutes" => {
@@ -117,16 +140,30 @@ impl PersistentCronStore {
                             .ok()
                             .map(|dt| dt.with_timezone(&Utc))
                     }),
-                    skills: Vec::new(),
-                    enabled_toolsets: None,
-                    context_from: Vec::new(),
-                    deliver: None,
+                    skills: parse_string_vec(skills),
+                    enabled_toolsets: parse_optional_string_vec(toolsets),
+                    context_from: parse_string_vec(context_from),
+                    deliver,
                 })
             })?
             .filter_map(|r| r.ok())
             .collect();
 
         Ok(jobs)
+    }
+
+    /// Load a single job by ID.
+    pub fn get_job(&self, id: &str) -> anyhow::Result<Option<CronJob>> {
+        Ok(self.load_all()?.into_iter().find(|job| job.id == id))
+    }
+
+    /// Update an existing job. Returns false when the job does not exist.
+    pub fn update_job(&self, job: &CronJob) -> anyhow::Result<bool> {
+        if self.get_job(&job.id)?.is_none() {
+            return Ok(false);
+        }
+        self.save_job(job)?;
+        Ok(true)
     }
 
     /// Remove a job by ID.
@@ -181,6 +218,32 @@ impl PersistentCronStore {
         info!(count = scheduler.list().len(), "Loaded jobs into scheduler");
         Ok(scheduler)
     }
+}
+
+fn ensure_column(conn: &Connection, column: &str, column_type: &str) -> anyhow::Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(cron_jobs)")?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|row| row.ok())
+        .any(|name| name == column);
+
+    if !exists {
+        conn.execute(
+            &format!("ALTER TABLE cron_jobs ADD COLUMN {column} {column_type}"),
+            [],
+        )?;
+    }
+
+    Ok(())
+}
+
+fn parse_string_vec(raw: Option<String>) -> Vec<String> {
+    raw.and_then(|text| serde_json::from_str::<Vec<String>>(&text).ok())
+        .unwrap_or_default()
+}
+
+fn parse_optional_string_vec(raw: Option<String>) -> Option<Vec<String>> {
+    raw.and_then(|text| serde_json::from_str::<Vec<String>>(&text).ok())
 }
 
 /// File-based lock for multi-process cron safety.
@@ -623,6 +686,40 @@ mod tests {
         let loaded = store.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].prompt, "v2");
+    }
+
+    #[test]
+    fn test_save_job_preserves_hermes_extension_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("extensions.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+
+        let mut job = CronJob::new("extended", CronSchedule::IntervalMinutes(10), "prompt");
+        job.skills = vec!["github".to_string(), "release".to_string()];
+        job.enabled_toolsets = Some(vec!["terminal".to_string(), "web".to_string()]);
+        job.context_from = vec!["parent-job".to_string()];
+        job.deliver = Some("origin".to_string());
+
+        store.save_job(&job).unwrap();
+        let loaded = store.load_all().unwrap();
+
+        assert_eq!(loaded[0].skills, vec!["github", "release"]);
+        assert_eq!(
+            loaded[0].enabled_toolsets.as_ref().unwrap(),
+            &vec!["terminal".to_string(), "web".to_string()]
+        );
+        assert_eq!(loaded[0].context_from, vec!["parent-job"]);
+        assert_eq!(loaded[0].deliver.as_deref(), Some("origin"));
+    }
+
+    #[test]
+    fn test_update_job_returns_false_for_missing_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("update_missing.db");
+        let store = PersistentCronStore::open(&db_path).unwrap();
+        let job = CronJob::new("missing", CronSchedule::IntervalMinutes(10), "prompt");
+
+        assert!(!store.update_job(&job).unwrap());
     }
 
     #[test]

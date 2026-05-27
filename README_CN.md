@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.82-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.83-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1099-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1101-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -67,7 +67,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1099 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1101 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -75,6 +75,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.83 Gateway Cron 新增与编辑**
+  - gateway 会话现在可以用 `/cron add <schedule> <prompt>` 或 `/cron add <cron expr> | <prompt>` 创建任务，并用 `/cron edit <job-id> schedule|prompt|name <value>` 调整既有任务。
+  - 内置 `cronjob` 工具现在真正实现 `action="update"`，会在 prompt 更新时执行注入扫描，在 schedule 更新时重新计算 `next_run`。
+  - `skills`、`enabled_toolsets`、`context_from` 和 `deliver` 字段现在能在 SQLite cron store 中往返保存，为后续 skill 装载与 gateway 定向投递打底。
 - **v0.3.82 Usage Pricing 成本估算**
   - gateway `/usage` 现在会在 token 计数和 rate-limit 快照之外展示单轮 USD 估算成本。
   - `hakimi-common` 新增离线定价快照，覆盖常见 OpenAI、Anthropic、Gemini、DeepSeek 和 MiniMax 路由，并按供应商语义处理 cached token。
@@ -126,7 +130,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **v0.3.70 Gateway Cron 管理闭环**
   - gateway 会话里现在可以直接执行 `/cron list`、`/cron pause <job-id>`、`/cron resume <job-id>`、`/cron remove <job-id>`。
   - 这些命令直接操作共享的 `~/.hakimi/cron.db`，和 Rust 原生 cron 持久化状态保持一致。
-  - 文档与差距分析也已同步修正：当前已完成基础运维动作，add/edit、delivery 与 skill 装载仍是后续 Hermes parity 工作。
+  - 文档与差距分析也已同步修正：当前已完成基础运维动作，delivery、独立 CLI 管理与 skill 装载仍是后续 Hermes parity 工作。
 
 ### 🧠 Hakimi 原创特性
 
@@ -305,7 +309,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1099 |
+| 测试 | ~500 | 1101 |
 
 ---
 
@@ -315,7 +319,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1099 tests)
+# 运行全部测试 (1101 tests)
 cargo test --workspace
 
 # Debug 日志
