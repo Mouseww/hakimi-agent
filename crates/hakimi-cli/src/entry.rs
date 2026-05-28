@@ -2379,9 +2379,9 @@ async fn build_agent(
             )))
             .await;
         tool_registry
-            .register(std::sync::Arc::new(hakimi_tools::BrowserGetImagesTool::new(
-                browser_manager.clone(),
-            )))
+            .register(std::sync::Arc::new(
+                hakimi_tools::BrowserGetImagesTool::new(browser_manager.clone()),
+            ))
             .await;
         tool_registry
             .register(std::sync::Arc::new(
