@@ -1,6 +1,7 @@
 //! Hakimi TUI — a ratatui-based terminal user interface for the Hakimi Agent.
 
 pub mod app;
+pub mod clipboard;
 pub mod ui;
 
 use chrono::{DateTime, Utc};

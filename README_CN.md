@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.93-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.94-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1126-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1117 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1126 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.94 TUI `/copy` 剪贴板对标**
+  - Hakimi TUI 现在支持 `/copy [N]`，可复制最近一条或倒数第 N 条 assistant 回复到本机系统剪贴板。
+  - 命令会按平台尝试 Windows、macOS、WSL、Wayland、X11 的原生剪贴板写入工具，不新增运行时依赖。
+  - `/copy` 已进入共享 slash-command parser；gateway 会话会提示本地剪贴板复制属于 TUI 使用场景。
 - **v0.3.93 Telegram 命令菜单**
   - Telegram `setMyCommands` 现在会暴露 gateway 的质量与运维命令，包括 `/usage`、`/doctor`、`/logs`、`/providers`、`/platforms`、`/mcp`、`/browser`、`/backup` 和 `/dump`。
   - gateway `/help` 改为面向操作者的分组式命令说明，不再是过短的旧列表。

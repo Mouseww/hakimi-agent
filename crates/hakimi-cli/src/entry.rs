@@ -2862,13 +2862,27 @@ Just send a message to chat with me!"
                     }
                     Some(Command::Auth(_)) => "🔐 **Auth Status:** Not logged into any external providers.".to_string(),
                     Some(Command::Backup(_)) => {
-                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-                        let backup_file = home.join(format!(".hakimi-backup-{}.tar.gz", chrono::Local::now().format("%Y%m%d%H%M%S")));
-                        match std::process::Command::new("tar").arg("-czf").arg(&backup_file).arg("-C").arg(&home).arg(".hakimi").output() {
-                            Ok(_) => format!("✅ Backup created successfully at {}", backup_file.display()),
+                        let home =
+                            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+                        let backup_file = home.join(format!(
+                            ".hakimi-backup-{}.tar.gz",
+                            chrono::Local::now().format("%Y%m%d%H%M%S")
+                        ));
+                        match std::process::Command::new("tar")
+                            .arg("-czf")
+                            .arg(&backup_file)
+                            .arg("-C")
+                            .arg(&home)
+                            .arg(".hakimi")
+                            .output()
+                        {
+                            Ok(_) => {
+                                format!("✅ Backup created successfully at {}", backup_file.display())
+                            }
                             Err(e) => format!("❌ Failed to create backup: {}", e),
                         }
                     }
+                    Some(Command::Copy(_)) => "`/copy [N]` is available in the local Hakimi TUI for copying recent assistant responses. In gateway chats, use your chat client's native copy action.".to_string(),
                     Some(Command::Browser(cmd)) => {
                         match cmd.as_deref() {
                             Some("start") => "🌐 Browser session started.".to_string(),

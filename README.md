@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.93-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.94-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1126-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1117 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1126 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.94 TUI `/copy` Clipboard Parity**:
+  - **Hermes-Style Copy Command**: Hakimi TUI now supports `/copy [N]` to copy the latest or Nth-latest assistant response to the local system clipboard.
+  - **Cross-Platform Clipboard Backends**: the command tries native clipboard writers on Windows, macOS, WSL, Wayland, and X11 without adding a runtime dependency.
+  - **Parser + Gateway Clarity**: `/copy` is now part of the shared slash-command parser, while gateway chats explain that local clipboard copying belongs to the TUI surface.
 - **v0.3.93 Telegram Command Menu**:
   - **Complete Bot Menu**: Telegram `setMyCommands` now exposes the gateway's quality and operations commands, including `/usage`, `/doctor`, `/logs`, `/providers`, `/platforms`, `/mcp`, `/browser`, `/backup`, and `/dump`.
   - **Better Help Surface**: Gateway `/help` now uses grouped, operator-focused command sections instead of a short legacy list.

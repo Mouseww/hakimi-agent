@@ -54,6 +54,8 @@ pub enum Command {
     Auth(Option<String>),
     /// Backup state/memory/sessions
     Backup(Option<String>),
+    /// Copy a recent local assistant response to the system clipboard.
+    Copy(Option<String>),
     /// Open/control browser
     Browser(Option<String>),
     /// Manage file checkpoints
@@ -129,6 +131,7 @@ impl Command {
             "update" => Some(Command::Update),
             "auth" => Some(Command::Auth(arg.map(String::from))),
             "backup" => Some(Command::Backup(arg.map(String::from))),
+            "copy" | "cp" => Some(Command::Copy(arg.map(String::from))),
             "browser" | "b" => Some(Command::Browser(arg.map(String::from))),
             "checkpoints" | "ckpt" => Some(Command::Checkpoints(arg.map(String::from))),
             "dump" => Some(Command::Dump(arg.map(String::from))),
@@ -185,6 +188,8 @@ impl fmt::Display for Command {
             Command::Auth(Some(a)) => write!(f, "/auth {a}"),
             Command::Backup(None) => write!(f, "/backup"),
             Command::Backup(Some(b)) => write!(f, "/backup {b}"),
+            Command::Copy(None) => write!(f, "/copy"),
+            Command::Copy(Some(c)) => write!(f, "/copy {c}"),
             Command::Browser(None) => write!(f, "/browser"),
             Command::Browser(Some(b)) => write!(f, "/browser {b}"),
             Command::Checkpoints(None) => write!(f, "/checkpoints"),
@@ -254,6 +259,15 @@ mod tests {
         );
         assert_eq!(Command::parse("/doctor"), Some(Command::Doctor));
         assert_eq!(Command::parse("/setup"), Some(Command::Setup));
+        assert_eq!(Command::parse("/copy"), Some(Command::Copy(None)));
+        assert_eq!(
+            Command::parse("/copy 2"),
+            Some(Command::Copy(Some("2".into())))
+        );
+        assert_eq!(
+            Command::parse("/cp 3"),
+            Some(Command::Copy(Some("3".into())))
+        );
         assert_eq!(Command::parse("/cron"), Some(Command::Cron(None)));
         assert_eq!(
             Command::parse("/cron list"),

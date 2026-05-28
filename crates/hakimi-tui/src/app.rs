@@ -1,6 +1,9 @@
 //! Application state and event handling for the Hakimi TUI.
 
-use crate::{AgentCommand, AgentEvent, ChatMessage, SPINNER_FRAMES, ToolActivity, ToolStatus};
+use crate::{
+    AgentCommand, AgentEvent, ChatMessage, SPINNER_FRAMES, ToolActivity, ToolStatus,
+    clipboard::{copy_assistant_response, write_clipboard_text},
+};
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
@@ -222,8 +225,24 @@ impl App {
         match parts[0] {
             "/help" => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help     — Show this help\n  /clear    — Clear chat history\n  /tools    — Toggle tools panel\n  /quit     — Exit the application",
+                    "Commands:\n  /help       — Show this help\n  /copy [N]   — Copy the Nth latest assistant response\n  /clear      — Clear chat history\n  /tools      — Toggle tools panel\n  /quit       — Exit the application",
                 ));
+            }
+            "/copy" | "/cp" => {
+                let response = copy_assistant_response(
+                    &self.messages,
+                    parts.get(1).copied(),
+                    write_clipboard_text,
+                );
+                match response {
+                    crate::clipboard::CopyAssistantResponse::Copied { chars } => self
+                        .messages
+                        .push(ChatMessage::system(format!("copied {chars} characters"))),
+                    other if other.is_error() => {
+                        self.messages.push(ChatMessage::error(other.message()))
+                    }
+                    other => self.messages.push(ChatMessage::system(other.message())),
+                }
             }
             "/clear" => {
                 self.messages.clear();
@@ -675,6 +694,44 @@ mod tests {
         // welcome + help
         assert_eq!(app.messages.len(), 2);
         assert!(app.messages[1].content.contains("/help"));
+        assert!(app.messages[1].content.contains("/copy"));
+    }
+
+    #[test]
+    fn slash_copy_without_assistant_message_shows_error() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/copy".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Error);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("nothing to copy")
+        );
+    }
+
+    #[test]
+    fn slash_copy_alias_rejects_non_numeric_argument() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::assistant("answer"));
+        for c in "/cp nope".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Error);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("usage: /copy")
+        );
     }
 
     #[test]

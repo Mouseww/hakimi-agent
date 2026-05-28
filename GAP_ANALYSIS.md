@@ -114,6 +114,7 @@ Generated: 2026-05-21
 
 ### TUI
 - **Ratatui TUI** — Terminal UI with chat panel, tools activity panel, status bar
+- **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers
 - **Spinner animation** — Thinking indicator
 - **Key handling** — Ctrl+C quit, input editing, scrolling
 
@@ -428,10 +429,10 @@ Generated: 2026-05-21
 - **Hermes location**: `agent/shell_hooks.py`
 - **Priority**: **Low** — Extensibility
 
-#### 55. Clipboard Integration
+#### 55. ~~Clipboard Integration~~ ✅ DONE
 - **What**: Copy output to clipboard
 - **Hermes location**: `hermes_cli/clipboard.py`
-- **Priority**: **Low** — Convenience
+- **Status**: ✅ Done in v0.3.94 — TUI `/copy [N]` copies the latest or Nth-latest assistant response to the local clipboard using native platform writers; gateway chats surface a clear local-only notice instead of pretending remote clipboard access exists
 
 #### 56. PTY Bridge
 - **What**: Pseudo-terminal bridge for interactive CLI tools
@@ -609,9 +610,10 @@ Generated: 2026-05-21
 | 21 | Think Scrubber | `hakimi-transports/src/scrubber.rs`, `hakimi-core/src/loop_impl.rs` | 18 | ✅ Hermes-style stateful reasoning tag scrubbing for streaming and non-streaming responses |
 | 22 | Rate Limit Tracking + Gateway Usage + Cost Estimates | `hakimi-transports/src/rate_limit.rs`, `hakimi-common/src/usage_pricing.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 17 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls, Hermes-style estimated cost, pricing snapshot version, plus rate-limit display |
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
+| 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 9 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends and exposes the command in shared slash parsing |
 
 ### Summary
-- **Total tests**: 1117 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1126 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
