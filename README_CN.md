@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.100-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.101-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1150-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1157-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1150 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1157 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.101 输出 token 预算恢复**
+  - 对齐 Hermes 最新上下文恢复语义：当 provider 错误明确给出 `available_tokens` 时，只临时降低重试的 `max_tokens`，不把 prompt 误判为过长。
+  - 长 Anthropic 对话可保留当前上下文，用安全输出上限重试，避免无谓压缩。
+  - 新增 Anthropic 标准输出上限错误、自然语言变体、prompt overflow 非匹配的解析与重试参数回归覆盖。
 - **v0.3.100 Web URL 脱敏对标**
   - 普通 `http`、`https`、`ws`、`wss` 和 `ftp` URL 现在会保持原样，包括 OAuth callback、magic link、预签名 URL，以及 agent 需要继续访问的 request-target query。
   - Provider key、JWT、数据库连接串密码、私钥、Bearer token 和纯 form-urlencoded 密钥字段仍会在工具输出展示前被遮蔽。

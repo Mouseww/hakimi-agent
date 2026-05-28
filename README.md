@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.100-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.101-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1150-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1157-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1150 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1157 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.101 Output Token Budget Recovery**:
+  - **Hermes Context-Halving Parity**: provider errors that report `available_tokens` now lower only the retry `max_tokens` budget instead of treating the prompt as too large.
+  - **Prompt Preservation**: long Anthropic turns can retry with a safe output cap while keeping the current context intact.
+  - **Regression Coverage**: added parser and retry-parameter tests for canonical Anthropic output-cap errors, natural-language variants, and prompt-overflow non-matches.
 - **v0.3.100 Web URL Redaction Parity**:
   - **Hermes URL Passthrough**: ordinary `http`, `https`, `ws`, `wss`, and `ftp` URLs now remain intact, including OAuth callbacks, magic links, pre-signed URLs, and request-target query strings the agent may need to follow.
   - **High-Confidence Secret Masking**: provider keys, JWTs, database connection-string passwords, private keys, bearer tokens, and pure form-urlencoded secret fields are still redacted before tool output is surfaced.

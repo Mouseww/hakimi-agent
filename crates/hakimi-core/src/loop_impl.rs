@@ -9,7 +9,9 @@ use tracing::{debug, info, warn};
 use crate::agent::AIAgent;
 use crate::budget::IterationBudget;
 use crate::conversation::ConversationResult;
-use crate::error_classifier::{ErrorClassifier, RecoveryAction};
+use crate::error_classifier::{
+    ErrorClassifier, RecoveryAction, parse_available_output_tokens_from_error,
+};
 use crate::guardrails::{GuardrailDecision, ToolGuardrails};
 use crate::retry::{jittered_backoff, should_retry};
 use std::time::Duration;
@@ -26,6 +28,12 @@ const MAX_DELAY: Duration = Duration::from_secs(30);
 /// Maximum number of automatic continuation requests after a model response
 /// stops because it hit the provider output-token limit.
 const MAX_LENGTH_CONTINUATIONS: usize = 3;
+
+/// Safety margin below provider-reported available output tokens.
+const OUTPUT_TOKEN_RETRY_SAFETY_MARGIN: u32 = 64;
+
+/// Bound automatic max-token adjustments so malformed errors cannot spin.
+const MAX_OUTPUT_TOKEN_ADJUSTMENTS: u32 = 2;
 
 const CONTINUE_AFTER_LENGTH_PROMPT: &str = "Your previous response was cut off by the output token limit. Continue exactly where you stopped. Do not repeat earlier text. Finish the answer completely.";
 
@@ -66,6 +74,21 @@ fn join_continuation_parts(parts: &[String]) -> String {
         append_text_preserving_layout(&mut merged, part);
     }
     merged
+}
+
+fn adjust_max_tokens_for_available_output(params: &mut RequestParams, error: &str) -> Option<u32> {
+    let available = parse_available_output_tokens_from_error(error)?;
+    let adjusted = available
+        .saturating_sub(OUTPUT_TOKEN_RETRY_SAFETY_MARGIN)
+        .max(1);
+    if let Some(current) = params.max_tokens
+        && current <= adjusted
+    {
+        return None;
+    }
+
+    params.max_tokens = Some(adjusted);
+    Some(adjusted)
 }
 
 /// Run the core conversation loop (non-streaming).
@@ -260,6 +283,8 @@ async fn fetch_response(
     // Maximum retry attempts per fetch.
     let max_retries = MAX_RETRIES;
     let mut attempt = 0;
+    let mut output_token_adjustments = 0;
+    let mut effective_params = params.clone();
 
     loop {
         let result = if streaming {
@@ -268,13 +293,13 @@ async fn fetch_response(
                 model,
                 send_messages,
                 tool_defs,
-                params,
+                &effective_params,
                 callback.clone(),
             )
             .await
         } else {
             transport
-                .execute(model, send_messages, tool_defs, params)
+                .execute(model, send_messages, tool_defs, &effective_params)
                 .await
         };
 
@@ -285,9 +310,23 @@ async fn fetch_response(
             }
             Err(e) => {
                 *api_call_count += 1;
+                let error_text = e.to_string();
+
+                if output_token_adjustments < MAX_OUTPUT_TOKEN_ADJUSTMENTS
+                    && let Some(max_tokens) =
+                        adjust_max_tokens_for_available_output(&mut effective_params, &error_text)
+                {
+                    output_token_adjustments += 1;
+                    warn!(
+                        max_tokens = max_tokens,
+                        adjustment = output_token_adjustments,
+                        "Provider reported a smaller available output budget; retrying with adjusted max_tokens"
+                    );
+                    continue;
+                }
 
                 let classifier = ErrorClassifier::new();
-                let classification = classifier.classify_transport_error(&e.to_string());
+                let classification = classifier.classify_transport_error(&error_text);
 
                 match classification.action {
                     RecoveryAction::CompressContext => {
@@ -794,10 +833,11 @@ fn accumulator_to_response(acc: &StreamAccumulator) -> NormalizedResponse {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_text_preserving_layout, self_improvement_notice, tool_result_media_event,
-        truncate_for_tool_notice,
+        adjust_max_tokens_for_available_output, append_text_preserving_layout,
+        self_improvement_notice, tool_result_media_event, truncate_for_tool_notice,
     };
     use hakimi_common::Message;
+    use hakimi_transports::RequestParams;
 
     #[test]
     fn append_streamed_cjk_chunks_without_spaces() {
@@ -828,6 +868,45 @@ mod tests {
     #[test]
     fn truncate_tool_notice_replaces_newlines_without_truncating_short_text() {
         assert_eq!(truncate_for_tool_notice("hello\nworld", 40), "hello world");
+    }
+
+    #[test]
+    fn adjusts_unset_max_tokens_from_provider_available_budget() {
+        let mut params = RequestParams::default();
+        let error = "max_tokens: 128000 > context_window: 200000 - input_tokens: 180000 = available_tokens: 20000";
+
+        assert_eq!(
+            adjust_max_tokens_for_available_output(&mut params, error),
+            Some(19936)
+        );
+        assert_eq!(params.max_tokens, Some(19936));
+    }
+
+    #[test]
+    fn keeps_smaller_explicit_max_tokens() {
+        let mut params = RequestParams {
+            max_tokens: Some(4096),
+            ..Default::default()
+        };
+        let error = "max_tokens: 8192 > context_window: 200000 - input_tokens: 195000 = available_tokens: 5000";
+
+        assert_eq!(
+            adjust_max_tokens_for_available_output(&mut params, error),
+            None
+        );
+        assert_eq!(params.max_tokens, Some(4096));
+    }
+
+    #[test]
+    fn ignores_prompt_overflow_without_available_output_budget() {
+        let mut params = RequestParams::default();
+        let error = "prompt is too long: 205000 tokens > 200000 maximum";
+
+        assert_eq!(
+            adjust_max_tokens_for_available_output(&mut params, error),
+            None
+        );
+        assert_eq!(params.max_tokens, None);
     }
 
     #[test]

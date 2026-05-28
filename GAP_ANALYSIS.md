@@ -97,6 +97,7 @@ Generated: 2026-05-21
 - **should_retry()** — Transport/IO errors retryable, tool/config errors not
 - **HakimiError enum** — Transport, Tool, Config, Session, Context, Io, Json, Other
 - **Responses stream recovery** — Incomplete Responses SSE maps to continuation, and truncated streams retry before surfacing partial output
+- **Output-token budget recovery** — Provider errors with `available_tokens` lower only the retry `max_tokens` budget, preserving the current prompt/context instead of forcing context compression
 - **Think scrubber** — Stateful Hermes-style removal of reasoning/thinking blocks from streaming and non-streaming assistant content
 
 ### Config
@@ -616,9 +617,10 @@ Generated: 2026-05-21
 | 25 | TUI `/history` Review | `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Hermes-style `/history [N]` / `/hist [N]` reviews recent user/assistant messages locally and gives gateway users a clear surface-boundary notice |
 | 26 | Session Title Generation | `hakimi-session/src/message_ops.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ First user messages auto-title untitled persisted sessions, preserve manual titles, avoid duplicate generated titles, and truncate Unicode safely |
 | 27 | Plugin CLI/Templates | `hakimi-cli/src/entry.rs`, `hakimi-cli/src/lib.rs`, `templates/plugin-*.yaml` | 4 | ✅ `hakimi plugins list|templates|init|path` and gateway `/plugins` now expose HTTP plugin discovery and safe template scaffolding |
+| 28 | Output Token Budget Recovery | `hakimi-core/src/error_classifier.rs`, `hakimi-core/src/loop_impl.rs` | 7 | ✅ Anthropic-style `available_tokens` errors now retry with a safe temporary `max_tokens` cap instead of compressing context when the prompt itself still fits |
 
 ### Summary
-- **Total tests**: 1150 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1157 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

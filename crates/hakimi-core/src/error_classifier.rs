@@ -91,6 +91,24 @@ pub struct ErrorClassifier {
     custom_rules: Vec<ErrorRule>,
 }
 
+/// Extract an output-token budget from provider errors that say the prompt
+/// fits, but the requested `max_tokens` does not fit in the remaining window.
+pub fn parse_available_output_tokens_from_error(error: &str) -> Option<u32> {
+    let lower = error.to_lowercase();
+    if !lower.contains("max_tokens") {
+        return None;
+    }
+    if !lower.contains("available_tokens") && !lower.contains("available tokens") {
+        return None;
+    }
+
+    let pattern = Regex::new(r"(?i)available[_\s]+tokens?\s*[:=]\s*([0-9][0-9_,]*)")
+        .expect("available token regex is valid");
+    let raw = pattern.captures(error)?.get(1)?.as_str();
+    let digits: String = raw.chars().filter(|ch| ch.is_ascii_digit()).collect();
+    digits.parse::<u32>().ok().filter(|tokens| *tokens > 0)
+}
+
 impl ErrorClassifier {
     /// Create a classifier with sensible defaults (no custom rules).
     pub fn new() -> Self {
@@ -1112,6 +1130,30 @@ mod tests {
         assert_eq!(r.action, RecoveryAction::Abort);
         assert!(!r.is_retryable);
         assert_eq!(r.retry_after_ms, None);
+    }
+
+    #[test]
+    fn test_parse_available_output_tokens_anthropic_format() {
+        let msg = "max_tokens: 128000 > context_window: 200000 - input_tokens: 180000 = available_tokens: 20000";
+        assert_eq!(parse_available_output_tokens_from_error(msg), Some(20000));
+    }
+
+    #[test]
+    fn test_parse_available_output_tokens_natural_language() {
+        let msg = "max_tokens must be at most 10,000 given your prompt (available tokens: 10,000)";
+        assert_eq!(parse_available_output_tokens_from_error(msg), Some(10000));
+    }
+
+    #[test]
+    fn test_parse_available_output_tokens_ignores_prompt_overflow() {
+        let msg = "prompt is too long: 205000 tokens > 200000 maximum";
+        assert_eq!(parse_available_output_tokens_from_error(msg), None);
+    }
+
+    #[test]
+    fn test_parse_available_output_tokens_requires_max_tokens_context() {
+        let msg = "available tokens: 8192, but this is only a quota notice";
+        assert_eq!(parse_available_output_tokens_from_error(msg), None);
     }
 
     #[test]
