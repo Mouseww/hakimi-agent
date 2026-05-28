@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.91-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.92-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -80,6 +80,9 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.92 Terminal Workdir Fallback**:
+  - **Empty Workdir Handling**: terminal tool calls now treat `workdir: ""` and whitespace-only workdirs as omitted, falling back to the tool context workdir instead of passing an empty path to `current_dir`.
+  - **Regression Coverage**: added targeted coverage for empty workdir resolution and execution.
 - **v0.3.91 Linux Runtime Pathing**:
   - **Canonical Gateway Binary**: managed systemd installs now prefer `~/.hakimi/bin/hakimi --gateway start` and keep `/usr/local/bin/hakimi` as a symlink/launcher.
   - **Stable Tool PATH**: terminal and process tools prefix Hakimi and Cargo managed bins before system paths, reducing systemd vs interactive shell drift.

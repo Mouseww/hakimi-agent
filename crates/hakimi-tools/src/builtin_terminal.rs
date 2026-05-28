@@ -106,10 +106,7 @@ impl Tool for TerminalTool {
             .unwrap_or(DEFAULT_TIMEOUT_SECS)
             .min(600);
 
-        let workdir = args
-            .get("workdir")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&ctx.workdir);
+        let workdir = resolve_terminal_workdir(args, ctx);
 
         let is_heavy = heavy_patterns.iter().any(|p| command.contains(p));
         if is_heavy && !command.contains("--force-local") && !background {
@@ -270,5 +267,59 @@ impl Tool for TerminalTool {
         }
 
         Ok(result)
+    }
+}
+
+fn resolve_terminal_workdir<'a>(args: &'a JsonValue, ctx: &'a ToolContext) -> &'a str {
+    args.get("workdir")
+        .and_then(|v| v.as_str())
+        .filter(|workdir| !workdir.trim().is_empty())
+        .unwrap_or(&ctx.workdir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Tool;
+
+    fn test_context(workdir: String) -> ToolContext {
+        ToolContext {
+            session_id: "test-session".to_string(),
+            workdir,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn empty_workdir_falls_back_to_context_workdir() {
+        let ctx = test_context("/tmp/hakimi-context".to_string());
+
+        assert_eq!(
+            resolve_terminal_workdir(&json!({ "workdir": "" }), &ctx),
+            "/tmp/hakimi-context"
+        );
+        assert_eq!(
+            resolve_terminal_workdir(&json!({ "workdir": "   " }), &ctx),
+            "/tmp/hakimi-context"
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_executes_with_context_workdir_when_workdir_is_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let ctx = test_context(temp.path().to_string_lossy().to_string());
+        let result = TerminalTool
+            .execute(
+                &json!({
+                    "command": "test -d . && printf ok",
+                    "workdir": "",
+                }),
+                &ctx,
+            )
+            .await
+            .unwrap();
+
+        assert!(result.contains("STDOUT:\nok"));
+        assert!(result.contains("EXIT CODE: 0"));
     }
 }
