@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.99-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.100-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1146-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1150-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1146 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1150 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.100 Web URL Redaction Parity**:
+  - **Hermes URL Passthrough**: ordinary `http`, `https`, `ws`, `wss`, and `ftp` URLs now remain intact, including OAuth callbacks, magic links, pre-signed URLs, and request-target query strings the agent may need to follow.
+  - **High-Confidence Secret Masking**: provider keys, JWTs, database connection-string passwords, private keys, bearer tokens, and pure form-urlencoded secret fields are still redacted before tool output is surfaced.
+  - **Regression Coverage**: added deterministic coverage for URL passthrough, URL-embedded provider tokens, URL-embedded JWTs, and form-body redaction without live provider calls.
 - **v0.3.99 TUI OSC 52 Clipboard Fallback**:
   - **Hermes Terminal Clipboard Parity**: `/copy [N]` now falls back to OSC 52 terminal clipboard output when native clipboard writers are unavailable.
   - **Remote Terminal Friendly**: SSH, tmux, and terminal-emulator workflows can still receive copied assistant responses when platform tools like `pbcopy`, `wl-copy`, or PowerShell are missing.
@@ -97,7 +101,7 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
   - **Bounded Local Review**: optional numeric limits show the latest N visible conversation messages while skipping tool/system noise.
   - **Parser + Gateway Clarity**: `/history` is part of the shared slash-command parser, and gateway chats explain that full history review belongs to the local TUI/chat surface.
 - **v0.3.95 Tool Output Secret Redaction**:
-  - **Hermes-Style Redactor**: shared Rust-native redaction now masks API keys, bearer tokens, private keys, JWTs, database URLs, and sensitive URL/query fields before tool output is surfaced.
+  - **Hermes-Style Redactor**: shared Rust-native redaction now masks API keys, bearer tokens, private keys, JWTs, database URLs, high-confidence URL-embedded tokens, and form-urlencoded secret fields before tool output is surfaced.
   - **Output Boundary Coverage**: terminal, process, code execution, and command-plugin results now redact secrets in stdout/stderr, stored commands, diagnostics, and plugin errors.
   - **Regression Coverage**: added offline tests for redaction patterns and tool-output boundaries without calling live providers.
 - **v0.3.94 TUI `/copy` Clipboard Parity**:

@@ -294,7 +294,7 @@ Generated: 2026-05-21
 #### 29. ~~Secret Redaction~~ ✅ DONE
 - **What**: Regex-based secret masking for logs and tool output
 - **Hermes location**: `agent/redact.py`
-- **Status**: ✅ Done in v0.3.95 — `hakimi-common::redact_sensitive_text()` masks provider keys, bearer tokens, private keys, JWTs, database URLs, URL userinfo, sensitive URL/query/form fields, and JSON/env secret carriers; terminal/process/code_exec/command-plugin output boundaries redact stdout, stderr, diagnostics, stored commands, and plugin errors before surfacing them.
+- **Status**: ✅ Done in v0.3.100 — `hakimi-common::redact_sensitive_text()` masks provider keys, bearer tokens, private keys, JWTs, database connection-string passwords, high-confidence URL-embedded tokens, pure form-urlencoded secret fields, and JSON/env secret carriers while preserving ordinary Web URLs for OAuth callbacks, magic links, pre-signed URLs, and request targets; terminal/process/code_exec/command-plugin output boundaries redact stdout, stderr, diagnostics, stored commands, and plugin errors before surfacing them.
 
 #### 30. Prompt Injection Detection
 - **What**: Scans context files (AGENTS.md, .cursorrules, SOUL.md) for injection patterns before system prompt injection
@@ -618,7 +618,7 @@ Generated: 2026-05-21
 | 27 | Plugin CLI/Templates | `hakimi-cli/src/entry.rs`, `hakimi-cli/src/lib.rs`, `templates/plugin-*.yaml` | 4 | ✅ `hakimi plugins list|templates|init|path` and gateway `/plugins` now expose HTTP plugin discovery and safe template scaffolding |
 
 ### Summary
-- **Total tests**: 1146 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1150 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

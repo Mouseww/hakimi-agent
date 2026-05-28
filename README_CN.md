@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.99-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.100-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1146-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1150-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1146 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1150 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.100 Web URL 脱敏对标**
+  - 普通 `http`、`https`、`ws`、`wss` 和 `ftp` URL 现在会保持原样，包括 OAuth callback、magic link、预签名 URL，以及 agent 需要继续访问的 request-target query。
+  - Provider key、JWT、数据库连接串密码、私钥、Bearer token 和纯 form-urlencoded 密钥字段仍会在工具输出展示前被遮蔽。
+  - 新增 URL 透传、URL 内 provider token、URL 内 JWT 和 form body 脱敏的确定性回归覆盖，不调用真实供应商 API。
 - **v0.3.99 TUI OSC 52 剪贴板回退**
   - `/copy [N]` 现在会在原生剪贴板写入工具不可用时，回退到 Hermes 风格的 OSC 52 终端剪贴板输出。
   - SSH、tmux 和终端模拟器场景即使缺少 `pbcopy`、`wl-copy` 或 PowerShell，也能复制 assistant 回复。
@@ -98,7 +102,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
   - 可选数字参数会展示最近 N 条可见对话消息，并跳过 tool/system 噪音。
   - `/history` 已进入共享 slash-command parser；gateway 会话会说明完整历史回看属于本地 TUI 或聊天客户端使用场景。
 - **v0.3.95 工具输出密钥脱敏**
-  - 新增共享 Rust 原生脱敏器，在工具输出展示前屏蔽 API key、Bearer token、私钥、JWT、数据库 URL 和敏感 URL/query 字段。
+  - 新增共享 Rust 原生脱敏器，在工具输出展示前屏蔽 API key、Bearer token、私钥、JWT、数据库 URL、高置信 URL 内 token 和 form-urlencoded 密钥字段。
   - terminal、process、code_exec 和命令插件输出现在会对 stdout/stderr、已存命令、诊断信息和插件错误做统一脱敏。
   - 新增离线回归覆盖脱敏模式和工具输出边界，不依赖真实供应商 API。
 - **v0.3.94 TUI `/copy` 剪贴板对标**

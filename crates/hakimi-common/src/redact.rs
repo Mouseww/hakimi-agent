@@ -75,7 +75,7 @@ static PREFIX_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 static ENV_ASSIGN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"\b([A-Z0-9_]{0,50}(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH)[A-Z0-9_]{0,50})\s*=\s*(['"]?)([^'"\s]+)(['"]?)"#,
+        r#"(^|[\s;])([A-Z0-9_]{0,50}(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH)[A-Z0-9_]{0,50})\s*=\s*(['"]?)([^'"\s]+)(['"]?)"#,
     )
     .expect("valid env assignment redaction regex")
 });
@@ -105,23 +105,6 @@ static PRIVATE_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
 static DB_CONNSTR_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)://[^:]+:)([^@]+)(@)")
         .expect("valid connection string redaction regex")
-});
-
-static URL_USERINFO_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(https?|wss?|ftp)://([^/\s:@]+):([^/\s@]+)@")
-        .expect("valid url userinfo redaction regex")
-});
-
-static URL_WITH_QUERY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(https?|wss?|ftp)://([^\s/?#]+)([^\s?#]*)\?([^\s#]+)(#\S*)?")
-        .expect("valid url query redaction regex")
-});
-
-static HTTP_REQUEST_TARGET_QUERY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"(?i)\b((?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)\s+[^ \t\r\n"']*?)\?([^ \t\r\n"']+)"#,
-    )
-    .expect("valid request target redaction regex")
 });
 
 static FORM_BODY_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -169,13 +152,14 @@ pub fn redact_sensitive_text(text: &str) -> String {
     if redacted.contains('=') {
         redacted = ENV_ASSIGN_RE
             .replace_all(&redacted, |caps: &Captures<'_>| {
-                let opening_quote = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-                let closing_quote = caps.get(4).map(|m| m.as_str()).unwrap_or(opening_quote);
+                let opening_quote = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+                let closing_quote = caps.get(5).map(|m| m.as_str()).unwrap_or(opening_quote);
                 format!(
-                    "{}={}{}{}",
+                    "{}{}={}{}{}",
                     &caps[1],
+                    &caps[2],
                     opening_quote,
-                    mask_secret(&caps[3]),
+                    mask_secret(&caps[4]),
                     closing_quote
                 )
             })
@@ -219,27 +203,6 @@ pub fn redact_sensitive_text(text: &str) -> String {
                 format!("{}{}{}", &caps[1], MASK_PLACEHOLDER, &caps[3])
             })
             .into_owned();
-        redacted = URL_USERINFO_RE
-            .replace_all(&redacted, |caps: &Captures<'_>| {
-                format!("{}://{}:{}@", &caps[1], &caps[2], MASK_PLACEHOLDER)
-            })
-            .into_owned();
-
-        if redacted.contains('?') {
-            redacted = URL_WITH_QUERY_RE
-                .replace_all(&redacted, |caps: &Captures<'_>| {
-                    let fragment = caps.get(5).map(|m| m.as_str()).unwrap_or("");
-                    format!(
-                        "{}://{}{}?{}{}",
-                        &caps[1],
-                        &caps[2],
-                        &caps[3],
-                        redact_query_string(&caps[4]),
-                        fragment
-                    )
-                })
-                .into_owned();
-        }
     }
 
     if redacted.contains("eyJ") {
@@ -248,13 +211,10 @@ pub fn redact_sensitive_text(text: &str) -> String {
             .into_owned();
     }
 
-    if redacted.contains('?') && redacted.contains('=') && has_http_method_hint(&redacted) {
-        redacted = HTTP_REQUEST_TARGET_QUERY_RE
-            .replace_all(&redacted, |caps: &Captures<'_>| {
-                format!("{}?{}", &caps[1], redact_query_string(&caps[2]))
-            })
-            .into_owned();
-    }
+    // Web URLs intentionally pass through unchanged. Agents often need to
+    // follow OAuth callbacks, magic links, and pre-signed URLs verbatim.
+    // Known credential shapes inside URLs are still masked by the prefix/JWT
+    // passes above, and database connection strings remain covered separately.
 
     if redacted.contains('&') && redacted.contains('=') {
         let trimmed = redacted.trim();
@@ -346,15 +306,6 @@ fn has_known_prefix_hint(text: &str) -> bool {
     .any(|prefix| text.contains(prefix))
 }
 
-fn has_http_method_hint(text: &str) -> bool {
-    let upper = text.to_ascii_uppercase();
-    [
-        "GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS ", "TRACE ", "CONNECT ",
-    ]
-    .iter()
-    .any(|method| upper.contains(method))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,13 +334,47 @@ mod tests {
     }
 
     #[test]
-    fn redacts_sensitive_url_params_and_userinfo() {
+    fn web_urls_pass_through_unchanged() {
         let text = "GET /hook?code=abc123&state=ok HTTP/1.1 https://user:pass@example.test/cb?api_key=opaque&x=1";
         let redacted = redact_sensitive_text(text);
 
-        assert!(redacted.contains("code=***"));
+        assert_eq!(redacted, text);
+    }
+
+    #[test]
+    fn uppercase_url_query_params_pass_through_unchanged() {
+        let text = "https://example.test/callback?TOKEN=opaqueValue&API_KEY=alsoOpaque&state=ok";
+        let redacted = redact_sensitive_text(text);
+
+        assert_eq!(redacted, text);
+    }
+
+    #[test]
+    fn masks_known_provider_tokens_inside_urls() {
+        let token = format!("{}{}", "sk-", "abcdefghijklmnopqrstuvwxyz123456");
+        let text = format!("https://evil.example/steal?key={token}&state=ok");
+        let redacted = redact_sensitive_text(&text);
+
+        assert!(!redacted.contains(&token));
         assert!(redacted.contains("state=ok"));
-        assert!(redacted.contains("https://user:***@example.test/cb?api_key=***&x=1"));
+    }
+
+    #[test]
+    fn masks_jwts_inside_urls() {
+        let jwt = format!("{}{}", "eyJ", "abcdefghijklmnopqrstuvwxyz.abcdefghi");
+        let text = format!("https://example.test/callback?id_token={jwt}&state=ok");
+        let redacted = redact_sensitive_text(&text);
+
+        assert!(!redacted.contains("eyJabcdefghijklmnopqrstuvwxyz"));
+        assert!(redacted.contains("state=ok"));
+    }
+
+    #[test]
+    fn redacts_pure_form_body_sensitive_fields() {
+        let text = "password=mysecret&username=bob&token=opaqueValue";
+        let redacted = redact_sensitive_text(text);
+
+        assert_eq!(redacted, "password=***&username=bob&token=***");
     }
 
     #[test]
