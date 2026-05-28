@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, redact_sensitive_text};
 use serde_json::{Value as JsonValue, json};
 use std::borrow::Cow;
 use tokio::process::Command;
@@ -226,7 +226,7 @@ def retry(fn, max_attempts=3, delay=2):
 
         if !stdout.is_empty() {
             result.push_str("STDOUT:\n");
-            result.push_str(&stdout);
+            result.push_str(&redact_sensitive_text(&stdout));
         }
 
         if !stderr.is_empty() {
@@ -234,7 +234,7 @@ def retry(fn, max_attempts=3, delay=2):
                 result.push('\n');
             }
             result.push_str("STDERR:\n");
-            result.push_str(&stderr);
+            result.push_str(&redact_sensitive_text(&stderr));
         }
 
         if let Some(code) = output.status.code() {
@@ -388,6 +388,20 @@ mod tests {
         let result = CodeExecTool.execute(&args, &ctx).await.unwrap();
         assert!(result.contains("STDERR"));
         assert!(result.contains("error output"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_redacts_secret_output() {
+        let (_dir, ctx) = make_test_ctx();
+        let token = format!("{}{}", "ghp_", "abcdefghijklmnopqrstuvwxyz1234567890");
+        let args = json!({
+            "code": format!("print('Authorization: Bearer {token}')"),
+            "language": "python"
+        });
+
+        let result = CodeExecTool.execute(&args, &ctx).await.unwrap();
+        assert!(!result.contains(&token));
+        assert!(result.contains("Authorization: Bearer"));
     }
 
     #[tokio::test]

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, redact_sensitive_text};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::io::AsyncReadExt;
@@ -112,7 +112,8 @@ impl Tool for ProcessTool {
 
                 Ok(format!(
                     "Background process started.\nSession ID: {}\nCommand: {}",
-                    proc_session_id, command
+                    proc_session_id,
+                    redact_sensitive_text(command)
                 ))
             }
             "status" => {
@@ -171,7 +172,7 @@ impl Tool for ProcessTool {
                         let text = String::from_utf8_lossy(&buf);
                         if !text.is_empty() {
                             output.push_str("STDOUT:\n");
-                            output.push_str(&text);
+                            output.push_str(&redact_sensitive_text(&text));
                             output.push('\n');
                         }
                     }
@@ -183,7 +184,7 @@ impl Tool for ProcessTool {
                         let text = String::from_utf8_lossy(&buf);
                         if !text.is_empty() {
                             output.push_str("STDERR:\n");
-                            output.push_str(&text);
+                            output.push_str(&redact_sensitive_text(&text));
                             output.push('\n');
                         }
                     }
@@ -264,7 +265,12 @@ impl Tool for ProcessTool {
                         "unknown".to_string()
                     };
 
-                    result.push_str(&format!("[{}] {} - {}\n", id, info.command, status));
+                    result.push_str(&format!(
+                        "[{}] {} - {}\n",
+                        id,
+                        redact_sensitive_text(&info.command),
+                        status
+                    ));
                 }
 
                 // Clean up exited processes
@@ -279,5 +285,20 @@ impl Tool for ProcessTool {
                 action
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use hakimi_common::redact_sensitive_text;
+
+    #[test]
+    fn process_list_redacts_stored_command() {
+        let token = format!("{}{}", "sk-proj-", "abcdefghijklmnopqrstuvwxyz123456");
+        let command = format!("echo OPENAI_API_KEY={token}");
+        let line = format!("process - {}", redact_sensitive_text(&command));
+
+        assert!(!line.contains(&token));
+        assert!(line.contains("OPENAI_API_KEY="));
     }
 }

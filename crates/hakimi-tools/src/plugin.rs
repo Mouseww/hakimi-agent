@@ -19,7 +19,7 @@
 //! must contain a `manifest.yaml` file).
 
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, redact_sensitive_text};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::process::Command;
@@ -202,7 +202,7 @@ impl Tool for CommandPluginTool {
             })?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = redact_sensitive_text(&String::from_utf8_lossy(&output.stderr));
             let code = output.status.code().unwrap_or(-1);
             return Err(HakimiError::Tool(format!(
                 "plugin '{}' exited with code {}: {}",
@@ -218,14 +218,15 @@ impl Tool for CommandPluginTool {
             if let Some(error) = resp.error {
                 return Err(HakimiError::Tool(format!(
                     "plugin '{}' returned error: {}",
-                    self.manifest.name, error
+                    self.manifest.name,
+                    redact_sensitive_text(&error)
                 )));
             }
-            return Ok(resp.result.unwrap_or_default());
+            return Ok(redact_sensitive_text(&resp.result.unwrap_or_default()));
         }
 
         // If not valid JSON, return the raw stdout as the result.
-        Ok(stdout.to_string())
+        Ok(redact_sensitive_text(stdout))
     }
 }
 

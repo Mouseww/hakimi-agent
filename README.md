@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.94-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.95-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1126-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1134-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1126 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1134 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.95 Tool Output Secret Redaction**:
+  - **Hermes-Style Redactor**: shared Rust-native redaction now masks API keys, bearer tokens, private keys, JWTs, database URLs, and sensitive URL/query fields before tool output is surfaced.
+  - **Output Boundary Coverage**: terminal, process, code execution, and command-plugin results now redact secrets in stdout/stderr, stored commands, diagnostics, and plugin errors.
+  - **Regression Coverage**: added offline tests for redaction patterns and tool-output boundaries without calling live providers.
 - **v0.3.94 TUI `/copy` Clipboard Parity**:
   - **Hermes-Style Copy Command**: Hakimi TUI now supports `/copy [N]` to copy the latest or Nth-latest assistant response to the local system clipboard.
   - **Cross-Platform Clipboard Backends**: the command tries native clipboard writers on Windows, macOS, WSL, Wayland, and X11 without adding a runtime dependency.
@@ -502,7 +506,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1117 |
+| Tests | ~500 | 1134 |
 
 ---
 
@@ -512,7 +516,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1117 tests)
+# Run all tests (1134 tests)
 cargo test --workspace
 
 # Debug logging
@@ -563,4 +567,3 @@ MIT License — see [LICENSE](LICENSE)
   <b>Built with 🦀 Rust and ❤️</b><br>
   <sub>Inspired by <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research</sub>
 </p>
-

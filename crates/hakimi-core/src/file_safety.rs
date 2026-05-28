@@ -3,9 +3,9 @@
 //! Provides write-denied path protection, path traversal prevention,
 //! symlink resolution, secret redaction, and prompt injection detection.
 
-use regex::Regex;
 use std::path::{Path, PathBuf};
 
+pub use hakimi_common::SecretRedactor;
 pub use hakimi_common::detect_prompt_injection;
 
 /// Paths that should never be written to by the agent.
@@ -113,63 +113,6 @@ fn normalize_path(path: &Path) -> PathBuf {
     components.iter().collect()
 }
 
-/// Secret redaction engine for masking API keys, tokens, and credentials.
-pub struct SecretRedactor {
-    patterns: Vec<Regex>,
-}
-
-impl SecretRedactor {
-    /// Create a new secret redactor with common patterns.
-    pub fn new() -> Self {
-        let patterns = vec![
-            // OpenAI-style API keys: sk-...
-            Regex::new(r"sk-[a-zA-Z0-9]{20,}").unwrap(),
-            // Anthropic-style API keys: sk-ant-...
-            Regex::new(r"sk-ant-[a-zA-Z0-9-]{20,}").unwrap(),
-            // Generic Bearer tokens.
-            Regex::new(r"Bearer\s+[a-zA-Z0-9._\-]{20,}").unwrap(),
-            // Generic API key patterns.
-            Regex::new(r#"(?i)(api[_-]?key|apikey|token|secret|password)\s*[:=]\s*["']?([a-zA-Z0-9._\-]{20,})["']?"#).unwrap(),
-            // AWS access keys.
-            Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
-            // GitHub tokens.
-            Regex::new(r"gh[ps]_[a-zA-Z0-9]{36,}").unwrap(),
-            // Generic hex tokens (32+ chars).
-            Regex::new(r"\b[a-f0-9]{32,}\b").unwrap(),
-        ];
-        Self { patterns }
-    }
-
-    /// Redact secrets in a string, replacing them with masked versions.
-    pub fn redact(&self, text: &str) -> String {
-        let mut result = text.to_string();
-        for pattern in &self.patterns {
-            result = pattern
-                .replace_all(&result, |caps: &regex::Captures| {
-                    let matched = caps.get(0).unwrap().as_str();
-                    mask_token(matched)
-                })
-                .to_string();
-        }
-        result
-    }
-}
-
-impl Default for SecretRedactor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Mask a token: show first 6 and last 4 characters if long enough.
-fn mask_token(token: &str) -> String {
-    if token.len() <= 10 {
-        "*".repeat(token.len())
-    } else {
-        format!("{}…{}", &token[..6], &token[token.len() - 4..])
-    }
-}
-
 /// Check if a file content contains prompt injection attempts.
 pub fn scan_file_for_injection(path: &Path) -> Result<Vec<String>, std::io::Error> {
     let content = std::fs::read_to_string(path)?;
@@ -245,32 +188,32 @@ mod tests {
     #[test]
     fn test_redact_openai_key() {
         let redactor = SecretRedactor::new();
-        let text = "My key is sk-abc123def456ghi789jkl012mno345";
-        let redacted = redactor.redact(text);
-        assert!(!redacted.contains("sk-abc123def456ghi789jkl012mno345"));
-        assert!(redacted.contains("…") || redacted.contains("*"));
+        let token = format!("{}{}", "sk-", "abc123def456ghi789jkl012mno345");
+        let redacted = redactor.redact(&format!("My key is {token}"));
+        assert!(!redacted.contains(&token));
+        assert!(redacted.contains("sk-abc...o345"));
     }
 
     #[test]
     fn test_redact_aws_key() {
         let redactor = SecretRedactor::new();
-        let text = "Access key: AKIAIOSFODNN7EXAMPLE";
-        let redacted = redactor.redact(text);
-        assert!(!redacted.contains("AKIAIOSFODNN7EXAMPLE"));
+        let token = format!("{}{}", "AKIA", "IOSFODNN7EXAMPLE");
+        let redacted = redactor.redact(&format!("Access key: {token}"));
+        assert!(!redacted.contains(&token));
     }
 
     #[test]
     fn test_mask_token_short() {
-        assert_eq!(mask_token("short"), "*****");
-        assert_eq!(mask_token("12345"), "*****");
+        assert_eq!(hakimi_common::mask_secret("short"), "***");
+        assert_eq!(hakimi_common::mask_secret("12345"), "***");
     }
 
     #[test]
     fn test_mask_token_long() {
-        let masked = mask_token("abcdefghijklmnop");
-        assert!(masked.contains("…"));
+        let masked = hakimi_common::mask_secret("abcdefghijklmnopqrstuvwxyz");
+        assert!(masked.contains("..."));
         assert!(masked.starts_with("abcdef"));
-        assert!(masked.ends_with("mnop"));
+        assert!(masked.ends_with("wxyz"));
     }
 
     // ── Prompt injection detection ─────────────────────────────────────

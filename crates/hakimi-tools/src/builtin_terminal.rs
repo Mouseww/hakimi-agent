@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, redact_sensitive_text};
 use serde_json::{Value as JsonValue, json};
 use tokio::process::Command;
 use tracing::debug;
@@ -237,7 +237,7 @@ impl Tool for TerminalTool {
 
         if !stdout.is_empty() {
             result.push_str("STDOUT:\n");
-            result.push_str(&stdout);
+            result.push_str(&redact_sensitive_text(&stdout));
         }
 
         if !stderr.is_empty() {
@@ -245,7 +245,7 @@ impl Tool for TerminalTool {
                 result.push('\n');
             }
             result.push_str("STDERR:\n");
-            result.push_str(&stderr);
+            result.push_str(&redact_sensitive_text(&stderr));
         }
 
         if let Some(code) = output.status.code() {
@@ -256,7 +256,7 @@ impl Tool for TerminalTool {
             if let Some(diagnostic) = diagnose_shell_failure(&stderr, Some(code), workdir) {
                 result.push('\n');
                 result.push_str("DIAGNOSTIC:\n");
-                result.push_str(&diagnostic);
+                result.push_str(&redact_sensitive_text(&diagnostic));
             }
         } else {
             result.push_str("\nEXIT CODE: (terminated by signal)");
@@ -321,5 +321,25 @@ mod tests {
 
         assert!(result.contains("STDOUT:\nok"));
         assert!(result.contains("EXIT CODE: 0"));
+    }
+
+    #[tokio::test]
+    async fn terminal_redacts_secret_output() {
+        let temp = tempfile::tempdir().unwrap();
+        let ctx = test_context(temp.path().to_string_lossy().to_string());
+        let token = format!("{}{}", "sk-proj-", "abcdefghijklmnopqrstuvwxyz123456");
+        let result = TerminalTool
+            .execute(
+                &json!({
+                    "command": format!("printf 'OPENAI_API_KEY={token}'"),
+                    "workdir": "",
+                }),
+                &ctx,
+            )
+            .await
+            .unwrap();
+
+        assert!(!result.contains(&token));
+        assert!(result.contains("OPENAI_API_KEY="));
     }
 }

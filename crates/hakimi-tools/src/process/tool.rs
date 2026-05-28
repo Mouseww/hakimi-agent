@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, redact_sensitive_text};
 use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use crate::Tool;
@@ -91,7 +91,7 @@ impl Tool for ProcessTool {
                 
                 let logs = self.manager.read_logs(sid, offset, limit).await
                     .map_err(|e| HakimiError::Tool(e.to_string()))?;
-                Ok(logs)
+                Ok(redact_sensitive_text(&logs))
             }
             "write" | "submit" => {
                 let sid = args.get("session_id").and_then(|v| v.as_str())

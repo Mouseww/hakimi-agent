@@ -288,11 +288,10 @@ Generated: 2026-05-21
 - **Details**: `build_write_denied_paths()` for sensitive locations. `validate_within_dir()` for path traversal checks. Used by skill_manager, cronjob_tools, credential_files.
 - **Priority**: **Medium** — Security hardening
 
-#### 29. Secret Redaction
+#### 29. ~~Secret Redaction~~ ✅ DONE
 - **What**: Regex-based secret masking for logs and tool output
 - **Hermes location**: `agent/redact.py`
-- **Details**: Masks API keys, tokens, credentials. Short tokens fully masked, long tokens preserve first 6 + last 4 chars. Sensitive query-string param detection.
-- **Priority**: **Medium** — Security for logging
+- **Status**: ✅ Done in v0.3.95 — `hakimi-common::redact_sensitive_text()` masks provider keys, bearer tokens, private keys, JWTs, database URLs, URL userinfo, sensitive URL/query/form fields, and JSON/env secret carriers; terminal/process/code_exec/command-plugin output boundaries redact stdout, stderr, diagnostics, stored commands, and plugin errors before surfacing them.
 
 #### 30. Prompt Injection Detection
 - **What**: Scans context files (AGENTS.md, .cursorrules, SOUL.md) for injection patterns before system prompt injection
@@ -556,7 +555,7 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~59** (up from ~30)
+**Fully present in Hakimi: ~60** (up from ~30)
 **Partially implemented: ~11**
 **Missing entirely: ~81+**
 
@@ -589,7 +588,7 @@ Generated: 2026-05-21
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
 | 6 | MCP HTTP/SSE | `hakimi-mcp/src/http_transport.rs`, `sse_transport.rs` | 19 | ✅ StreamableHTTP, SSE, auto-reconnect, per-server timeouts |
-| 7 | File Safety | `hakimi-core/src/file_safety.rs` | 19 | ✅ WriteDeniedPaths, PathSecurity, SecretRedaction, PromptInjectionDetector |
+| 7 | File Safety + Secret Redaction | `hakimi-core/src/file_safety.rs`, `hakimi-common/src/redact.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process,builtin_code_exec,plugin}.rs` | 27 | ✅ WriteDeniedPaths, PathSecurity, shared SecretRedactor, PromptInjectionDetector, and forced redaction for shell/process/code/plugin output |
 | 8 | Tool Guardrails | `hakimi-core/src/guardrails.rs` | 12 | ✅ Loop detection, idempotency tracking, halt decisions |
 | 9 | LLM Context Compression | `hakimi-context/src/smart_engine.rs` | 22 | ✅ Auxiliary LLM summarization, Resolved/Pending tracking, tool output pruning |
 | 10 | Profiles | `hakimi-cli/src/profiles.rs` | 10 | ✅ ~/.hakimi/profiles/, create/delete/use, separate config/memory/sessions |
@@ -613,7 +612,7 @@ Generated: 2026-05-21
 | 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 9 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends and exposes the command in shared slash parsing |
 
 ### Summary
-- **Total tests**: 1126 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1134 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

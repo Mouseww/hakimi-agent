@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.94-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.95-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1126-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1134-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1126 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1134 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.95 工具输出密钥脱敏**
+  - 新增共享 Rust 原生脱敏器，在工具输出展示前屏蔽 API key、Bearer token、私钥、JWT、数据库 URL 和敏感 URL/query 字段。
+  - terminal、process、code_exec 和命令插件输出现在会对 stdout/stderr、已存命令、诊断信息和插件错误做统一脱敏。
+  - 新增离线回归覆盖脱敏模式和工具输出边界，不依赖真实供应商 API。
 - **v0.3.94 TUI `/copy` 剪贴板对标**
   - Hakimi TUI 现在支持 `/copy [N]`，可复制最近一条或倒数第 N 条 assistant 回复到本机系统剪贴板。
   - 命令会按平台尝试 Windows、macOS、WSL、Wayland、X11 的原生剪贴板写入工具，不新增运行时依赖。
@@ -354,7 +358,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1117 |
+| 测试 | ~500 | 1134 |
 
 ---
 
@@ -364,7 +368,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1117 tests)
+# 运行全部测试 (1134 tests)
 cargo test --workspace
 
 # Debug 日志
@@ -415,4 +419,3 @@ MIT License — 详见 [LICENSE](LICENSE)
   <b>用 🦀 Rust 和 ❤️ 构建</b><br>
   <sub>源自 <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research</sub>
 </p>
-
