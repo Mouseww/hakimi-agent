@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.89-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.91-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -80,6 +80,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.91 Linux Runtime Pathing**:
+  - **Canonical Gateway Binary**: managed systemd installs now prefer `~/.hakimi/bin/hakimi --gateway start` and keep `/usr/local/bin/hakimi` as a symlink/launcher.
+  - **Stable Tool PATH**: terminal and process tools prefix Hakimi and Cargo managed bins before system paths, reducing systemd vs interactive shell drift.
+  - **Clear Command Diagnostics**: terminal failures now distinguish missing command paths, PATH misses, and non-executable binaries.
 - **v0.3.89 Cron Repeat Semantics**:
   - **Hermes-Style Repeat Limits**: cron jobs now persist `repeat` limits and completed-run counts, with `--repeat N` support for gateway and standalone `hakimi cron add`.
   - **Automatic Completion Cleanup**: scheduled and standalone tick execution now increments repeat completion after each run and removes jobs when the configured limit is reached.

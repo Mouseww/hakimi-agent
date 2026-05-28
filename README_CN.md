@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.89-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.91-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.91 Linux 运行时路径**
+  - 托管 systemd 安装现在优先使用 `~/.hakimi/bin/hakimi --gateway start`，并保持 `/usr/local/bin/hakimi` 为 symlink/launcher。
+  - terminal 和 process 工具会把 Hakimi/Cargo 托管目录前置到系统 PATH 前，降低 systemd 环境与交互 shell 环境不一致导致的失败。
+  - terminal 失败诊断现在区分命令路径不存在、PATH 找不到、binary 存在但不可执行。
 - **v0.3.89 Cron Repeat 语义**
   - cron 任务现在会持久化 `repeat` 上限和已完成次数，gateway `/cron add` 与独立 `hakimi cron add` 都支持 `--repeat N`。
   - scheduler 和独立 `hakimi cron tick` 会在每次实际执行后累加完成次数，达到上限时自动移除任务。
