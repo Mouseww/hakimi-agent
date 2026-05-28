@@ -4206,9 +4206,9 @@ mod tests {
     use super::{
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
         GatewayFinalDelivery, GatewayMode, GatewayStreamRenderSnapshot, GatewayStreamUiState,
-        GatewayUiContentTarget, GatewayUsageSnapshot, TopLevelCommand, build_cron_delegation_goal,
-        create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
-        cron_success_output_should_deliver, gateway_cron_response_for_path,
+        GatewayUiContentTarget, GatewayUsageSnapshot, PluginCommandArgs, TopLevelCommand,
+        build_cron_delegation_goal, create_hakimi_state_backup, cron_delivery_targets,
+        cron_output_preview, cron_success_output_should_deliver, gateway_cron_response_for_path,
         gateway_cron_response_for_path_with_delivery, gateway_service_exe_path,
         gateway_service_unit, gateway_usage_response, is_top_level_cron_tick,
         plan_gateway_final_delivery, queue_cron_delivery, resolve_clawbot_gateway_config,
