@@ -682,6 +682,244 @@ impl Tool for BrowserTypeTool {
 }
 
 // ---------------------------------------------------------------------------
+// browser_scroll
+// ---------------------------------------------------------------------------
+
+/// Scroll the current page up or down.
+pub struct BrowserScrollTool {
+    manager: Arc<BrowserManager>,
+}
+
+impl BrowserScrollTool {
+    pub fn new(manager: Arc<BrowserManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserScrollTool {
+    fn name(&self) -> &str {
+        "browser_scroll"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Scroll the current browser page up or down. Use this to reveal content outside the current viewport."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{2195}\u{fe0f}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "type": "string",
+                    "enum": ["up", "down"],
+                    "description": "Direction to scroll."
+                }
+            },
+            "required": ["direction"]
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        BrowserManager::is_chrome_available()
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(2048)
+    }
+
+    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let direction = args
+            .get("direction")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| HakimiError::Tool("missing required parameter: direction".into()))?;
+
+        let delta = match direction {
+            "down" => 500,
+            "up" => -500,
+            other => {
+                return Err(HakimiError::Tool(format!(
+                    "invalid direction '{other}'. Use 'up' or 'down'."
+                )));
+            }
+        };
+
+        debug!(direction = %direction, "browser scroll request");
+
+        let page = self.manager.get_page().await?;
+        page.evaluate(format!("window.scrollBy(0, {delta})"))
+            .await
+            .map_err(|e| HakimiError::Tool(format!("scroll failed: {e}")))?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+        let url = page.url().await.ok().flatten().unwrap_or_default();
+        let title = page.get_title().await.ok().flatten().unwrap_or_default();
+
+        Ok(format!(
+            "Scrolled {direction}\nCurrent page: {url}\nTitle: {title}"
+        ))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// browser_back
+// ---------------------------------------------------------------------------
+
+/// Navigate back in the current page history.
+pub struct BrowserBackTool {
+    manager: Arc<BrowserManager>,
+}
+
+impl BrowserBackTool {
+    pub fn new(manager: Arc<BrowserManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserBackTool {
+    fn name(&self) -> &str {
+        "browser_back"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Navigate back to the previous page in browser history. Requires browser_navigate to be called first."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{2b05}\u{fe0f}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        BrowserManager::is_chrome_available()
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(2048)
+    }
+
+    async fn execute(&self, _args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        debug!("browser back request");
+
+        let page = self.manager.get_page().await?;
+        page.evaluate("window.history.back()")
+            .await
+            .map_err(|e| HakimiError::Tool(format!("back navigation failed: {e}")))?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let url = page.url().await.ok().flatten().unwrap_or_default();
+        let title = page.get_title().await.ok().flatten().unwrap_or_default();
+
+        Ok(format!(
+            "Navigated back\nCurrent page: {url}\nTitle: {title}"
+        ))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// browser_press
+// ---------------------------------------------------------------------------
+
+/// Press a keyboard key on the current page.
+pub struct BrowserPressTool {
+    manager: Arc<BrowserManager>,
+}
+
+impl BrowserPressTool {
+    pub fn new(manager: Arc<BrowserManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserPressTool {
+    fn name(&self) -> &str {
+        "browser_press"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Press a keyboard key in the browser page. Useful for Enter, Tab, Escape, arrows, and shortcuts."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{2328}\u{fe0f}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Key to press, such as 'Enter', 'Tab', 'Escape', or 'ArrowDown'."
+                }
+            },
+            "required": ["key"]
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        BrowserManager::is_chrome_available()
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(2048)
+    }
+
+    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let key = args
+            .get("key")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| HakimiError::Tool("missing required parameter: key".into()))?;
+
+        if key.trim().is_empty() {
+            return Err(HakimiError::Tool("key must not be empty".into()));
+        }
+
+        debug!(key = %key, "browser key press request");
+
+        let page = self.manager.get_page().await?;
+        page.press_key(key)
+            .await
+            .map_err(|e| HakimiError::Tool(format!("key press failed for '{key}': {e}")))?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+        let url = page.url().await.ok().flatten().unwrap_or_default();
+        let title = page.get_title().await.ok().flatten().unwrap_or_default();
+
+        Ok(format!(
+            "Pressed key: {key}\nCurrent page: {url}\nTitle: {title}"
+        ))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // browser_screenshot
 // ---------------------------------------------------------------------------
 
@@ -855,6 +1093,33 @@ mod tests {
     }
 
     #[test]
+    fn test_browser_scroll_metadata() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserScrollTool::new(mgr);
+        assert_eq!(tool.name(), "browser_scroll");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{2195}\u{fe0f}");
+    }
+
+    #[test]
+    fn test_browser_back_metadata() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserBackTool::new(mgr);
+        assert_eq!(tool.name(), "browser_back");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{2b05}\u{fe0f}");
+    }
+
+    #[test]
+    fn test_browser_press_metadata() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserPressTool::new(mgr);
+        assert_eq!(tool.name(), "browser_press");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{2328}\u{fe0f}");
+    }
+
+    #[test]
     fn test_navigate_schema() {
         let mgr = BrowserManager::new();
         let tool = BrowserNavigateTool::new(mgr);
@@ -905,6 +1170,37 @@ mod tests {
     }
 
     #[test]
+    fn test_scroll_schema() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserScrollTool::new(mgr);
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["direction"].is_object());
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&JsonValue::String("direction".to_string())));
+    }
+
+    #[test]
+    fn test_back_schema_empty() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserBackTool::new(mgr);
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_press_schema() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserPressTool::new(mgr);
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["key"].is_object());
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&JsonValue::String("key".to_string())));
+    }
+
+    #[test]
     fn test_snapshot_schema_empty() {
         let mgr = BrowserManager::new();
         let tool = BrowserSnapshotTool::new(mgr);
@@ -949,6 +1245,18 @@ mod tests {
             Some(50 * 1024)
         );
         assert_eq!(
+            BrowserScrollTool::new(mgr.clone()).max_result_size(),
+            Some(2048)
+        );
+        assert_eq!(
+            BrowserBackTool::new(mgr.clone()).max_result_size(),
+            Some(2048)
+        );
+        assert_eq!(
+            BrowserPressTool::new(mgr.clone()).max_result_size(),
+            Some(2048)
+        );
+        assert_eq!(
             BrowserScreenshotTool::new(mgr.clone()).max_result_size(),
             Some(2048)
         );
@@ -961,6 +1269,9 @@ mod tests {
         assert_eq!(BrowserSnapshotTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserClickTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserTypeTool::new(mgr.clone()).toolset(), "browser");
+        assert_eq!(BrowserScrollTool::new(mgr.clone()).toolset(), "browser");
+        assert_eq!(BrowserBackTool::new(mgr.clone()).toolset(), "browser");
+        assert_eq!(BrowserPressTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserScreenshotTool::new(mgr).toolset(), "browser");
     }
 }

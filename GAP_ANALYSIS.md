@@ -27,6 +27,7 @@ Generated: 2026-05-21
 - **transcribe_audio** — OpenAI-compatible speech-to-text for local audio files and remote audio URLs
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 - **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
+- **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, and `browser_screenshot`
 
 ### Runtime Environment
 - **Linux install/gateway path hygiene** — The real binary stays under `~/.hakimi/bin/hakimi`, `/usr/local/bin/hakimi` is maintained as a symlink/launcher, and managed systemd gateway units prefer the canonical binary path with a stable service PATH (`~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin`).
@@ -140,10 +141,10 @@ Generated: 2026-05-21
 
 ### Critical Priority
 
-#### 1. Browser Automation (12 tools)
-- **What**: Full browser automation suite: navigate, snapshot (accessibility tree), click, type, scroll, back, press, get_images, vision, console, cdp, dialog
+#### 1. Browser Automation (remaining advanced suite)
+- **What**: Advanced browser suite beyond the basic Chromium controls already present: get_images, vision, console/eval, CDP attach, dialog handling, cloud/browser-provider routing
 - **Hermes location**: `tools/browser_tool.py`, `tools/browser_camofox.py`, `tools/browser_cdp_tool.py`, `tools/browser_dialog_tool.py`, `tools/browser_supervisor.py`, `tools/browser_providers/`
-- **Details**: Multi-backend (local Chromium via agent-browser, Browserbase, Browser Use cloud). Session isolation per task. Text-based aria snapshots. Element interaction via ref selectors.
+- **Details**: Hakimi now covers navigate, snapshot, click, type, scroll, back, press, and screenshot through the optional Rust-native Chromium feature. Remaining parity is multi-backend support (Browserbase/Browser Use/Camofox/CDP), image listing/vision routing, console/error capture, and dialog handling.
 - **Priority**: **Critical** — Core capability for web interaction beyond search
 
 #### 2. Credential Pool / Multi-Credential Failover
@@ -547,7 +548,7 @@ Generated: 2026-05-21
 
 | Category | Hermes Features | Hakimi Complete | Hakimi Partial | Hakimi Missing |
 |----------|----------------|-----------------|----------------|----------------|
-| Core Tools | 40+ | 23 | 1 | 17+ |
+| Core Tools | 40+ | 26 | 1 | 14+ |
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 0 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
@@ -559,12 +560,12 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~60** (up from ~30)
+**Fully present in Hakimi: ~63** (up from ~30)
 **Partially implemented: ~11**
-**Missing entirely: ~81+**
+**Missing entirely: ~78+**
 
 ### Top 10 Critical Gaps (by impact)
-1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
+1. Browser advanced automation (get_images, vision, console/CDP/dialog, cloud backends)
 2. Gateway platform breadth (12 missing platforms — webhook/signal/matrix/wecom/dingtalk added)
 3. Plugin ecosystem (memory providers, model providers, context engines)
 4. CLI command completeness (33+ missing commands)
@@ -577,7 +578,7 @@ Generated: 2026-05-21
 
 ---
 
-## IMPLEMENTATION STATUS (Updated: 2026-05-28)
+## IMPLEMENTATION STATUS (Updated: 2026-05-29)
 
 ### Phase 1: Critical Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
@@ -618,9 +619,10 @@ Generated: 2026-05-21
 | 26 | Session Title Generation | `hakimi-session/src/message_ops.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ First user messages auto-title untitled persisted sessions, preserve manual titles, avoid duplicate generated titles, and truncate Unicode safely |
 | 27 | Plugin CLI/Templates | `hakimi-cli/src/entry.rs`, `hakimi-cli/src/lib.rs`, `templates/plugin-*.yaml` | 4 | ✅ `hakimi plugins list|templates|init|path` and gateway `/plugins` now expose HTTP plugin discovery and safe template scaffolding |
 | 28 | Output Token Budget Recovery | `hakimi-core/src/error_classifier.rs`, `hakimi-core/src/loop_impl.rs` | 7 | ✅ Anthropic-style `available_tokens` errors now retry with a safe temporary `max_tokens` cap instead of compressing context when the prompt itself still fits |
+| 29 | Browser Navigation Controls | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 6 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_scroll`, `browser_back`, and `browser_press` in CLI and TUI feature builds |
 
 ### Summary
-- **Total tests**: 1157 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1163 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

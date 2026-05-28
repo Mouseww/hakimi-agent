@@ -2364,6 +2364,21 @@ async fn build_agent(
             )))
             .await;
         tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserScrollTool::new(
+                browser_manager.clone(),
+            )))
+            .await;
+        tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserBackTool::new(
+                browser_manager.clone(),
+            )))
+            .await;
+        tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserPressTool::new(
+                browser_manager.clone(),
+            )))
+            .await;
+        tool_registry
             .register(std::sync::Arc::new(
                 hakimi_tools::BrowserScreenshotTool::new(browser_manager),
             ))

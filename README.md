@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.101-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.102-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1157-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1163-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1157 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1163 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.102 Browser Navigation Controls**:
+  - **Hermes Browser Parity**: optional Chromium automation now includes `browser_scroll`, `browser_back`, and `browser_press` alongside navigate/snapshot/click/type/screenshot.
+  - **Shared Registration**: CLI and TUI browser feature builds register the same shared browser session controls.
+  - **Regression Coverage**: added offline schema and metadata coverage for the new browser tools without launching Chromium locally.
 - **v0.3.101 Output Token Budget Recovery**:
   - **Hermes Context-Halving Parity**: provider errors that report `available_tokens` now lower only the retry `max_tokens` budget instead of treating the prompt as too large.
   - **Prompt Preservation**: long Anthropic turns can retry with a safe output cap while keeping the current context intact.
@@ -320,7 +324,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - Auto-generates reusable YAML skill files from extracted patterns
 - Pattern merging and confidence scoring
 
-### 🛠️ 36 Built-in Tools
+### 🛠️ 39 Built-in Tools
 
 - **Files**: read_file, write_file, search_files, patch
 - **Shell**: terminal, process (background process management)
@@ -328,7 +332,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Home Assistant**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
-- **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_screenshot (Chromium automation)
+- **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_screenshot (Chromium automation)
 - **Media**: vision_analyze (image analysis), video_analyze (video analysis request), image_describe (legacy alias), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
@@ -471,7 +475,7 @@ hakimi-agent/
 │   ├── hakimi-context/     # Context engine, compression, intent reasoning, role adaptation
 │   ├── hakimi-core/        # Agent loop, error classifier, credential pool, guardrails
 │   ├── hakimi-transports/  # LLM transports (OpenAI, Anthropic, Gemini) + prompt caching
-│   ├── hakimi-tools/       # 36 built-in tools + registry
+│   ├── hakimi-tools/       # 39 built-in tools + registry
 │   ├── hakimi-knowledge/   # Knowledge graph memory (petgraph)
 │   ├── hakimi-skills/      # Skill system + meta-skill extraction
 │   ├── hakimi-cron/        # Cron scheduler (SQLite persistent)
@@ -530,7 +534,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1145 |
+| Tests | ~500 | 1163 |
 
 ---
 
@@ -540,7 +544,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1145 tests)
+# Run all tests (1163 tests)
 cargo test --workspace
 
 # Debug logging
@@ -556,7 +560,7 @@ cargo clippy --workspace
 
 - [x] Core agent loop + tool dispatch
 - [x] OpenAI / Anthropic / Gemini transports + SSE streaming
-- [x] 36 built-in tools
+- [x] 39 built-in tools
 - [x] 8 platform adapters
 - [x] MCP client (stdio/HTTP/SSE) + server catalog
 - [x] Plugin system + templates
