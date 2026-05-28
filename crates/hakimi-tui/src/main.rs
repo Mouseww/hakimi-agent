@@ -216,6 +216,9 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         builtin_tools.push(Arc::new(hakimi_tools::BrowserPressTool::new(
             browser_manager.clone(),
         )));
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserGetImagesTool::new(
+            browser_manager.clone(),
+        )));
         builtin_tools.push(Arc::new(hakimi_tools::BrowserScreenshotTool::new(
             browser_manager,
         )));

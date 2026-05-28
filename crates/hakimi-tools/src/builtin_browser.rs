@@ -270,6 +270,32 @@ async fn get_page_snapshot(page: &Page) -> Result<String> {
     Ok(text)
 }
 
+async fn get_page_images(page: &Page) -> Result<JsonValue> {
+    let js = r#"
+    (function() {
+        return JSON.stringify(
+            Array.from(document.images || [])
+                .map((img) => ({
+                    src: img.currentSrc || img.src || "",
+                    alt: img.alt || "",
+                    width: img.naturalWidth || 0,
+                    height: img.naturalHeight || 0
+                }))
+                .filter((img) => img.src && !img.src.startsWith("data:"))
+        );
+    })()
+    "#;
+
+    let result = page
+        .evaluate(js)
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to get page images: {e}")))?;
+
+    let raw = result.value().and_then(|v| v.as_str()).unwrap_or("[]");
+    serde_json::from_str(raw)
+        .map_err(|e| HakimiError::Tool(format!("failed to parse page image data: {e}")))
+}
+
 async fn press_page_key(page: &Page, key: &str) -> Result<()> {
     use chromiumoxide::cdp::browser_protocol::input::{
         DispatchKeyEventParams, DispatchKeyEventType,
@@ -963,6 +989,71 @@ impl Tool for BrowserPressTool {
 }
 
 // ---------------------------------------------------------------------------
+// browser_get_images
+// ---------------------------------------------------------------------------
+
+/// Get image URLs and alt text from the current page.
+pub struct BrowserGetImagesTool {
+    manager: Arc<BrowserManager>,
+}
+
+impl BrowserGetImagesTool {
+    pub fn new(manager: Arc<BrowserManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserGetImagesTool {
+    fn name(&self) -> &str {
+        "browser_get_images"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Get all non-data images on the current browser page with source URLs, alt text, and natural dimensions. \
+         Useful for finding images to inspect with vision tools."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{1f5bc}\u{fe0f}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        BrowserManager::is_chrome_available()
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(64 * 1024)
+    }
+
+    async fn execute(&self, _args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        debug!("browser get images request");
+
+        let page = self.manager.get_page().await?;
+        let images = get_page_images(&page).await?;
+        let count = images.as_array().map(|items| items.len()).unwrap_or(0);
+
+        Ok(json!({
+            "success": true,
+            "images": images,
+            "count": count
+        })
+        .to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // browser_screenshot
 // ---------------------------------------------------------------------------
 
@@ -1136,6 +1227,15 @@ mod tests {
     }
 
     #[test]
+    fn test_browser_get_images_metadata() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserGetImagesTool::new(mgr);
+        assert_eq!(tool.name(), "browser_get_images");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{1f5bc}\u{fe0f}");
+    }
+
+    #[test]
     fn test_browser_scroll_metadata() {
         let mgr = BrowserManager::new();
         let tool = BrowserScrollTool::new(mgr);
@@ -1254,6 +1354,15 @@ mod tests {
     }
 
     #[test]
+    fn test_get_images_schema_empty() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserGetImagesTool::new(mgr);
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
     fn test_screenshot_output_dir() {
         let dir = get_screenshot_dir();
         assert!(dir.ends_with(".hakimi/screenshots"));
@@ -1300,6 +1409,10 @@ mod tests {
             Some(2048)
         );
         assert_eq!(
+            BrowserGetImagesTool::new(mgr.clone()).max_result_size(),
+            Some(64 * 1024)
+        );
+        assert_eq!(
             BrowserScreenshotTool::new(mgr.clone()).max_result_size(),
             Some(2048)
         );
@@ -1315,6 +1428,7 @@ mod tests {
         assert_eq!(BrowserScrollTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserBackTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserPressTool::new(mgr.clone()).toolset(), "browser");
+        assert_eq!(BrowserGetImagesTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserScreenshotTool::new(mgr).toolset(), "browser");
     }
 }
