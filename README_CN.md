@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.92-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.93-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.93 Telegram 命令菜单**
+  - Telegram `setMyCommands` 现在会暴露 gateway 的质量与运维命令，包括 `/usage`、`/doctor`、`/logs`、`/providers`、`/platforms`、`/mcp`、`/browser`、`/backup` 和 `/dump`。
+  - gateway `/help` 改为面向操作者的分组式命令说明，不再是过短的旧列表。
+  - 新增 Telegram 菜单回归覆盖，确保关键质量与运维命令进入菜单。
 - **v0.3.92 Terminal Workdir 回退**
   - terminal tool 现在会把 `workdir: ""` 和仅包含空白字符的 workdir 视为未提供，回退到 tool context workdir，不再把空路径传给 `current_dir`。
   - 新增针对空 workdir 解析与执行路径的回归覆盖。

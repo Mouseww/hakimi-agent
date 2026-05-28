@@ -2704,24 +2704,38 @@ async fn start_gateway(
             if text.starts_with('/') {
                 let response = match Command::parse(&text) {
                     Some(Command::Help) => {
-                        let mut help = "🤖 **Hakimi Agent Commands**\n\n".to_string();
-                        help.push_str("• `/help` - Show this message\n");
-                        help.push_str("• `/clear` - Clear conversation history\n");
-                        help.push_str("• `/model [name]` - Get or set model\n");
-                        help.push_str("• `/tools` - List available tools\n");
-                        help.push_str("• `/skills` - List loaded skills\n");
-                        help.push_str(
-                            "• `/cron` - List/status/add/edit/pause/resume/run/remove scheduled jobs\n",
-                        );
-                        help.push_str("• `/doctor` - Run setup diagnostics\n");
-                        help.push_str("• `/status` - Show agent status\n");
-                        help.push_str("• `/update` - Update Hakimi and restart Gateway\n");
-                        help.push_str("• `/restart` - Restart Hakimi Gateway service\n");
-                        help.push_str("• `/stop` - Stop current background task or streaming\n");
-                        help.push_str("• `/memory` - View or clear persistent memory\n");
-                        help.push_str("• `/checkpoints` - Manage file system checkpoints\n");
-                        help.push_str("\nJust send a message to chat with me!");
-                        help
+                        "🤖 **Hakimi Agent Commands**\n\n\
+**Chat control**\n\
+• `/help` - Show this command reference\n\
+• `/stop` - Cancel the active task or stream\n\
+• `/clear` - Clear this chat's conversation state\n\
+• `/status` - Show gateway, platform, and model status\n\
+• `/usage` - Show last-turn tokens, cost, and rate limits\n\n\
+**Agent capability**\n\
+• `/model [name]` - Show or switch the active model\n\
+• `/tools` - List available tools\n\
+• `/skills` - List loaded skills\n\
+• `/providers` - List supported LLM providers\n\
+• `/platforms` - List connected gateway platforms\n\n\
+**Operations**\n\
+• `/cron` - List/status/add/edit/pause/resume/run/remove scheduled jobs\n\
+• `/doctor` - Run setup and runtime diagnostics\n\
+• `/logs [lines]` - Show recent gateway logs\n\
+• `/memory [clear]` - View or clear persistent memory\n\
+• `/checkpoints` - Manage file system checkpoints\n\
+• `/backup` - Back up Hakimi state\n\
+• `/dump` - Export a session database dump\n\n\
+**Integrations**\n\
+• `/mcp` - Manage MCP servers\n\
+• `/browser` - Control browser sessions\n\
+• `/webhook` - Show webhook status\n\
+• `/pairing` - Start gateway pairing\n\n\
+**System**\n\
+• `/update` - Update Hakimi and restart Gateway\n\
+• `/restart` - Restart Hakimi Gateway service\n\
+• `/auth` - Show authentication status\n\n\
+Just send a message to chat with me!"
+                            .to_string()
                     }
                     Some(Command::Stop) => {
                         cancellation.cancel();

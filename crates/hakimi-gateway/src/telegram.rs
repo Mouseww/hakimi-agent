@@ -84,6 +84,154 @@ enum TelegramMediaKind {
     Audio,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TelegramBotCommand {
+    command: &'static str,
+    description: &'static str,
+}
+
+fn telegram_bot_commands() -> &'static [TelegramBotCommand] {
+    &[
+        TelegramBotCommand {
+            command: "start",
+            description: "Start a conversation",
+        },
+        TelegramBotCommand {
+            command: "help",
+            description: "Show the command reference",
+        },
+        TelegramBotCommand {
+            command: "stop",
+            description: "Cancel the active task or stream",
+        },
+        TelegramBotCommand {
+            command: "clear",
+            description: "Clear this chat's conversation state",
+        },
+        TelegramBotCommand {
+            command: "status",
+            description: "Show gateway, platform, and model status",
+        },
+        TelegramBotCommand {
+            command: "usage",
+            description: "Show last-turn tokens, cost, and rate limits",
+        },
+        TelegramBotCommand {
+            command: "model",
+            description: "Show or switch the active model",
+        },
+        TelegramBotCommand {
+            command: "tools",
+            description: "List available tools",
+        },
+        TelegramBotCommand {
+            command: "skills",
+            description: "List loaded skills",
+        },
+        TelegramBotCommand {
+            command: "cron",
+            description: "Manage scheduled jobs",
+        },
+        TelegramBotCommand {
+            command: "doctor",
+            description: "Run setup and runtime diagnostics",
+        },
+        TelegramBotCommand {
+            command: "logs",
+            description: "Show recent gateway logs",
+        },
+        TelegramBotCommand {
+            command: "memory",
+            description: "View or clear persistent memory",
+        },
+        TelegramBotCommand {
+            command: "checkpoints",
+            description: "Manage file checkpoints",
+        },
+        TelegramBotCommand {
+            command: "update",
+            description: "Update Hakimi and restart gateway",
+        },
+        TelegramBotCommand {
+            command: "restart",
+            description: "Restart the managed gateway service",
+        },
+        TelegramBotCommand {
+            command: "providers",
+            description: "List supported LLM providers",
+        },
+        TelegramBotCommand {
+            command: "platforms",
+            description: "List connected gateway platforms",
+        },
+        TelegramBotCommand {
+            command: "mcp",
+            description: "Manage MCP servers",
+        },
+        TelegramBotCommand {
+            command: "browser",
+            description: "Control browser sessions",
+        },
+        TelegramBotCommand {
+            command: "backup",
+            description: "Back up Hakimi state",
+        },
+        TelegramBotCommand {
+            command: "dump",
+            description: "Export a session database dump",
+        },
+        TelegramBotCommand {
+            command: "goals",
+            description: "Manage active goals",
+        },
+        TelegramBotCommand {
+            command: "hooks",
+            description: "Inspect configured hooks",
+        },
+        TelegramBotCommand {
+            command: "kanban",
+            description: "Open Kanban workflow controls",
+        },
+        TelegramBotCommand {
+            command: "pairing",
+            description: "Start gateway pairing",
+        },
+        TelegramBotCommand {
+            command: "tips",
+            description: "Show usage tips",
+        },
+        TelegramBotCommand {
+            command: "voice",
+            description: "Control voice output",
+        },
+        TelegramBotCommand {
+            command: "webhook",
+            description: "Show webhook status",
+        },
+        TelegramBotCommand {
+            command: "gateway",
+            description: "Show gateway controls",
+        },
+        TelegramBotCommand {
+            command: "auth",
+            description: "Show authentication status",
+        },
+    ]
+}
+
+fn telegram_help_text() -> String {
+    let mut help = "🤖 *Hakimi Agent*\n\n\
+Simply type a message and I will respond.\n\n\
+*Commands:*\n"
+        .to_string();
+
+    for command in telegram_bot_commands() {
+        help.push_str(&format!("/{} – {}\n", command.command, command.description));
+    }
+
+    help
+}
+
 // ---------------------------------------------------------------------------
 // TelegramAdapter
 // ---------------------------------------------------------------------------
@@ -155,33 +303,19 @@ impl TelegramAdapter {
 
     /// Return the appropriate auto-reply text for a bot command, or `None`
     /// if the text is not a known command.
-    fn handle_command(text: &str) -> Option<&'static str> {
+    fn handle_command(text: &str) -> Option<String> {
         match text.trim() {
             "/start" => Some(
                 "👋 Welcome! I'm Hakimi, your AI assistant.\n\n\
-                 Send me any message and I'll do my best to help.",
+                 Send me any message and I'll do my best to help."
+                    .to_string(),
             ),
-            "/help" => Some(
-                "🤖 *Hakimi Agent*\n\n\
-                 Simply type a message and I will respond.\n\n\
-                 *Commands:*\n\
-                 /start – Start a conversation\n\
-                 /help – Show this help message\n\
-                 /clear – Clear conversation history\n\
-                 /model – Get or set the AI model\n\
-                 /tools – List available tools\n\
-                 /skills – List loaded skills\n\
-                 /cron – List scheduled jobs\n\
-                 /status – Show agent status\n\
-                 /update – Update Hakimi and restart Gateway\n\
-                 /stop – Stop current background task or streaming\n\
-                 /memory – View or clear persistent memory\n\
-                 /checkpoints – Manage file system checkpoints",
-            ),
+            "/help" => Some(telegram_help_text()),
             "/update" => Some(
                 "🔄 *Hakimi Updater*\n\n\
                  Starting update and restart sequence...\n\
-                 Please wait a moment while the binary is downloaded and the gateway is restarted.",
+                 Please wait a moment while the binary is downloaded and the gateway is restarted."
+                    .to_string(),
             ),
             _ => None,
         }
@@ -286,20 +420,15 @@ impl PlatformAdapter for TelegramAdapter {
 
         // Set commands menu in Telegram
         let commands_body = serde_json::json!({
-            "commands": [
-                {"command": "help", "description": "Show help and available commands"},
-                {"command": "clear", "description": "Clear conversation history"},
-                {"command": "model", "description": "Get or set the AI model"},
-                {"command": "tools", "description": "List available tools"},
-                {"command": "skills", "description": "List loaded skills"},
-                {"command": "cron", "description": "List scheduled jobs"},
-                {"command": "status", "description": "Show agent status"},
-                {"command": "update", "description": "Update Hakimi and restart Gateway"},
-                {"command": "restart", "description": "Restart the Hakimi Gateway service"},
-                {"command": "stop", "description": "Stop current background task or streaming"},
-                {"command": "memory", "description": "View or clear your persistent memory"},
-                {"command": "checkpoints", "description": "Manage file system checkpoints"},
-            ]
+            "commands": telegram_bot_commands()
+                .iter()
+                .map(|command| {
+                    serde_json::json!({
+                        "command": command.command,
+                        "description": command.description,
+                    })
+                })
+                .collect::<Vec<_>>()
         });
 
         let _ = self
@@ -963,7 +1092,42 @@ mod tests {
     fn test_handle_help_command() {
         let reply = TelegramAdapter::handle_command("/help");
         assert!(reply.is_some());
-        assert!(reply.unwrap().contains("Commands"));
+        let reply = reply.unwrap();
+        assert!(reply.contains("Commands"));
+        assert!(reply.contains("/usage"));
+        assert!(reply.contains("/doctor"));
+        assert!(reply.contains("/logs"));
+        assert!(reply.contains("/providers"));
+    }
+
+    #[test]
+    fn telegram_command_menu_includes_gateway_quality_commands() {
+        let commands: Vec<&str> = telegram_bot_commands()
+            .iter()
+            .map(|command| command.command)
+            .collect();
+
+        for expected in [
+            "start",
+            "help",
+            "stop",
+            "clear",
+            "status",
+            "usage",
+            "cron",
+            "doctor",
+            "logs",
+            "memory",
+            "checkpoints",
+            "providers",
+            "platforms",
+            "mcp",
+            "browser",
+            "update",
+            "restart",
+        ] {
+            assert!(commands.contains(&expected), "missing /{expected}");
+        }
     }
 
     #[test]

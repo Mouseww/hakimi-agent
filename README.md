@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.92-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.93-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1117-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -80,6 +80,10 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.93 Telegram Command Menu**:
+  - **Complete Bot Menu**: Telegram `setMyCommands` now exposes the gateway's quality and operations commands, including `/usage`, `/doctor`, `/logs`, `/providers`, `/platforms`, `/mcp`, `/browser`, `/backup`, and `/dump`.
+  - **Better Help Surface**: Gateway `/help` now uses grouped, operator-focused command sections instead of a short legacy list.
+  - **Regression Coverage**: added Telegram menu coverage for key quality and operations commands.
 - **v0.3.92 Terminal Workdir Fallback**:
   - **Empty Workdir Handling**: terminal tool calls now treat `workdir: ""` and whitespace-only workdirs as omitted, falling back to the tool context workdir instead of passing an empty path to `current_dir`.
   - **Regression Coverage**: added targeted coverage for empty workdir resolution and execution.
