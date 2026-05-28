@@ -9,6 +9,8 @@ use tracing::{debug, warn};
 use uuid::Uuid;
 use std::process::Stdio;
 
+use crate::shell_env::{apply_stable_path, bash_program};
+
 pub struct ProcessManager {
     processes: Arc<Mutex<HashMap<String, ManagedProcess>>>,
     log_dir: PathBuf,
@@ -38,7 +40,9 @@ impl ProcessManager {
 
         let log_file = std::fs::File::create(&log_path)?;
 
-        let mut child = Command::new("bash")
+        let mut spawn_command = Command::new(bash_program());
+        apply_stable_path(&mut spawn_command);
+        let child = spawn_command
             .arg("-c")
             .arg(command_str)
             .current_dir(workdir)

@@ -49,6 +49,12 @@ hakimi setup
 hakimi doctor
 ```
 
+On Linux, the installer keeps the real binary under `~/.hakimi/bin/hakimi` and treats `/usr/local/bin/hakimi` as a symlink/launcher. Managed gateway installs use the canonical `~/.hakimi/bin/hakimi --gateway start` path when available and set a stable service PATH. Terminal/process tools also prefix the current PATH with Hakimi's managed bins:
+
+```bash
+~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+```
+
 The wizard walks you through LLM provider, API key, model, platform adapters, and MCP server configuration — all saved to `~/.hakimi/config.yaml`.
 
 ---

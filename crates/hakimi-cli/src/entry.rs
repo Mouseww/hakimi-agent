@@ -3176,11 +3176,8 @@ async fn start_gateway(
                                         text: rendered,
                                         media: None,
                                     };
-                                    bubble.message_id = gateway_cb
-                                        .route_message_get_id(&msg)
-                                        .await
-                                        .ok()
-                                        .flatten();
+                                    bubble.message_id =
+                                        gateway_cb.route_message_get_id(&msg).await.ok().flatten();
                                 }
 
                                 current_message_id = None;
@@ -3378,20 +3375,38 @@ fn restart_gateway_service() -> Result<()> {
     Ok(())
 }
 
+fn gateway_service_exe_path(
+    current_exe: &std::path::Path,
+    home: &std::path::Path,
+) -> std::path::PathBuf {
+    let managed = home.join(".hakimi").join("bin").join("hakimi");
+    if managed.exists() {
+        managed
+    } else {
+        current_exe.to_path_buf()
+    }
+}
+
+fn gateway_service_unit(user: &str, home: &std::path::Path, exe: &std::path::Path) -> String {
+    let path = hakimi_tools::shell_env::stable_shell_path_for_home(home, None);
+    format!(
+        "[Unit]\nDescription=Hakimi Agent Gateway\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser={user}\nWorkingDirectory={home}\nEnvironment=HOME={home}\nEnvironment=PATH={path}\nExecStart={exe} --gateway start\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n",
+        user = user,
+        home = home.display(),
+        path = path,
+        exe = exe.display()
+    )
+}
+
 fn install_gateway_service() -> Result<()> {
     use std::process::Command as ProcessCommand;
 
     let service = gateway_service_name();
     let unit_path = format!("/etc/systemd/system/{service}.service");
-    let exe = std::env::current_exe()?;
     let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/root"));
+    let exe = gateway_service_exe_path(&std::env::current_exe()?, &home);
     let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
-    let unit = format!(
-        "[Unit]\nDescription=Hakimi Agent Gateway\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser={user}\nWorkingDirectory={home}\nEnvironment=HOME={home}\nExecStart={exe} --gateway start\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n",
-        user = user,
-        home = home.display(),
-        exe = exe.display()
-    );
+    let unit = gateway_service_unit(&user, &home, &exe);
 
     std::fs::write(&unit_path, unit)?;
     for args in [
@@ -3448,6 +3463,10 @@ fn default_hakimi_binary_path() -> std::path::PathBuf {
 
 fn is_usr_local_hakimi(path: &std::path::Path) -> bool {
     path == std::path::Path::new("/usr/local/bin/hakimi")
+}
+
+fn usr_local_hakimi_path() -> std::path::PathBuf {
+    std::path::PathBuf::from("/usr/local/bin/hakimi")
 }
 
 fn is_symlink(path: &std::path::Path) -> bool {
@@ -3520,6 +3539,39 @@ fn resolve_hakimi_update_target(current_exe: &std::path::Path) -> HakimiUpdateTa
     }
 
     update_target_from_candidate(current_exe, &canonical_current, &managed_binary)
+}
+
+fn update_shim_paths(target: &HakimiUpdateTarget, os: &str) -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Some(shim_path) = &target.shim_path {
+        paths.push(shim_path.clone());
+    }
+
+    if os == "linux" {
+        let system_shim = usr_local_hakimi_path();
+        if !paths.iter().any(|path| path == &system_shim) {
+            paths.push(system_shim);
+        }
+    }
+
+    paths
+}
+
+fn warn_hakimi_path_shim_failed(
+    shim_path: &std::path::Path,
+    target: &std::path::Path,
+    err: &anyhow::Error,
+) {
+    eprintln!(
+        "⚠️ Failed to refresh PATH shim {}: {err}",
+        shim_path.display()
+    );
+    eprintln!(
+        "Run: sudo ln -sfn \"{}\" \"{}\"",
+        target.display(),
+        shim_path.display()
+    );
 }
 
 #[cfg(unix)]
@@ -3778,13 +3830,17 @@ async fn self_update() -> Result<()> {
                     version_text.trim()
                 );
             }
-            if let Some(shim_path) = &update_target.shim_path {
-                ensure_hakimi_path_shim(shim_path, &update_target.binary_path)?;
-                println!(
-                    "✅ PATH shim refreshed: {} -> {}",
-                    shim_path.display(),
-                    update_target.binary_path.display()
-                );
+            for shim_path in update_shim_paths(&update_target, os) {
+                match ensure_hakimi_path_shim(&shim_path, &update_target.binary_path) {
+                    Ok(()) => println!(
+                        "✅ PATH shim refreshed: {} -> {}",
+                        shim_path.display(),
+                        update_target.binary_path.display()
+                    ),
+                    Err(err) => {
+                        warn_hakimi_path_shim_failed(&shim_path, &update_target.binary_path, &err)
+                    }
+                }
             }
             println!(
                 "✅ Updated successfully to {latest_tag}: {}",
@@ -3905,10 +3961,11 @@ mod tests {
         GatewayUiContentTarget, GatewayUsageSnapshot, TopLevelCommand, build_cron_delegation_goal,
         create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
         cron_success_output_should_deliver, gateway_cron_response_for_path,
-        gateway_cron_response_for_path_with_delivery, gateway_usage_response,
-        is_top_level_cron_tick, plan_gateway_final_delivery, queue_cron_delivery,
-        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
-        top_level_cron_response_for_path, update_target_from_candidate,
+        gateway_cron_response_for_path_with_delivery, gateway_service_exe_path,
+        gateway_service_unit, gateway_usage_response, is_top_level_cron_tick,
+        plan_gateway_final_delivery, queue_cron_delivery, resolve_clawbot_gateway_config,
+        resolve_hakimi_update_target, restore_hakimi_state_backup,
+        top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
@@ -4115,6 +4172,81 @@ mod tests {
 
         assert_eq!(resolved.binary_path, managed);
         assert_eq!(resolved.shim_path, Some(shim));
+    }
+
+    #[test]
+    fn update_shim_paths_adds_usr_local_on_linux() {
+        let target = super::HakimiUpdateTarget {
+            binary_path: PathBuf::from("/home/test/.hakimi/bin/hakimi"),
+            shim_path: None,
+        };
+
+        assert_eq!(
+            update_shim_paths(&target, "linux"),
+            vec![PathBuf::from("/usr/local/bin/hakimi")]
+        );
+    }
+
+    #[test]
+    fn gateway_service_unit_uses_managed_binary_and_stable_path() {
+        let unit = gateway_service_unit(
+            "root",
+            std::path::Path::new("/root"),
+            std::path::Path::new("/root/.hakimi/bin/hakimi"),
+        );
+
+        assert!(unit.contains("Environment=HOME=/root\n"));
+        assert!(unit.contains(
+            "Environment=PATH=/root/.hakimi/bin:/root/.cargo/bin:/usr/local/bin:/usr/bin:/bin\n"
+        ));
+        assert!(unit.contains("ExecStart=/root/.hakimi/bin/hakimi --gateway start\n"));
+    }
+
+    #[test]
+    fn gateway_service_exe_prefers_existing_managed_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let managed = temp.path().join(".hakimi").join("bin").join("hakimi");
+        std::fs::create_dir_all(managed.parent().unwrap()).unwrap();
+        std::fs::write(&managed, "binary").unwrap();
+
+        let resolved =
+            gateway_service_exe_path(std::path::Path::new("/tmp/dev/hakimi"), temp.path());
+
+        assert_eq!(resolved, managed);
+    }
+
+    #[test]
+    fn gateway_service_exe_falls_back_to_current_exe_when_managed_binary_is_absent() {
+        let temp = tempfile::tempdir().unwrap();
+        let current = std::path::Path::new("/tmp/dev/hakimi");
+
+        let resolved = gateway_service_exe_path(current, temp.path());
+
+        assert_eq!(resolved, current);
+    }
+
+    #[test]
+    fn update_shim_paths_deduplicates_usr_local_on_linux() {
+        let target = super::HakimiUpdateTarget {
+            binary_path: PathBuf::from("/home/test/.hakimi/bin/hakimi"),
+            shim_path: Some(PathBuf::from("/usr/local/bin/hakimi")),
+        };
+
+        assert_eq!(
+            update_shim_paths(&target, "linux"),
+            vec![PathBuf::from("/usr/local/bin/hakimi")]
+        );
+    }
+
+    #[test]
+    fn update_shim_paths_keeps_non_linux_to_detected_shim() {
+        let detected_shim = PathBuf::from("/opt/bin/hakimi");
+        let target = super::HakimiUpdateTarget {
+            binary_path: PathBuf::from("/home/test/.hakimi/bin/hakimi"),
+            shim_path: Some(detected_shim.clone()),
+        };
+
+        assert_eq!(update_shim_paths(&target, "macos"), vec![detected_shim]);
     }
 
     #[cfg(unix)]

@@ -5,6 +5,7 @@ use tokio::process::Command;
 use tracing::debug;
 
 use crate::Tool;
+use crate::shell_env::{apply_stable_path, bash_program, diagnose_shell_failure};
 
 /// Default timeout for terminal commands (seconds).
 const DEFAULT_TIMEOUT_SECS: u64 = 180;
@@ -142,7 +143,9 @@ impl Tool for TerminalTool {
             let log_file = std::fs::File::create(&log_path)
                 .map_err(|e| HakimiError::Tool(format!("failed to create log file: {e}")))?;
 
-            let child = Command::new("bash")
+            let mut spawn_command = Command::new(bash_program());
+            apply_stable_path(&mut spawn_command);
+            let child = spawn_command
                 .arg("-c")
                 .arg(&final_command)
                 .current_dir(workdir)
@@ -212,14 +215,12 @@ impl Tool for TerminalTool {
             .to_string());
         }
 
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(timeout_secs),
-            Command::new("bash")
-                .arg("-c")
-                .arg(&final_command)
-                .current_dir(workdir)
-                .output(),
-        )
+        let output = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), async {
+            let mut shell = Command::new(bash_program());
+            apply_stable_path(&mut shell);
+            shell.arg("-c").arg(&final_command).current_dir(workdir);
+            shell.output().await
+        })
         .await
         .map_err(|_| {
             debug!(command = %command, timeout = timeout_secs, "command timed out");
@@ -255,6 +256,11 @@ impl Tool for TerminalTool {
                 result.push('\n');
             }
             result.push_str(&format!("EXIT CODE: {code}"));
+            if let Some(diagnostic) = diagnose_shell_failure(&stderr, Some(code), workdir) {
+                result.push('\n');
+                result.push_str("DIAGNOSTIC:\n");
+                result.push_str(&diagnostic);
+            }
         } else {
             result.push_str("\nEXIT CODE: (terminated by signal)");
         }

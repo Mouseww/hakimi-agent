@@ -28,6 +28,10 @@ Generated: 2026-05-21
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 - **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
 
+### Runtime Environment
+- **Linux install/gateway path hygiene** — The real binary stays under `~/.hakimi/bin/hakimi`, `/usr/local/bin/hakimi` is maintained as a symlink/launcher, and managed systemd gateway units prefer the canonical binary path with a stable service PATH (`~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin`).
+- **Terminal PATH diagnostics** — Terminal/process commands prefix the current PATH with Hakimi's managed bins, and foreground terminal failures distinguish missing explicit paths, PATH misses, non-executable binaries, and systemd/Hakimi vs interactive shell PATH drift.
+
 ### Agent Loop
 - **Core conversation loop** — Message → LLM → tool dispatch → loop until done
 - **Iteration budget** — Max iterations cap (configurable, default 90)

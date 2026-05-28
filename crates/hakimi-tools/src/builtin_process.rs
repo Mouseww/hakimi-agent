@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use tracing::debug;
 
 use crate::Tool;
+use crate::shell_env::{apply_stable_path, bash_program};
 
 /// Built-in tool for managing background processes.
 pub struct ProcessTool;
@@ -84,7 +85,9 @@ impl Tool for ProcessTool {
                         HakimiError::Tool("'command' is required for 'start' action".into())
                     })?;
 
-                let child = Command::new("bash")
+                let mut spawn_command = Command::new(bash_program());
+                apply_stable_path(&mut spawn_command);
+                let child = spawn_command
                     .arg("-c")
                     .arg(command)
                     .current_dir(&ctx.workdir)

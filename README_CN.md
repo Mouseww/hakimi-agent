@@ -49,6 +49,12 @@ hakimi setup
 hakimi doctor
 ```
 
+Linux 安装会把真实二进制放在 `~/.hakimi/bin/hakimi`，并把 `/usr/local/bin/hakimi` 作为 symlink/launcher 维护。托管 gateway 的 systemd unit 会优先使用 canonical 路径 `~/.hakimi/bin/hakimi --gateway start`，并设置稳定服务 PATH。Terminal/process 工具也会把 Hakimi 托管目录前置到当前 PATH：
+
+```bash
+~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+```
+
 向导引导你完成 LLM 提供商、API Key、模型、平台适配器、MCP 服务器的配置，全部保存到 `~/.hakimi/config.yaml`。
 
 ---

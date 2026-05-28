@@ -68,6 +68,7 @@ case "$OS" in
         # Prefer musl (statically linked, works on any Linux)
         PLATFORM="unknown-linux-musl"
         FALLBACK_PLATFORM="unknown-linux-gnu"
+        WANT_SYSTEM_LINK=1
         ;;
     darwin)  PLATFORM="apple-darwin" ;;
     mingw*|msys*|cygwin*)
@@ -242,9 +243,9 @@ ensure_usr_local_hakimi_is_shim() {
         if sudo ln -sfn "${INSTALL_DIR}/hakimi" "$SYSTEM_HAKIMI"; then
             success "Linked hakimi into ${SYSTEM_BIN_DIR}."
         fi
-    elif [ -e "$SYSTEM_HAKIMI" ] && [ ! -L "$SYSTEM_HAKIMI" ]; then
-        warn "${SYSTEM_HAKIMI} is not a symlink and could not be replaced automatically."
-        warn "Remove it or run: sudo ln -sfn \"${INSTALL_DIR}/hakimi\" \"${SYSTEM_HAKIMI}\""
+    elif [ "$should_create" = "1" ] || [ -e "$SYSTEM_HAKIMI" ]; then
+        warn "Could not create ${SYSTEM_HAKIMI} automatically."
+        warn "Run: sudo ln -sfn \"${INSTALL_DIR}/hakimi\" \"${SYSTEM_HAKIMI}\""
     fi
 }
 
