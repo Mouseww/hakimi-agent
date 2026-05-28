@@ -287,5 +287,10 @@ mod tests {
             Command::parse("/cron list"),
             Some(Command::Cron(Some("list".into())))
         );
+        assert_eq!(Command::parse("/plugins"), Some(Command::Plugins(None)));
+        assert_eq!(
+            Command::parse("/plugins list"),
+            Some(Command::Plugins(Some("list".into())))
+        );
     }
 }

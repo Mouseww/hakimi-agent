@@ -90,6 +90,7 @@ Generated: 2026-05-21
 ### Plugin System
 - **Plugin trait** — name, version, description, tools, init
 - **PluginLoader** — Directory-based discovery, HTTP tool plugins
+- **Plugin CLI/templates** — `hakimi plugins list|templates|init|path` plus gateway `/plugins` inspection for HTTP plugins
 
 ### Retry & Error
 - **Jittered backoff** — Exponential backoff with random jitter
@@ -491,13 +492,13 @@ Generated: 2026-05-21
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
-- **Status**: Plugin trait + directory loader + HTTP tool plugin
+- **Status**: Plugin trait + directory loader + HTTP tool plugin, embedded HTTP plugin templates, CLI `hakimi plugins list|templates|init|path`, and gateway `/plugins list|templates|path`
 - **What's missing**: Memory provider plugins (8 backends), model provider plugins, context engine plugins, kanban plugin, observability plugin, achievements plugin, Spotify plugin, disk-cleanup plugin. Plugin discovery from pip entry points.
 - **Hermes reference**: `plugins/` (entire directory)
 
 ### 8. CLI Commands
-- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/plugins`、`/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
+- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 9. Prompt Caching
@@ -614,9 +615,10 @@ Generated: 2026-05-21
 | 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 9 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends and exposes the command in shared slash parsing |
 | 25 | TUI `/history` Review | `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Hermes-style `/history [N]` / `/hist [N]` reviews recent user/assistant messages locally and gives gateway users a clear surface-boundary notice |
 | 26 | Session Title Generation | `hakimi-session/src/message_ops.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ First user messages auto-title untitled persisted sessions, preserve manual titles, avoid duplicate generated titles, and truncate Unicode safely |
+| 27 | Plugin CLI/Templates | `hakimi-cli/src/entry.rs`, `hakimi-cli/src/lib.rs`, `templates/plugin-*.yaml` | 4 | ✅ `hakimi plugins list|templates|init|path` and gateway `/plugins` now expose HTTP plugin discovery and safe template scaffolding |
 
 ### Summary
-- **Total tests**: 1141 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1145 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

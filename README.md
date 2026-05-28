@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.97-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.98-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1141-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1145-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1141 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1145 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.98 Plugin CLI + Gateway Management**:
+  - **Hermes-Style Plugin Commands**: `hakimi plugins list|templates|init|path` now exposes the existing HTTP plugin loader from the CLI.
+  - **Template Scaffolding**: bundled HTTP plugin templates are embedded in the binary and scaffold safely into `~/.hakimi/plugins` without overwriting existing configs.
+  - **Gateway Parity**: `/plugins list|templates|path` shares the same management surface in Telegram/Discord/Slack/Webhook chats.
 - **v0.3.97 Session Title Generation**:
   - **Hermes-Style Auto Titles**: persisted sessions now receive a concise title from the first user message when no manual title exists.
   - **Collision-Safe Titles**: generated titles preserve user-set names and add a short session suffix when another session already owns the same title.
@@ -438,7 +442,7 @@ tools:
     description: "Get weather for a city"
 ```
 
-4 ready-to-use templates bundled. `hakimi plugins list` to browse, `hakimi plugins init <name>` to scaffold.
+Bundled HTTP plugin templates are embedded in the CLI. Use `hakimi plugins templates` to browse, `hakimi plugins init weather [name]` to scaffold into `~/.hakimi/plugins`, and `hakimi plugins list` or gateway `/plugins list` to inspect loaded plugins.
 
 ---
 
@@ -514,7 +518,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1141 |
+| Tests | ~500 | 1145 |
 
 ---
 
@@ -524,7 +528,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1141 tests)
+# Run all tests (1145 tests)
 cargo test --workspace
 
 # Debug logging

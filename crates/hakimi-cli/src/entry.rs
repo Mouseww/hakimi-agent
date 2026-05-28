@@ -84,6 +84,207 @@ fn split_first_token(raw: &str) -> (&str, &str) {
         .unwrap_or((raw, ""))
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PluginTemplate {
+    name: &'static str,
+    file_stem: &'static str,
+    default_plugin_name: &'static str,
+    description: &'static str,
+    body: &'static str,
+}
+
+const PLUGIN_TEMPLATES: &[PluginTemplate] = &[
+    PluginTemplate {
+        name: "weather",
+        file_stem: "weather",
+        default_plugin_name: "weather",
+        description: "HTTP weather lookup tool backed by wttr.in",
+        body: include_str!("../../../templates/plugin-weather.yaml"),
+    },
+    PluginTemplate {
+        name: "http-api",
+        file_stem: "http_api",
+        default_plugin_name: "my_api",
+        description: "Custom HTTP API tool wrapper",
+        body: include_str!("../../../templates/plugin-http-api.yaml"),
+    },
+];
+
+fn plugin_template_by_name(name: &str) -> Option<&'static PluginTemplate> {
+    PLUGIN_TEMPLATES
+        .iter()
+        .find(|template| template.name.eq_ignore_ascii_case(name))
+}
+
+fn plugin_template_names() -> String {
+    PLUGIN_TEMPLATES
+        .iter()
+        .map(|template| format!("`{}`", template.name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn sanitize_plugin_file_stem(name: &str) -> std::result::Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("plugin name must not be empty".to_string());
+    }
+    if trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        Ok(trimmed.to_string())
+    } else {
+        Err("plugin name may only contain ASCII letters, numbers, '-' and '_'".to_string())
+    }
+}
+
+fn render_plugin_template(template: &PluginTemplate, plugin_name: &str) -> String {
+    template.body.replacen(
+        &format!("name: {}", template.default_plugin_name),
+        &format!("name: {plugin_name}"),
+        1,
+    )
+}
+
+fn write_plugin_template_to_dir(
+    template_name: &str,
+    plugin_name: &str,
+    plugin_dir: &std::path::Path,
+) -> std::result::Result<std::path::PathBuf, String> {
+    let template = plugin_template_by_name(template_name).ok_or_else(|| {
+        format!(
+            "unknown plugin template `{template_name}`. Available: {}",
+            plugin_template_names()
+        )
+    })?;
+    let file_stem = sanitize_plugin_file_stem(plugin_name)?;
+    std::fs::create_dir_all(plugin_dir).map_err(|err| {
+        format!(
+            "failed to create plugin directory `{}`: {err}",
+            plugin_dir.display()
+        )
+    })?;
+    let path = plugin_dir.join(format!("{file_stem}.yaml"));
+    if path.exists() {
+        return Err(format!("plugin config already exists: {}", path.display()));
+    }
+    std::fs::write(&path, render_plugin_template(template, &file_stem)).map_err(|err| {
+        format!(
+            "failed to write plugin template `{}`: {err}",
+            path.display()
+        )
+    })?;
+    Ok(path)
+}
+
+fn plugin_templates_response() -> String {
+    let mut lines = vec!["📦 **Plugin templates:**".to_string()];
+    for template in PLUGIN_TEMPLATES {
+        lines.push(format!(
+            "- `{}` -> `{}.yaml`: {}",
+            template.name, template.file_stem, template.description
+        ));
+    }
+    lines.push("Use `hakimi plugins init <template> [name]` to create a config.".to_string());
+    lines.join("\n")
+}
+
+fn plugin_list_response() -> String {
+    let mut loader = hakimi_plugin::PluginLoader::new();
+    let plugin_dir = loader.plugin_dir().to_path_buf();
+    if let Err(err) = loader.load_all() {
+        return format!(
+            "❌ Failed to load plugins from `{}`: {err}",
+            plugin_dir.display()
+        );
+    }
+
+    if loader.plugins().is_empty() {
+        return format!(
+            "📦 No plugins found in `{}`.\nUse `hakimi plugins templates` to browse templates, then `hakimi plugins init weather` to scaffold one.",
+            plugin_dir.display()
+        );
+    }
+
+    let mut lines = vec![format!("📦 **Plugins in `{}`:**", plugin_dir.display())];
+    for plugin in loader.plugins() {
+        let tools = plugin.tools();
+        lines.push(format!(
+            "- `{}` v{} — {}",
+            plugin.name(),
+            plugin.version(),
+            plugin.description()
+        ));
+        if !tools.is_empty() {
+            let tool_names = tools
+                .iter()
+                .map(|tool| format!("`{}`", tool.name()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            lines.push(format!("  Tools: {tool_names}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn plugin_help_response() -> String {
+    [
+        "Usage: `hakimi plugins <command>`",
+        "",
+        "Commands:",
+        "- `list` - scan `~/.hakimi/plugins` and show loaded HTTP plugins",
+        "- `templates` - show bundled plugin config templates",
+        "- `init <template> [name]` - write a template config to `~/.hakimi/plugins`",
+        "- `path` - show the plugin directory",
+    ]
+    .join("\n")
+}
+
+fn plugin_args_from_raw(raw: Option<&str>) -> Vec<String> {
+    raw.unwrap_or_default()
+        .split_whitespace()
+        .map(String::from)
+        .collect()
+}
+
+fn top_level_plugins_response(args: &[String]) -> String {
+    let Some(action) = args.first().map(|s| s.as_str()) else {
+        return plugin_help_response();
+    };
+
+    match action {
+        "list" | "ls" => plugin_list_response(),
+        "templates" | "template" => plugin_templates_response(),
+        "path" => {
+            let loader = hakimi_plugin::PluginLoader::new();
+            format!("📦 Plugin directory: `{}`", loader.plugin_dir().display())
+        }
+        "init" => {
+            let Some(template_name) = args.get(1) else {
+                return format!(
+                    "Usage: `hakimi plugins init <template> [name]`\nAvailable templates: {}",
+                    plugin_template_names()
+                );
+            };
+            let plugin_name = args.get(2).map(String::as_str).unwrap_or(template_name);
+            let loader = hakimi_plugin::PluginLoader::new();
+            match write_plugin_template_to_dir(template_name, plugin_name, loader.plugin_dir()) {
+                Ok(path) => format!(
+                    "✅ Plugin template `{template_name}` created at {}",
+                    path.display()
+                ),
+                Err(err) => format!("❌ {err}"),
+            }
+        }
+        "help" | "-h" | "--help" => plugin_help_response(),
+        other => format!(
+            "❌ Unknown plugins command `{other}`.\n{}",
+            plugin_help_response()
+        ),
+    }
+}
+
 fn take_leading_cron_repeat(raw: &str) -> std::result::Result<(Option<u32>, &str), String> {
     let raw = raw.trim_start();
     if let Some(rest) = raw.strip_prefix("--repeat=") {
@@ -1216,6 +1417,13 @@ pub struct CronCommandArgs {
     pub args: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct PluginCommandArgs {
+    /// Plugin action and arguments, e.g. `list`, `templates`, or `init weather`.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum TopLevelCommand {
     /// Run setup diagnostics and print remediation hints.
@@ -1224,6 +1432,8 @@ pub enum TopLevelCommand {
     Setup,
     /// Manage cron jobs.
     Cron(CronCommandArgs),
+    /// Manage HTTP tool plugins.
+    Plugins(PluginCommandArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -2885,6 +3095,10 @@ Just send a message to chat with me!"
                     }
                     Some(Command::Copy(_)) => "`/copy [N]` is available in the local Hakimi TUI for copying recent assistant responses. In gateway chats, use your chat client's native copy action.".to_string(),
                     Some(Command::History(_)) => "`/history [N]` is available in the local Hakimi TUI for reviewing recent user/assistant messages. Gateway chats keep history in the chat client and can use `/clear` to reset Hakimi state.".to_string(),
+                    Some(Command::Plugins(cmd)) => {
+                        let args = plugin_args_from_raw(cmd.as_deref());
+                        top_level_plugins_response(&args)
+                    }
                     Some(Command::Browser(cmd)) => {
                         match cmd.as_deref() {
                             Some("start") => "🌐 Browser session started.".to_string(),
@@ -3928,6 +4142,10 @@ pub async fn run() -> Result<()> {
         println!("{}", top_level_cron_response(&cron_args.args));
         return Ok(());
     }
+    if let Some(TopLevelCommand::Plugins(plugin_args)) = &args.command {
+        println!("{}", top_level_plugins_response(&plugin_args.args));
+        return Ok(());
+    }
 
     let config = load_config();
 
@@ -4062,10 +4280,71 @@ mod tests {
             }))
         );
 
+        let plugins = <super::Args as clap::Parser>::try_parse_from([
+            "hakimi",
+            "plugins",
+            "init",
+            "weather",
+            "local_weather",
+        ])
+        .unwrap();
+        assert_eq!(
+            plugins.command,
+            Some(TopLevelCommand::Plugins(PluginCommandArgs {
+                args: vec![
+                    "init".to_string(),
+                    "weather".to_string(),
+                    "local_weather".to_string()
+                ]
+            }))
+        );
+
         let legacy_doctor =
             <super::Args as clap::Parser>::try_parse_from(["hakimi", "--doctor"]).unwrap();
         assert!(legacy_doctor.doctor);
         assert_eq!(legacy_doctor.command, None);
+    }
+
+    #[test]
+    fn plugin_templates_response_lists_bundled_http_templates() {
+        let response = super::plugin_templates_response();
+
+        assert!(response.contains("`weather`"));
+        assert!(response.contains("`http-api`"));
+        assert!(response.contains("hakimi plugins init"));
+    }
+
+    #[test]
+    fn render_plugin_template_renames_top_level_plugin() {
+        let template = super::plugin_template_by_name("weather").unwrap();
+        let rendered = super::render_plugin_template(template, "local_weather");
+
+        assert!(rendered.contains("name: local_weather"));
+        assert!(rendered.contains("get_weather"));
+    }
+
+    #[test]
+    fn write_plugin_template_rejects_path_segments() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let result = super::write_plugin_template_to_dir("weather", "../escape", tmp.path());
+
+        assert!(result.is_err());
+        assert!(!tmp.path().join("escape.yaml").exists());
+    }
+
+    #[test]
+    fn write_plugin_template_creates_yaml_config() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path =
+            super::write_plugin_template_to_dir("weather", "local_weather", tmp.path()).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+
+        assert_eq!(
+            path.file_name().unwrap().to_string_lossy(),
+            "local_weather.yaml"
+        );
+        assert!(content.contains("name: local_weather"));
+        assert!(content.contains("https://wttr.in/{city}?format=j1"));
     }
 
     #[test]

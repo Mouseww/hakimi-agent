@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.97-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.98-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1141-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1145-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1141 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1145 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.98 插件 CLI + Gateway 管理**
+  - `hakimi plugins list|templates|init|path` 现在直接复用现有 HTTP 插件加载器。
+  - 内置 HTTP 插件模板会嵌入二进制，安全生成到 `~/.hakimi/plugins`，不会覆盖已有配置。
+  - Gateway `/plugins list|templates|path` 与 CLI 共用同一套插件管理输出。
 - **v0.3.97 会话标题自动生成**
   - 持久化 session 在没有手动标题时，会根据首条用户消息生成简洁标题。
   - 自动标题会保留用户手动设置的标题；若标题已被其他 session 占用，会追加短 session 后缀避免唯一索引冲突。
@@ -291,7 +295,7 @@ tools:
     description: "获取城市天气"
 ```
 
-内置 4 个即用模板。`hakimi plugins list` 浏览，`hakimi plugins init <name>` 一键生成。
+CLI 内嵌 HTTP 插件模板。使用 `hakimi plugins templates` 浏览模板，`hakimi plugins init weather [name]` 生成到 `~/.hakimi/plugins`，并用 `hakimi plugins list` 或 gateway `/plugins list` 查看已加载插件。
 
 ---
 
@@ -366,7 +370,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1141 |
+| 测试 | ~500 | 1145 |
 
 ---
 
@@ -376,7 +380,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1141 tests)
+# 运行全部测试 (1145 tests)
 cargo test --workspace
 
 # Debug 日志
