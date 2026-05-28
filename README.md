@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.98-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.99-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1145-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1146-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1145 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1146 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.99 TUI OSC 52 Clipboard Fallback**:
+  - **Hermes Terminal Clipboard Parity**: `/copy [N]` now falls back to OSC 52 terminal clipboard output when native clipboard writers are unavailable.
+  - **Remote Terminal Friendly**: SSH, tmux, and terminal-emulator workflows can still receive copied assistant responses when platform tools like `pbcopy`, `wl-copy`, or PowerShell are missing.
+  - **Regression Coverage**: added deterministic coverage for the OSC 52 payload wrapper without invoking a live clipboard.
 - **v0.3.98 Plugin CLI + Gateway Management**:
   - **Hermes-Style Plugin Commands**: `hakimi plugins list|templates|init|path` now exposes the existing HTTP plugin loader from the CLI.
   - **Template Scaffolding**: bundled HTTP plugin templates are embedded in the binary and scaffold safely into `~/.hakimi/plugins` without overwriting existing configs.

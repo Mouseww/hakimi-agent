@@ -1,6 +1,7 @@
 //! Clipboard helpers for local TUI slash commands.
 
 use crate::{ChatMessage, Role};
+use base64::Engine;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -21,7 +22,7 @@ impl CopyAssistantResponse {
                 "nothing to copy - start a conversation first"
             }
             CopyAssistantResponse::ClipboardUnavailable => {
-                "clipboard copy failed - install pbcopy, wl-copy, xclip, xsel, or PowerShell"
+                "clipboard copy failed - install pbcopy, wl-copy, xclip, xsel, PowerShell, or use an OSC 52-capable terminal"
             }
         }
     }
@@ -179,7 +180,21 @@ pub fn write_clipboard_text(text: &str) -> bool {
         }
     }
 
-    false
+    write_osc52_clipboard_text(text)
+}
+
+fn osc52_sequence(text: &str) -> String {
+    let payload = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
+    format!("\x1b]52;c;{payload}\x07")
+}
+
+fn write_osc52_clipboard_text(text: &str) -> bool {
+    let mut stdout = std::io::stdout();
+    let sequence = osc52_sequence(text);
+    stdout
+        .write_all(sequence.as_bytes())
+        .and_then(|_| stdout.flush())
+        .is_ok()
 }
 
 #[cfg(test)]
@@ -262,5 +277,10 @@ mod tests {
         let response = copy_assistant_response(&messages, None, |_| false);
 
         assert_eq!(response, CopyAssistantResponse::ClipboardUnavailable);
+    }
+
+    #[test]
+    fn osc52_sequence_wraps_base64_payload() {
+        assert_eq!(osc52_sequence("hello"), "\x1b]52;c;aGVsbG8=\x07");
     }
 }

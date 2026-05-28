@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.98-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.99-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1145-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1146-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1145 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1146 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.99 TUI OSC 52 剪贴板回退**
+  - `/copy [N]` 现在会在原生剪贴板写入工具不可用时，回退到 Hermes 风格的 OSC 52 终端剪贴板输出。
+  - SSH、tmux 和终端模拟器场景即使缺少 `pbcopy`、`wl-copy` 或 PowerShell，也能复制 assistant 回复。
+  - 新增 OSC 52 payload 包装的确定性回归覆盖，不调用真实剪贴板。
 - **v0.3.98 插件 CLI + Gateway 管理**
   - `hakimi plugins list|templates|init|path` 现在直接复用现有 HTTP 插件加载器。
   - 内置 HTTP 插件模板会嵌入二进制，安全生成到 `~/.hakimi/plugins`，不会覆盖已有配置。
