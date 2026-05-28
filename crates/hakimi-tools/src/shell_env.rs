@@ -67,18 +67,16 @@ pub fn diagnose_shell_failure(
 
     if let Some(token) = extract_bash_error_token(stderr, "cannot execute: Permission denied")
         .or_else(|| extract_bash_error_token(stderr, "Permission denied"))
+        && let Some(diagnostic) = diagnose_non_executable(&token, workdir)
     {
-        if let Some(diagnostic) = diagnose_non_executable(&token, workdir) {
-            return Some(diagnostic);
-        }
+        return Some(diagnostic);
     }
 
     if exit_code == Some(126)
         && let Some(token) = extract_bash_error_token(stderr, "Permission denied")
+        && let Some(diagnostic) = diagnose_non_executable(&token, workdir)
     {
-        if let Some(diagnostic) = diagnose_non_executable(&token, workdir) {
-            return Some(diagnostic);
-        }
+        return Some(diagnostic);
     }
 
     if exit_code == Some(127)
