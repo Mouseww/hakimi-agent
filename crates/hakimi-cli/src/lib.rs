@@ -30,6 +30,8 @@ pub enum Command {
     Config(Option<String>),
     /// Resume a previous session by ID or title.
     Resume(Option<String>),
+    /// Show recent local conversation history.
+    History(Option<String>),
     /// List or describe available tools.
     Tools(Option<String>),
     /// List or describe available skills.
@@ -119,6 +121,7 @@ impl Command {
             "model" | "m" => Some(Command::Model(arg.map(String::from))),
             "config" | "cfg" => Some(Command::Config(arg.map(String::from))),
             "resume" | "r" => Some(Command::Resume(arg.map(String::from))),
+            "history" | "hist" => Some(Command::History(arg.map(String::from))),
             "tools" | "t" => Some(Command::Tools(arg.map(String::from))),
             "skills" | "s" => Some(Command::Skills(arg.map(String::from))),
             "status" => Some(Command::Status),
@@ -169,6 +172,8 @@ impl fmt::Display for Command {
             Command::Config(Some(k)) => write!(f, "/config {k}"),
             Command::Resume(None) => write!(f, "/resume"),
             Command::Resume(Some(id)) => write!(f, "/resume {id}"),
+            Command::History(None) => write!(f, "/history"),
+            Command::History(Some(h)) => write!(f, "/history {h}"),
             Command::Tools(None) => write!(f, "/tools"),
             Command::Tools(Some(t)) => write!(f, "/tools {t}"),
             Command::Skills(None) => write!(f, "/skills"),
@@ -256,6 +261,15 @@ mod tests {
         assert_eq!(
             Command::parse("/profile work"),
             Some(Command::Profile(Some("work".into())))
+        );
+        assert_eq!(Command::parse("/history"), Some(Command::History(None)));
+        assert_eq!(
+            Command::parse("/history 3"),
+            Some(Command::History(Some("3".into())))
+        );
+        assert_eq!(
+            Command::parse("/hist 2"),
+            Some(Command::History(Some("2".into())))
         );
         assert_eq!(Command::parse("/doctor"), Some(Command::Doctor));
         assert_eq!(Command::parse("/setup"), Some(Command::Setup));

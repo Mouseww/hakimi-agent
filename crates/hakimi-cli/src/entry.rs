@@ -2709,6 +2709,7 @@ async fn start_gateway(
 • `/help` - Show this command reference\n\
 • `/stop` - Cancel the active task or stream\n\
 • `/clear` - Clear this chat's conversation state\n\
+• `/history [N]` - Show recent local TUI conversation messages\n\
 • `/status` - Show gateway, platform, and model status\n\
 • `/usage` - Show last-turn tokens, cost, and rate limits\n\n\
 **Agent capability**\n\
@@ -2883,6 +2884,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Copy(_)) => "`/copy [N]` is available in the local Hakimi TUI for copying recent assistant responses. In gateway chats, use your chat client's native copy action.".to_string(),
+                    Some(Command::History(_)) => "`/history [N]` is available in the local Hakimi TUI for reviewing recent user/assistant messages. Gateway chats keep history in the chat client and can use `/clear` to reset Hakimi state.".to_string(),
                     Some(Command::Browser(cmd)) => {
                         match cmd.as_deref() {
                             Some("start") => "🌐 Browser session started.".to_string(),

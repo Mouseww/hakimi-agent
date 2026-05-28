@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 
 const TOOL_CHAT_PREVIEW_CHARS: usize = 120;
 const TOOL_PANEL_PREVIEW_CHARS: usize = 80;
+const HISTORY_PREVIEW_CHARS: usize = 160;
 
 fn compact_one_line(input: &str, max_chars: usize) -> String {
     let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -20,6 +21,63 @@ fn compact_one_line(input: &str, max_chars: usize) -> String {
     } else {
         preview
     }
+}
+
+fn parse_history_limit(arg: Option<&str>) -> Result<Option<usize>, &'static str> {
+    let raw = arg.unwrap_or_default().trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+
+    match raw.parse::<usize>() {
+        Ok(limit) if limit > 0 => Ok(Some(limit)),
+        _ => Err("usage: /history [number]"),
+    }
+}
+
+fn render_history_messages(
+    messages: &[ChatMessage],
+    arg: Option<&str>,
+) -> Result<String, &'static str> {
+    let limit = parse_history_limit(arg)?;
+    let visible: Vec<(usize, &ChatMessage)> = messages
+        .iter()
+        .filter(|message| {
+            message.role == crate::Role::User || message.role == crate::Role::Assistant
+        })
+        .enumerate()
+        .map(|(index, message)| (index + 1, message))
+        .collect();
+
+    if visible.is_empty() {
+        return Err("nothing in conversation history yet");
+    }
+
+    let start = limit
+        .map(|limit| visible.len().saturating_sub(limit))
+        .unwrap_or(0);
+    let shown = visible.len() - start;
+    let mut lines = vec![format!(
+        "Conversation history (showing {shown} of {} messages):",
+        visible.len()
+    )];
+
+    for (index, message) in visible.into_iter().skip(start) {
+        let label = if message.role == crate::Role::User {
+            "You"
+        } else {
+            "Hakimi"
+        };
+        let preview = compact_one_line(&message.content, HISTORY_PREVIEW_CHARS);
+        let preview = if preview.is_empty() {
+            "(empty)".to_string()
+        } else {
+            preview
+        };
+        lines.push(format!("  [{label} #{index}] {preview}"));
+    }
+
+    Ok(lines.join("\n"))
 }
 
 /// The main application state.
@@ -221,12 +279,19 @@ impl App {
 
     /// Handle slash commands locally (without sending to agent).
     fn handle_slash_command(&mut self, cmd: &str) {
-        let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
-        match parts[0] {
+        let parts: Vec<&str> = cmd.splitn(2, char::is_whitespace).collect();
+        let command = parts[0].to_ascii_lowercase();
+        match command.as_str() {
             "/help" => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help       — Show this help\n  /copy [N]   — Copy the Nth latest assistant response\n  /clear      — Clear chat history\n  /tools      — Toggle tools panel\n  /quit       — Exit the application",
+                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /quit          — Exit the application",
                 ));
+            }
+            "/history" | "/hist" => {
+                match render_history_messages(&self.messages, parts.get(1).copied()) {
+                    Ok(history) => self.messages.push(ChatMessage::system(history)),
+                    Err(message) => self.messages.push(ChatMessage::error(message)),
+                }
             }
             "/copy" | "/cp" => {
                 let response = copy_assistant_response(
@@ -694,7 +759,70 @@ mod tests {
         // welcome + help
         assert_eq!(app.messages.len(), 2);
         assert!(app.messages[1].content.contains("/help"));
+        assert!(app.messages[1].content.contains("/history"));
         assert!(app.messages[1].content.contains("/copy"));
+    }
+
+    #[test]
+    fn slash_history_without_conversation_shows_error() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/history".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Error);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("nothing in conversation history")
+        );
+    }
+
+    #[test]
+    fn slash_history_renders_latest_user_and_assistant_messages() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages
+            .push(crate::ChatMessage::user("first question"));
+        app.messages
+            .push(crate::ChatMessage::assistant("first answer"));
+        app.messages
+            .push(crate::ChatMessage::tool("bash", "hidden output"));
+        app.messages
+            .push(crate::ChatMessage::user("second question"));
+        for c in "/history 2".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let content = &app.messages.last().unwrap().content;
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::System);
+        assert!(content.contains("showing 2 of 3 messages"));
+        assert!(content.contains("[Hakimi #2] first answer"));
+        assert!(content.contains("[You #3] second question"));
+        assert!(!content.contains("first question"));
+        assert!(!content.contains("hidden output"));
+    }
+
+    #[test]
+    fn slash_history_alias_rejects_non_numeric_argument() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("question"));
+        for c in "/hist nope".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Error);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("usage: /history")
+        );
     }
 
     #[test]

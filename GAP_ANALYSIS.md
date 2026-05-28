@@ -104,7 +104,7 @@ Generated: 2026-05-21
 
 ### CLI
 - **Interactive REPL** — Input loop with slash commands
-- **Slash commands** — /help, /quit, /clear, /model, /config, /resume, /tools, /skills, /status, /usage
+- **Slash commands** — /help, /quit, /clear, /model, /config, /resume, /history, /tools, /skills, /status, /usage
 - **Single-query mode** — `--query` flag
 - **YOLO mode** — `--yolo` auto-accept
 - **Serve mode** — `--serve` HTTP API server
@@ -114,6 +114,7 @@ Generated: 2026-05-21
 
 ### TUI
 - **Ratatui TUI** — Terminal UI with chat panel, tools activity panel, status bar
+- **TUI `/history [N]` command** — Reviews recent user/assistant turns locally without sending the command to the model
 - **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers
 - **Spinner animation** — Thinking indicator
 - **Key handling** — Ctrl+C quit, input editing, scrolling
@@ -563,7 +564,7 @@ Generated: 2026-05-21
 1. ~~Browser automation~~ ✅ DONE (Optional `browser` feature, headless Chromium integration)
 2. Gateway platform breadth (12 missing platforms — webhook/signal/matrix/wecom/dingtalk added)
 3. Plugin ecosystem (memory providers, model providers, context engines)
-4. CLI command completeness (34+ missing commands)
+4. CLI command completeness (33+ missing commands)
 5. Bedrock transport
 6. ACP adapter / IDE integration
 7. Kanban multi-agent coordination
@@ -610,9 +611,10 @@ Generated: 2026-05-21
 | 22 | Rate Limit Tracking + Gateway Usage + Cost Estimates | `hakimi-transports/src/rate_limit.rs`, `hakimi-common/src/usage_pricing.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 17 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls, Hermes-style estimated cost, pricing snapshot version, plus rate-limit display |
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 | 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 9 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends and exposes the command in shared slash parsing |
+| 25 | TUI `/history` Review | `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Hermes-style `/history [N]` / `/hist [N]` reviews recent user/assistant messages locally and gives gateway users a clear surface-boundary notice |
 
 ### Summary
-- **Total tests**: 1134 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1137 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

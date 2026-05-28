@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.95-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.96-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1134-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1137-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1134 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1137 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.96 TUI `/history` Conversation Review**:
+  - **Hermes-Style History Command**: Hakimi TUI now supports `/history [N]` and `/hist [N]` to review recent user/assistant turns without sending the command to the model.
+  - **Bounded Local Review**: optional numeric limits show the latest N visible conversation messages while skipping tool/system noise.
+  - **Parser + Gateway Clarity**: `/history` is part of the shared slash-command parser, and gateway chats explain that full history review belongs to the local TUI/chat surface.
 - **v0.3.95 Tool Output Secret Redaction**:
   - **Hermes-Style Redactor**: shared Rust-native redaction now masks API keys, bearer tokens, private keys, JWTs, database URLs, and sensitive URL/query fields before tool output is surfaced.
   - **Output Boundary Coverage**: terminal, process, code execution, and command-plugin results now redact secrets in stdout/stderr, stored commands, diagnostics, and plugin errors.
@@ -506,7 +510,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1134 |
+| Tests | ~500 | 1137 |
 
 ---
 
@@ -516,7 +520,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1134 tests)
+# Run all tests (1137 tests)
 cargo test --workspace
 
 # Debug logging
