@@ -542,8 +542,7 @@ mod tests {
 
     #[test]
     fn test_generate_title_truncates_unicode_safely() {
-        let long =
-            "请帮我分析这个特别长的中文需求并整理成可以执行的工程任务列表同时保留关键约束和风险";
+        let long = "请帮我分析这个特别长的中文需求并整理成可以执行的工程任务列表同时保留关键约束和风险再补充迁移步骤验收标准回滚方案以及后续负责人";
         let messages = vec![hakimi_common::Message::user(long)];
         let title = super::generate_session_title(&messages);
 
