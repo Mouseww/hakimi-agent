@@ -270,6 +270,51 @@ async fn get_page_snapshot(page: &Page) -> Result<String> {
     Ok(text)
 }
 
+async fn press_page_key(page: &Page, key: &str) -> Result<()> {
+    use chromiumoxide::cdp::browser_protocol::input::{
+        DispatchKeyEventParams, DispatchKeyEventType,
+    };
+
+    let key_definition = chromiumoxide::keys::get_key_definition(key)
+        .ok_or_else(|| HakimiError::Tool(format!("unknown browser key: {key}")))?;
+
+    let mut cmd = DispatchKeyEventParams::builder();
+    let key_down_event_type = if let Some(text) = key_definition.text {
+        cmd = cmd.text(text);
+        DispatchKeyEventType::KeyDown
+    } else if key_definition.key.len() == 1 {
+        cmd = cmd.text(key_definition.key);
+        DispatchKeyEventType::KeyDown
+    } else {
+        DispatchKeyEventType::RawKeyDown
+    };
+
+    cmd = cmd
+        .key(key_definition.key)
+        .code(key_definition.code)
+        .windows_virtual_key_code(key_definition.key_code)
+        .native_virtual_key_code(key_definition.key_code);
+
+    let key_down = cmd
+        .clone()
+        .r#type(key_down_event_type)
+        .build()
+        .map_err(|e| HakimiError::Tool(format!("failed to build key-down event: {e}")))?;
+    let key_up = cmd
+        .r#type(DispatchKeyEventType::KeyUp)
+        .build()
+        .map_err(|e| HakimiError::Tool(format!("failed to build key-up event: {e}")))?;
+
+    page.execute(key_down)
+        .await
+        .map_err(|e| HakimiError::Tool(format!("key-down dispatch failed for '{key}': {e}")))?;
+    page.execute(key_up)
+        .await
+        .map_err(|e| HakimiError::Tool(format!("key-up dispatch failed for '{key}': {e}")))?;
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // browser_navigate
 // ---------------------------------------------------------------------------
@@ -904,9 +949,7 @@ impl Tool for BrowserPressTool {
         debug!(key = %key, "browser key press request");
 
         let page = self.manager.get_page().await?;
-        page.press_key(key)
-            .await
-            .map_err(|e| HakimiError::Tool(format!("key press failed for '{key}': {e}")))?;
+        press_page_key(&page, key).await?;
 
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
 
