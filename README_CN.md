@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.96-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.97-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1137-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1141-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1137 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1141 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.97 会话标题自动生成**
+  - 持久化 session 在没有手动标题时，会根据首条用户消息生成简洁标题。
+  - 自动标题会保留用户手动设置的标题；若标题已被其他 session 占用，会追加短 session 后缀避免唯一索引冲突。
+  - 标题截断改为按字符处理，避免中文等多字节文本被截断到非法 UTF-8 边界。
 - **v0.3.96 TUI `/history` 会话历史回看**
   - Hakimi TUI 现在支持 `/history [N]` 和 `/hist [N]`，可在本地回看最近的 user/assistant 对话，不会把命令发送给模型。
   - 可选数字参数会展示最近 N 条可见对话消息，并跳过 tool/system 噪音。
@@ -362,7 +366,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1137 |
+| 测试 | ~500 | 1141 |
 
 ---
 
@@ -372,7 +376,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1137 tests)
+# 运行全部测试 (1141 tests)
 cargo test --workspace
 
 # Debug 日志

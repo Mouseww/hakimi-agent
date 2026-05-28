@@ -64,7 +64,7 @@ pub trait SessionOps {
 ///
 /// Strategy: take the first user message, clean it up, truncate to ~60 chars.
 pub fn generate_session_title(messages: &[hakimi_common::Message]) -> String {
-    const MAX_LEN: usize = 60;
+    const MAX_CHARS: usize = 60;
 
     let first_user = messages
         .iter()
@@ -78,15 +78,14 @@ pub fn generate_session_title(messages: &[hakimi_common::Message]) -> String {
     // Collapse whitespace and newlines
     let cleaned: String = content.split_whitespace().collect::<Vec<&str>>().join(" ");
 
-    if cleaned.len() <= MAX_LEN {
+    if cleaned.chars().count() <= MAX_CHARS {
         cleaned
     } else {
-        // Truncate at word boundary
-        let truncated = &cleaned[..MAX_LEN];
+        let truncated: String = cleaned.chars().take(MAX_CHARS).collect();
         if let Some(last_space) = truncated.rfind(' ') {
-            format!("{}...", &truncated[..last_space])
+            format!("{}...", truncated[..last_space].trim_end())
         } else {
-            format!("{}...", truncated)
+            format!("{}...", truncated.trim_end())
         }
     }
 }
@@ -538,6 +537,17 @@ mod tests {
         let messages = vec![hakimi_common::Message::user(long)];
         let title = super::generate_session_title(&messages);
         assert!(title.len() <= 63); // 60 + "..."
+        assert!(title.ends_with("..."));
+    }
+
+    #[test]
+    fn test_generate_title_truncates_unicode_safely() {
+        let long =
+            "请帮我分析这个特别长的中文需求并整理成可以执行的工程任务列表同时保留关键约束和风险";
+        let messages = vec![hakimi_common::Message::user(long)];
+        let title = super::generate_session_title(&messages);
+
+        assert!(title.chars().count() <= 63);
         assert!(title.ends_with("..."));
     }
 

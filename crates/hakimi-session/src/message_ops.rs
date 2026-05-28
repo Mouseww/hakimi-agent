@@ -2,11 +2,12 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::db::SessionDB;
+use crate::session_ops::generate_session_title;
 use hakimi_common::{Message, MessageRole};
 
 /// A full-text search result.
@@ -73,6 +74,10 @@ impl MessageOps for SessionDB {
             params![session_id],
         )
         .context("Failed to increment message_count")?;
+
+        if msg.role == MessageRole::User {
+            maybe_set_generated_title(&conn, session_id, msg)?;
+        }
 
         debug!("Saved message for session {session_id}");
         Ok(())
@@ -168,6 +173,80 @@ impl MessageOps for SessionDB {
     }
 }
 
+fn maybe_set_generated_title(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    msg: &Message,
+) -> Result<()> {
+    if msg.content.as_deref().unwrap_or_default().trim().is_empty() {
+        return Ok(());
+    }
+
+    let existing_title: Option<String> = conn
+        .query_row(
+            "SELECT title FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Failed to read session title")?
+        .flatten();
+
+    if existing_title
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|title| !title.is_empty())
+    {
+        return Ok(());
+    }
+
+    let title = generate_session_title(std::slice::from_ref(msg));
+    if title == "Untitled session" {
+        return Ok(());
+    }
+
+    let title = unique_generated_title(conn, session_id, &title)?;
+    conn.execute(
+        "UPDATE sessions SET title = ?2 WHERE id = ?1 AND (title IS NULL OR trim(title) = '')",
+        params![session_id, title],
+    )
+    .context("Failed to set generated session title")?;
+
+    Ok(())
+}
+
+fn unique_generated_title(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    title: &str,
+) -> Result<String> {
+    let short_id: String = session_id.chars().take(8).collect();
+    let mut candidate = title.to_string();
+    let mut attempt = 0usize;
+
+    loop {
+        let conflict: Option<String> = conn
+            .query_row(
+                "SELECT id FROM sessions WHERE title = ?1 AND id != ?2 LIMIT 1",
+                params![candidate, session_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("Failed to check generated session title uniqueness")?;
+
+        if conflict.is_none() {
+            return Ok(candidate);
+        }
+
+        attempt += 1;
+        candidate = if attempt == 1 {
+            format!("{title} #{short_id}")
+        } else {
+            format!("{title} #{short_id}-{attempt}")
+        };
+    }
+}
+
 /// Helper to map a rusqlite Row to Message.
 fn row_to_message(row: &rusqlite::Row) -> rusqlite::Result<Message> {
     let role_str: String = row.get(0)?;
@@ -260,6 +339,49 @@ mod tests {
 
         let meta = db.get_session(&sid).unwrap().unwrap();
         assert_eq!(meta.message_count, 2);
+    }
+
+    #[test]
+    fn test_save_first_user_message_generates_title() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("Plan the release checklist"))
+            .unwrap();
+
+        let meta = db.get_session(&sid).unwrap().unwrap();
+        assert_eq!(meta.title.as_deref(), Some("Plan the release checklist"));
+    }
+
+    #[test]
+    fn test_save_message_preserves_existing_title() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+        db.set_title(&sid, "Manual title").unwrap();
+
+        db.save_message(&sid, &Message::user("Different generated title"))
+            .unwrap();
+
+        let meta = db.get_session(&sid).unwrap().unwrap();
+        assert_eq!(meta.title.as_deref(), Some("Manual title"));
+    }
+
+    #[test]
+    fn test_generated_title_avoids_unique_conflict() {
+        let db = test_db();
+        let first = create_test_session(&db);
+        let second = create_test_session(&db);
+
+        db.save_message(&first, &Message::user("Same opening prompt"))
+            .unwrap();
+        db.save_message(&second, &Message::user("Same opening prompt"))
+            .unwrap();
+
+        let first_title = db.get_session(&first).unwrap().unwrap().title.unwrap();
+        let second_title = db.get_session(&second).unwrap().unwrap().title.unwrap();
+        assert_eq!(first_title, "Same opening prompt");
+        assert!(second_title.starts_with("Same opening prompt #"));
+        assert_ne!(first_title, second_title);
     }
 
     #[test]

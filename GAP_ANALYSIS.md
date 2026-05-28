@@ -57,6 +57,7 @@ Generated: 2026-05-21
 - **FTS5 full-text search** — Message content indexing
 - **Message CRUD** — Save, retrieve, search messages
 - **Session metadata** — ID, source, user, model, timestamps, message counts, token counts
+- **Auto-generated session titles** — First user message names untitled persisted sessions with collision-safe, Unicode-safe titles
 
 ### Memory
 - **MemoryProvider trait** — `system_prompt_block()`, `prefetch()`, `handle_tool_call()`
@@ -408,10 +409,10 @@ Generated: 2026-05-21
 - **Hermes location**: `agent/think_scrubber.py`
 - **Status**: ✅ Done in v0.3.77 — stateful tag scrubber handles `<think>`, `<thinking>`, `<reasoning>`, `<thought>`, and `<REASONING_SCRATCHPAD>` across streaming delta boundaries; non-streaming responses are scrubbed before final_response/session storage
 
-#### 51. Title Generator
+#### 51. ~~Title Generator~~ ✅ DONE
 - **What**: Auto-generates session titles from conversation content
 - **Hermes location**: `agent/title_generator.py`
-- **Priority**: **Low** — UX convenience
+- **Status**: ✅ Done in v0.3.97 — persisted sessions now derive a concise title from the first user message when no manual title exists, preserve existing titles, avoid duplicate-title conflicts with a short session suffix, and truncate Unicode safely
 
 #### 52. KawaiiSpinner / Display System
 - **What**: Animated spinner faces during API calls, activity feed for tool results
@@ -511,7 +512,7 @@ Generated: 2026-05-21
 
 ### 11. Session Store
 - **Status**: SQLite with WAL, FTS5, message CRUD
-- **What's missing**: Session resume with full history restoration, session title generation, session search with LLM summarization of results, session export/dump, session lifecycle events (start/end callbacks)
+- **What's missing**: Session resume with full history restoration, session search with LLM summarization of results, session export/dump, session lifecycle events (start/end callbacks)
 - **Hermes reference**: `hermes_state.py`, `hermes_cli/dump.py`
 
 ### 12. Knowledge Graph
@@ -612,9 +613,10 @@ Generated: 2026-05-21
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 | 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 9 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends and exposes the command in shared slash parsing |
 | 25 | TUI `/history` Review | `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Hermes-style `/history [N]` / `/hist [N]` reviews recent user/assistant messages locally and gives gateway users a clear surface-boundary notice |
+| 26 | Session Title Generation | `hakimi-session/src/message_ops.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ First user messages auto-title untitled persisted sessions, preserve manual titles, avoid duplicate generated titles, and truncate Unicode safely |
 
 ### Summary
-- **Total tests**: 1137 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1141 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.96-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.97-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1137-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1141-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1137 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1141 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.97 Session Title Generation**:
+  - **Hermes-Style Auto Titles**: persisted sessions now receive a concise title from the first user message when no manual title exists.
+  - **Collision-Safe Titles**: generated titles preserve user-set names and add a short session suffix when another session already owns the same title.
+  - **Unicode-Safe Truncation**: title generation now truncates by characters instead of bytes, avoiding invalid UTF-8 boundaries.
 - **v0.3.96 TUI `/history` Conversation Review**:
   - **Hermes-Style History Command**: Hakimi TUI now supports `/history [N]` and `/hist [N]` to review recent user/assistant turns without sending the command to the model.
   - **Bounded Local Review**: optional numeric limits show the latest N visible conversation messages while skipping tool/system noise.
@@ -510,7 +514,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1137 |
+| Tests | ~500 | 1141 |
 
 ---
 
@@ -520,7 +524,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1137 tests)
+# Run all tests (1141 tests)
 cargo test --workspace
 
 # Debug logging
