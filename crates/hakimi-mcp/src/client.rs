@@ -3,6 +3,8 @@
 //! Spawns an MCP server as a child process and communicates via JSON-RPC 2.0
 //! over its stdin/stdout.
 
+use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use anyhow::{Context, Result};
@@ -21,6 +23,12 @@ const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 const CLIENT_NAME: &str = "hakimi-agent";
 const CLIENT_VERSION: &str = "0.2.1";
 
+#[derive(Debug, Clone)]
+struct ResolvedStdioCommand {
+    executable: PathBuf,
+    path_override: Option<OsString>,
+}
+
 /// An MCP client that communicates with an MCP server over stdio.
 pub struct McpClient {
     child: Child,
@@ -38,10 +46,21 @@ impl McpClient {
 
     /// Spawn an MCP server as a child process and connect over stdio.
     pub async fn connect_stdio(command: &str, args: &[&str]) -> Result<Self> {
-        info!(command, ?args, "spawning MCP server");
+        let resolved = resolve_stdio_command(command);
+        info!(
+            command,
+            executable = %resolved.executable.display(),
+            ?args,
+            "spawning MCP server"
+        );
 
-        let mut child = tokio::process::Command::new(command)
-            .args(args)
+        let mut process = tokio::process::Command::new(&resolved.executable);
+        process.args(args);
+        if let Some(path) = resolved.path_override {
+            process.env("PATH", path);
+        }
+
+        let mut child = process
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -314,6 +333,144 @@ impl McpClient {
     }
 }
 
+fn resolve_stdio_command(command: &str) -> ResolvedStdioCommand {
+    let path_env = std::env::var_os("PATH");
+    let home_dir = dirs::home_dir();
+    let hakimi_home = std::env::var_os("HAKIMI_HOME").map(PathBuf::from);
+    resolve_stdio_command_with_env(
+        command,
+        path_env.as_deref(),
+        home_dir.as_deref(),
+        hakimi_home.as_deref(),
+    )
+}
+
+fn resolve_stdio_command_with_env(
+    command: &str,
+    path_env: Option<&OsStr>,
+    home_dir: Option<&Path>,
+    hakimi_home: Option<&Path>,
+) -> ResolvedStdioCommand {
+    if !is_bare_command(command) {
+        return ResolvedStdioCommand {
+            executable: PathBuf::from(command),
+            path_override: None,
+        };
+    }
+
+    if let Some(executable) = find_command_in_path(command, path_env) {
+        return ResolvedStdioCommand {
+            executable,
+            path_override: None,
+        };
+    }
+
+    if is_node_stdio_command(command)
+        && let Some(executable) = node_fallback_candidates(command, home_dir, hakimi_home)
+            .into_iter()
+            .find(|candidate| is_executable_file(candidate))
+    {
+        let command_dir = executable.parent().map(Path::to_path_buf);
+        return ResolvedStdioCommand {
+            path_override: command_dir
+                .as_deref()
+                .and_then(|dir| prepend_path_dir(path_env, dir)),
+            executable,
+        };
+    }
+
+    ResolvedStdioCommand {
+        executable: PathBuf::from(command),
+        path_override: None,
+    }
+}
+
+fn is_bare_command(command: &str) -> bool {
+    !command.is_empty() && !command.contains('/') && !command.contains('\\')
+}
+
+fn is_node_stdio_command(command: &str) -> bool {
+    let lower = command.to_ascii_lowercase();
+    let stem = lower
+        .strip_suffix(".exe")
+        .or_else(|| lower.strip_suffix(".cmd"))
+        .or_else(|| lower.strip_suffix(".bat"))
+        .unwrap_or(&lower);
+    matches!(stem, "node" | "npm" | "npx")
+}
+
+fn node_fallback_candidates(
+    command: &str,
+    home_dir: Option<&Path>,
+    hakimi_home: Option<&Path>,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    let default_hakimi_home = home_dir.map(|home| home.join(".hakimi"));
+    if let Some(home) = hakimi_home.or(default_hakimi_home.as_deref()) {
+        candidates.push(home.join("node").join("bin").join(command));
+    }
+    if let Some(home) = home_dir {
+        candidates.push(home.join(".local").join("bin").join(command));
+    }
+    #[cfg(unix)]
+    candidates.push(Path::new("/usr/local/bin").join(command));
+    candidates
+}
+
+fn find_command_in_path(command: &str, path_env: Option<&OsStr>) -> Option<PathBuf> {
+    let path_env = path_env?;
+    for dir in std::env::split_paths(path_env) {
+        for candidate_name in command_names(command) {
+            let candidate = dir.join(candidate_name);
+            if is_executable_file(&candidate) {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn command_names(command: &str) -> Vec<OsString> {
+    #[cfg(windows)]
+    {
+        if Path::new(command).extension().is_some() {
+            return vec![OsString::from(command)];
+        }
+        let mut names = vec![OsString::from(command)];
+        for ext in ["exe", "cmd", "bat"] {
+            names.push(OsString::from(format!("{command}.{ext}")));
+        }
+        names
+    }
+    #[cfg(not(windows))]
+    {
+        vec![OsString::from(command)]
+    }
+}
+
+fn prepend_path_dir(path_env: Option<&OsStr>, dir: &Path) -> Option<OsString> {
+    let mut entries = vec![dir.to_path_buf()];
+    if let Some(path_env) = path_env {
+        entries.extend(std::env::split_paths(path_env).filter(|entry| entry != dir));
+    }
+    std::env::join_paths(entries).ok()
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.is_file()
+        && path
+            .metadata()
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
+}
+
 impl Drop for McpClient {
     fn drop(&mut self) {
         if !self.initialized {
@@ -328,6 +485,7 @@ impl Drop for McpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_request_id_generation() {
@@ -363,5 +521,122 @@ mod tests {
         let v = json!(params);
         assert_eq!(v["name"], "read_file");
         assert_eq!(v["arguments"]["path"], "/tmp/test.txt");
+    }
+
+    #[test]
+    fn test_resolve_stdio_command_keeps_explicit_path() {
+        let resolved = resolve_stdio_command_with_env(
+            "/opt/mcp/server",
+            Some(OsStr::new("/usr/bin")),
+            None,
+            None,
+        );
+        assert_eq!(resolved.executable, PathBuf::from("/opt/mcp/server"));
+        assert!(resolved.path_override.is_none());
+    }
+
+    #[test]
+    fn test_resolve_stdio_command_uses_existing_path_entry() {
+        let dir = unique_test_dir("mcp-path-entry");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let executable = write_executable(&dir, "npx");
+        let path = std::env::join_paths([dir.clone()]).expect("join PATH");
+
+        let resolved = resolve_stdio_command_with_env("npx", Some(path.as_os_str()), None, None);
+
+        assert_eq!(resolved.executable, executable);
+        assert!(resolved.path_override.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_stdio_command_falls_back_to_hakimi_node_bin() {
+        let home = unique_test_dir("mcp-hakimi-home");
+        let node_bin = home.join("node").join("bin");
+        let empty_path_dir = home.join("empty-path");
+        std::fs::create_dir_all(&node_bin).expect("create node bin");
+        std::fs::create_dir_all(&empty_path_dir).expect("create empty PATH dir");
+        let executable = write_executable(&node_bin, "npx");
+        let narrow_path = std::env::join_paths([empty_path_dir]).expect("join PATH");
+
+        let resolved = resolve_stdio_command_with_env(
+            "npx",
+            Some(narrow_path.as_os_str()),
+            None,
+            Some(home.as_path()),
+        );
+
+        assert_eq!(resolved.executable, executable);
+        let override_path = resolved.path_override.expect("PATH should be prepended");
+        let entries: Vec<_> = std::env::split_paths(&override_path).collect();
+        assert_eq!(entries.first(), Some(&node_bin));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn test_resolve_stdio_command_falls_back_to_user_local_bin() {
+        let home = unique_test_dir("mcp-local-bin");
+        let local_bin = home.join(".local").join("bin");
+        let empty_path_dir = home.join("empty-path");
+        std::fs::create_dir_all(&local_bin).expect("create local bin");
+        std::fs::create_dir_all(&empty_path_dir).expect("create empty PATH dir");
+        let executable = write_executable(&local_bin, "node");
+        let narrow_path = std::env::join_paths([empty_path_dir]).expect("join PATH");
+
+        let resolved = resolve_stdio_command_with_env(
+            "node",
+            Some(narrow_path.as_os_str()),
+            Some(&home),
+            None,
+        );
+
+        assert_eq!(resolved.executable, executable);
+        let override_path = resolved.path_override.expect("PATH should be prepended");
+        let entries: Vec<_> = std::env::split_paths(&override_path).collect();
+        assert_eq!(entries.first(), Some(&local_bin));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn test_resolve_stdio_command_does_not_fallback_for_non_node_command() {
+        let home = unique_test_dir("mcp-non-node");
+        let local_bin = home.join(".local").join("bin");
+        let empty_path_dir = home.join("empty-path");
+        std::fs::create_dir_all(&local_bin).expect("create local bin");
+        std::fs::create_dir_all(&empty_path_dir).expect("create empty PATH dir");
+        let _ = write_executable(&local_bin, "custom-hakimi-mcp");
+        let narrow_path = std::env::join_paths([empty_path_dir]).expect("join PATH");
+
+        let resolved = resolve_stdio_command_with_env(
+            "custom-hakimi-mcp",
+            Some(narrow_path.as_os_str()),
+            Some(&home),
+            None,
+        );
+
+        assert_eq!(resolved.executable, PathBuf::from("custom-hakimi-mcp"));
+        assert!(resolved.path_override.is_none());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    fn unique_test_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic enough for tests")
+            .as_nanos();
+        std::env::temp_dir().join(format!("hakimi-{label}-{nanos}"))
+    }
+
+    fn write_executable(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, "#!/bin/sh\nexit 0\n").expect("write executable");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(&path, permissions).expect("chmod");
+        }
+        path
     }
 }

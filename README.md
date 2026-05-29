@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.104-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.105-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1168-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1173-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1168 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1173 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.105 MCP Node Command Resolution**:
+  - **Hermes MCP Parity**: stdio MCP servers launched as bare `node`, `npm`, or `npx` commands now recover when a narrowed server `PATH` omits common Node install directories.
+  - **Stable Node Fallbacks**: resolution checks the inherited PATH first, then Hakimi-managed `~/.hakimi/node/bin`, `~/.local/bin`, and `/usr/local/bin` on Unix.
+  - **Shebang-Safe Spawn**: fallback launches prepend the resolved command directory to the child PATH so `npx` can still re-exec `node`.
 - **v0.3.104 Browser Console + Eval**:
   - **Hermes Browser Parity**: optional Chromium automation now includes `browser_console` for captured console output, JavaScript errors, and page-context expression evaluation.
   - **Rust-Native Capture**: a lightweight per-page recorder tracks `console.log`/`warn`/`error` calls and uncaught JS errors without adding a Python browser runtime.
@@ -452,7 +456,7 @@ credential_pools:
 
 ### 🔧 MCP (Model Context Protocol)
 
-Full MCP client with stdio / HTTP / SSE transports. Built-in catalog of 9 popular servers (filesystem, GitHub, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking).
+Full MCP client with stdio / HTTP / SSE transports. Stdio Node-based servers also recover from narrowed PATH environments by resolving `node`, `npm`, and `npx` from Hakimi-managed, user-local, and `/usr/local/bin` fallback directories. Built-in catalog of 9 popular servers (filesystem, GitHub, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking).
 
 ### 📦 Plugin System
 
@@ -542,7 +546,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1168 |
+| Tests | ~500 | 1173 |
 
 ---
 
@@ -552,7 +556,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1168 tests)
+# Run all tests (1173 tests)
 cargo test --workspace
 
 # Debug logging

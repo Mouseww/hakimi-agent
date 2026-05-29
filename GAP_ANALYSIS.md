@@ -70,7 +70,7 @@ Generated: 2026-05-21
 - **Skill struct** — Name, content, frontmatter metadata
 
 ### MCP
-- **McpClient** — stdio transport, JSON-RPC 2.0
+- **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments
 - **McpToolAdapter** — Adapts MCP tools to Hakimi's Tool trait
 - **Protocol support** — initialize, tools/list, tools/call
 
@@ -479,7 +479,7 @@ Generated: 2026-05-21
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. MCP Client
-- **Status**: stdio transport works
+- **Status**: stdio transport works; Node-based stdio servers recover from narrowed PATH by resolving `node`/`npm`/`npx` from Hakimi-managed, user-local, and `/usr/local/bin` fallback directories
 - **What's missing**: HTTP/StreamableHTTP transport, SSE transport, automatic reconnection with backoff, configurable per-server timeouts, credential stripping in errors, sampling support (server-initiated LLM requests), thread-safe background event loop
 - **Hermes reference**: `tools/mcp_tool.py`
 
@@ -622,9 +622,10 @@ Generated: 2026-05-21
 | 29 | Browser Navigation Controls | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 6 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_scroll`, `browser_back`, and `browser_press` in CLI and TUI feature builds |
 | 30 | Browser Image Listing | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 3 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_get_images` with image URL, alt text, and natural dimensions |
 | 31 | Browser Console + Eval | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 2 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_console` for captured console messages, JavaScript errors, and page-context expression evaluation |
+| 32 | MCP Node Command Resolution | `hakimi-mcp/src/client.rs` | 5 | ✅ Stdio MCP `node`/`npm`/`npx` launch now falls back to Hakimi-managed, user-local, and `/usr/local/bin` Node locations when PATH is narrowed |
 
 ### Summary
-- **Total tests**: 1168 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1173 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

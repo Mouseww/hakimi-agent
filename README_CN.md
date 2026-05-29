@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.104-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.105-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1168-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1173-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1168 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1173 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.105 MCP Node 命令解析**
+  - 对齐 Hermes MCP stdio 修复：以裸命令启动的 `node`、`npm`、`npx` 服务器，即使 server `PATH` 被用户收窄，也能从常见 Node 安装目录恢复。
+  - 解析顺序先尊重继承 PATH，再检查 Hakimi 托管的 `~/.hakimi/node/bin`、`~/.local/bin`，以及 Unix 上的 `/usr/local/bin`。
+  - fallback 启动会把命令所在目录前置到子进程 PATH，避免 `npx` shebang 二次执行时找不到 `node`。
 - **v0.3.104 浏览器 Console + Eval**
   - 对齐 Hermes 浏览器调试面：可选 Chromium 自动化现在包含 `browser_console`。
   - 工具可读取捕获的 `console.log`/`warn`/`error`、未捕获 JS 错误，并可在当前页面上下文执行 JavaScript 表达式。
@@ -305,7 +309,7 @@ credential_pools:
 
 ### 🔧 MCP (Model Context Protocol)
 
-完整 MCP 客户端，支持 stdio / HTTP / SSE 三种传输。内置 9 个热门服务器目录（filesystem、GitHub、Brave Search、PostgreSQL、Puppeteer、memory、fetch、SQLite、sequential-thinking）。
+完整 MCP 客户端，支持 stdio / HTTP / SSE 三种传输。stdio 下基于 Node 的 MCP 服务器还会在 PATH 被收窄时，从 Hakimi 托管目录、用户本地目录和 `/usr/local/bin` 解析 `node`、`npm`、`npx`。内置 9 个热门服务器目录（filesystem、GitHub、Brave Search、PostgreSQL、Puppeteer、memory、fetch、SQLite、sequential-thinking）。
 
 ### 📦 插件系统
 
@@ -394,7 +398,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1168 |
+| 测试 | ~500 | 1173 |
 
 ---
 
@@ -404,7 +408,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1168 tests)
+# 运行全部测试 (1173 tests)
 cargo test --workspace
 
 # Debug 日志
