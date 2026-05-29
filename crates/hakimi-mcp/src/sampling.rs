@@ -173,10 +173,10 @@ fn extract_sampling_text(value: &Value) -> AnyhowResult<String> {
     if let Some(items) = value.as_array() {
         let mut parts = Vec::new();
         for item in items {
-            if item.get("type").and_then(Value::as_str) == Some("text") {
-                if let Some(text) = item.get("text").and_then(Value::as_str) {
-                    parts.push(text);
-                }
+            if item.get("type").and_then(Value::as_str) == Some("text")
+                && let Some(text) = item.get("text").and_then(Value::as_str)
+            {
+                parts.push(text);
             }
         }
         return Ok(parts.join("\n"));
