@@ -127,6 +127,7 @@ Generated: 2026-05-21
 ### Prompt Building
 - **System prompt assembly** — Identity, platform hints, skills, memory, environment hints
 - **Platform-specific formatting** — Telegram, Discord, Slack markdown hints
+- **Context file injection guard** — AGENTS.md, CLAUDE.md, .cursorrules, SOUL.md, and `.cursor/rules/*.mdc` are scanned before system prompt injection; suspicious content is replaced with a non-leaking blocked placeholder
 
 ### Delegation
 - **CoreDelegateExecutor** — Spawns child agents with filtered tool registries
@@ -297,11 +298,10 @@ Generated: 2026-05-21
 - **Hermes location**: `agent/redact.py`
 - **Status**: ✅ Done in v0.3.100 — `hakimi-common::redact_sensitive_text()` masks provider keys, bearer tokens, private keys, JWTs, database connection-string passwords, high-confidence URL-embedded tokens, pure form-urlencoded secret fields, and JSON/env secret carriers while preserving ordinary Web URLs for OAuth callbacks, magic links, pre-signed URLs, and request targets; terminal/process/code_exec/command-plugin output boundaries redact stdout, stderr, diagnostics, stored commands, and plugin errors before surfacing them.
 
-#### 30. Prompt Injection Detection
+#### 30. ~~Prompt Injection Detection~~ ✅ DONE
 - **What**: Scans context files (AGENTS.md, .cursorrules, SOUL.md) for injection patterns before system prompt injection
 - **Hermes location**: `agent/prompt_builder.py` (`_CONTEXT_THREAT_PATTERNS`)
-- **Details**: Detects "ignore previous instructions", "do not tell the user", "system prompt override", etc.
-- **Priority**: **Medium** — Security
+- **Status**: ✅ Done in v0.3.109 — `hakimi-context::build_context_files_prompt()` now scans project context files with the shared prompt-injection detector before injecting them into the system prompt. Matching files are replaced by a concise blocked placeholder that reports finding ids without leaking the original content.
 
 #### 31. ~~Cron Prompt Injection Scanning~~ ✅ DONE
 - **What**: Scans user-authored cron prompts before persistence/manual trigger and again before auto execution; uses looser assembled-skill scan for skill-loaded cron prompts
@@ -614,9 +614,10 @@ Generated: 2026-05-21
 | 32 | MCP Node Command Resolution | `hakimi-mcp/src/client.rs` | 5 | ✅ Stdio MCP `node`/`npm`/`npx` launch now falls back to Hakimi-managed, user-local, and `/usr/local/bin` Node locations when PATH is narrowed |
 | 33 | Browser Dialog Handling | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs`, `hakimi-server/src/main.rs` | 2 | ✅ Optional Chromium browser tooling now surfaces pending native JavaScript dialogs in `browser_snapshot` and exposes `browser_dialog` to accept or dismiss them |
 | 34 | MCP Error Sanitization | `hakimi-mcp/src/{redaction.rs,http_transport.rs,sse_transport.rs,adapter.rs}` | 6 | ✅ Remote MCP HTTP/SSE response snippets, parse contexts, adapter failures, and `isError` tool results redact credential-like text before reaching the agent |
+| 35 | Context File Injection Guard | `hakimi-context/src/prompt_builder.rs` | 4 | ✅ Context files that feed the system prompt are scanned and blocked before injection when they contain prompt-injection patterns |
 
 ### Summary
-- **Total tests**: 1184 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1188 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

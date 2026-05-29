@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.108-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.109-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1184-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1188-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1184 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1188 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · 上下文文件 Prompt Injection 防护
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.109 上下文文件 Prompt Injection 防护**
+  - 对齐 Hermes prompt-builder 安全语义：`AGENTS.md`、`CLAUDE.md`、`.cursorrules`、`SOUL.md` 和 `.cursor/rules/*.mdc` 在进入 system prompt 前会先扫描。
+  - 可疑上下文文件会被替换为简短的 blocked placeholder，只报告稳定 finding id，不泄露原始内容。
+  - prompt-builder 复用 Hakimi 现有 Rust 原生 prompt-injection detector，让上下文加载、文件安全和 cron 安全保持一致。
 - **v0.3.108 可配置 LLM 上下文压缩**
   - `compression.engine: llm` 现在会选择 Hakimi 的 LLM-backed compressor，不再静默落回 smart 本地压缩引擎。
   - `compression.model` 可指定更便宜或更快的摘要模型；留空时使用当前对话模型。
@@ -410,7 +414,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1184 |
+| 测试 | ~500 | 1188 |
 
 ---
 
@@ -420,7 +424,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1184 tests)
+# 运行全部测试 (1188 tests)
 cargo test --workspace
 
 # Debug 日志
