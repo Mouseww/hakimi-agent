@@ -1500,7 +1500,7 @@ impl Tool for BrowserDialogTool {
         let selected_dialog = if let Some(id) = dialog_id {
             pending.iter().find(|dialog| dialog.id == id).cloned()
         } else {
-            pending.front().cloned()
+            pending.first().cloned()
         };
 
         let page = self.manager.get_page().await?;
