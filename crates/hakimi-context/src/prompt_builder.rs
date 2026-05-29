@@ -230,6 +230,27 @@ pub fn build_context_files_prompt(cwd: &str) -> String {
     out
 }
 
+/// Build environment hints describing the current runtime environment.
+pub fn build_environment_hints(platform: &str, os: &str, home: &str, cwd: &str) -> String {
+    let mut parts = Vec::new();
+
+    parts.push(format!("Platform: {platform}"));
+    parts.push(format!("OS: {os}"));
+    parts.push(format!("Home directory: {home}"));
+    parts.push(format!("Working directory: {cwd}"));
+
+    // Add any environment-specific paths
+    if let Ok(path) = std::env::var("PATH") {
+        parts.push(format!("PATH: {path}"));
+    }
+
+    if let Ok(shell) = std::env::var("SHELL") {
+        parts.push(format!("Shell: {shell}"));
+    }
+
+    parts.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,27 +334,6 @@ mod tests {
         assert!(!prompt.contains("this rule exists"));
         let _ = std::fs::remove_dir_all(dir);
     }
-}
-
-/// Build environment hints describing the current runtime environment.
-pub fn build_environment_hints(platform: &str, os: &str, home: &str, cwd: &str) -> String {
-    let mut parts = Vec::new();
-
-    parts.push(format!("Platform: {platform}"));
-    parts.push(format!("OS: {os}"));
-    parts.push(format!("Home directory: {home}"));
-    parts.push(format!("Working directory: {cwd}"));
-
-    // Add any environment-specific paths
-    if let Ok(path) = std::env::var("PATH") {
-        parts.push(format!("PATH: {path}"));
-    }
-
-    if let Ok(shell) = std::env::var("SHELL") {
-        parts.push(format!("Shell: {shell}"));
-    }
-
-    parts.join("\n")
 }
 
 /// Inject intent prediction context into a prompt section.
