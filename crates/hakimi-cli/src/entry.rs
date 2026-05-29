@@ -1231,7 +1231,7 @@ fn gateway_mcp_response(
             lines.join("\n")
         }
         "add" | "remove" => {
-            "MCP server add/remove is config-file managed. Edit mcp_servers in your Hakimi config and restart the gateway."
+            "MCP server add/remove is config-file managed. Edit `mcp_servers` in your Hakimi config and restart the gateway."
                 .to_string()
         },
         _ => "Usage: /mcp <list|add|remove>".to_string(),
@@ -5014,18 +5014,9 @@ mcp_servers:
     fn gateway_mcp_response_reports_config_file_boundary() {
         let config = hakimi_config::HakimiConfig::default();
 
-        assert!(
-            gateway_mcp_response(None, &config.mcp_servers)
-                .contains("No configured MCP servers")
-        );
-        assert!(
-            gateway_mcp_response(Some("add demo"), &config.mcp_servers)
-                .contains("config-file managed")
-        );
-        assert_eq!(
-            gateway_mcp_response(Some("bogus"), &config.mcp_servers),
-            "Usage: /mcp <list|add|remove>"
-        );
+        assert!(gateway_mcp_response(None, &config.mcp_servers).contains("No configured MCP servers"));
+        assert!(gateway_mcp_response(Some("add demo"), &config.mcp_servers).contains("config-file managed"));
+        assert_eq!(gateway_mcp_response(Some("bogus"), &config.mcp_servers), "Usage: /mcp <list|add|remove>");
     }
 
     #[test]
