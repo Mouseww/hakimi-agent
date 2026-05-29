@@ -377,10 +377,12 @@ async fn execute_shell_hook_command(
         .stderr(Stdio::null());
 
     let mut child = command.spawn().ok()?;
-    if let Some(mut stdin) = child.stdin.take()
-        && stdin.write_all(payload).await.is_err()
-    {
-        return None;
+    if let Some(mut stdin) = child.stdin.take() {
+        let write_result = stdin.write_all(payload).await;
+        drop(stdin);
+        if write_result.is_err() {
+            return None;
+        }
     }
 
     let output = tokio::time::timeout(
