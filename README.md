@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.118-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.119-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1235-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1239-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,15 +73,19 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1235 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Gateway fresh-final streaming
+**Production features:** 1239 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.119 Gateway stream pacing**:
+  - **Hermes Stream Consumer Parity**: gateway streaming now honors configurable edit cadence and buffered-character flush thresholds instead of a fixed 450 ms loop.
+  - **Configurable Progressive Edits**: `gateways.streaming.edit_interval_ms` defaults to `800`, and `buffer_threshold_chars` defaults to `24`; set the threshold to `0` for interval-only edits.
+  - **Boundary-Safe Flushes**: tool, media, delegate-progress, and shutdown boundaries flush pending assistant text before opening the next message bubble.
 - **v0.3.118 Gateway fresh-final streaming**:
-  - **Hermes Stream Consumer Parity**: gateway streaming now tracks how long the first preview bubble has been visible and can finish long streamed answers as a fresh final message.
+  - **Hermes Stream Consumer Parity**: gateway streaming tracks how long the first preview bubble has been visible and can finish long streamed answers as a fresh final message.
   - **Configurable Completion Timestamp**: `gateways.streaming.fresh_final_after_seconds` defaults to `60`; set it to `0` to keep legacy edit-in-place behavior for all completions.
   - **Telegram Preview Cleanup**: Telegram implements `deleteMessage` for best-effort stale preview cleanup after the fresh final message is sent.
 - **v0.3.117 MCP sampling/createMessage**:
@@ -600,7 +604,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1235 |
+| Tests | ~500 | 1239 |
 
 ---
 
@@ -610,7 +614,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1235 tests)
+# Run all tests (1239 tests)
 cargo test --workspace
 
 # Debug logging

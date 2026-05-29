@@ -544,10 +544,25 @@ pub struct GatewaysConfig {
 /// Runtime streaming behavior for gateway chat platforms.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayStreamingConfig {
+    /// Minimum interval between progressive gateway message edits.
+    #[serde(default = "default_gateway_streaming_edit_interval_ms")]
+    pub edit_interval_ms: u64,
+    /// Flush a progressive edit once this many new visible characters are buffered.
+    /// `0` disables the character threshold and relies on the edit interval.
+    #[serde(default = "default_gateway_streaming_buffer_threshold_chars")]
+    pub buffer_threshold_chars: usize,
     /// Send a fresh final message after a preview has been visible for this
     /// many seconds. `0` disables the fresh-final path.
     #[serde(default = "default_gateway_fresh_final_after_seconds")]
     pub fresh_final_after_seconds: u64,
+}
+
+fn default_gateway_streaming_edit_interval_ms() -> u64 {
+    800
+}
+
+fn default_gateway_streaming_buffer_threshold_chars() -> usize {
+    24
 }
 
 fn default_gateway_fresh_final_after_seconds() -> u64 {
@@ -557,6 +572,8 @@ fn default_gateway_fresh_final_after_seconds() -> u64 {
 impl Default for GatewayStreamingConfig {
     fn default() -> Self {
         Self {
+            edit_interval_ms: default_gateway_streaming_edit_interval_ms(),
+            buffer_threshold_chars: default_gateway_streaming_buffer_threshold_chars(),
             fresh_final_after_seconds: default_gateway_fresh_final_after_seconds(),
         }
     }
@@ -800,6 +817,8 @@ mod tests {
         assert_eq!(config.embedding.provider, "openai-compatible");
         assert_eq!(config.embedding.model, "BAAI/bge-m3");
         assert_eq!(config.embedding.dimension, 1024);
+        assert_eq!(config.gateways.streaming.edit_interval_ms, 800);
+        assert_eq!(config.gateways.streaming.buffer_threshold_chars, 24);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
@@ -877,6 +896,32 @@ gateways:
     }
 
     #[test]
+    fn test_gateway_streaming_empty_config_uses_defaults() {
+        let yaml = r#"
+gateways:
+  streaming: {}
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.gateways.streaming.edit_interval_ms, 800);
+        assert_eq!(config.gateways.streaming.buffer_threshold_chars, 24);
+        assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
+    }
+
+    #[test]
+    fn test_gateway_streaming_can_disable_buffer_threshold() {
+        let yaml = r#"
+gateways:
+  streaming:
+    edit_interval_ms: 1500
+    buffer_threshold_chars: 0
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.gateways.streaming.edit_interval_ms, 1500);
+        assert_eq!(config.gateways.streaming.buffer_threshold_chars, 0);
+        assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
+    }
+
+    #[test]
     fn test_serialize_roundtrip() {
         let config = HakimiConfig::default();
         let yaml = serde_yaml::to_string(&config).unwrap();
@@ -934,6 +979,8 @@ tools:
 
 gateways:
   streaming:
+    edit_interval_ms: 1200
+    buffer_threshold_chars: 40
     fresh_final_after_seconds: 45
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
@@ -960,6 +1007,8 @@ gateways:
         assert_eq!(config.tools.tool_search.threshold_pct, 15.0);
         assert_eq!(config.tools.tool_search.search_default_limit, 7);
         assert_eq!(config.tools.tool_search.max_search_limit, 30);
+        assert_eq!(config.gateways.streaming.edit_interval_ms, 1200);
+        assert_eq!(config.gateways.streaming.buffer_threshold_chars, 40);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 45);
     }
 

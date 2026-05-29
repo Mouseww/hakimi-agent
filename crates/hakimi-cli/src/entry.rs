@@ -1700,6 +1700,7 @@ struct GatewayStreamUiState {
     current_text: String,
     last_edit_text: String,
     needs_new_message: bool,
+    pending_since_last_render: usize,
 }
 
 impl Default for GatewayStreamUiState {
@@ -1708,18 +1709,36 @@ impl Default for GatewayStreamUiState {
             current_text: String::new(),
             last_edit_text: String::new(),
             needs_new_message: true,
+            pending_since_last_render: 0,
         }
     }
 }
 
 impl GatewayStreamUiState {
-    fn append_content(&mut self, token: &str) -> Option<GatewayUiContentTarget> {
+    fn push_content(&mut self, token: &str) {
         self.current_text.push_str(token);
+        self.pending_since_last_render += token.chars().count();
+    }
+
+    fn append_content(&mut self, token: &str) -> Option<GatewayUiContentTarget> {
+        self.push_content(token);
+        self.render_pending()
+    }
+
+    fn should_flush_buffered_content(&self, buffer_threshold_chars: usize) -> bool {
+        !self.current_text.is_empty()
+            && self.current_text != self.last_edit_text
+            && buffer_threshold_chars > 0
+            && self.pending_since_last_render >= buffer_threshold_chars
+    }
+
+    fn render_pending(&mut self) -> Option<GatewayUiContentTarget> {
         if self.current_text.is_empty() || self.current_text == self.last_edit_text {
             return None;
         }
 
         self.last_edit_text = self.current_text.clone();
+        self.pending_since_last_render = 0;
         let target = if self.needs_new_message {
             self.needs_new_message = false;
             GatewayUiContentTarget::NewMessage
@@ -1733,6 +1752,7 @@ impl GatewayStreamUiState {
         self.current_text.clear();
         self.last_edit_text.clear();
         self.needs_new_message = true;
+        self.pending_since_last_render = 0;
     }
 }
 
@@ -1740,6 +1760,58 @@ impl GatewayStreamUiState {
 enum GatewayUiContentTarget {
     EditCurrent,
     NewMessage,
+}
+
+struct GatewayStreamRenderEnv<'a> {
+    gateway: &'a hakimi_gateway::Gateway,
+    platform: &'a str,
+    bot_id: &'a str,
+    chat_id: &'a str,
+}
+
+async fn render_gateway_stream_content(
+    env: &GatewayStreamRenderEnv<'_>,
+    current_message_id: &mut Option<i64>,
+    ui_state: &mut GatewayStreamUiState,
+    rendered_content: &mut bool,
+    first_rendered_at: &mut Option<std::time::Instant>,
+) -> bool {
+    let Some(target) = ui_state.render_pending() else {
+        return false;
+    };
+
+    *rendered_content = true;
+    first_rendered_at.get_or_insert_with(std::time::Instant::now);
+
+    match target {
+        GatewayUiContentTarget::EditCurrent => {
+            if let Some(active_msg_id) = *current_message_id {
+                let _ = env
+                    .gateway
+                    .edit_message(
+                        env.platform,
+                        env.bot_id,
+                        env.chat_id,
+                        active_msg_id,
+                        &ui_state.current_text,
+                    )
+                    .await;
+            }
+        }
+        GatewayUiContentTarget::NewMessage => {
+            let msg = hakimi_gateway::GatewayMessage {
+                platform: env.platform.to_string(),
+                bot_id: env.bot_id.to_string(),
+                chat_id: env.chat_id.to_string(),
+                user_id: String::new(),
+                text: ui_state.current_text.clone(),
+                media: None,
+            };
+            *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
+        }
+    }
+
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -1922,6 +1994,13 @@ embedding:
   normalize: true
 
 gateways:
+  streaming:
+    # Minimum interval between progressive gateway message edits.
+    edit_interval_ms: 800
+    # Flush once this many new visible chars are buffered; 0 = interval-only.
+    buffer_threshold_chars: 24
+    # Send long-running previews as fresh final messages after this many seconds.
+    fresh_final_after_seconds: 60
   clawbot:
     enabled: false
     mode: "http_bridge"   # http_bridge | weclawbot_api | ilink_native
@@ -3689,14 +3768,25 @@ Just send a message to chat with me!"
                 let bot_id_cb = bot_id.clone();
                 let chat_id_cb = chat_id.clone();
                 let gateway_cb = gateway_clone.clone();
+                let edit_interval =
+                    std::time::Duration::from_millis(config.gateways.streaming.edit_interval_ms);
+                let buffer_threshold_chars = config.gateways.streaming.buffer_threshold_chars;
                 let (ui_tx, mut ui_rx) =
                     tokio::sync::mpsc::unbounded_channel::<GatewayStreamUiEvent>();
 
                 let updater_handle = tokio::spawn(async move {
+                    let render_env = GatewayStreamRenderEnv {
+                        gateway: &gateway_cb,
+                        platform: &platform_cb,
+                        bot_id: &bot_id_cb,
+                        chat_id: &chat_id_cb,
+                    };
                     let mut current_message_id = None;
                     let mut ui_state = GatewayStreamUiState::default();
                     let mut rendered_content = false;
                     let mut first_rendered_at = None;
+                    let mut next_edit_deadline: Option<std::pin::Pin<Box<tokio::time::Sleep>>> =
+                        None;
                     let mut delegate_bubbles: HashMap<String, DelegateProgressBubble> =
                         HashMap::new();
                     let mut pending_events: VecDeque<GatewayStreamUiEvent> = VecDeque::new();
@@ -3705,10 +3795,36 @@ Just send a message to chat with me!"
                         let event = if let Some(event) = pending_events.pop_front() {
                             event
                         } else {
-                            let Some(event) = ui_rx.recv().await else {
-                                break;
-                            };
-                            event
+                            match next_edit_deadline.as_mut() {
+                                Some(deadline) => {
+                                    tokio::select! {
+                                        _ = deadline.as_mut() => {
+                                            next_edit_deadline = None;
+                                            let _ = render_gateway_stream_content(
+                                                &render_env,
+                                                &mut current_message_id,
+                                                &mut ui_state,
+                                                &mut rendered_content,
+                                                &mut first_rendered_at,
+                                            )
+                                            .await;
+                                            continue;
+                                        }
+                                        event = ui_rx.recv() => {
+                                            let Some(event) = event else {
+                                                break;
+                                            };
+                                            event
+                                        }
+                                    }
+                                }
+                                None => {
+                                    let Some(event) = ui_rx.recv().await else {
+                                        break;
+                                    };
+                                    event
+                                }
+                            }
                         };
 
                         match event {
@@ -3727,46 +3843,36 @@ Just send a message to chat with me!"
                                     }
                                 }
 
-                                let Some(target) = ui_state.append_content(&text) else {
-                                    continue;
-                                };
-                                rendered_content = true;
-                                first_rendered_at.get_or_insert_with(std::time::Instant::now);
-
-                                match target {
-                                    GatewayUiContentTarget::EditCurrent => {
-                                        if let Some(active_msg_id) = current_message_id {
-                                            let _ = gateway_cb
-                                                .edit_message(
-                                                    &platform_cb,
-                                                    &bot_id_cb,
-                                                    &chat_id_cb,
-                                                    active_msg_id,
-                                                    &ui_state.current_text,
-                                                )
-                                                .await;
-                                        }
-                                    }
-                                    GatewayUiContentTarget::NewMessage => {
-                                        let msg = hakimi_gateway::GatewayMessage {
-                                            platform: platform_cb.clone(),
-                                            bot_id: bot_id_cb.clone(),
-                                            chat_id: chat_id_cb.clone(),
-                                            user_id: String::new(),
-                                            text: ui_state.current_text.clone(),
-                                            media: None,
-                                        };
-                                        current_message_id = gateway_cb
-                                            .route_message_get_id(&msg)
-                                            .await
-                                            .ok()
-                                            .flatten();
-                                    }
+                                ui_state.push_content(&text);
+                                let should_render_now = ui_state.needs_new_message
+                                    || edit_interval.is_zero()
+                                    || ui_state
+                                        .should_flush_buffered_content(buffer_threshold_chars);
+                                if should_render_now {
+                                    next_edit_deadline = None;
+                                    let _ = render_gateway_stream_content(
+                                        &render_env,
+                                        &mut current_message_id,
+                                        &mut ui_state,
+                                        &mut rendered_content,
+                                        &mut first_rendered_at,
+                                    )
+                                    .await;
+                                } else if next_edit_deadline.is_none() {
+                                    next_edit_deadline =
+                                        Some(Box::pin(tokio::time::sleep(edit_interval)));
                                 }
-
-                                tokio::time::sleep(std::time::Duration::from_millis(450)).await;
                             }
                             GatewayStreamUiEvent::Tool(text) => {
+                                next_edit_deadline = None;
+                                let _ = render_gateway_stream_content(
+                                    &render_env,
+                                    &mut current_message_id,
+                                    &mut ui_state,
+                                    &mut rendered_content,
+                                    &mut first_rendered_at,
+                                )
+                                .await;
                                 if !text.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
                                         platform: platform_cb.clone(),
@@ -3786,6 +3892,15 @@ Just send a message to chat with me!"
                                 ui_state.finish_tool_boundary();
                             }
                             GatewayStreamUiEvent::Media(media) => {
+                                next_edit_deadline = None;
+                                let _ = render_gateway_stream_content(
+                                    &render_env,
+                                    &mut current_message_id,
+                                    &mut ui_state,
+                                    &mut rendered_content,
+                                    &mut first_rendered_at,
+                                )
+                                .await;
                                 if !media.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
                                         platform: platform_cb.clone(),
@@ -3802,6 +3917,15 @@ Just send a message to chat with me!"
                                 ui_state.finish_tool_boundary();
                             }
                             GatewayStreamUiEvent::Delegate(event) => {
+                                next_edit_deadline = None;
+                                let _ = render_gateway_stream_content(
+                                    &render_env,
+                                    &mut current_message_id,
+                                    &mut ui_state,
+                                    &mut rendered_content,
+                                    &mut first_rendered_at,
+                                )
+                                .await;
                                 let task_id = event.task_id.clone();
                                 let bubble = delegate_bubbles.entry(task_id).or_default();
                                 bubble.push(event);
@@ -3835,6 +3959,15 @@ Just send a message to chat with me!"
                             }
                         }
                     }
+
+                    let _ = render_gateway_stream_content(
+                        &render_env,
+                        &mut current_message_id,
+                        &mut ui_state,
+                        &mut rendered_content,
+                        &mut first_rendered_at,
+                    )
+                    .await;
 
                     GatewayStreamRenderSnapshot {
                         rendered_content,
@@ -5350,6 +5483,28 @@ roles:
         );
         assert_eq!(state.current_text, "爸爸，工具跑完了");
         assert_eq!(state.current_text, state.last_edit_text);
+    }
+
+    #[test]
+    fn streaming_buffer_threshold_tracks_unrendered_chars() {
+        let mut state = GatewayStreamUiState::default();
+        state.push_content("ab");
+        assert!(!state.should_flush_buffered_content(3));
+        state.push_content("c");
+        assert!(state.should_flush_buffered_content(3));
+
+        assert_eq!(
+            state.render_pending(),
+            Some(GatewayUiContentTarget::NewMessage)
+        );
+        assert!(!state.should_flush_buffered_content(3));
+    }
+
+    #[test]
+    fn streaming_zero_buffer_threshold_uses_interval_only() {
+        let mut state = GatewayStreamUiState::default();
+        state.push_content("buffered");
+        assert!(!state.should_flush_buffered_content(0));
     }
 
     #[test]

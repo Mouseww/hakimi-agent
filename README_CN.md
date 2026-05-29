@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.118-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.119-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1235-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1239-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1235 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Gateway fresh-final streaming
+**生产级特性：** 1239 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Gateway stream pacing
 
 ---
 
@@ -81,8 +81,13 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.119 Gateway stream pacing**
+  - 对齐 Hermes stream consumer：gateway streaming 现在使用可配置编辑节奏和缓冲字符阈值，不再固定 450 ms 更新一次。
+  - `gateways.streaming.edit_interval_ms` 默认 `800`，`buffer_threshold_chars` 默认 `24`；阈值设为 `0` 时只按时间间隔编辑。
+  - 工具、媒体、委派进度和 updater 结束边界会先 flush 待显示 assistant 文本，再打开下一条消息气泡。
+
 - **v0.3.118 Gateway fresh-final streaming**
-  - 对齐 Hermes stream consumer：gateway streaming 现在会记录首个预览气泡的可见时长，长时间流式回答完成时可发送新的最终消息。
+  - 对齐 Hermes stream consumer：gateway streaming 会记录首个预览气泡的可见时长，长时间流式回答完成时可发送新的最终消息。
   - `gateways.streaming.fresh_final_after_seconds` 默认 `60` 秒；设为 `0` 可完全保留旧的原地编辑完成语义。
   - Telegram adapter 实现 `deleteMessage`，fresh final 发送成功后会尽力清理旧预览气泡。
 
@@ -455,7 +460,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1235 |
+| 测试 | ~500 | 1239 |
 
 ---
 
@@ -465,7 +470,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1235 tests)
+# 运行全部测试 (1239 tests)
 cargo test --workspace
 
 # Debug 日志

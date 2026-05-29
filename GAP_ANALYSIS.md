@@ -88,6 +88,7 @@ Generated: 2026-05-21
 - **Gateway** — Central message routing, adapter registration
 - **Gateway ingress access policy** — Config-driven allowlist merges global gateway users, Telegram user IDs, role allowlists, and ClawBot sender IDs before command/agent handling
 - **Gateway fresh-final streaming** — Configurable `gateways.streaming.fresh_final_after_seconds` sends long streamed completions as a fresh final message and lets Telegram clean up stale preview bubbles
+- **Gateway stream pacing** — Configurable `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars` control progressive edit cadence and force pending-text flushes before tool/media/delegate boundaries
 - **Telegram adapter** — Telegram Bot API integration
 - **Discord adapter** — Discord bot with embeds
 - **Slack adapter** — Slack bot with blocks
@@ -486,8 +487,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
-- **Status**: 8 platforms plus config-driven ingress access policy. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
-- **What's missing**: 12+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, stream consumer for progressive edits
+- **Status**: 8 platforms plus config-driven ingress access policy, fresh-final streaming, and configurable stream pacing. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
+- **What's missing**: 12+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -626,9 +627,10 @@ Generated: 2026-05-21
 | 41 | Gateway MCP Server Listing | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/mcp` and `/mcp list` render configured MCP servers with safe command/arg/env counts while keeping add/remove config-file managed |
 | 42 | MCP Sampling createMessage | `hakimi-mcp/src/{protocol.rs,sampling.rs,client.rs}`, `hakimi-cli/src/entry.rs` | 7 | ✅ Stdio MCP clients advertise sampling support and answer server-initiated `sampling/createMessage` through Hakimi's configured LLM transport and active model, with JSON-RPC errors for unsupported client requests |
 | 43 | Gateway Fresh-Final Streaming | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}` | 2 | ✅ Long-lived gateway stream previews can finish as fresh final messages through `gateways.streaming.fresh_final_after_seconds`; Telegram deletes stale previews best-effort |
+| 44 | Gateway Stream Pacing | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 4 | ✅ Gateway progressive edits honor `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars`, and flush pending assistant text before tool/media/delegate boundaries |
 
 ### Summary
-- **Total tests**: 1235 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1239 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
