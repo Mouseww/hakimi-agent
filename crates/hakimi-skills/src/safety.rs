@@ -209,7 +209,6 @@ fn scan_exfiltration(lower: &str, line: usize, findings: &mut Vec<SkillSafetyFin
         ("aws_dir_access", ".aws"),
         ("kube_dir_access", ".kube"),
         ("docker_dir_access", ".docker"),
-        ("env_file_access", ".env"),
     ] {
         if lower.contains(needle) {
             push(
@@ -221,6 +220,17 @@ fn scan_exfiltration(lower: &str, line: usize, findings: &mut Vec<SkillSafetyFin
                 "credential store reference",
             );
         }
+    }
+
+    if lower.contains(".env") && !lower.contains("process.env") {
+        push(
+            findings,
+            "env_file_access",
+            SkillSafetySeverity::Critical,
+            "exfiltration",
+            line,
+            "credential store reference",
+        );
     }
 }
 
