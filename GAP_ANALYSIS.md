@@ -87,6 +87,7 @@ Generated: 2026-05-21
 - **PlatformAdapter trait** — connect, send_message, disconnect, take_receiver
 - **Gateway** — Central message routing, adapter registration
 - **Gateway ingress access policy** — Config-driven allowlist merges global gateway users, Telegram user IDs, role allowlists, and ClawBot sender IDs before command/agent handling
+- **Gateway fresh-final streaming** — Configurable `gateways.streaming.fresh_final_after_seconds` sends long streamed completions as a fresh final message and lets Telegram clean up stale preview bubbles
 - **Telegram adapter** — Telegram Bot API integration
 - **Discord adapter** — Discord bot with embeds
 - **Slack adapter** — Slack bot with blocks
@@ -355,7 +356,7 @@ Generated: 2026-05-21
 #### 39. Gateway Streaming Consumer
 - **What**: Bridges sync agent callbacks to async platform delivery with progressive message editing
 - **Hermes location**: `gateway/stream_consumer.py`
-- **Details**: Rate-limited progressive edits on Telegram/Discord/Slack. Buffer threshold. Edit interval configuration.
+- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, and Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup. Remaining parity is configurable edit interval/buffer threshold, native draft transport, overflow chunking, flood-control backoff, and per-platform display policy.
 - **Priority**: **Medium** — Real-time streaming UX on messaging platforms
 
 #### 40. Usage Pricing / Account Usage Tracking
@@ -624,9 +625,10 @@ Generated: 2026-05-21
 | 40 | Gateway Ingress Access Policy | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 7 | ✅ Config-driven global, Telegram, role, and ClawBot allowlists gate inbound gateway messages before command/agent handling |
 | 41 | Gateway MCP Server Listing | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/mcp` and `/mcp list` render configured MCP servers with safe command/arg/env counts while keeping add/remove config-file managed |
 | 42 | MCP Sampling createMessage | `hakimi-mcp/src/{protocol.rs,sampling.rs,client.rs}`, `hakimi-cli/src/entry.rs` | 7 | ✅ Stdio MCP clients advertise sampling support and answer server-initiated `sampling/createMessage` through Hakimi's configured LLM transport and active model, with JSON-RPC errors for unsupported client requests |
+| 43 | Gateway Fresh-Final Streaming | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}` | 2 | ✅ Long-lived gateway stream previews can finish as fresh final messages through `gateways.streaming.fresh_final_after_seconds`; Telegram deletes stale previews best-effort |
 
 ### Summary
-- **Total tests**: 1233 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1235 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

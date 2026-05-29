@@ -112,6 +112,11 @@ pub trait PlatformAdapter: Send + Sync {
         Ok(None)
     }
 
+    /// Delete an existing message when the platform supports it.
+    async fn delete_message(&self, _chat_id: &str, _message_id: i64) -> anyhow::Result<()> {
+        anyhow::bail!("Message deletion not supported on this platform")
+    }
+
     /// Take ownership of the inbound message receiver channel.
     ///
     /// Returns `Some(receiver)` if the adapter supports receiving messages
@@ -263,6 +268,29 @@ impl Gateway {
             })?;
 
         adapter.edit_message(chat_id, message_id, text).await
+    }
+
+    /// Delete an existing message by ID when supported by the adapter.
+    pub async fn delete_message(
+        &self,
+        platform: &str,
+        bot_id: &str,
+        chat_id: &str,
+        message_id: i64,
+    ) -> anyhow::Result<()> {
+        let adapter = self
+            .adapters
+            .iter()
+            .find(|a| a.name() == platform && a.bot_id() == bot_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no adapter for platform '{}' with bot_id '{}'",
+                    platform,
+                    bot_id
+                )
+            })?;
+
+        adapter.delete_message(chat_id, message_id).await
     }
 
     /// Send a chat action (e.g. "typing") to the correct adapter by bot_id.

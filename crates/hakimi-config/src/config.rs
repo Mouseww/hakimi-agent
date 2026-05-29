@@ -532,10 +532,34 @@ pub struct GatewaysConfig {
     /// or qualified as `platform:id` / `platform:bot_id:id`.
     #[serde(default)]
     pub allowed_users: Vec<String>,
+    /// Streaming delivery behavior for gateway chat platforms.
+    #[serde(default)]
+    pub streaming: GatewayStreamingConfig,
     #[serde(default)]
     pub telegram: TelegramGatewayConfig,
     #[serde(default)]
     pub clawbot: ClawBotGatewayConfig,
+}
+
+/// Runtime streaming behavior for gateway chat platforms.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GatewayStreamingConfig {
+    /// Send a fresh final message after a preview has been visible for this
+    /// many seconds. `0` disables the fresh-final path.
+    #[serde(default = "default_gateway_fresh_final_after_seconds")]
+    pub fresh_final_after_seconds: u64,
+}
+
+fn default_gateway_fresh_final_after_seconds() -> u64 {
+    60
+}
+
+impl Default for GatewayStreamingConfig {
+    fn default() -> Self {
+        Self {
+            fresh_final_after_seconds: default_gateway_fresh_final_after_seconds(),
+        }
+    }
 }
 
 /// WeChat ClawBot bridge gateway configuration.
@@ -776,6 +800,7 @@ mod tests {
         assert_eq!(config.embedding.provider, "openai-compatible");
         assert_eq!(config.embedding.model, "BAAI/bge-m3");
         assert_eq!(config.embedding.dimension, 1024);
+        assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
     }
@@ -906,6 +931,10 @@ tools:
     threshold_pct: 15
     search_default_limit: 7
     max_search_limit: 30
+
+gateways:
+  streaming:
+    fresh_final_after_seconds: 45
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.model.default, "claude-sonnet-4-20250514");
@@ -931,6 +960,7 @@ tools:
         assert_eq!(config.tools.tool_search.threshold_pct, 15.0);
         assert_eq!(config.tools.tool_search.search_default_limit, 7);
         assert_eq!(config.tools.tool_search.max_search_limit, 30);
+        assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 45);
     }
 
     #[test]

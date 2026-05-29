@@ -622,6 +622,30 @@ impl PlatformAdapter for TelegramAdapter {
         Ok(())
     }
 
+    async fn delete_message(&self, chat_id: &str, message_id: i64) -> Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+        });
+        let resp: TgResponse<serde_json::Value> = self
+            .client
+            .post(self.api_url("deleteMessage"))
+            .json(&body)
+            .send()
+            .await
+            .context("failed to delete Telegram message")?
+            .json()
+            .await
+            .context("failed to parse deleteMessage response")?;
+        if !resp.ok {
+            anyhow::bail!(
+                "deleteMessage failed: {}",
+                resp.description.unwrap_or_else(|| "unknown".to_string())
+            );
+        }
+        Ok(())
+    }
+
     fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<GatewayMessage>> {
         self.msg_rx.take()
     }

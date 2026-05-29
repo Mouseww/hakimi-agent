@@ -1649,6 +1649,7 @@ struct GatewayStreamRenderSnapshot {
     rendered_content: bool,
     current_message_id: Option<i64>,
     current_text: String,
+    first_rendered_at: Option<std::time::Instant>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1656,12 +1657,14 @@ enum GatewayFinalDelivery {
     None,
     Send(String),
     Edit { message_id: i64, text: String },
+    FreshFinal { old_message_id: i64, text: String },
 }
 
 fn plan_gateway_final_delivery(
     snapshot: &GatewayStreamRenderSnapshot,
     final_text: &str,
     is_error: bool,
+    fresh_final_after: std::time::Duration,
 ) -> GatewayFinalDelivery {
     if final_text.is_empty() {
         return GatewayFinalDelivery::None;
@@ -1672,6 +1675,16 @@ fn plan_gateway_final_delivery(
     let Some(message_id) = snapshot.current_message_id else {
         return GatewayFinalDelivery::Send(final_text.to_string());
     };
+    if !fresh_final_after.is_zero()
+        && snapshot
+            .first_rendered_at
+            .is_some_and(|created_at| created_at.elapsed() >= fresh_final_after)
+    {
+        return GatewayFinalDelivery::FreshFinal {
+            old_message_id: message_id,
+            text: final_text.to_string(),
+        };
+    }
     if snapshot.current_text == final_text {
         return GatewayFinalDelivery::None;
     }
@@ -3683,6 +3696,7 @@ Just send a message to chat with me!"
                     let mut current_message_id = None;
                     let mut ui_state = GatewayStreamUiState::default();
                     let mut rendered_content = false;
+                    let mut first_rendered_at = None;
                     let mut delegate_bubbles: HashMap<String, DelegateProgressBubble> =
                         HashMap::new();
                     let mut pending_events: VecDeque<GatewayStreamUiEvent> = VecDeque::new();
@@ -3717,6 +3731,7 @@ Just send a message to chat with me!"
                                     continue;
                                 };
                                 rendered_content = true;
+                                first_rendered_at.get_or_insert_with(std::time::Instant::now);
 
                                 match target {
                                     GatewayUiContentTarget::EditCurrent => {
@@ -3825,6 +3840,7 @@ Just send a message to chat with me!"
                         rendered_content,
                         current_message_id,
                         current_text: ui_state.current_text,
+                        first_rendered_at,
                     }
                 });
 
@@ -3962,12 +3978,37 @@ Just send a message to chat with me!"
             let is_error = err_msg.is_some();
             let final_text = err_msg.unwrap_or(response_text);
 
-            match plan_gateway_final_delivery(&stream_snapshot, &final_text, is_error) {
+            let fresh_final_after =
+                std::time::Duration::from_secs(config.gateways.streaming.fresh_final_after_seconds);
+            match plan_gateway_final_delivery(
+                &stream_snapshot,
+                &final_text,
+                is_error,
+                fresh_final_after,
+            ) {
                 GatewayFinalDelivery::None => {}
                 GatewayFinalDelivery::Edit { message_id, text } => {
                     let _ = gateway_clone
                         .edit_message(&platform, &bot_id, &chat_id, message_id, &text)
                         .await;
+                }
+                GatewayFinalDelivery::FreshFinal {
+                    old_message_id,
+                    text,
+                } => {
+                    let reply = hakimi_gateway::GatewayMessage {
+                        platform: platform.clone(),
+                        bot_id: bot_id.clone(),
+                        chat_id: chat_id.clone(),
+                        user_id: String::new(),
+                        text,
+                        media: None,
+                    };
+                    if gateway_clone.route_message(&reply).await.is_ok() {
+                        let _ = gateway_clone
+                            .delete_message(&platform, &bot_id, &chat_id, old_message_id)
+                            .await;
+                    }
                 }
                 GatewayFinalDelivery::Send(text) => {
                     let reply = hakimi_gateway::GatewayMessage {
@@ -5336,7 +5377,12 @@ roles:
     #[test]
     fn final_delivery_sends_response_when_no_stream_content_rendered() {
         assert_eq!(
-            plan_gateway_final_delivery(&GatewayStreamRenderSnapshot::default(), "完整回复", false),
+            plan_gateway_final_delivery(
+                &GatewayStreamRenderSnapshot::default(),
+                "完整回复",
+                false,
+                std::time::Duration::from_secs(60),
+            ),
             GatewayFinalDelivery::Send("完整回复".to_string())
         );
     }
@@ -5347,11 +5393,42 @@ roles:
             rendered_content: true,
             current_message_id: Some(42),
             current_text: "完整回复".to_string(),
+            first_rendered_at: Some(std::time::Instant::now()),
         };
 
         assert_eq!(
-            plan_gateway_final_delivery(&snapshot, "完整回复", false),
+            plan_gateway_final_delivery(
+                &snapshot,
+                "完整回复",
+                false,
+                std::time::Duration::from_secs(60),
+            ),
             GatewayFinalDelivery::None
+        );
+    }
+
+    #[test]
+    fn final_delivery_sends_fresh_final_even_when_preview_matches_after_threshold() {
+        let snapshot = GatewayStreamRenderSnapshot {
+            rendered_content: true,
+            current_message_id: Some(42),
+            current_text: "完整回复".to_string(),
+            first_rendered_at: Some(
+                std::time::Instant::now() - std::time::Duration::from_secs(120),
+            ),
+        };
+
+        assert_eq!(
+            plan_gateway_final_delivery(
+                &snapshot,
+                "完整回复",
+                false,
+                std::time::Duration::from_secs(60),
+            ),
+            GatewayFinalDelivery::FreshFinal {
+                old_message_id: 42,
+                text: "完整回复".to_string()
+            }
         );
     }
 
@@ -5361,10 +5438,16 @@ roles:
             rendered_content: true,
             current_message_id: Some(42),
             current_text: "开头".to_string(),
+            first_rendered_at: Some(std::time::Instant::now()),
         };
 
         assert_eq!(
-            plan_gateway_final_delivery(&snapshot, "开头和后续完整内容", false),
+            plan_gateway_final_delivery(
+                &snapshot,
+                "开头和后续完整内容",
+                false,
+                std::time::Duration::from_secs(60),
+            ),
             GatewayFinalDelivery::Edit {
                 message_id: 42,
                 text: "开头和后续完整内容".to_string()
@@ -5378,10 +5461,18 @@ roles:
             rendered_content: true,
             current_message_id: None,
             current_text: "开头".to_string(),
+            first_rendered_at: Some(
+                std::time::Instant::now() - std::time::Duration::from_secs(120),
+            ),
         };
 
         assert_eq!(
-            plan_gateway_final_delivery(&snapshot, "开头和后续完整内容", false),
+            plan_gateway_final_delivery(
+                &snapshot,
+                "开头和后续完整内容",
+                false,
+                std::time::Duration::from_secs(60),
+            ),
             GatewayFinalDelivery::Send("开头和后续完整内容".to_string())
         );
     }
@@ -5392,11 +5483,44 @@ roles:
             rendered_content: true,
             current_message_id: Some(42),
             current_text: "部分回复".to_string(),
+            first_rendered_at: Some(
+                std::time::Instant::now() - std::time::Duration::from_secs(120),
+            ),
         };
 
         assert_eq!(
-            plan_gateway_final_delivery(&snapshot, "错误", true),
+            plan_gateway_final_delivery(
+                &snapshot,
+                "错误",
+                true,
+                std::time::Duration::from_secs(60),
+            ),
             GatewayFinalDelivery::Send("错误".to_string())
+        );
+    }
+
+    #[test]
+    fn final_delivery_sends_fresh_final_after_long_preview() {
+        let snapshot = GatewayStreamRenderSnapshot {
+            rendered_content: true,
+            current_message_id: Some(42),
+            current_text: "开头".to_string(),
+            first_rendered_at: Some(
+                std::time::Instant::now() - std::time::Duration::from_secs(120),
+            ),
+        };
+
+        assert_eq!(
+            plan_gateway_final_delivery(
+                &snapshot,
+                "开头和后续完整内容",
+                false,
+                std::time::Duration::from_secs(60),
+            ),
+            GatewayFinalDelivery::FreshFinal {
+                old_message_id: 42,
+                text: "开头和后续完整内容".to_string()
+            }
         );
     }
 
