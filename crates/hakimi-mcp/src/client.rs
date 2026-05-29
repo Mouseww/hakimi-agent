@@ -6,6 +6,7 @@
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
@@ -15,6 +16,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::protocol::*;
+use crate::sampling::{McpServerRequestHandler, handle_server_request};
 
 /// MCP protocol version we declare during initialization.
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
@@ -37,6 +39,7 @@ pub struct McpClient {
     next_id: Mutex<u64>,
     initialized: bool,
     server_info: Option<ServerInfo>,
+    server_request_handler: Option<Arc<dyn McpServerRequestHandler>>,
 }
 
 impl McpClient {
@@ -77,7 +80,18 @@ impl McpClient {
             next_id: Mutex::new(1),
             initialized: false,
             server_info: None,
+            server_request_handler: None,
         })
+    }
+
+    /// Attach a handler for server-initiated MCP requests such as
+    /// `sampling/createMessage`.
+    pub fn with_server_request_handler(
+        mut self,
+        handler: Arc<dyn McpServerRequestHandler>,
+    ) -> Self {
+        self.server_request_handler = Some(handler);
+        self
     }
 
     // ------------------------------------------------------------------
@@ -88,7 +102,11 @@ impl McpClient {
     pub async fn initialize(&mut self) -> Result<()> {
         let params = InitializeParams {
             protocol_version: MCP_PROTOCOL_VERSION.to_string(),
-            capabilities: ClientCapabilities { roots: None },
+            capabilities: if self.server_request_handler.is_some() {
+                ClientCapabilities::with_sampling()
+            } else {
+                ClientCapabilities::basic()
+            },
             client_info: ClientInfo {
                 name: CLIENT_NAME.to_string(),
                 version: CLIENT_VERSION.to_string(),
@@ -275,6 +293,23 @@ impl McpClient {
         Ok(())
     }
 
+    async fn send_server_response(&self, response: JsonRpcServerResponse) -> Result<()> {
+        let mut payload = serde_json::to_string(&response)?;
+        payload.push('\n');
+
+        let mut stdin = self.stdin.lock().await;
+        stdin
+            .write_all(payload.as_bytes())
+            .await
+            .context("writing server-request response")?;
+        stdin
+            .flush()
+            .await
+            .context("flushing server-request response")?;
+
+        Ok(())
+    }
+
     /// Read one JSON-RPC response line, skipping any notifications or out-of-band messages.
     async fn read_response(&self, expected_id: u64) -> Result<JsonRpcResponse> {
         let mut stdout = self.stdout.lock().await;
@@ -296,7 +331,21 @@ impl McpClient {
                 continue;
             }
 
-            // Try to parse as a response first.
+            if let Ok(request) = serde_json::from_str::<JsonRpcServerRequest>(trimmed) {
+                debug!(
+                    method = %request.method,
+                    id = %request.id,
+                    "received MCP server request"
+                );
+                let response =
+                    handle_server_request(self.server_request_handler.as_ref(), request).await;
+                if let Err(error) = self.send_server_response(response).await {
+                    warn!(error = %error, "failed to answer MCP server request");
+                }
+                continue;
+            }
+
+            // Try to parse as a response after ruling out server requests.
             match serde_json::from_str::<JsonRpcResponse>(trimmed) {
                 Ok(resp) if resp.id == expected_id => {
                     debug!(id = expected_id, "received response");
@@ -501,7 +550,7 @@ mod tests {
     fn test_initialize_params_serialization() {
         let params = InitializeParams {
             protocol_version: "2024-11-05".to_string(),
-            capabilities: ClientCapabilities { roots: None },
+            capabilities: ClientCapabilities::basic(),
             client_info: ClientInfo {
                 name: "test".to_string(),
                 version: "0.2.1".to_string(),

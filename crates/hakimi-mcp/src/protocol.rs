@@ -31,6 +31,16 @@ impl JsonRpcRequest {
     }
 }
 
+/// A JSON-RPC 2.0 request received from the MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonRpcServerRequest {
+    pub jsonrpc: String,
+    pub id: Value,
+    pub method: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<Value>,
+}
+
 /// A JSON-RPC 2.0 error object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRpcError {
@@ -38,6 +48,32 @@ pub struct JsonRpcError {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
+}
+
+impl JsonRpcError {
+    pub fn method_not_found(method: &str) -> Self {
+        Self {
+            code: -32601,
+            message: format!("MCP client method '{method}' is not available"),
+            data: None,
+        }
+    }
+
+    pub fn invalid_params(message: impl Into<String>) -> Self {
+        Self {
+            code: -32602,
+            message: message.into(),
+            data: None,
+        }
+    }
+
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self {
+            code: -32603,
+            message: message.into(),
+            data: None,
+        }
+    }
 }
 
 /// A JSON-RPC 2.0 response.
@@ -51,6 +87,37 @@ pub struct JsonRpcResponse {
     pub error: Option<JsonRpcError>,
 }
 
+/// A JSON-RPC 2.0 response sent back to an MCP server request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonRpcServerResponse {
+    pub jsonrpc: String,
+    pub id: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<JsonRpcError>,
+}
+
+impl JsonRpcServerResponse {
+    pub fn success(id: Value, result: Value) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id,
+            result: Some(result),
+            error: None,
+        }
+    }
+
+    pub fn error(id: Value, error: JsonRpcError) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id,
+            result: None,
+            error: Some(error),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // MCP: Initialize
 // ---------------------------------------------------------------------------
@@ -60,7 +127,36 @@ pub struct JsonRpcResponse {
 pub struct ClientCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub roots: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sampling: Option<SamplingCapability>,
 }
+
+impl ClientCapabilities {
+    pub fn basic() -> Self {
+        Self {
+            roots: None,
+            sampling: None,
+        }
+    }
+
+    pub fn with_sampling() -> Self {
+        Self {
+            roots: None,
+            sampling: Some(SamplingCapability::default()),
+        }
+    }
+}
+
+/// Client-side sampling capability advertised to MCP servers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SamplingCapability {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<SamplingToolsCapability>,
+}
+
+/// Sampling tool-use capability marker.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SamplingToolsCapability {}
 
 /// Client information sent in the initialize request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +272,43 @@ impl CallToolResult {
 }
 
 // ---------------------------------------------------------------------------
+// MCP: Sampling
+// ---------------------------------------------------------------------------
+
+/// Parameters for server-initiated `sampling/createMessage`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMessageParams {
+    pub messages: Vec<SamplingMessage>,
+    #[serde(rename = "maxTokens")]
+    pub max_tokens: u32,
+    #[serde(rename = "systemPrompt", skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(rename = "modelPreferences", skip_serializing_if = "Option::is_none")]
+    pub model_preferences: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<McpToolDefinition>>,
+}
+
+/// A single sampling conversation message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamplingMessage {
+    pub role: String,
+    pub content: Value,
+}
+
+/// Result returned to an MCP `sampling/createMessage` request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMessageResult {
+    pub role: String,
+    pub content: ContentBlock,
+    pub model: String,
+    #[serde(rename = "stopReason", skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
 // MCP: Notifications (no id, no result)
 // ---------------------------------------------------------------------------
 
@@ -227,6 +360,28 @@ mod tests {
         assert!(resp.error.is_none());
         let result: InitializeResult = serde_json::from_value(resp.result.unwrap()).unwrap();
         assert_eq!(result.server_info.name, "test");
+    }
+
+    #[test]
+    fn test_sampling_capability_serialization() {
+        let params = InitializeParams {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: ClientCapabilities::with_sampling(),
+            client_info: ClientInfo {
+                name: "test".to_string(),
+                version: "0.2.1".to_string(),
+            },
+        };
+        let v = json!(params);
+        assert_eq!(v["protocolVersion"], "2024-11-05");
+        assert_eq!(v["clientInfo"]["name"], "test");
+        assert!(v["capabilities"]["sampling"].is_object());
+    }
+
+    #[test]
+    fn test_basic_client_capabilities_omit_sampling() {
+        let v = json!(ClientCapabilities::basic());
+        assert!(v.get("sampling").is_none());
     }
 
     #[test]
@@ -295,5 +450,30 @@ mod tests {
         assert!(s.contains("\"jsonrpc\":\"2.0\""));
         // Notifications must NOT have an "id" field
         assert!(!s.contains("\"id\""));
+    }
+
+    #[test]
+    fn test_server_response_error_serialization() {
+        let response =
+            JsonRpcServerResponse::error(json!("abc"), JsonRpcError::method_not_found("demo"));
+        let v = json!(response);
+        assert_eq!(v["id"], "abc");
+        assert_eq!(v["error"]["code"], -32601);
+        assert!(v.get("result").is_none());
+    }
+
+    #[test]
+    fn test_create_message_params_deserialization() {
+        let params: CreateMessageParams = serde_json::from_value(json!({
+            "messages": [{"role": "user", "content": {"type": "text", "text": "hi"}}],
+            "maxTokens": 128,
+            "systemPrompt": "answer briefly",
+            "temperature": 0.1
+        }))
+        .unwrap();
+
+        assert_eq!(params.max_tokens, 128);
+        assert_eq!(params.system_prompt.as_deref(), Some("answer briefly"));
+        assert_eq!(params.messages[0].role, "user");
     }
 }

@@ -2445,6 +2445,8 @@ fn resolve_model(args_model: Option<&str>, config: &hakimi_config::HakimiConfig)
 async fn register_mcp_tools(
     servers: &std::collections::HashMap<String, hakimi_config::McpServerConfig>,
     tool_registry: &hakimi_tools::ToolRegistry,
+    model: &str,
+    transport: std::sync::Arc<dyn hakimi_transports::ProviderTransport>,
 ) -> usize {
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -2466,14 +2468,20 @@ async fn register_mcp_tools(
         // Build args as &str slices
         let args: Vec<&str> = server_config.args.iter().map(|s| s.as_str()).collect();
 
-        let mut client =
-            match hakimi_mcp::McpClient::connect_stdio(&server_config.command, &args).await {
-                Ok(c) => c,
-                Err(e) => {
-                    warn!(server = %name, error = %e, "failed to spawn MCP server");
-                    continue;
-                }
-            };
+        let mut client = match hakimi_mcp::McpClient::connect_stdio(&server_config.command, &args)
+            .await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                warn!(server = %name, error = %e, "failed to spawn MCP server");
+                continue;
+            }
+        }
+        .with_server_request_handler(Arc::new(hakimi_mcp::TransportSamplingHandler::new(
+            name.clone(),
+            model.to_string(),
+            transport.clone(),
+        )));
 
         if let Err(e) = client.initialize().await {
             warn!(server = %name, error = %e, "MCP initialize failed");
@@ -2786,7 +2794,13 @@ async fn build_agent(
         .await;
 
     // Register MCP tools.
-    register_mcp_tools(&config.mcp_servers, &tool_registry).await;
+    register_mcp_tools(
+        &config.mcp_servers,
+        &tool_registry,
+        &model,
+        transport.clone(),
+    )
+    .await;
 
     // Load skills.
     let skill_store = if !config.agent.skills_path.is_empty() {

@@ -89,7 +89,7 @@ impl SseTransport {
         // Then perform the MCP initialize handshake.
         let params = InitializeParams {
             protocol_version: MCP_PROTOCOL_VERSION.to_string(),
-            capabilities: ClientCapabilities { roots: None },
+            capabilities: ClientCapabilities::basic(),
             client_info: ClientInfo {
                 name: CLIENT_NAME.to_string(),
                 version: CLIENT_VERSION.to_string(),

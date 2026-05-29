@@ -7,6 +7,7 @@ description = "MCP (Model Context Protocol) client for Hakimi Agent"
 [dependencies]
 hakimi-common = { path = "../hakimi-common" }
 hakimi-tools = { path = "../hakimi-tools" }
+hakimi-transports = { path = "../hakimi-transports" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

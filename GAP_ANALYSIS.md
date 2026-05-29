@@ -270,7 +270,7 @@ Generated: 2026-05-21
 #### 24. MCP — HTTP/SSE Transports + Sampling
 - **What**: MCP support beyond stdio: HTTP/StreamableHTTP, SSE transports, server-initiated sampling
 - **Hermes location**: `tools/mcp_tool.py`
-- **Details**: Hakimi now supports stdio, StreamableHTTP, SSE, configurable timeouts, automatic SSE reconnection, narrowed-PATH Node recovery, and credential stripping in remote MCP errors. Remaining parity is server-initiated sampling/createMessage and the fuller background event-loop architecture.
+- **Details**: Hakimi now supports stdio, StreamableHTTP, SSE, configurable timeouts, automatic SSE reconnection, narrowed-PATH Node recovery, credential stripping in remote MCP errors, and stdio server-initiated `sampling/createMessage` backed by the configured Hakimi LLM transport. Remaining parity is richer HTTP/SSE server-initiated flow handling, sampling tool-use loops, and the fuller background event-loop architecture.
 - **Priority**: **Medium** — Remote MCP server support
 
 #### 25. Context Engine Plugin System
@@ -475,8 +475,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. MCP Client
-- **Status**: stdio, StreamableHTTP, and SSE transports work; SSE has reconnect backoff; Node-based stdio servers recover from narrowed PATH; remote transport/adapter error messages are credential-stripped before surfacing to the agent
-- **What's missing**: sampling support (server-initiated LLM requests), thread-safe background event loop
+- **Status**: stdio, StreamableHTTP, and SSE transports work; SSE has reconnect backoff; Node-based stdio servers recover from narrowed PATH; remote transport/adapter error messages are credential-stripped before surfacing to the agent; stdio MCP servers can issue `sampling/createMessage` through Hakimi's configured LLM transport
+- **What's missing**: sampling tool-use loops, richer HTTP/SSE server-initiated flow handling, thread-safe background event loop
 - **Hermes reference**: `tools/mcp_tool.py`
 
 ### 4. Skills System
@@ -621,10 +621,12 @@ Generated: 2026-05-21
 | 37 | Read-File Credential Guard | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/builtin_read_file.rs` | 7 | ✅ `read_file` blocks Hakimi credential stores, MCP token files, profile credential stores, project `.env*`, and `cache/bws_cache.json` before file content reaches the agent |
 | 38 | Progressive Tool Disclosure | `hakimi-common/src/tool.rs`, `hakimi-tools/src/{tool_search.rs,registry.rs}`, `hakimi-core/src/{agent.rs,loop_impl.rs}` | 8 | ✅ MCP/plugin tool schemas can collapse behind `tool_search`/`tool_describe`/`tool_call`; core tools never defer; CLI/server honor `tools.tool_search` config |
 | 39 | Terminal Shell Hooks | `hakimi-tools/src/builtin_terminal.rs` | 4 | ✅ Opt-in terminal pre/post hook commands receive Hermes-style JSON payloads; pre hooks can block execution with canonical or Claude-Code-style JSON |
-| 40 | Gateway Ingress Access Policy | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 7 | ✅ Config-driven global, Telegram, role, and ClawBot allowlists gate inbound gateway messages before command/agent handling |`n| 41 | Gateway MCP Server Listing | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/mcp` and `/mcp list` render configured MCP servers with safe command/arg/env counts while keeping add/remove config-file managed |
+| 40 | Gateway Ingress Access Policy | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 7 | ✅ Config-driven global, Telegram, role, and ClawBot allowlists gate inbound gateway messages before command/agent handling |
+| 41 | Gateway MCP Server Listing | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/mcp` and `/mcp list` render configured MCP servers with safe command/arg/env counts while keeping add/remove config-file managed |
+| 42 | MCP Sampling createMessage | `hakimi-mcp/src/{protocol.rs,sampling.rs,client.rs}`, `hakimi-cli/src/entry.rs` | 7 | ✅ Stdio MCP clients advertise sampling support and answer server-initiated `sampling/createMessage` through Hakimi's configured LLM transport and active model, with JSON-RPC errors for unsupported client requests |
 
 ### Summary
-- **Total tests**: 1226 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1233 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
