@@ -103,6 +103,7 @@ pub struct SanitizedConfig {
     pub terminal_docker_image: String,
     pub compression_enabled: bool,
     pub compression_engine: String,
+    pub compression_model: String,
     pub compression_context_length: usize,
     pub display_streaming: bool,
     pub display_skin: String,
@@ -130,6 +131,7 @@ pub struct ConfigUpdate {
     pub agent_reasoning_effort: Option<String>,
     pub compression_enabled: Option<bool>,
     pub compression_engine: Option<String>,
+    pub compression_model: Option<String>,
     pub compression_context_length: Option<usize>,
     pub display_streaming: Option<bool>,
     pub display_skin: Option<String>,
@@ -305,6 +307,7 @@ async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
         terminal_docker_image: config.terminal.docker_image.clone(),
         compression_enabled: config.compression.enabled,
         compression_engine: config.compression.engine.clone(),
+        compression_model: config.compression.model.clone(),
         compression_context_length: config.compression.context_length,
         display_streaming: config.display.streaming,
         display_skin: config.display.skin.clone(),
@@ -348,6 +351,9 @@ async fn update_config(
     }
     if let Some(v) = update.compression_engine {
         config.compression.engine = v;
+    }
+    if let Some(v) = update.compression_model {
+        config.compression.model = v;
     }
     if let Some(v) = update.compression_context_length {
         config.compression.context_length = v;
@@ -403,6 +409,7 @@ async fn update_config(
         terminal_docker_image: config.terminal.docker_image.clone(),
         compression_enabled: config.compression.enabled,
         compression_engine: config.compression.engine.clone(),
+        compression_model: config.compression.model.clone(),
         compression_context_length: config.compression.context_length,
         display_streaming: config.display.streaming,
         display_skin: config.display.skin.clone(),
@@ -566,6 +573,7 @@ mod tests {
         let config: SanitizedConfig = serde_json::from_slice(&body).unwrap();
         assert_eq!(config.agent_max_turns, 90);
         assert_eq!(config.compression_engine, "smart");
+        assert_eq!(config.compression_model, "");
         assert!(config.embedding_enabled);
         assert_eq!(config.embedding_model, "BAAI/bge-m3");
     }
@@ -575,8 +583,13 @@ mod tests {
         let state = test_state();
         let app = build_router(state);
 
-        let update =
-            json!({"agent_max_turns": 42, "agent_verbose": true, "embedding_enabled": false});
+        let update = json!({
+            "agent_max_turns": 42,
+            "agent_verbose": true,
+            "compression_engine": "llm",
+            "compression_model": "claude-3-5-haiku-latest",
+            "embedding_enabled": false
+        });
         let req = Request::builder()
             .method(http::Method::POST)
             .uri("/api/config")
@@ -593,6 +606,8 @@ mod tests {
         let config: SanitizedConfig = serde_json::from_slice(&body).unwrap();
         assert_eq!(config.agent_max_turns, 42);
         assert!(config.agent_verbose);
+        assert_eq!(config.compression_engine, "llm");
+        assert_eq!(config.compression_model, "claude-3-5-haiku-latest");
         assert!(!config.embedding_enabled);
     }
 

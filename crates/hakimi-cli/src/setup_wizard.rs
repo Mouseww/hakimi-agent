@@ -458,6 +458,7 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
     // Compression section
     yaml.push_str("\ncompression:\n");
     yaml.push_str("  engine: smart\n");
+    yaml.push_str("  model: \"\"\n");
     yaml.push_str("  context_length: 128000\n");
 
     // MCP servers section

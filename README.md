@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.107-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.108-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1181-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1184-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1181 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1184 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.108 Configurable LLM Context Compression**:
+  - **Hermes Compression Runtime Parity**: `compression.engine: llm` now selects Hakimi's LLM-backed compressor instead of silently using the smart local engine.
+  - **Configurable Summary Model**: `compression.model` can choose a cheaper/faster summarization model; when empty, Hakimi uses the active chat model.
+  - **Shared Runtime Wiring**: CLI and server construction now share the same context-engine factory for `smart`, `simple`, and `llm`.
 - **v0.3.107 MCP Error Sanitization**:
   - **Hermes MCP Safety Parity**: MCP transport and adapter errors now strip credential-like text before surfacing failures to the agent.
   - **Remote Transport Coverage**: StreamableHTTP and SSE error bodies and JSON parse snippets are redacted before they enter `anyhow` context.
@@ -554,7 +558,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1181 |
+| Tests | ~500 | 1184 |
 
 ---
 
@@ -564,7 +568,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1181 tests)
+# Run all tests (1184 tests)
 cargo test --workspace
 
 # Debug logging

@@ -1589,9 +1589,10 @@ gateways:
     channel_version: "1.0.2"
     app_client_version: "2.4.3"
 
-# Context compression: smart (3-tier) or simple (truncation)
+# Context compression: smart (3-tier), simple (truncation), or llm (LLM summary with local fallback)
 compression:
-  engine: smart  # smart | simple
+  engine: smart  # smart | simple | llm
+  model: ""      # optional; llm engine uses the active model when empty
   context_length: 128000
 
 # MCP servers to connect to at startup.
@@ -2433,11 +2434,17 @@ async fn build_agent(
         .register(std::sync::Arc::new(hakimi_tools::SkillManageTool))
         .await;
 
-    // Build smart context engine
-    let max_context = 128000;
-    let context_engine = std::sync::Arc::new(tokio::sync::RwLock::new(
-        hakimi_context::SmartContextEngine::new(max_context, None),
-    ));
+    let compression_model = if config.compression.model.trim().is_empty() {
+        model.as_str()
+    } else {
+        config.compression.model.as_str()
+    };
+    let context_engine = hakimi_context::build_context_engine(
+        &config.compression.engine,
+        config.compression.context_length,
+        Some(compression_model),
+        Some(transport.clone()),
+    );
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::DelegateTaskTool))
         .await;

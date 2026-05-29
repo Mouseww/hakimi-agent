@@ -1,5 +1,6 @@
 mod compressor;
 mod engine;
+mod factory;
 pub mod intent;
 mod memory;
 mod prompt_builder;
@@ -10,6 +11,7 @@ pub mod smart_engine;
 
 pub use compressor::{ContextCompressor, LlmCompressor};
 pub use engine::{CompressionStats, ContextEngine};
+pub use factory::build_context_engine;
 pub use intent::{Intent, IntentClassifier, IntentPrediction};
 pub use memory::{FileMemoryProvider, MemoryProvider, UserMemoryProvider};
 pub use prompt_builder::{

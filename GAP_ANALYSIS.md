@@ -49,6 +49,7 @@ Generated: 2026-05-21
 - **ContextEngine trait** — Pluggable context engine abstraction
 - **ContextCompressor** — Threshold-based compression trigger
 - **SmartContextEngine** — 3-tier compression (drop tool results → summarize → sliding window)
+- **LlmCompressor runtime wiring** — `compression.engine: llm` uses a configured summary model with local fallback, question tracking, and large tool-output pruning
 - **SimpleContextEngine** — Basic truncation-based compression
 - **StreamingContextScrubber** — Removes `<memory-context>` blocks during streaming
 - **Token usage tracking** — `update_from_response()` with Usage struct
@@ -159,11 +160,10 @@ Generated: 2026-05-21
 - **Details**: 20+ FailoverReason enums (auth, billing, rate_limit, overloaded, context_overflow, model_not_found, thinking_signature, etc.). Each maps to a recovery action (retry, rotate, fallback, compress, abort). Hakimi only has basic Transport/IO retry.
 - **Priority**: **Critical** — Production-grade error handling
 
-#### 4. Prompt Caching (Anthropic-specific)
+#### 4. ~~Prompt Caching (Anthropic-specific)~~ ✅ DONE
 - **What**: Anthropic prompt caching with TTL-aware cache breakpoints
 - **Hermes location**: `agent/prompt_caching.py`
-- **Details**: Two layouts: `system_and_3` (4 breakpoints, 5m TTL) and `prefix_and_2` (4 breakpoints, split 1h/5m TTL). Reduces input token costs by ~75%.
-- **Priority**: **Critical** — Major cost savings for Anthropic users
+- **Status**: ✅ Done in v0.3.107 — `hakimi-transports/src/prompt_caching.rs` supports `system_and_3` and `prefix_and_2`, TTL-aware 5m/1h `cache_control`, tool/schema/message breakpoints, and Anthropic beta header wiring.
 
 ### High Priority
 
@@ -275,11 +275,10 @@ Generated: 2026-05-21
 - **Details**: Abstract base class with lifecycle hooks (on_session_start, update_from_response, should_compress, compress, on_session_end). Third-party engines can replace built-in compressor.
 - **Priority**: **Medium** — Hakimi has the trait but no plugin discovery for context engines
 
-#### 26. LLM-Based Context Compression
+#### 26. ~~LLM-Based Context Compression~~ ✅ DONE
 - **What**: Uses auxiliary LLM (cheap/fast) to summarize middle turns with structured templates
 - **Hermes location**: `agent/context_compressor.py`, `agent/auxiliary_client.py`
-- **Details**: Structured summary with Resolved/Pending question tracking. Iterative summary updates. Token-budget tail protection. Tool output pruning before summarization. Hakimi's SmartContextEngine does tier-based compression but Tier 2 "summarize old turns" doesn't use an LLM.
-- **Priority**: **Medium** — Higher quality compression
+- **Status**: ✅ Done in v0.3.108 — `compression.engine: llm` now selects `LlmCompressor`, uses `compression.model` or the active model for structured summarization, preserves local fallback, tracks resolved/pending questions, prunes large tool outputs, and is wired through both CLI and server construction.
 
 #### 27. Tool Guardrails
 - **What**: Pure tool-call loop detection, idempotency tracking, and turn-halt decisions
@@ -468,11 +467,6 @@ Generated: 2026-05-21
 
 ## PARTIALLY IMPLEMENTED in Hakimi
 
-### 1. Context Compression (SmartContextEngine Tier 2)
-- **Status**: 3-tier system exists but Tier 2 (SummarizeOldTurns) does **message dropping, not LLM summarization**
-- **What's missing**: Auxiliary LLM call for structured summarization with Resolved/Pending tracking, iterative updates, tool output pruning
-- **Hermes reference**: `agent/context_compressor.py` — full LLM-based summarization
-
 ### 2. Cron System
 - **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron status|list|add|edit|pause|resume|run|remove`、独立 CLI `hakimi cron status|list|add|edit|pause|resume|run|remove|tick`、prompt injection 扫描、cron 扩展元数据持久化、skill-loaded scheduled runs、standalone tick 执行、`[SILENT]` 投递抑制、gateway 创建任务的显式 `platform:chat_id` 定向投递，以及 repeat 上限/完成次数追踪与到达上限自动清理已落地
 - **What's missing**: home-channel/all/plugin delivery expansion
@@ -502,11 +496,6 @@ Generated: 2026-05-21
 - **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`
 - **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
-
-### 9. Prompt Caching
-- **Status**: No prompt caching implementation
-- **What's missing**: Anthropic-specific cache_control breakpoints, TTL-aware caching (5m/1h), tools[-1] long-lived cache, stable prefix caching across sessions
-- **Hermes reference**: `agent/prompt_caching.py`
 
 ### 10. Delegation
 - **Status**: Basic child agent spawning with toolset filtering
@@ -552,7 +541,7 @@ Generated: 2026-05-21
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 0 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
-| Agent Internals | 25+ | 16 | 6 | 3+ |
+| Agent Internals | 25+ | 18 | 4 | 2+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
 | Cron Features | Full | Full | 0 | 0 |
@@ -560,9 +549,9 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~64** (up from ~30)
-**Partially implemented: ~11**
-**Missing entirely: ~77+**
+**Fully present in Hakimi: ~66** (up from ~30)
+**Partially implemented: ~9**
+**Missing entirely: ~75+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (vision, CDP attach, cloud backends)
@@ -595,7 +584,7 @@ Generated: 2026-05-21
 | 6 | MCP HTTP/SSE | `hakimi-mcp/src/http_transport.rs`, `sse_transport.rs` | 19 | ✅ StreamableHTTP, SSE, auto-reconnect, per-server timeouts |
 | 7 | File Safety + Secret Redaction | `hakimi-core/src/file_safety.rs`, `hakimi-common/src/redact.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process,builtin_code_exec,plugin}.rs` | 27 | ✅ WriteDeniedPaths, PathSecurity, shared SecretRedactor, PromptInjectionDetector, and forced redaction for shell/process/code/plugin output |
 | 8 | Tool Guardrails | `hakimi-core/src/guardrails.rs` | 12 | ✅ Loop detection, idempotency tracking, halt decisions |
-| 9 | LLM Context Compression | `hakimi-context/src/smart_engine.rs` | 22 | ✅ Auxiliary LLM summarization, Resolved/Pending tracking, tool output pruning |
+| 9 | LLM Context Compression | `hakimi-context/src/{compressor.rs,factory.rs}`, CLI/server construction | 25 | ✅ Config-selectable `llm` engine, summary model selection, Resolved/Pending tracking, tool output pruning, and local fallback |
 | 10 | Profiles | `hakimi-cli/src/profiles.rs` | 10 | ✅ ~/.hakimi/profiles/, create/delete/use, separate config/memory/sessions |
 | 11 | Setup Wizard | `hakimi-cli/src/setup_wizard.rs` | 15 | ✅ Model/Provider selection, API key input, platform config |
 | 12 | Doctor | `hakimi-cli/src/doctor.rs`, `hakimi-cli/src/entry.rs` | 17 | ✅ Dependencies, config, env vars, API connectivity checks, `hakimi doctor`, gateway `/doctor` |
@@ -627,7 +616,7 @@ Generated: 2026-05-21
 | 34 | MCP Error Sanitization | `hakimi-mcp/src/{redaction.rs,http_transport.rs,sse_transport.rs,adapter.rs}` | 6 | ✅ Remote MCP HTTP/SSE response snippets, parse contexts, adapter failures, and `isError` tool results redact credential-like text before reaching the agent |
 
 ### Summary
-- **Total tests**: 1181 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1184 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

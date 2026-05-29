@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 #[derive(Parser, Debug)]
@@ -230,19 +229,17 @@ async fn build_agent(
         None
     };
 
-    // Context engine
-    let context_length = config.compression.context_length;
-    let context_engine: Arc<RwLock<dyn hakimi_context::ContextEngine>> =
-        if config.compression.engine == "simple" {
-            Arc::new(RwLock::new(hakimi_context::SimpleContextEngine::new(
-                context_length,
-            )))
-        } else {
-            Arc::new(RwLock::new(hakimi_context::SmartContextEngine::new(
-                context_length,
-                Some(model.clone()),
-            )))
-        };
+    let compression_model = if config.compression.model.trim().is_empty() {
+        model.as_str()
+    } else {
+        config.compression.model.as_str()
+    };
+    let context_engine = hakimi_context::build_context_engine(
+        &config.compression.engine,
+        config.compression.context_length,
+        Some(compression_model),
+        Some(transport.clone()),
+    );
 
     // Tool registry with built-in tools
     let tool_registry = hakimi_tools::ToolRegistry::new();

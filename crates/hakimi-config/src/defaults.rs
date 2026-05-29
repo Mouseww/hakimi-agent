@@ -30,6 +30,7 @@ pub fn default_config_value() -> serde_json::Value {
             "threshold": 0.50,
             "target_ratio": 0.20,
             "engine": "smart",
+            "model": "",
             "context_length": 128000
         },
         "display": {

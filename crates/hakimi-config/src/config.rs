@@ -187,9 +187,13 @@ pub struct CompressionConfig {
     #[serde(default = "default_target_ratio")]
     pub target_ratio: f64,
 
-    /// Compression engine type: "smart" (3-tier) or "simple" (truncation).
+    /// Compression engine type: "smart" (3-tier), "simple" (truncation), or "llm".
     #[serde(default = "default_compression_engine")]
     pub engine: String,
+
+    /// Optional model for LLM-based compression. Empty means use the active model.
+    #[serde(default)]
+    pub model: String,
 
     /// Maximum context length in tokens.
     #[serde(default = "default_context_length")]
@@ -223,6 +227,7 @@ impl Default for CompressionConfig {
             threshold: 0.50,
             target_ratio: 0.20,
             engine: default_compression_engine(),
+            model: String::new(),
             context_length: default_context_length(),
         }
     }
@@ -734,6 +739,7 @@ mod tests {
         assert!(config.compression.enabled);
         assert_eq!(config.compression.threshold, 0.50);
         assert_eq!(config.compression.engine, "smart");
+        assert_eq!(config.compression.model, "");
         assert_eq!(config.compression.context_length, 128_000);
         assert!(config.display.streaming);
         assert_eq!(config.display.skin, "default");
@@ -861,7 +867,8 @@ delegation:
   provider: "openai"
 
 compression:
-  engine: simple
+  engine: llm
+  model: "claude-3-5-haiku-latest"
   context_length: 64000
   enabled: false
   threshold: 0.70
@@ -881,7 +888,8 @@ compression:
         assert_eq!(config.display.skin, "dark");
         assert_eq!(config.delegation.model, "gpt-4o-mini");
         assert!(!config.compression.enabled);
-        assert_eq!(config.compression.engine, "simple");
+        assert_eq!(config.compression.engine, "llm");
+        assert_eq!(config.compression.model, "claude-3-5-haiku-latest");
         assert_eq!(config.compression.context_length, 64_000);
     }
 }
