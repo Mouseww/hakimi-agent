@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.119-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.120-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1239-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1246-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1239 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Gateway stream pacing
+**Production features:** 1246 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.120 Credential pool terminal auth quarantine**:
+  - **Hermes Credential Pool Parity**: provider failures with terminal 401 OAuth reasons such as `token_revoked`, `token_invalidated`, `invalid_grant`, and `refresh_token_reused` now mark the credential `dead`.
+  - **No Cooldown Re-Entry**: dead credentials stay out of round-robin, fill-first, random, and least-used rotation until explicit re-auth or token replacement revives them.
+  - **Health Visibility**: pool stats now distinguish temporarily exhausted credentials from permanently dead ones and preserve the last provider status/reason for diagnostics.
 - **v0.3.119 Gateway stream pacing**:
   - **Hermes Stream Consumer Parity**: gateway streaming now honors configurable edit cadence and buffered-character flush thresholds instead of a fixed 450 ms loop.
   - **Configurable Progressive Edits**: `gateways.streaming.edit_interval_ms` defaults to `800`, and `buffer_threshold_chars` defaults to `24`; set the threshold to `0` for interval-only edits.
@@ -508,7 +512,7 @@ credential_pools:
         priority: 5
 ```
 
-20+ error types auto-classified: auth failure → rotate key; rate limit → exponential backoff; context overflow → trigger compression; model not found → fallback model.
+20+ error types auto-classified: auth failure -> rotate key; terminal OAuth failure -> quarantine credential; rate limit -> exponential backoff; context overflow -> trigger compression; model not found -> fallback model.
 
 ### 🔧 MCP (Model Context Protocol)
 
@@ -604,7 +608,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1239 |
+| Tests | ~500 | 1246 |
 
 ---
 
@@ -614,7 +618,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1239 tests)
+# Run all tests (1246 tests)
 cargo test --workspace
 
 # Debug logging

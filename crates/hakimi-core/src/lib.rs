@@ -12,7 +12,7 @@ pub mod retry;
 pub use agent::{AIAgent, AIAgentBuilder};
 pub use budget::IterationBudget;
 pub use conversation::ConversationResult;
-pub use credential_pool::{Credential, CredentialPool, RotationStrategy};
+pub use credential_pool::{Credential, CredentialPool, CredentialStatus, RotationStrategy};
 pub use delegate::CoreDelegateExecutor;
 pub use error_classifier::{ErrorClassifier, FailoverReason, RecoveryAction};
 pub use guardrails::{GuardrailDecision, IdempotencyTracker, ToolCallObservation, ToolGuardrails};

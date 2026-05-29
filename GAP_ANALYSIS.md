@@ -105,6 +105,7 @@ Generated: 2026-05-21
 - **HakimiError enum** — Transport, Tool, Config, Session, Context, Io, Json, Other
 - **Responses stream recovery** — Incomplete Responses SSE maps to continuation, and truncated streams retry before surfacing partial output
 - **Output-token budget recovery** — Provider errors with `available_tokens` lower only the retry `max_tokens` budget, preserving the current prompt/context instead of forcing context compression
+- **Credential pool terminal auth quarantine** — 401 OAuth terminal reasons mark credentials `dead`, keep them out of rotation without TTL re-entry, and preserve last status/reason for diagnostics until explicit re-auth
 - **Think scrubber** — Stateful Hermes-style removal of reasoning/thinking blocks from streaming and non-streaming assistant content
 
 ### Config
@@ -157,7 +158,7 @@ Generated: 2026-05-21
 #### 2. Credential Pool / Multi-Credential Failover
 - **What**: Persistent multi-credential pool for same-provider failover with round-robin and fill-first strategies
 - **Hermes location**: `agent/credential_pool.py`
-- **Details**: OAuth + API key support, automatic exhaustion detection, credential rotation on rate-limit/billing errors. Integrates with error_classifier.
+- **Details**: Hakimi supports API-key pools, round-robin/fill-first/random/least-used strategies, temporary exhaustion, and Hermes-style terminal auth quarantine for 401 OAuth reasons such as `token_revoked`, `invalid_grant`, and `refresh_token_reused`. Remaining parity is persisted OAuth singleton syncing/refresh, write-side re-auth clearing, and live integration with richer recovery loops.
 - **Priority**: **Critical** — Production reliability for high-traffic deployments
 
 #### 3. Error Classifier (Rich Taxonomy)
@@ -527,8 +528,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
 ### 15. Error Handling
-- **Status**: Basic HakimiError enum with retry for Transport/IO errors
-- **What's missing**: 20+ specific error categories, credential rotation on auth/billing errors, context overflow → compression trigger, model fallback on 404, provider-specific error handling (thinking_signature, long_context_tier, llama_cpp_grammar_pattern), failover reason tracking
+- **Status**: Basic HakimiError enum with retry for Transport/IO errors; credential pool now distinguishes temporary exhausted credentials from terminal dead OAuth credentials
+- **What's missing**: 20+ specific error categories, runtime credential rotation on auth/billing errors, context overflow → compression trigger, model fallback on 404, provider-specific error handling (thinking_signature, long_context_tier, llama_cpp_grammar_pattern), failover reason tracking
 - **Hermes reference**: `agent/error_classifier.py`
 
 ### 16. Usage Pricing / Rate Limit Tracking
@@ -628,9 +629,10 @@ Generated: 2026-05-21
 | 42 | MCP Sampling createMessage | `hakimi-mcp/src/{protocol.rs,sampling.rs,client.rs}`, `hakimi-cli/src/entry.rs` | 7 | ✅ Stdio MCP clients advertise sampling support and answer server-initiated `sampling/createMessage` through Hakimi's configured LLM transport and active model, with JSON-RPC errors for unsupported client requests |
 | 43 | Gateway Fresh-Final Streaming | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}` | 2 | ✅ Long-lived gateway stream previews can finish as fresh final messages through `gateways.streaming.fresh_final_after_seconds`; Telegram deletes stale previews best-effort |
 | 44 | Gateway Stream Pacing | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 4 | ✅ Gateway progressive edits honor `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars`, and flush pending assistant text before tool/media/delegate boundaries |
+| 45 | Credential Pool Terminal Auth Quarantine | `hakimi-core/src/credential_pool.rs` | 7 | ✅ Terminal 401 OAuth reasons mark credentials `dead`, prevent cooldown re-entry, expose dead/exhausted stats separately, and support explicit revive after re-auth |
 
 ### Summary
-- **Total tests**: 1239 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1246 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
