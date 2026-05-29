@@ -110,11 +110,23 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
     let mut length_continuations: usize = 0;
 
     let tool_ctx = agent.build_tool_context();
-    let tool_defs = agent.tool_registry.get_definitions().await;
+    agent
+        .tool_registry
+        .configure_tool_search(
+            agent.tool_search_config.clone(),
+            agent.tool_search_context_length,
+        )
+        .await;
+    let tool_assembly = agent.tool_registry.get_model_definitions().await;
+    let tool_defs = tool_assembly.tool_defs;
     let params = RequestParams::default();
 
     debug!(
         tool_count = tool_defs.len(),
+        tool_search_activated = tool_assembly.activated,
+        deferred_tool_count = tool_assembly.deferred_count,
+        deferred_tool_tokens = tool_assembly.deferred_tokens,
+        tool_search_threshold_tokens = tool_assembly.threshold_tokens,
         max_iterations = agent.max_iterations,
         streaming = streaming,
         "Starting agent loop"

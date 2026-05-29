@@ -221,6 +221,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     },
                     "required": ["key", "kind"]
                 }),
+                toolset: "knowledge".to_string(),
             },
             ToolDefinition {
                 name: "knowledge_add_relation".to_string(),
@@ -243,6 +244,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     },
                     "required": ["from", "to", "relation"]
                 }),
+                toolset: "knowledge".to_string(),
             },
             ToolDefinition {
                 name: "knowledge_search".to_string(),
@@ -261,6 +263,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     },
                     "required": ["query"]
                 }),
+                toolset: "knowledge".to_string(),
             },
             ToolDefinition {
                 name: "knowledge_get_context".to_string(),
@@ -279,6 +282,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     },
                     "required": ["key"]
                 }),
+                toolset: "knowledge".to_string(),
             },
             ToolDefinition {
                 name: "knowledge_list".to_string(),
@@ -288,6 +292,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     "properties": {},
                     "required": []
                 }),
+                toolset: "knowledge".to_string(),
             },
             ToolDefinition {
                 name: "knowledge_stats".to_string(),
@@ -297,6 +302,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     "properties": {},
                     "required": []
                 }),
+                toolset: "knowledge".to_string(),
             },
         ]
     }

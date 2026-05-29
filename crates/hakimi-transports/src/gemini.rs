@@ -708,6 +708,7 @@ mod tests {
                 },
                 "required": ["path"]
             }),
+            toolset: "file".to_string(),
         }];
         let result = GeminiTransport::convert_tools(&tools);
         assert_eq!(result.len(), 1);
@@ -952,6 +953,7 @@ mod tests {
             name: "read_file".to_string(),
             description: "Read a file".to_string(),
             parameters: json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+            toolset: "file".to_string(),
         }];
         let params = RequestParams::default();
         let body = transport.build_request("gemini-pro", &messages, &tools, &params);

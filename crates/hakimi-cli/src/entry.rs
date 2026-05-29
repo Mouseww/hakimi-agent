@@ -2651,6 +2651,10 @@ async fn build_agent(
         .with_context_engine(context_engine)
         .with_embedding_provider(embedding_provider)
         .with_knowledge_searcher(Some(knowledge_searcher))
+        .with_tool_search_settings(
+            config.tools.tool_search.clone(),
+            config.compression.context_length,
+        )
         .with_voice_settings(
             Some(config.voice.provider.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.model.clone()).filter(|s| !s.is_empty()),

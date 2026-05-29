@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use hakimi_common::{HakimiError, Message, Result, ToolContext};
+use hakimi_common::{HakimiError, Message, Result, ToolContext, ToolSearchConfig};
 use hakimi_context::ContextEngine;
 use hakimi_tools::ToolRegistry;
 use hakimi_transports::{EmbeddingProvider, ProviderTransport};
@@ -44,6 +44,8 @@ pub struct AIAgent {
     pub(crate) transcription_model: Option<String>,
     pub(crate) transcription_base_url: Option<String>,
     pub(crate) transcription_api_key: Option<String>,
+    pub(crate) tool_search_config: ToolSearchConfig,
+    pub(crate) tool_search_context_length: usize,
 }
 
 impl Clone for AIAgent {
@@ -76,6 +78,8 @@ impl Clone for AIAgent {
             transcription_model: self.transcription_model.clone(),
             transcription_base_url: self.transcription_base_url.clone(),
             transcription_api_key: self.transcription_api_key.clone(),
+            tool_search_config: self.tool_search_config.clone(),
+            tool_search_context_length: self.tool_search_context_length,
         }
     }
 }
@@ -97,6 +101,17 @@ impl AIAgent {
             .build()
             .expect("failed to build agent with defaults")
             .with_skill_store(skill_store)
+    }
+
+    /// Apply progressive tool-disclosure settings used by the tool registry.
+    pub fn with_tool_search_settings(
+        mut self,
+        config: ToolSearchConfig,
+        context_length: usize,
+    ) -> Self {
+        self.tool_search_config = config.normalized();
+        self.tool_search_context_length = context_length;
+        self
     }
 
     /// Set or replace the skill store.
@@ -184,6 +199,8 @@ pub struct AIAgentBuilder {
     transcription_model: Option<String>,
     transcription_base_url: Option<String>,
     transcription_api_key: Option<String>,
+    tool_search_config: Option<ToolSearchConfig>,
+    tool_search_context_length: Option<usize>,
 }
 
 impl AIAgentBuilder {
@@ -216,6 +233,8 @@ impl AIAgentBuilder {
             transcription_model: None,
             transcription_base_url: None,
             transcription_api_key: None,
+            tool_search_config: None,
+            tool_search_context_length: None,
         }
     }
 
@@ -329,6 +348,13 @@ impl AIAgentBuilder {
         self
     }
 
+    /// Set progressive tool-disclosure behavior.
+    pub fn tool_search(mut self, config: ToolSearchConfig, context_length: usize) -> Self {
+        self.tool_search_config = Some(config.normalized());
+        self.tool_search_context_length = Some(context_length);
+        self
+    }
+
     /// Build the [`AIAgent`].
     ///
     /// # Errors
@@ -392,6 +418,8 @@ impl AIAgentBuilder {
             transcription_model: self.transcription_model,
             transcription_base_url: self.transcription_base_url,
             transcription_api_key: self.transcription_api_key,
+            tool_search_config: self.tool_search_config.unwrap_or_default().normalized(),
+            tool_search_context_length: self.tool_search_context_length.unwrap_or(128_000),
         })
     }
 }

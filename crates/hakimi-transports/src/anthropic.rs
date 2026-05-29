@@ -636,6 +636,7 @@ mod tests {
                 },
                 "required": ["path"]
             }),
+            toolset: "file".to_string(),
         }];
 
         let result = AnthropicTransport::convert_tools(&tools);

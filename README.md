@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.112-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.113-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1202-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1213-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1202 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Context-file prompt injection guard · Read-file credential guard
+**Production features:** 1213 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Read-file credential guard
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.113 Progressive Tool Disclosure**:
+  - **Hermes Tool Search Parity**: large MCP/plugin tool surfaces can now collapse behind `tool_search`, `tool_describe`, and `tool_call` bridge tools instead of sending every deferred schema on each turn.
+  - **Core Tool Safety**: built-in Hakimi tools such as terminal, file, memory, cron, browser, media, and knowledge tools stay directly visible and are never deferred.
+  - **Configurable Thresholds**: `tools.tool_search.enabled`, `threshold_pct`, `search_default_limit`, and `max_search_limit` support Hermes-style `auto`/`on`/`off` behavior for CLI and server agents.
 - **v0.3.112 Plugin List Usability**:
   - **Hermes CLI Parity**: `hakimi plugins list` now supports `--plain` and `--json`, matching Hermes' latest compact and machine-readable listing workflow.
   - **Metadata-Aware HTTP Plugins**: plugin configs can declare optional top-level `version` and `description`, and the list output surfaces those values instead of a fixed generic label.
@@ -576,7 +580,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1202 |
+| Tests | ~500 | 1213 |
 
 ---
 
@@ -586,7 +590,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1202 tests)
+# Run all tests (1213 tests)
 cargo test --workspace
 
 # Debug logging

@@ -178,6 +178,7 @@ impl MemoryProvider for FileMemoryProvider {
                     },
                     "required": ["name", "content"]
                 }),
+                toolset: "memory".to_string(),
             },
             ToolDefinition {
                 name: "memory_search".to_string(),
@@ -192,6 +193,7 @@ impl MemoryProvider for FileMemoryProvider {
                     },
                     "required": ["query"]
                 }),
+                toolset: "memory".to_string(),
             },
             ToolDefinition {
                 name: "memory_list".to_string(),
@@ -201,6 +203,7 @@ impl MemoryProvider for FileMemoryProvider {
                     "properties": {},
                     "required": []
                 }),
+                toolset: "memory".to_string(),
             },
         ]
     }
@@ -360,6 +363,7 @@ impl MemoryProvider for UserMemoryProvider {
                 },
                 "required": ["content"]
             }),
+            toolset: "memory".to_string(),
         }]
     }
 

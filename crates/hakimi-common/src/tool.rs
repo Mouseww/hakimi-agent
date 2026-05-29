@@ -39,7 +39,7 @@ pub struct ToolResult {
 }
 
 /// Definition of a tool that can be called by the model.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolDefinition {
     /// Name of the tool.
     pub name: String,
@@ -49,6 +49,148 @@ pub struct ToolDefinition {
 
     /// JSON Schema describing the tool's parameters.
     pub parameters: JsonValue,
+
+    /// Toolset/category that owns this tool.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub toolset: String,
+}
+
+/// Runtime mode for progressive tool disclosure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolSearchMode {
+    /// Activate only when deferred tool schemas exceed the configured threshold.
+    Auto,
+    /// Always activate when any deferrable tool exists.
+    On,
+    /// Never activate.
+    Off,
+}
+
+fn default_tool_search_mode() -> ToolSearchMode {
+    ToolSearchMode::Auto
+}
+
+fn default_tool_search_threshold_pct() -> f64 {
+    10.0
+}
+
+fn default_tool_search_default_limit() -> usize {
+    5
+}
+
+fn default_tool_search_max_limit() -> usize {
+    20
+}
+
+/// Configuration for Hermes-style progressive tool disclosure.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ToolSearchConfig {
+    /// Whether tool search is enabled.
+    pub enabled: ToolSearchMode,
+
+    /// Percentage of the context window that deferred tool schemas may occupy
+    /// before `Auto` mode activates.
+    pub threshold_pct: f64,
+
+    /// Default number of search hits returned by `tool_search`.
+    pub search_default_limit: usize,
+
+    /// Maximum number of search hits a model can request.
+    pub max_search_limit: usize,
+}
+
+impl<'de> Deserialize<'de> for ToolSearchConfig {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = JsonValue::deserialize(deserializer)?;
+        Ok(Self::from_json_value(&raw).normalized())
+    }
+}
+
+impl Default for ToolSearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_tool_search_mode(),
+            threshold_pct: default_tool_search_threshold_pct(),
+            search_default_limit: default_tool_search_default_limit(),
+            max_search_limit: default_tool_search_max_limit(),
+        }
+    }
+}
+
+impl ToolSearchConfig {
+    fn from_json_value(raw: &JsonValue) -> Self {
+        match raw {
+            JsonValue::Bool(true) => Self::default(),
+            JsonValue::Bool(false) => Self {
+                enabled: ToolSearchMode::Off,
+                ..Self::default()
+            },
+            JsonValue::Object(map) => Self {
+                enabled: parse_tool_search_mode(map.get("enabled"), ToolSearchMode::Auto),
+                threshold_pct: parse_f64(
+                    map.get("threshold_pct"),
+                    default_tool_search_threshold_pct(),
+                ),
+                search_default_limit: parse_usize(
+                    map.get("search_default_limit"),
+                    default_tool_search_default_limit(),
+                ),
+                max_search_limit: parse_usize(
+                    map.get("max_search_limit"),
+                    default_tool_search_max_limit(),
+                ),
+            },
+            _ => Self::default(),
+        }
+    }
+
+    /// Return a copy with numeric fields clamped to safe runtime bounds.
+    pub fn normalized(&self) -> Self {
+        let max_search_limit = self.max_search_limit.clamp(1, 50);
+        Self {
+            enabled: self.enabled,
+            threshold_pct: self.threshold_pct.clamp(0.0, 100.0),
+            search_default_limit: self.search_default_limit.clamp(1, max_search_limit),
+            max_search_limit,
+        }
+    }
+}
+
+fn parse_tool_search_mode(raw: Option<&JsonValue>, fallback: ToolSearchMode) -> ToolSearchMode {
+    match raw {
+        Some(JsonValue::Bool(true)) => ToolSearchMode::On,
+        Some(JsonValue::Bool(false)) => ToolSearchMode::Off,
+        Some(JsonValue::String(value)) => match value.trim().to_ascii_lowercase().as_str() {
+            "on" | "true" | "1" | "yes" => ToolSearchMode::On,
+            "off" | "false" | "0" | "no" => ToolSearchMode::Off,
+            "auto" => ToolSearchMode::Auto,
+            _ => fallback,
+        },
+        _ => fallback,
+    }
+}
+
+fn parse_f64(raw: Option<&JsonValue>, fallback: f64) -> f64 {
+    raw.and_then(|value| {
+        value
+            .as_f64()
+            .or_else(|| value.as_str().and_then(|s| s.parse::<f64>().ok()))
+    })
+    .unwrap_or(fallback)
+}
+
+fn parse_usize(raw: Option<&JsonValue>, fallback: usize) -> usize {
+    raw.and_then(|value| {
+        value
+            .as_u64()
+            .and_then(|v| usize::try_from(v).ok())
+            .or_else(|| value.as_str().and_then(|s| s.parse::<usize>().ok()))
+    })
+    .unwrap_or(fallback)
 }
 
 /// Callback used by long-running tools to surface progress back to the parent

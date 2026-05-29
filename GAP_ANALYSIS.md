@@ -93,6 +93,7 @@ Generated: 2026-05-21
 - **Plugin trait** — name, version, description, tools, init
 - **PluginLoader** — Directory-based discovery, HTTP tool plugins
 - **Plugin CLI/templates** — `hakimi plugins list|templates|init|path` plus gateway `/plugins` inspection for HTTP plugins; `plugins list` supports Hermes-style `--plain` and `--json` output
+- **Progressive tool disclosure** — Hermes-style `tool_search`, `tool_describe`, and `tool_call` bridge tools defer MCP/plugin schemas once their token estimate crosses the configured context threshold while core Hakimi tools stay directly visible
 
 ### Retry & Error
 - **Jittered backoff** — Exponential backoff with random jitter
@@ -616,9 +617,10 @@ Generated: 2026-05-21
 | 35 | Context File Injection Guard | `hakimi-context/src/prompt_builder.rs` | 4 | ✅ Context files that feed the system prompt are scanned and blocked before injection when they contain prompt-injection patterns |
 | 36 | Delegation Blocked Tools | `hakimi-core/src/delegate.rs` | 3 | ✅ Child agent registries strip `delegate_task`, `clarify`, `memory`, `send_message`, and `code_exec` after optional toolset filtering |
 | 37 | Read-File Credential Guard | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/builtin_read_file.rs` | 7 | ✅ `read_file` blocks Hakimi credential stores, MCP token files, profile credential stores, project `.env*`, and `cache/bws_cache.json` before file content reaches the agent |
+| 38 | Progressive Tool Disclosure | `hakimi-common/src/tool.rs`, `hakimi-tools/src/{tool_search.rs,registry.rs}`, `hakimi-core/src/{agent.rs,loop_impl.rs}` | 8 | ✅ MCP/plugin tool schemas can collapse behind `tool_search`/`tool_describe`/`tool_call`; core tools never defer; CLI/server honor `tools.tool_search` config |
 
 ### Summary
-- **Total tests**: 1202 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1213 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

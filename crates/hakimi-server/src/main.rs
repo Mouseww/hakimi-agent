@@ -331,6 +331,10 @@ async fn build_agent(
         .knowledge_searcher(knowledge_searcher)
         .max_iterations(config.agent.max_turns)
         .workdir(&config.terminal.cwd)
+        .tool_search(
+            config.tools.tool_search.clone(),
+            config.compression.context_length,
+        )
         .build()?;
     agent = agent.with_embedding_provider(embedding_provider);
 

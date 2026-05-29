@@ -54,6 +54,14 @@ pub fn default_config_value() -> serde_json::Value {
             "dimension": 1024,
             "batch_size": 32,
             "normalize": true
+        },
+        "tools": {
+            "tool_search": {
+                "enabled": "auto",
+                "threshold_pct": 10.0,
+                "search_default_limit": 5,
+                "max_search_limit": 20
+            }
         }
     })
 }

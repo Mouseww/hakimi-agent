@@ -456,6 +456,14 @@ impl Default for VoiceConfig {
     }
 }
 
+/// Tool behavior configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ToolsConfig {
+    /// Progressive disclosure for MCP/plugin tools.
+    #[serde(default)]
+    pub tool_search: hakimi_common::ToolSearchConfig,
+}
+
 /// Top-level Hakimi configuration.
 ///
 /// All fields have sensible defaults via `serde(default)` so partial config
@@ -504,6 +512,10 @@ pub struct HakimiConfig {
     /// Voice / TTS configuration.
     #[serde(default)]
     pub voice: VoiceConfig,
+
+    /// Tool behavior configuration.
+    #[serde(default)]
+    pub tools: ToolsConfig,
 
     /// Named roles — each can bind to its own bot(s).
     #[serde(default)]
@@ -873,6 +885,13 @@ compression:
   enabled: false
   threshold: 0.70
   target_ratio: 0.30
+
+tools:
+  tool_search:
+    enabled: "on"
+    threshold_pct: 15
+    search_default_limit: 7
+    max_search_limit: 30
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.model.default, "claude-sonnet-4-20250514");
@@ -891,5 +910,46 @@ compression:
         assert_eq!(config.compression.engine, "llm");
         assert_eq!(config.compression.model, "claude-3-5-haiku-latest");
         assert_eq!(config.compression.context_length, 64_000);
+        assert_eq!(
+            config.tools.tool_search.enabled,
+            hakimi_common::ToolSearchMode::On
+        );
+        assert_eq!(config.tools.tool_search.threshold_pct, 15.0);
+        assert_eq!(config.tools.tool_search.search_default_limit, 7);
+        assert_eq!(config.tools.tool_search.max_search_limit, 30);
+    }
+
+    #[test]
+    fn test_tool_search_config_bool_and_clamp() {
+        let disabled: HakimiConfig = serde_yaml::from_str(
+            r#"
+tools:
+  tool_search: false
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            disabled.tools.tool_search.enabled,
+            hakimi_common::ToolSearchMode::Off
+        );
+
+        let clamped: HakimiConfig = serde_yaml::from_str(
+            r#"
+tools:
+  tool_search:
+    enabled: "maybe"
+    threshold_pct: 150
+    search_default_limit: 999
+    max_search_limit: 999
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            clamped.tools.tool_search.enabled,
+            hakimi_common::ToolSearchMode::Auto
+        );
+        assert_eq!(clamped.tools.tool_search.threshold_pct, 100.0);
+        assert_eq!(clamped.tools.tool_search.max_search_limit, 50);
+        assert_eq!(clamped.tools.tool_search.search_default_limit, 50);
     }
 }

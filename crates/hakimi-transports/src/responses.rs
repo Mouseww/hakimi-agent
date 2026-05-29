@@ -742,6 +742,7 @@ mod tests {
             name: "search".to_string(),
             description: "Search the web".to_string(),
             parameters: json!({"type": "object", "properties": {"query": {"type": "string"}}}),
+            toolset: "web".to_string(),
         }];
         let params = RequestParams::default();
         let body = transport.build_request("gpt-4o", &messages, &tools, &params);
@@ -1146,6 +1147,7 @@ mod tests {
                     },
                     "required": ["path"]
                 }),
+                toolset: "file".to_string(),
             },
             ToolDefinition {
                 name: "bash".to_string(),
@@ -1156,6 +1158,7 @@ mod tests {
                         "command": {"type": "string"}
                     }
                 }),
+                toolset: "shell".to_string(),
             },
         ];
 

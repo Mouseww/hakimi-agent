@@ -30,6 +30,7 @@ mod fts_search;
 mod plugin;
 mod registry;
 pub mod shell_env;
+pub mod tool_search;
 mod trait_def;
 
 #[cfg(feature = "browser")]
