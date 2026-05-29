@@ -4991,7 +4991,6 @@ mod tests {
         assert!(response.contains("Tokens/hr"));
     }
 
-
     #[test]
     fn gateway_mcp_response_lists_configured_servers() {
         let yaml = r#"
