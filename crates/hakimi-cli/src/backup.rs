@@ -381,10 +381,10 @@ fn expand_home(path: &Path) -> PathBuf {
     if raw == "~" {
         return dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     }
-    if let Some(rest) = raw.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
+    if let Some(rest) = raw.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
     }
     path.to_path_buf()
 }
