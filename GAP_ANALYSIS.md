@@ -483,8 +483,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `tools/mcp_tool.py`
 
 ### 4. Skills System
-- **Status**: Basic loader from markdown files with YAML frontmatter
-- **What's missing**: Skills hub (community sharing), skill provenance tracking, skill preprocessing, skill sync, skills guard (security), conditional skill loading (platform-gated), skill usage tracking, skill slash commands injected as user messages, skill index caching
+- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader also skips symlinked skill paths.
+- **What's missing**: Skills hub (community sharing), skill provenance tracking, skill preprocessing, skill sync, richer trust/source policy for installs, conditional skill loading (platform-gated), skill usage tracking, skill slash commands injected as user messages, skill index caching
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
@@ -630,9 +630,10 @@ Generated: 2026-05-21
 | 43 | Gateway Fresh-Final Streaming | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}` | 2 | ✅ Long-lived gateway stream previews can finish as fresh final messages through `gateways.streaming.fresh_final_after_seconds`; Telegram deletes stale previews best-effort |
 | 44 | Gateway Stream Pacing | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 4 | ✅ Gateway progressive edits honor `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars`, and flush pending assistant text before tool/media/delegate boundaries |
 | 45 | Credential Pool Terminal Auth Quarantine | `hakimi-core/src/credential_pool.rs` | 7 | ✅ Terminal 401 OAuth reasons mark credentials `dead`, prevent cooldown re-entry, expose dead/exhausted stats separately, and support explicit revive after re-auth |
+| 46 | Skills Guard | `hakimi-skills/src/{safety.rs,loader.rs}` | 6 | ✅ Skill markdown is scanned before parsing; dangerous injection/exfiltration/persistence/destructive/invisible-Unicode/credential patterns and symlinked skill paths are blocked before prompt injection |
 
 ### Summary
-- **Total tests**: 1246 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1252 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

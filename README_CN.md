@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.120-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.121-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1246-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1252-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1246 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Gateway stream pacing
+**生产级特性：** 1252 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.121 Skills Guard**
+  - 对齐 Hermes Skills Guard：skill markdown 在解析前会扫描明显的 prompt injection、数据外传、持久化、破坏性操作、不可见 Unicode 和嵌入凭据模式，避免危险技能进入运行时 system prompt。
+  - 阻断日志只报告稳定 finding id 和行号，不回显可疑 skill 内容，降低二次泄露风险。
+  - skills loader 会跳过 symlink 文件和目录，防止技能树把加载路径重定向到配置目录之外。
 
 - **v0.3.120 Credential pool terminal auth quarantine**
   - 对齐 Hermes credential pool：provider 返回 `token_revoked`、`token_invalidated`、`invalid_grant`、`refresh_token_reused` 等 401 OAuth 终态时，会将该凭证标记为 `dead`。
@@ -465,7 +470,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1246 |
+| 测试 | ~500 | 1252 |
 
 ---
 
@@ -475,7 +480,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1246 tests)
+# 运行全部测试 (1252 tests)
 cargo test --workspace
 
 # Debug 日志
