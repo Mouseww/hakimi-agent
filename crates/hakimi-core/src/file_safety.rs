@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub use hakimi_common::SecretRedactor;
 pub use hakimi_common::detect_prompt_injection;
+pub use hakimi_common::{get_read_block_error, get_read_block_error_with_homes};
 
 /// Paths that should never be written to by the agent.
 const WRITE_DENIED_PATHS: &[&str] = &[

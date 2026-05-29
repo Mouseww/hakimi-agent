@@ -287,11 +287,10 @@ Generated: 2026-05-21
 - **Details**: Tracks per-turn tool-call observations. Detects infinite loops, repeated identical calls. Returns decisions for warning/synthetic-result/halt.
 - **Priority**: **Medium** — Safety and cost control
 
-#### 28. File Safety / Path Security
+#### 28. ~~File Safety / Path Security~~ ✅ DONE
 - **What**: Write-denied paths, path traversal protection, symlink resolution
 - **Hermes location**: `agent/file_safety.py`, `tools/path_security.py`
-- **Details**: `build_write_denied_paths()` for sensitive locations. `validate_within_dir()` for path traversal checks. Used by skill_manager, cronjob_tools, credential_files.
-- **Priority**: **Medium** — Security hardening
+- **Status**: ✅ Done in v0.3.111 — `read_file` now applies a shared Hakimi credential read guard before opening files, covering `config.yaml`, OAuth/token stores, project `.env*` files, `mcp-tokens/`, and Hermes' latest `cache/bws_cache.json` pattern. Existing paths are canonicalized before matching, and Windows absolute paths are resolved with `Path::is_absolute()`.
 
 #### 29. ~~Secret Redaction~~ ✅ DONE
 - **What**: Regex-based secret masking for logs and tool output
@@ -616,9 +615,10 @@ Generated: 2026-05-21
 | 34 | MCP Error Sanitization | `hakimi-mcp/src/{redaction.rs,http_transport.rs,sse_transport.rs,adapter.rs}` | 6 | ✅ Remote MCP HTTP/SSE response snippets, parse contexts, adapter failures, and `isError` tool results redact credential-like text before reaching the agent |
 | 35 | Context File Injection Guard | `hakimi-context/src/prompt_builder.rs` | 4 | ✅ Context files that feed the system prompt are scanned and blocked before injection when they contain prompt-injection patterns |
 | 36 | Delegation Blocked Tools | `hakimi-core/src/delegate.rs` | 3 | ✅ Child agent registries strip `delegate_task`, `clarify`, `memory`, `send_message`, and `code_exec` after optional toolset filtering |
+| 37 | Read-File Credential Guard | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/builtin_read_file.rs` | 7 | ✅ `read_file` blocks Hakimi credential stores, MCP token files, profile credential stores, project `.env*`, and `cache/bws_cache.json` before file content reaches the agent |
 
 ### Summary
-- **Total tests**: 1191 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1198 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

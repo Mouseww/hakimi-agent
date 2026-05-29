@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.110-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.111-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1191-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1198-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1191 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Context-file prompt injection guard · Delegation blocked-tool safety
+**Production features:** 1198 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Context-file prompt injection guard · Read-file credential guard
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.111 Read-File Credential Guard**:
+  - **Hermes File-Safety Parity**: `read_file` now refuses known Hakimi credential stores before reading, including `config.yaml`, OAuth caches, MCP token files, project `.env*` files, and `cache/bws_cache.json`.
+  - **Symlink-Aware Defense**: existing paths are canonicalized before matching so simple symlinks cannot bypass the guard.
+  - **Windows Path Fix**: absolute path detection now uses `Path::is_absolute()`, so `C:\...` paths are not accidentally resolved under the current workdir.
 - **v0.3.110 Delegation Blocked Tools**:
   - **Hermes Subagent Safety Parity**: delegated child agents no longer receive `delegate_task`, `clarify`, `memory`, `send_message`, or `code_exec`.
   - **Toolset-Safe Filtering**: explicit child `toolsets` still work, but the denylist is applied after selection so sensitive tools cannot be re-enabled accidentally.
@@ -367,7 +371,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_dialog, browser_screenshot (Chromium automation)
 - **Media**: vision_analyze (image analysis), video_analyze (video analysis request), image_describe (legacy alias), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
-- **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
+- **Safety**: file_safety (path protection and read-file credential guard), secret_redaction, prompt_injection_detection
 - **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
 
 ### 🔌 Gateway Platforms
@@ -566,7 +570,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1191 |
+| Tests | ~500 | 1198 |
 
 ---
 
@@ -576,7 +580,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1191 tests)
+# Run all tests (1198 tests)
 cargo test --workspace
 
 # Debug logging

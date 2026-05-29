@@ -1,5 +1,6 @@
 mod config_ref;
 mod error;
+mod file_safety;
 mod message;
 mod prompt_security;
 mod redact;
@@ -10,6 +11,7 @@ mod usage_pricing;
 
 pub use config_ref::*;
 pub use error::*;
+pub use file_safety::*;
 pub use message::*;
 pub use prompt_security::*;
 pub use redact::*;

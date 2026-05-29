@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, get_read_block_error};
 use serde_json::{Value as JsonValue, json};
 use tokio::fs;
 use tracing::debug;
@@ -75,13 +75,18 @@ impl Tool for ReadFileTool {
             .min(10000) as usize;
 
         // Resolve path relative to workdir if not absolute
-        let full_path = if path.starts_with('/') {
-            std::path::PathBuf::from(path)
+        let requested_path = std::path::PathBuf::from(path);
+        let full_path = if requested_path.is_absolute() {
+            requested_path
         } else {
-            std::path::PathBuf::from(&ctx.workdir).join(path)
+            std::path::PathBuf::from(&ctx.workdir).join(requested_path)
         };
 
         debug!(path = %full_path.display(), offset, limit, "reading file");
+
+        if let Some(error) = get_read_block_error(&full_path) {
+            return Err(HakimiError::Tool(error));
+        }
 
         let content = fs::read_to_string(&full_path).await.map_err(|e| {
             debug!(path = %full_path.display(), error = %e, "failed to read file");
