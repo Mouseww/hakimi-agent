@@ -5,10 +5,28 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use hakimi_common::{DelegateExecutor, HakimiError, Result, ToolProgressCallback};
-use hakimi_tools::ToolRegistry;
+use hakimi_tools::{Tool, ToolRegistry};
 use hakimi_transports::ProviderTransport;
 use tokio::sync::{RwLock, Semaphore};
 use tracing::info;
+
+const DELEGATION_BLOCKED_TOOLS: &[&str] = &[
+    "delegate_task",
+    "clarify",
+    "memory",
+    "send_message",
+    "code_exec",
+];
+
+fn is_delegation_blocked_tool(tool_name: &str) -> bool {
+    DELEGATION_BLOCKED_TOOLS.contains(&tool_name)
+}
+
+fn delegation_allows_tool(tool: &dyn Tool, toolsets: &[String]) -> bool {
+    !is_delegation_blocked_tool(tool.name())
+        && (toolsets.is_empty()
+            || toolsets.iter().any(|toolset| toolset == tool.toolset()))
+}
 
 fn now_progress_timestamp() -> String {
     let secs = std::time::SystemTime::now()
@@ -175,7 +193,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
             let child_registry = ToolRegistry::new();
             for tool_name in &all_tool_names {
                 if let Some(tool) = self.tool_registry.get(tool_name).await
-                    && (toolsets.is_empty() || toolsets.contains(&tool.toolset().to_string()))
+                    && delegation_allows_tool(tool.as_ref(), &toolsets)
                 {
                     child_registry.register(tool).await;
                 }
@@ -344,5 +362,131 @@ impl DelegateExecutor for CoreDelegateExecutor {
         Err(HakimiError::Tool(
             "Task queueing is not yet implemented".into(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use hakimi_common::{Result, ToolContext};
+    use hakimi_tools::{Tool, ToolRegistry};
+    use serde_json::{Value as JsonValue, json};
+
+    use super::{
+        DELEGATION_BLOCKED_TOOLS, delegation_allows_tool, is_delegation_blocked_tool,
+    };
+
+    struct NamedTool {
+        name: &'static str,
+        toolset: &'static str,
+    }
+
+    #[async_trait]
+    impl Tool for NamedTool {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn toolset(&self) -> &str {
+            self.toolset
+        }
+
+        fn description(&self) -> &str {
+            "test tool"
+        }
+
+        fn schema(&self) -> JsonValue {
+            json!({"type": "object"})
+        }
+
+        async fn execute(&self, _args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+            Ok("ok".to_string())
+        }
+    }
+
+    async fn filtered_child_registry(
+        parent: &ToolRegistry,
+        toolsets: &[String],
+    ) -> ToolRegistry {
+        let child = ToolRegistry::new();
+        for tool_name in parent.list().await {
+            if let Some(tool) = parent.get(&tool_name).await
+                && delegation_allows_tool(tool.as_ref(), toolsets)
+            {
+                child.register(tool).await;
+            }
+        }
+        child
+    }
+
+    #[test]
+    fn delegation_blocklist_matches_hermes_sensitive_tools() {
+        for tool in DELEGATION_BLOCKED_TOOLS {
+            assert!(is_delegation_blocked_tool(tool));
+        }
+
+        assert!(!is_delegation_blocked_tool("read_file"));
+        assert!(!is_delegation_blocked_tool("terminal"));
+    }
+
+    #[tokio::test]
+    async fn filtered_child_registry_removes_blocked_tools_by_default() {
+        let parent = ToolRegistry::new();
+        parent
+            .register(Arc::new(NamedTool {
+                name: "read_file",
+                toolset: "file",
+            }))
+            .await;
+        for tool_name in DELEGATION_BLOCKED_TOOLS {
+            parent
+                .register(Arc::new(NamedTool {
+                    name: *tool_name,
+                    toolset: "core",
+                }))
+                .await;
+        }
+
+        let child = filtered_child_registry(&parent, &[]).await;
+
+        assert!(child.get("read_file").await.is_some());
+        for tool_name in DELEGATION_BLOCKED_TOOLS {
+            assert!(child.get(tool_name).await.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn filtered_child_registry_applies_toolset_filter_after_blocklist() {
+        let parent = ToolRegistry::new();
+        parent
+            .register(Arc::new(NamedTool {
+                name: "terminal",
+                toolset: "shell",
+            }))
+            .await;
+        parent
+            .register(Arc::new(NamedTool {
+                name: "read_file",
+                toolset: "file",
+            }))
+            .await;
+        parent
+            .register(Arc::new(NamedTool {
+                name: "send_message",
+                toolset: "communication",
+            }))
+            .await;
+
+        let child = filtered_child_registry(
+            &parent,
+            &["shell".to_string(), "communication".to_string()],
+        )
+        .await;
+
+        assert!(child.get("terminal").await.is_some());
+        assert!(child.get("read_file").await.is_none());
+        assert!(child.get("send_message").await.is_none());
     }
 }

@@ -498,8 +498,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 10. Delegation
-- **Status**: Basic child agent spawning with toolset filtering
-- **What's missing**: Blocked tools list (delegate_task, clarify, memory, send_message, execute_code), subagent approval callbacks, parallel batch delegation, per-child timeout configuration, ThreadPoolExecutor with initializer for TLS callbacks
+- **Status**: Child agent spawning with toolset filtering and Hermes-style blocked-tool stripping for leaf subagents
+- **What's missing**: Subagent approval callbacks, parallel batch delegation, per-child timeout configuration, ThreadPoolExecutor with initializer for TLS callbacks
 - **Hermes reference**: `tools/delegate_tool.py`
 
 ### 11. Session Store
@@ -615,9 +615,10 @@ Generated: 2026-05-21
 | 33 | Browser Dialog Handling | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs`, `hakimi-server/src/main.rs` | 2 | ✅ Optional Chromium browser tooling now surfaces pending native JavaScript dialogs in `browser_snapshot` and exposes `browser_dialog` to accept or dismiss them |
 | 34 | MCP Error Sanitization | `hakimi-mcp/src/{redaction.rs,http_transport.rs,sse_transport.rs,adapter.rs}` | 6 | ✅ Remote MCP HTTP/SSE response snippets, parse contexts, adapter failures, and `isError` tool results redact credential-like text before reaching the agent |
 | 35 | Context File Injection Guard | `hakimi-context/src/prompt_builder.rs` | 4 | ✅ Context files that feed the system prompt are scanned and blocked before injection when they contain prompt-injection patterns |
+| 36 | Delegation Blocked Tools | `hakimi-core/src/delegate.rs` | 3 | ✅ Child agent registries strip `delegate_task`, `clarify`, `memory`, `send_message`, and `code_exec` after optional toolset filtering |
 
 ### Summary
-- **Total tests**: 1188 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1191 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

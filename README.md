@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.109-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.110-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1188-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1191-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1188 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Context-file prompt injection guard
+**Production features:** 1191 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Context-file prompt injection guard · Delegation blocked-tool safety
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.110 Delegation Blocked Tools**:
+  - **Hermes Subagent Safety Parity**: delegated child agents no longer receive `delegate_task`, `clarify`, `memory`, `send_message`, or `code_exec`.
+  - **Toolset-Safe Filtering**: explicit child `toolsets` still work, but the denylist is applied after selection so sensitive tools cannot be re-enabled accidentally.
+  - **Regression Coverage**: added offline registry-filter tests for default and explicit-toolset delegation paths.
 - **v0.3.109 Context File Injection Guard**:
   - **Hermes Prompt-Builder Safety Parity**: `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `SOUL.md`, and `.cursor/rules/*.mdc` are scanned before they enter the system prompt.
   - **Non-Leaking Blocking**: suspicious context files are replaced with a concise blocked placeholder that reports stable finding ids without exposing the original content.
@@ -562,7 +566,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1188 |
+| Tests | ~500 | 1191 |
 
 ---
 
@@ -572,7 +576,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1188 tests)
+# Run all tests (1191 tests)
 cargo test --workspace
 
 # Debug logging
