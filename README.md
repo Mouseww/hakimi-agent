@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.113-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.114-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1213-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1217-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1213 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Read-file credential guard
+**Production features:** 1217 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Read-file credential guard
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.114 Terminal Shell Hooks**:
+  - **Hermes Shell-Hook Slice**: `terminal` now supports opt-in `HAKIMI_PRE_TOOL_HOOK` and `HAKIMI_POST_TOOL_HOOK` commands for local pre/post command execution hooks.
+  - **Hermes-Compatible Payloads**: hooks receive JSON on stdin with `hook_event_name`, `tool_name`, `tool_input`, `session_id`, `cwd`, and `extra.task_id`; post hooks also receive the rendered tool output.
+  - **Blocking Guardrails**: pre hooks can return either `{"action":"block","message":"..."}` or `{"decision":"block","reason":"..."}` to stop unsafe terminal calls before execution.
 - **v0.3.113 Progressive Tool Disclosure**:
   - **Hermes Tool Search Parity**: large MCP/plugin tool surfaces can now collapse behind `tool_search`, `tool_describe`, and `tool_call` bridge tools instead of sending every deferred schema on each turn.
   - **Core Tool Safety**: built-in Hakimi tools such as terminal, file, memory, cron, browser, media, and knowledge tools stay directly visible and are never deferred.
@@ -580,7 +584,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1213 |
+| Tests | ~500 | 1217 |
 
 ---
 
@@ -590,7 +594,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1213 tests)
+# Run all tests (1217 tests)
 cargo test --workspace
 
 # Debug logging

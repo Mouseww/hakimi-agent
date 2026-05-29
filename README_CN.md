@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.113-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.114-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1213-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1217-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1213 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · read_file 凭据读取防护
+**生产级特性：** 1217 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · read_file 凭据读取防护
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.114 Terminal Shell Hooks**
+  - 对齐 Hermes shell hook 的一个可验证子集：`terminal` 支持通过 `HAKIMI_PRE_TOOL_HOOK` 和 `HAKIMI_POST_TOOL_HOOK` 配置本机命令执行前后钩子。
+  - hook 会从 stdin 接收 JSON payload，包含 `hook_event_name`、`tool_name`、`tool_input`、`session_id`、`cwd` 和 `extra.task_id`；post hook 还会收到渲染后的工具输出。
+  - pre hook 可返回 `{"action":"block","message":"..."}` 或 `{"decision":"block","reason":"..."}`，在真正执行 terminal 命令前阻断高风险操作。
 - **v0.3.113 工具渐进披露**
   - 对齐 Hermes tool_search 语义：大量 MCP/插件工具可折叠到 `tool_search`、`tool_describe`、`tool_call` 三个桥接工具之后，不再每轮都发送全部延迟工具 schema。
   - 核心 Hakimi 工具保持直接可见：terminal、file、memory、cron、browser、media、knowledge 等内置工具不会被误延迟。
@@ -432,7 +436,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1213 |
+| 测试 | ~500 | 1217 |
 
 ---
 
@@ -442,7 +446,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1213 tests)
+# 运行全部测试 (1217 tests)
 cargo test --workspace
 
 # Debug 日志

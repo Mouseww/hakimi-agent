@@ -12,6 +12,7 @@ Generated: 2026-05-21
 - **patch** — Find-and-replace edits in files
 - **search_files** — Content search (regex) and file search (glob)
 - **terminal** — Shell command execution (foreground + background)
+- **Terminal shell hooks** — Opt-in `HAKIMI_PRE_TOOL_HOOK` / `HAKIMI_POST_TOOL_HOOK` commands receive Hermes-style terminal tool payloads and can block unsafe pre-tool calls
 - **process** — Background process management (list, poll, log, wait, kill, write, submit)
 - **web_search** — Web search via DuckDuckGo scraping
 - **todo** — Task planning and tracking
@@ -427,10 +428,10 @@ Generated: 2026-05-21
 - **Hermes location**: `agent/nous_rate_guard.py`
 - **Priority**: **Low** — Provider-specific
 
-#### 54. Shell Hooks
+#### 54. ~~Shell Hooks (terminal pre/post slice)~~ ✅ DONE
 - **What**: Pre/post command execution hooks
 - **Hermes location**: `agent/shell_hooks.py`
-- **Priority**: **Low** — Extensibility
+- **Status**: ✅ Done in v0.3.114 for the terminal-tool execution boundary — `HAKIMI_PRE_TOOL_HOOK` and `HAKIMI_POST_TOOL_HOOK` execute local hook commands with Hermes-style JSON payloads on stdin; pre hooks can return either canonical `action:block` or Claude-Code-style `decision:block` JSON to stop terminal execution before the command runs. Full Hermes plugin-manager hook registration and consent allowlist remain future extension work.
 
 #### 55. ~~Clipboard Integration~~ ✅ DONE
 - **What**: Copy output to clipboard
@@ -549,7 +550,7 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~66** (up from ~30)
+**Fully present in Hakimi: ~67** (up from ~30)
 **Partially implemented: ~9**
 **Missing entirely: ~75+**
 
@@ -618,9 +619,10 @@ Generated: 2026-05-21
 | 36 | Delegation Blocked Tools | `hakimi-core/src/delegate.rs` | 3 | ✅ Child agent registries strip `delegate_task`, `clarify`, `memory`, `send_message`, and `code_exec` after optional toolset filtering |
 | 37 | Read-File Credential Guard | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/builtin_read_file.rs` | 7 | ✅ `read_file` blocks Hakimi credential stores, MCP token files, profile credential stores, project `.env*`, and `cache/bws_cache.json` before file content reaches the agent |
 | 38 | Progressive Tool Disclosure | `hakimi-common/src/tool.rs`, `hakimi-tools/src/{tool_search.rs,registry.rs}`, `hakimi-core/src/{agent.rs,loop_impl.rs}` | 8 | ✅ MCP/plugin tool schemas can collapse behind `tool_search`/`tool_describe`/`tool_call`; core tools never defer; CLI/server honor `tools.tool_search` config |
+| 39 | Terminal Shell Hooks | `hakimi-tools/src/builtin_terminal.rs` | 4 | ✅ Opt-in terminal pre/post hook commands receive Hermes-style JSON payloads; pre hooks can block execution with canonical or Claude-Code-style JSON |
 
 ### Summary
-- **Total tests**: 1213 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1217 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
