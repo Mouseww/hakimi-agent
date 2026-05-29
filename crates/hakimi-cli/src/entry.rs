@@ -1199,6 +1199,42 @@ fn format_usage_count(value: u32) -> String {
     }
 }
 
+fn gateway_mcp_response(
+    command: Option<&str>,
+    servers: &std::collections::HashMap<String, hakimi_config::McpServerConfig>,
+) -> String {
+    let raw = command.unwrap_or("list").trim();
+    let raw = if raw.is_empty() { "list" } else { raw };
+    let mut parts = raw.splitn(2, char::is_whitespace);
+    let action = parts.next().unwrap_or("list").to_ascii_lowercase();
+
+    match action.as_str() {
+        "list" => {
+            if servers.is_empty() {
+                return "🔌 **MCP Servers:**\nNo configured MCP servers.".to_string();
+            }
+
+            let mut names: Vec<_> = servers.keys().collect();
+            names.sort();
+
+            let mut lines = vec!["🔌 **MCP Servers**".to_string()];
+            for name in names {
+                let server = &servers[name];
+                lines.push(format!(
+                    "- `{}`: `{}` ({} args, {} env vars)",
+                    name,
+                    server.command,
+                    server.args.len(),
+                    server.env.len()
+                ));
+            }
+            lines.join("\n")
+        }
+        "add" | "remove" => "MCP server add/remove is config-file managed. Edit `mcp_servers` in your Hakimi config and restart the gateway.".to_string(),
+        _ => "Usage: /mcp <list|add|remove>".to_string(),
+    }
+}
+
 fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
     let Some(snapshot) = snapshot else {
         return "📊 No usage data yet. Send a message first, then run `/usage`.".to_string();
@@ -3494,14 +3530,7 @@ Just send a message to chat with me!"
                             Err(e) => format!("❌ Failed to read logs: {}", e),
                         }
                     }
-                    Some(Command::Mcp(cmd)) => {
-                        match cmd.as_deref() {
-                            Some("list") => "🔌 **MCP Servers:**\nNo active MCP servers.".to_string(),
-                            Some(c) if c.starts_with("add") => "🔌 MCP server added.".to_string(),
-                            Some(c) if c.starts_with("remove") => "🔌 MCP server removed.".to_string(),
-                            _ => "Usage: /mcp <list|add|remove>".to_string(),
-                        }
-                    }
+                    Some(Command::Mcp(cmd)) => gateway_mcp_response(cmd.as_deref(), &config.mcp_servers)
                     Some(Command::Memory(cmd)) => {
                         let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
                         let memory_dir = home.join(".hakimi").join("memory");
@@ -4555,7 +4584,7 @@ mod tests {
         TopLevelCommand, build_cron_delegation_goal, create_hakimi_state_backup,
         cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
+        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
         is_top_level_cron_tick, plan_gateway_final_delivery, queue_cron_delivery,
         resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
         top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
@@ -4956,6 +4985,35 @@ mod tests {
         assert!(response.contains("openai-compatible rate limits"));
         assert!(response.contains("Requests/min"));
         assert!(response.contains("Tokens/hr"));
+    }
+    #[test]
+    fn gateway_mcp_response_lists_configured_servers() {
+        let yaml = r#"
+mcp_servers:
+  filesystem:
+    command: "npx"
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    env:
+      NODE_ENV: "production"
+  custom:
+    command: "uvx"
+"#;
+        let config: hakimi_config::HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+
+        let response = gateway_mcp_response(Some("list"), &config.mcp_servers);
+
+        assert!(response.contains("MCP Servers"));
+        assert!(response.contains("`custom`: `uvx` (0 args, 0 env vars)"));
+        assert!(response.contains("`filesystem`: `npx` (3 args, 1 env vars)"));
+    }
+
+    #[test]
+    fn gateway_mcp_response_reports_config_file_boundary() {
+        let config = hakimi_config::HakimiConfig::default();
+
+        assert!(gateway_mcp_response(None, &config.mcp_servers).contains("No configured MCP servers"));
+        assert!(gateway_mcp_response(Some("add demo"), &config.mcp_servers).contains("config-file managed"));
+        assert_eq!(gateway_mcp_response(Some("bogus"), &config.mcp_servers), "Usage: /mcp <list|add|remove>");
     }
 
     #[test]

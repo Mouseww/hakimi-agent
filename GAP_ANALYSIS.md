@@ -72,7 +72,7 @@ Generated: 2026-05-21
 - **Skill struct** — Name, content, frontmatter metadata
 
 ### MCP
-- **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments and credential-stripped remote error surfaces
+- **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments, credential-stripped remote error surfaces, and gateway `/mcp list` inventory over configured servers
 - **McpToolAdapter** — Adapts MCP tools to Hakimi's Tool trait
 - **Protocol support** — initialize, tools/list, tools/call, StreamableHTTP, SSE
 
@@ -495,7 +495,7 @@ Generated: 2026-05-21
 - **Hermes reference**: `plugins/` (entire directory)
 
 ### 8. CLI Commands
-- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`
+- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/mcp list`、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`
 - **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
@@ -621,10 +621,10 @@ Generated: 2026-05-21
 | 37 | Read-File Credential Guard | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/builtin_read_file.rs` | 7 | ✅ `read_file` blocks Hakimi credential stores, MCP token files, profile credential stores, project `.env*`, and `cache/bws_cache.json` before file content reaches the agent |
 | 38 | Progressive Tool Disclosure | `hakimi-common/src/tool.rs`, `hakimi-tools/src/{tool_search.rs,registry.rs}`, `hakimi-core/src/{agent.rs,loop_impl.rs}` | 8 | ✅ MCP/plugin tool schemas can collapse behind `tool_search`/`tool_describe`/`tool_call`; core tools never defer; CLI/server honor `tools.tool_search` config |
 | 39 | Terminal Shell Hooks | `hakimi-tools/src/builtin_terminal.rs` | 4 | ✅ Opt-in terminal pre/post hook commands receive Hermes-style JSON payloads; pre hooks can block execution with canonical or Claude-Code-style JSON |
-| 40 | Gateway Ingress Access Policy | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 7 | ✅ Config-driven global, Telegram, role, and ClawBot allowlists gate inbound gateway messages before command/agent handling |
+| 40 | Gateway Ingress Access Policy | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 7 | ✅ Config-driven global, Telegram, role, and ClawBot allowlists gate inbound gateway messages before command/agent handling |`n| 41 | Gateway MCP Server Listing | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/mcp` and `/mcp list` render configured MCP servers with safe command/arg/env counts while keeping add/remove config-file managed |
 
 ### Summary
-- **Total tests**: 1224 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1226 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

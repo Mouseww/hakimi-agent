@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.115-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.116-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1224-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1226-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1224 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略
+**生产级特性：** 1224 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · Gateway MCP 服务器列表
 
 ---
 
@@ -81,7 +81,12 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
-- **v0.3.115 Gateway 入站访问策略**
+- **v0.3.116 Gateway MCP 服务器列表**
+  - gateway `/mcp` 和 `/mcp list` 现在会展示真实配置的 MCP servers，不再返回固定占位文本。
+  - `/mcp add|remove` 明确提示服务器增删由 `mcp_servers` 配置文件管理，并需要重启 gateway 生效。
+  - 列表只展示服务器名称、启动命令、参数数量和环境变量数量，不打印环境变量值。
+
+- **v0.3.115 Gateway 入站访问策略 · Gateway MCP 服务器列表**
   - 对齐 Hermes gateway 安全语义：入站 gateway 消息在任何 slash 命令或 agent turn 执行前先经过配置驱动 allowlist。
   - `gateways.allowed_users`、`gateways.telegram.allowed_users`、role Telegram allowlist 和 `gateways.clawbot.allowed_users` 会合并成一个统一 ingress policy。
   - 空 allowlist 保持既有 allow-all 行为；需要显式开放时可用 `gateways.allow_all` 覆盖。

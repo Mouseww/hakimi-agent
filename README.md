@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.115-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.116-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1224-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1226-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,14 +73,18 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1224 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy
+**Production features:** 1224 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · Gateway MCP server listing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
-- **v0.3.115 Gateway Ingress Access Policy**:
+- **v0.3.116 Gateway MCP Server Listing**:
+  - **Hermes Control-Plane Visibility**: gateway `/mcp` and `/mcp list` now report the real configured MCP servers instead of a fixed placeholder.
+  - **Config-First Boundary**: `/mcp add|remove` now tells operators that server changes are managed through the `mcp_servers` config and require a gateway restart.
+  - **Safe Inventory Output**: the listing shows server names, launch command, argument count, and env-var count without printing environment values.
+- **v0.3.115 Gateway ingress access policy · Gateway MCP server listing**:
   - **Hermes Gateway Safety Parity**: inbound gateway messages now pass a config-driven allowlist before any slash command or agent turn runs.
   - **Config-First Authorization**: `gateways.allowed_users`, `gateways.telegram.allowed_users`, role Telegram allowlists, and `gateways.clawbot.allowed_users` are merged into one ingress policy.
   - **Safe Compatibility**: empty allowlists preserve the previous allow-all behavior, while `gateways.allow_all` provides an explicit override for deployments that want open access.
