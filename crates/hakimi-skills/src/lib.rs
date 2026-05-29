@@ -1,10 +1,12 @@
 pub mod extractor;
+pub mod hub;
 pub mod lifecycle;
 pub mod loader;
 pub mod safety;
 pub mod skill;
 pub mod store;
 
+pub use hub::{InstalledSkill, SkillHub, SkillHubEntry, SkillHubIndex, SkillHubInstallOptions};
 pub use lifecycle::{ActiveSkill, EvictedSkill, SkillRepresentation, SkillWorkingSet};
 pub use loader::SkillLoader;
 pub use safety::{

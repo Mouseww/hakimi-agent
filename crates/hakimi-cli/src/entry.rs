@@ -1840,6 +1840,13 @@ pub struct PluginCommandArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct SkillCommandArgs {
+    /// Skill action and arguments, e.g. `browse`, `search rust`, or `install <identifier>`.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
 pub struct BackupCommandArgs {
     /// Optional output file or directory for the backup archive.
     pub output: Option<std::path::PathBuf>,
@@ -1864,6 +1871,8 @@ pub enum TopLevelCommand {
     Cron(CronCommandArgs),
     /// Manage HTTP tool plugins.
     Plugins(PluginCommandArgs),
+    /// Browse, inspect, and install Skills Hub skills.
+    Skills(SkillCommandArgs),
     /// Back up Hakimi user state.
     Backup(BackupCommandArgs),
     /// Import a Hakimi user-state backup.
@@ -3429,7 +3438,7 @@ async fn start_gateway(
 **Agent capability**\n\
 • `/model [name]` - Show or switch the active model\n\
 • `/tools` - List available tools\n\
-• `/skills` - List loaded skills\n\
+• `/skills` - List loaded skills and browse/install hub skills\n\
 • `/providers` - List supported LLM providers\n\
 • `/platforms` - List connected gateway platforms\n\n\
 **Operations**\n\
@@ -3489,18 +3498,10 @@ Just send a message to chat with me!"
                         }
                         msg
                     }
-                    Some(Command::Skills(_)) => {
-                        let mut msg = "🧠 Loaded Skills:\n".to_string();
-                        for skill in skill_store_ref.skills() {
-                            msg.push_str(&format!(
-                                "- `{}`: {} [{}]\n",
-                                skill.name,
-                                skill.description,
-                                skill.provenance_label()
-                            ));
-                        }
-                        msg
-                    }
+                    Some(Command::Skills(args)) => crate::skills::gateway_skills_response(
+                        args.as_deref(),
+                        skill_store_ref.skills(),
+                    ),
                     Some(Command::Cron(cmd)) => {
                         gateway_cron_response_for_context(cmd.as_deref(), &platform, &chat_id)
                     }
@@ -4715,6 +4716,10 @@ pub async fn run() -> Result<()> {
     }
     if let Some(TopLevelCommand::Plugins(plugin_args)) = &args.command {
         println!("{}", top_level_plugins_response(&plugin_args.args));
+        return Ok(());
+    }
+    if let Some(TopLevelCommand::Skills(skill_args)) = &args.command {
+        println!("{}", crate::skills::skills_response(&skill_args.args));
         return Ok(());
     }
     if let Some(TopLevelCommand::Backup(backup_args)) = &args.command {
