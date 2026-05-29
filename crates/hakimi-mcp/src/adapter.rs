@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::client::McpClient;
 use crate::protocol::ContentBlock;
+use crate::redaction::sanitize_mcp_error;
 
 /// Wraps an MCP tool definition and a reference to the MCP client so that
 /// the tool can be dispatched through the standard `hakimi_tools::Tool` trait.
@@ -76,14 +77,17 @@ impl hakimi_tools::Tool for McpToolAdapter {
 
         let result = {
             let mut client = self.client.lock().await;
-            client
-                .call_tool(&self.name, arguments)
-                .await
-                .map_err(|e| HakimiError::Tool(format!("MCP tool '{}' failed: {e}", self.name)))?
+            client.call_tool(&self.name, arguments).await.map_err(|e| {
+                HakimiError::Tool(format!(
+                    "MCP tool '{}' failed: {}",
+                    self.name,
+                    sanitize_mcp_error(&e.to_string())
+                ))
+            })?
         };
 
         if result.is_error {
-            let text = result.text_content();
+            let text = sanitize_mcp_error(&result.text_content());
             return Err(HakimiError::Tool(format!(
                 "MCP tool '{}' returned error: {text}",
                 self.name
@@ -182,5 +186,16 @@ mod tests {
             }
         }
         assert_eq!(output, "hello\n[image: image/png]\nworld");
+    }
+
+    #[test]
+    fn test_adapter_error_text_is_sanitized() {
+        let token = format!("{}{}", "ghp_", "abcdefghijklmnopqrstuvwxyz123456");
+        let text = format!("MCP server leaked Authorization: Bearer {token}");
+
+        let redacted = sanitize_mcp_error(&text);
+
+        assert!(!redacted.contains(&token));
+        assert!(redacted.contains("Authorization: Bearer"));
     }
 }

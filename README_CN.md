@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.106-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.107-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1175-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1181-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1175 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1181 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.107 MCP 错误脱敏**
+  - 对齐 Hermes MCP 安全语义：MCP 传输与 adapter 错误在暴露给 agent 前会移除类似凭据的文本。
+  - StreamableHTTP 与 SSE 的错误响应体、JSON 解析片段会先经过共享脱敏器处理。
+  - MCP `isError` 工具结果和 adapter 调用失败也会统一遮蔽 token、key、password 与 Bearer 值。
 - **v0.3.106 浏览器 Dialog 处理**
   - 对齐 Hermes 浏览器 dialog 工具：可选 Chromium 自动化现在包含 `browser_dialog`，用于处理 alert、confirm、prompt 和 beforeunload。
   - 当原生 JavaScript dialog 阻塞页面时，`browser_snapshot` 会返回 `pending_dialogs` 供 agent 选择 accept 或 dismiss。
@@ -266,7 +270,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **Home Assistant**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service
 - **记忆**: memory (持久化), session_search (FTS5 全文检索)
 - **代码**: code_exec (Python/JS/Bash)
-- **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_screenshot (Chromium 自动化)
+- **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_dialog, browser_screenshot (Chromium 自动化)
 - **媒体**: vision_analyze (图片分析), video_analyze (视频分析请求), image_describe (旧工具兼容别名), image_generate, text_to_speech, transcribe_audio
 - **效率**: todo, clarify, checkpoint (git 快照回滚)
 - **安全**: file_safety (路径保护), secret_redaction (密钥脱敏), prompt_injection_detection
@@ -313,7 +317,7 @@ credential_pools:
 
 ### 🔧 MCP (Model Context Protocol)
 
-完整 MCP 客户端，支持 stdio / HTTP / SSE 三种传输。stdio 下基于 Node 的 MCP 服务器还会在 PATH 被收窄时，从 Hakimi 托管目录、用户本地目录和 `/usr/local/bin` 解析 `node`、`npm`、`npx`。内置 9 个热门服务器目录（filesystem、GitHub、Brave Search、PostgreSQL、Puppeteer、memory、fetch、SQLite、sequential-thinking）。
+完整 MCP 客户端，支持 stdio / HTTP / SSE 三种传输。stdio 下基于 Node 的 MCP 服务器还会在 PATH 被收窄时，从 Hakimi 托管目录、用户本地目录和 `/usr/local/bin` 解析 `node`、`npm`、`npx`。远程 MCP 传输和工具错误路径会在暴露给 agent 前脱敏类似凭据的文本。内置 9 个热门服务器目录（filesystem、GitHub、Brave Search、PostgreSQL、Puppeteer、memory、fetch、SQLite、sequential-thinking）。
 
 ### 📦 插件系统
 
@@ -402,7 +406,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1175 |
+| 测试 | ~500 | 1181 |
 
 ---
 
@@ -412,7 +416,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1175 tests)
+# 运行全部测试 (1181 tests)
 cargo test --workspace
 
 # Debug 日志

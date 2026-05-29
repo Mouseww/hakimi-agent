@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::protocol::*;
+use crate::redaction::sanitized_error_snippet;
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 const CLIENT_NAME: &str = "hakimi-agent";
@@ -272,14 +273,14 @@ impl SseTransport {
             anyhow::bail!(
                 "SSE POST error {}: {}",
                 status,
-                &body[..body.len().min(200)]
+                sanitized_error_snippet(&body)
             );
         }
 
         serde_json::from_str::<JsonRpcResponse>(&body).with_context(|| {
             format!(
                 "failed to parse JSON-RPC response: {}",
-                &body[..body.len().min(200)]
+                sanitized_error_snippet(&body)
             )
         })
     }
@@ -490,6 +491,18 @@ mod tests {
         assert!(transport.server_info.is_none());
         assert!(transport.post_url.is_none());
         assert_eq!(transport.reconnect_attempts, 0);
+    }
+
+    #[test]
+    fn test_sse_error_snippet_redacts_credentials() {
+        let token = format!("{}{}", "sk-", "abcdefghijklmnopqrstuvwxyz1234567890");
+        let body = format!("auth failed: token={token}&state=ok");
+
+        let snippet = sanitized_error_snippet(&body);
+
+        assert!(!snippet.contains(&token));
+        assert!(!snippet.contains("abcdefghijklmnopqrstuvwxyz1234567890"));
+        assert!(snippet.contains("state=ok"));
     }
 
     #[test]

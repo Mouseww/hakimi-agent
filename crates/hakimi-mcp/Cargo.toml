@@ -16,3 +16,4 @@ tracing = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
 dirs = { workspace = true }
+regex = { workspace = true }

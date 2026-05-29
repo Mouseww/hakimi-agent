@@ -3,6 +3,7 @@ pub mod catalog;
 pub mod client;
 pub mod http_transport;
 pub mod protocol;
+mod redaction;
 pub mod sse_transport;
 
 pub use adapter::McpToolAdapter;

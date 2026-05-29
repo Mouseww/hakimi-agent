@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 use crate::protocol::*;
+use crate::redaction::sanitized_error_snippet;
 
 /// MCP protocol version we declare during initialization.
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
@@ -184,14 +185,14 @@ impl HttpTransport {
             .context("failed to read response body")?;
 
         if !status.is_success() {
-            anyhow::bail!("HTTP error {}: {}", status, &body[..body.len().min(200)]);
+            anyhow::bail!("HTTP error {}: {}", status, sanitized_error_snippet(&body));
         }
 
         // Try to parse as JSON-RPC response.
         serde_json::from_str::<JsonRpcResponse>(&body).with_context(|| {
             format!(
                 "failed to parse JSON-RPC response: {}",
-                &body[..body.len().min(200)]
+                sanitized_error_snippet(&body)
             )
         })
     }
@@ -362,6 +363,17 @@ mod tests {
         let auth = transport.auth_header.as_ref().unwrap();
         assert!(auth.starts_with("Bearer "));
         assert!(auth.contains("sk-abc123"));
+    }
+
+    #[test]
+    fn test_http_error_snippet_redacts_credentials() {
+        let token = format!("{}{}", "ghp_", "abcdefghijklmnopqrstuvwxyz123456");
+        let body = format!("{{\"error\":\"bad Authorization: Bearer {token}\"}}");
+
+        let snippet = sanitized_error_snippet(&body);
+
+        assert!(!snippet.contains(&token));
+        assert!(snippet.contains("Authorization: Bearer"));
     }
 
     #[tokio::test]

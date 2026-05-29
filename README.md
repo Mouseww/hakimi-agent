@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.106-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.107-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1175-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1181-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1175 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1181 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.107 MCP Error Sanitization**:
+  - **Hermes MCP Safety Parity**: MCP transport and adapter errors now strip credential-like text before surfacing failures to the agent.
+  - **Remote Transport Coverage**: StreamableHTTP and SSE error bodies and JSON parse snippets are redacted before they enter `anyhow` context.
+  - **Tool Error Coverage**: MCP `isError` tool results and adapter call failures are sanitized with the shared runtime redactor.
 - **v0.3.106 Browser Dialog Handling**:
   - **Hermes Browser Dialog Parity**: optional Chromium automation now exposes `browser_dialog` for alert, confirm, prompt, and beforeunload dialogs.
   - **Pending Dialog Visibility**: `browser_snapshot` surfaces `pending_dialogs` when a native JavaScript dialog is blocking the page.
@@ -348,7 +352,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Home Assistant**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
-- **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_screenshot (Chromium automation)
+- **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_dialog, browser_screenshot (Chromium automation)
 - **Media**: vision_analyze (image analysis), video_analyze (video analysis request), image_describe (legacy alias), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
@@ -460,7 +464,7 @@ credential_pools:
 
 ### 🔧 MCP (Model Context Protocol)
 
-Full MCP client with stdio / HTTP / SSE transports. Stdio Node-based servers also recover from narrowed PATH environments by resolving `node`, `npm`, and `npx` from Hakimi-managed, user-local, and `/usr/local/bin` fallback directories. Built-in catalog of 9 popular servers (filesystem, GitHub, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking).
+Full MCP client with stdio / HTTP / SSE transports. Stdio Node-based servers also recover from narrowed PATH environments by resolving `node`, `npm`, and `npx` from Hakimi-managed, user-local, and `/usr/local/bin` fallback directories. Remote MCP transport and tool error paths redact credential-like text before exposing failures to the agent. Built-in catalog of 9 popular servers (filesystem, GitHub, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking).
 
 ### 📦 Plugin System
 
@@ -550,7 +554,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1175 |
+| Tests | ~500 | 1181 |
 
 ---
 
@@ -560,7 +564,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1175 tests)
+# Run all tests (1181 tests)
 cargo test --workspace
 
 # Debug logging

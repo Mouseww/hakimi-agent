@@ -70,9 +70,9 @@ Generated: 2026-05-21
 - **Skill struct** — Name, content, frontmatter metadata
 
 ### MCP
-- **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments
+- **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments and credential-stripped remote error surfaces
 - **McpToolAdapter** — Adapts MCP tools to Hakimi's Tool trait
-- **Protocol support** — initialize, tools/list, tools/call
+- **Protocol support** — initialize, tools/list, tools/call, StreamableHTTP, SSE
 
 ### Cron
 - **CronScheduler** — In-memory job scheduling
@@ -266,7 +266,7 @@ Generated: 2026-05-21
 #### 24. MCP — HTTP/SSE Transports + Sampling
 - **What**: MCP support beyond stdio: HTTP/StreamableHTTP, SSE transports, server-initiated sampling
 - **Hermes location**: `tools/mcp_tool.py`
-- **Details**: Hakimi only supports stdio. Hermes supports `url` (StreamableHTTP), `transport: sse`, configurable timeouts, automatic reconnection, credential stripping, sampling/createMessage support.
+- **Details**: Hakimi now supports stdio, StreamableHTTP, SSE, configurable timeouts, automatic SSE reconnection, narrowed-PATH Node recovery, and credential stripping in remote MCP errors. Remaining parity is server-initiated sampling/createMessage and the fuller background event-loop architecture.
 - **Priority**: **Medium** — Remote MCP server support
 
 #### 25. Context Engine Plugin System
@@ -479,8 +479,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. MCP Client
-- **Status**: stdio transport works; Node-based stdio servers recover from narrowed PATH by resolving `node`/`npm`/`npx` from Hakimi-managed, user-local, and `/usr/local/bin` fallback directories
-- **What's missing**: HTTP/StreamableHTTP transport, SSE transport, automatic reconnection with backoff, configurable per-server timeouts, credential stripping in errors, sampling support (server-initiated LLM requests), thread-safe background event loop
+- **Status**: stdio, StreamableHTTP, and SSE transports work; SSE has reconnect backoff; Node-based stdio servers recover from narrowed PATH; remote transport/adapter error messages are credential-stripped before surfacing to the agent
+- **What's missing**: sampling support (server-initiated LLM requests), thread-safe background event loop
 - **Hermes reference**: `tools/mcp_tool.py`
 
 ### 4. Skills System
@@ -624,9 +624,10 @@ Generated: 2026-05-21
 | 31 | Browser Console + Eval | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 2 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_console` for captured console messages, JavaScript errors, and page-context expression evaluation |
 | 32 | MCP Node Command Resolution | `hakimi-mcp/src/client.rs` | 5 | ✅ Stdio MCP `node`/`npm`/`npx` launch now falls back to Hakimi-managed, user-local, and `/usr/local/bin` Node locations when PATH is narrowed |
 | 33 | Browser Dialog Handling | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs`, `hakimi-server/src/main.rs` | 2 | ✅ Optional Chromium browser tooling now surfaces pending native JavaScript dialogs in `browser_snapshot` and exposes `browser_dialog` to accept or dismiss them |
+| 34 | MCP Error Sanitization | `hakimi-mcp/src/{redaction.rs,http_transport.rs,sse_transport.rs,adapter.rs}` | 6 | ✅ Remote MCP HTTP/SSE response snippets, parse contexts, adapter failures, and `isError` tool results redact credential-like text before reaching the agent |
 
 ### Summary
-- **Total tests**: 1175 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1181 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
