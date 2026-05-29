@@ -1720,11 +1720,6 @@ impl GatewayStreamUiState {
         self.pending_since_last_render += token.chars().count();
     }
 
-    fn append_content(&mut self, token: &str) -> Option<GatewayUiContentTarget> {
-        self.push_content(token);
-        self.render_pending()
-    }
-
     fn should_flush_buffered_content(&self, buffer_threshold_chars: usize) -> bool {
         !self.current_text.is_empty()
             && self.current_text != self.last_edit_text
@@ -5458,27 +5453,32 @@ roles:
     fn streaming_tokens_are_appended_verbatim_without_inserted_spaces() {
         let mut state = GatewayStreamUiState::default();
 
+        state.push_content("爸");
         assert_eq!(
-            state.append_content("爸"),
+            state.render_pending(),
             Some(GatewayUiContentTarget::NewMessage)
         );
+        state.push_content("爸");
         assert_eq!(
-            state.append_content("爸"),
+            state.render_pending(),
             Some(GatewayUiContentTarget::EditCurrent)
         );
         assert_eq!(state.current_text, "爸爸");
 
         let mut ascii_state = GatewayStreamUiState::default();
-        ascii_state.append_content("hel");
-        ascii_state.append_content("lo");
+        ascii_state.push_content("hel");
+        let _ = ascii_state.render_pending();
+        ascii_state.push_content("lo");
+        let _ = ascii_state.render_pending();
         assert_eq!(ascii_state.current_text, "hello");
     }
 
     #[test]
     fn coalesced_streaming_burst_updates_one_message_text() {
         let mut state = GatewayStreamUiState::default();
+        state.push_content("爸爸，工具跑完了");
         assert_eq!(
-            state.append_content("爸爸，工具跑完了"),
+            state.render_pending(),
             Some(GatewayUiContentTarget::NewMessage)
         );
         assert_eq!(state.current_text, "爸爸，工具跑完了");
@@ -5511,20 +5511,23 @@ roles:
     fn tool_boundary_forces_next_content_into_new_message() {
         let mut state = GatewayStreamUiState::default();
 
+        state.push_content("爸爸，先看入口。");
         assert_eq!(
-            state.append_content("爸爸，先看入口。"),
+            state.render_pending(),
             Some(GatewayUiContentTarget::NewMessage)
         );
 
         state.finish_tool_boundary();
 
+        state.push_content("爸爸，工具跑完了，继续分析。");
         assert_eq!(
-            state.append_content("爸爸，工具跑完了，继续分析。"),
+            state.render_pending(),
             Some(GatewayUiContentTarget::NewMessage)
         );
 
+        state.push_content("下一句继续编辑同一个新气泡。");
         assert_eq!(
-            state.append_content("下一句继续编辑同一个新气泡。"),
+            state.render_pending(),
             Some(GatewayUiContentTarget::EditCurrent)
         );
     }
