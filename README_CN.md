@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.105-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.106-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1173-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1175-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1173 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
+**生产级特性：** 1175 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.106 浏览器 Dialog 处理**
+  - 对齐 Hermes 浏览器 dialog 工具：可选 Chromium 自动化现在包含 `browser_dialog`，用于处理 alert、confirm、prompt 和 beforeunload。
+  - 当原生 JavaScript dialog 阻塞页面时，`browser_snapshot` 会返回 `pending_dialogs` 供 agent 选择 accept 或 dismiss。
+  - CLI、TUI 与 server 的 browser feature 构建会注册同一组 dialog responder。
 - **v0.3.105 MCP Node 命令解析**
   - 对齐 Hermes MCP stdio 修复：以裸命令启动的 `node`、`npm`、`npx` 服务器，即使 server `PATH` 被用户收窄，也能从常见 Node 安装目录恢复。
   - 解析顺序先尊重继承 PATH，再检查 Hakimi 托管的 `~/.hakimi/node/bin`、`~/.local/bin`，以及 Unix 上的 `/usr/local/bin`。
@@ -398,7 +402,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1173 |
+| 测试 | ~500 | 1175 |
 
 ---
 
@@ -408,7 +412,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1173 tests)
+# 运行全部测试 (1175 tests)
 cargo test --workspace
 
 # Debug 日志

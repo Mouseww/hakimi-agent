@@ -1,11 +1,19 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use async_trait::async_trait;
 use chromiumoxide::browser::{Browser, BrowserConfig};
+use chromiumoxide::cdp::browser_protocol::page::{
+    EventJavascriptDialogOpening, HandleJavaScriptDialogParams,
+};
 use chromiumoxide::page::Page;
 use futures::StreamExt;
 use hakimi_common::{HakimiError, Result, ToolContext};
+use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -20,11 +28,24 @@ use crate::Tool;
 /// browser tools. The browser is launched lazily on first use.
 pub struct BrowserManager {
     inner: Mutex<BrowserManagerInner>,
+    pending_dialogs: Arc<Mutex<VecDeque<PendingDialog>>>,
+    next_dialog_id: Arc<AtomicU64>,
 }
 
 struct BrowserManagerInner {
     browser: Option<Browser>,
     current_page: Option<Page>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PendingDialog {
+    id: String,
+    #[serde(rename = "type")]
+    dialog_type: String,
+    message: String,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_prompt: Option<String>,
 }
 
 impl BrowserManager {
@@ -34,6 +55,8 @@ impl BrowserManager {
                 browser: None,
                 current_page: None,
             }),
+            pending_dialogs: Arc::new(Mutex::new(VecDeque::new())),
+            next_dialog_id: Arc::new(AtomicU64::new(1)),
         })
     }
 
@@ -113,9 +136,33 @@ impl BrowserManager {
         if let Err(e) = install_console_recorder(&page).await {
             warn!(error = %e, "browser console recorder install failed");
         }
+        if let Err(e) = install_dialog_listeners(
+            &page,
+            self.pending_dialogs.clone(),
+            self.next_dialog_id.clone(),
+        )
+        .await
+        {
+            warn!(error = %e, "browser dialog listener install failed");
+        }
 
         inner.current_page = Some(page.clone());
         Ok(page)
+    }
+
+    async fn pending_dialogs(&self) -> Vec<PendingDialog> {
+        self.pending_dialogs.lock().await.iter().cloned().collect()
+    }
+
+    async fn acknowledge_dialog(&self, dialog_id: Option<&str>) -> Option<PendingDialog> {
+        let mut pending = self.pending_dialogs.lock().await;
+        if let Some(id) = dialog_id {
+            if let Some(pos) = pending.iter().position(|dialog| dialog.id == id) {
+                return pending.remove(pos);
+            }
+            return None;
+        }
+        pending.pop_front()
     }
 
     /// Close the browser and clean up.
@@ -249,6 +296,36 @@ async fn ensure_console_recorder(page: &Page) -> Result<()> {
     page.evaluate(CONSOLE_RECORDER_SCRIPT)
         .await
         .map_err(|e| HakimiError::Tool(format!("failed to enable console recorder: {e}")))?;
+    Ok(())
+}
+
+async fn install_dialog_listeners(
+    page: &Page,
+    pending_dialogs: Arc<Mutex<VecDeque<PendingDialog>>>,
+    next_dialog_id: Arc<AtomicU64>,
+) -> Result<()> {
+    let mut openings = page
+        .event_listener::<EventJavascriptDialogOpening>()
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to listen for browser dialogs: {e}")))?;
+    let opening_dialogs = pending_dialogs;
+    tokio::spawn(async move {
+        while let Some(event) = openings.next().await {
+            let dialog = PendingDialog {
+                id: format!("dialog-{}", next_dialog_id.fetch_add(1, Ordering::Relaxed)),
+                dialog_type: event.r#type.as_ref().to_string(),
+                message: event.message.clone(),
+                url: event.url.clone(),
+                default_prompt: event.default_prompt.clone(),
+            };
+            let mut pending = opening_dialogs.lock().await;
+            pending.push_back(dialog);
+            while pending.len() > 8 {
+                pending.pop_front();
+            }
+        }
+    });
+
     Ok(())
 }
 
@@ -685,6 +762,18 @@ impl Tool for BrowserSnapshotTool {
 
         let url = page.url().await.ok().flatten().unwrap_or_default();
         let title = page.get_title().await.ok().flatten().unwrap_or_default();
+        let pending_dialogs = self.manager.pending_dialogs().await;
+        if !pending_dialogs.is_empty() {
+            return Ok(json!({
+                "success": true,
+                "url": url,
+                "title": title,
+                "pending_dialogs": pending_dialogs,
+                "note": "A native JavaScript dialog is blocking the page. Call browser_dialog with action='accept' or action='dismiss'."
+            })
+            .to_string());
+        }
+
         let snapshot = get_page_snapshot(&page).await?;
 
         Ok(format!("URL: {url}\nTitle: {title}\n\n{snapshot}"))
@@ -1312,6 +1401,132 @@ impl Tool for BrowserConsoleTool {
 }
 
 // ---------------------------------------------------------------------------
+// browser_dialog
+// ---------------------------------------------------------------------------
+
+/// Accept or dismiss a native JavaScript dialog on the current page.
+pub struct BrowserDialogTool {
+    manager: Arc<BrowserManager>,
+}
+
+impl BrowserDialogTool {
+    pub fn new(manager: Arc<BrowserManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserDialogTool {
+    fn name(&self) -> &str {
+        "browser_dialog"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Accept or dismiss a native JavaScript dialog (alert, confirm, prompt, or beforeunload) currently blocking the browser page."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{1f4ac}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["accept", "dismiss"],
+                    "description": "Whether to accept or dismiss the pending dialog."
+                },
+                "prompt_text": {
+                    "type": "string",
+                    "description": "Text to submit for prompt() dialogs when accepting. Ignored for other dialog types."
+                },
+                "dialog_id": {
+                    "type": "string",
+                    "description": "Optional dialog id from browser_snapshot.pending_dialogs[].id."
+                }
+            },
+            "required": ["action"]
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        BrowserManager::is_chrome_available()
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(4096)
+    }
+
+    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
+        let accept = match action {
+            "accept" => true,
+            "dismiss" => false,
+            other => {
+                return Err(HakimiError::Tool(format!(
+                    "invalid dialog action: {other}; expected accept or dismiss"
+                )));
+            }
+        };
+
+        let dialog_id = args.get("dialog_id").and_then(|v| v.as_str());
+        let pending = self.manager.pending_dialogs().await;
+        if pending.is_empty() {
+            return Ok(json!({
+                "success": false,
+                "error": "No pending JavaScript dialog is currently captured. Trigger a dialog, then call browser_snapshot to inspect pending_dialogs."
+            })
+            .to_string());
+        }
+        if let Some(id) = dialog_id
+            && !pending.iter().any(|dialog| dialog.id == id)
+        {
+            return Ok(json!({
+                "success": false,
+                "error": format!("No pending JavaScript dialog with id {id}")
+            })
+            .to_string());
+        }
+
+        let selected_dialog = if let Some(id) = dialog_id {
+            pending.iter().find(|dialog| dialog.id == id).cloned()
+        } else {
+            pending.front().cloned()
+        };
+
+        let page = self.manager.get_page().await?;
+        let mut params = HandleJavaScriptDialogParams::builder().accept(accept);
+        if let Some(text) = args.get("prompt_text").and_then(|v| v.as_str()) {
+            params = params.prompt_text(text);
+        }
+        page.execute(
+            params
+                .build()
+                .map_err(|e| HakimiError::Tool(format!("invalid dialog response: {e}")))?,
+        )
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to handle browser dialog: {e}")))?;
+
+        self.manager.acknowledge_dialog(dialog_id).await;
+        Ok(json!({
+            "success": true,
+            "action": action,
+            "dialog": selected_dialog
+        })
+        .to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // browser_screenshot
 // ---------------------------------------------------------------------------
 
@@ -1503,6 +1718,15 @@ mod tests {
     }
 
     #[test]
+    fn test_browser_dialog_metadata() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserDialogTool::new(mgr);
+        assert_eq!(tool.name(), "browser_dialog");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{1f4ac}");
+    }
+
+    #[test]
     fn test_browser_scroll_metadata() {
         let mgr = BrowserManager::new();
         let tool = BrowserScrollTool::new(mgr);
@@ -1641,6 +1865,19 @@ mod tests {
     }
 
     #[test]
+    fn test_dialog_schema() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserDialogTool::new(mgr);
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["action"].is_object());
+        assert!(schema["properties"]["prompt_text"].is_object());
+        assert!(schema["properties"]["dialog_id"].is_object());
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&JsonValue::String("action".to_string())));
+    }
+
+    #[test]
     fn test_screenshot_output_dir() {
         let dir = get_screenshot_dir();
         assert!(dir.ends_with(".hakimi/screenshots"));
@@ -1695,6 +1932,10 @@ mod tests {
             Some(64 * 1024)
         );
         assert_eq!(
+            BrowserDialogTool::new(mgr.clone()).max_result_size(),
+            Some(4096)
+        );
+        assert_eq!(
             BrowserScreenshotTool::new(mgr.clone()).max_result_size(),
             Some(2048)
         );
@@ -1712,6 +1953,7 @@ mod tests {
         assert_eq!(BrowserPressTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserGetImagesTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserConsoleTool::new(mgr.clone()).toolset(), "browser");
+        assert_eq!(BrowserDialogTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserScreenshotTool::new(mgr).toolset(), "browser");
     }
 }

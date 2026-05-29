@@ -288,6 +288,9 @@ async fn build_agent(
         builtin_tools.push(Arc::new(hakimi_tools::BrowserTypeTool::new(
             browser_manager.clone(),
         )));
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserDialogTool::new(
+            browser_manager.clone(),
+        )));
         builtin_tools.push(Arc::new(hakimi_tools::BrowserScreenshotTool::new(
             browser_manager,
         )));
