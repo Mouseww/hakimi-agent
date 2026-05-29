@@ -525,6 +525,13 @@ pub struct HakimiConfig {
 /// Configuration for all gateway platforms.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GatewaysConfig {
+    /// Allow all inbound gateway users regardless of allowlists.
+    #[serde(default)]
+    pub allow_all: bool,
+    /// Global inbound gateway allowlist. Entries may be user IDs, chat IDs,
+    /// or qualified as `platform:id` / `platform:bot_id:id`.
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
     #[serde(default)]
     pub telegram: TelegramGatewayConfig,
     #[serde(default)]
@@ -569,6 +576,10 @@ pub struct ClawBotGatewayConfig {
     /// Optional chat id for login QR notifications.
     #[serde(default)]
     pub login_notify_chat_id: String,
+    /// List of allowed sender IDs (empty = allow all unless a global gateway
+    /// allowlist is configured).
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
 }
 
 fn default_clawbot_mode() -> String {
@@ -634,6 +645,7 @@ impl Default for ClawBotGatewayConfig {
             login_notify_platform: String::new(),
             login_notify_bot_id: String::new(),
             login_notify_chat_id: String::new(),
+            allowed_users: Vec::new(),
         }
     }
 }
@@ -728,6 +740,8 @@ pub struct RoleClawBotConfig {
     pub login_notify_bot_id: String,
     #[serde(default)]
     pub login_notify_chat_id: String,
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
 }
 
 /// Telegram-specific config for a role gateway binding.

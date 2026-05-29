@@ -89,6 +89,9 @@ pub struct ClawBotAdapterConfig {
     /// Optional chat id for login QR notifications.
     #[serde(default)]
     pub login_notify_chat_id: String,
+    /// Allowed inbound sender IDs. Gateway ingress policy enforces this list.
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
 }
 
 fn default_clawbot_bot_id() -> String {
@@ -149,6 +152,7 @@ impl Default for ClawBotAdapterConfig {
             login_notify_platform: String::new(),
             login_notify_bot_id: String::new(),
             login_notify_chat_id: String::new(),
+            allowed_users: Vec::new(),
         }
     }
 }

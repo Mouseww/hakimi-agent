@@ -86,6 +86,7 @@ Generated: 2026-05-21
 ### Gateway
 - **PlatformAdapter trait** — connect, send_message, disconnect, take_receiver
 - **Gateway** — Central message routing, adapter registration
+- **Gateway ingress access policy** — Config-driven allowlist merges global gateway users, Telegram user IDs, role allowlists, and ClawBot sender IDs before command/agent handling
 - **Telegram adapter** — Telegram Bot API integration
 - **Discord adapter** — Discord bot with embeds
 - **Slack adapter** — Slack bot with blocks
@@ -105,7 +106,7 @@ Generated: 2026-05-21
 - **Think scrubber** — Stateful Hermes-style removal of reasoning/thinking blocks from streaming and non-streaming assistant content
 
 ### Config
-- **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers
+- **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers, gateway ingress policy
 - **Profile support** — `--profile` CLI flag
 - **Defaults** — Sensible defaults via `serde(default)`
 
@@ -484,8 +485,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
-- **Status**: 3 platforms (Telegram, Discord, Slack)
-- **What's missing**: 17+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, slash access control, runtime footer, display config, session context management, sticker cache, stream consumer for progressive edits
+- **Status**: 8 platforms plus config-driven ingress access policy. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
+- **What's missing**: 12+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, stream consumer for progressive edits
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -540,7 +541,7 @@ Generated: 2026-05-21
 |----------|----------------|-----------------|----------------|----------------|
 | Core Tools | 40+ | 27 | 1 | 13+ |
 | Transports | 4 | 4 | 0 | 0 |
-| Gateway Platforms | 20+ | 8 | 0 | 12+ |
+| Gateway Platforms | 20+ | 8 | 1 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
 | Agent Internals | 25+ | 18 | 4 | 2+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
@@ -550,7 +551,7 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~67** (up from ~30)
+**Fully present in Hakimi: ~68** (up from ~30)
 **Partially implemented: ~9**
 **Missing entirely: ~75+**
 
@@ -620,9 +621,10 @@ Generated: 2026-05-21
 | 37 | Read-File Credential Guard | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/builtin_read_file.rs` | 7 | ✅ `read_file` blocks Hakimi credential stores, MCP token files, profile credential stores, project `.env*`, and `cache/bws_cache.json` before file content reaches the agent |
 | 38 | Progressive Tool Disclosure | `hakimi-common/src/tool.rs`, `hakimi-tools/src/{tool_search.rs,registry.rs}`, `hakimi-core/src/{agent.rs,loop_impl.rs}` | 8 | ✅ MCP/plugin tool schemas can collapse behind `tool_search`/`tool_describe`/`tool_call`; core tools never defer; CLI/server honor `tools.tool_search` config |
 | 39 | Terminal Shell Hooks | `hakimi-tools/src/builtin_terminal.rs` | 4 | ✅ Opt-in terminal pre/post hook commands receive Hermes-style JSON payloads; pre hooks can block execution with canonical or Claude-Code-style JSON |
+| 40 | Gateway Ingress Access Policy | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 7 | ✅ Config-driven global, Telegram, role, and ClawBot allowlists gate inbound gateway messages before command/agent handling |
 
 ### Summary
-- **Total tests**: 1217 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1224 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

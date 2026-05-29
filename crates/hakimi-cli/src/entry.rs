@@ -29,6 +29,143 @@ fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
     format!("{platform}:{bot_id}:{chat_id}")
 }
 
+#[derive(Debug, Clone)]
+struct GatewayIngressPolicy {
+    allow_all: bool,
+    global_allowed: Vec<String>,
+    telegram_allowed: Vec<String>,
+    clawbot_allowed: Vec<String>,
+}
+
+impl GatewayIngressPolicy {
+    fn from_config(config: &hakimi_config::HakimiConfig) -> Self {
+        let mut global_allowed = Vec::new();
+        let mut telegram_allowed = Vec::new();
+        let mut clawbot_allowed = Vec::new();
+        extend_string_allowlist(&mut global_allowed, &config.gateways.allowed_users);
+        extend_i64_allowlist(
+            &mut telegram_allowed,
+            "telegram",
+            &config.gateways.telegram.allowed_users,
+        );
+        extend_string_allowlist(&mut clawbot_allowed, &config.gateways.clawbot.allowed_users);
+        if let Some(default_role) = config.roles.get("default") {
+            extend_i64_allowlist(
+                &mut telegram_allowed,
+                "telegram",
+                &default_role.allowed_users,
+            );
+            if let Some(clawbot) = default_role.gateways.clawbot.as_ref() {
+                extend_string_allowlist(&mut clawbot_allowed, &clawbot.allowed_users);
+            }
+        }
+
+        Self {
+            allow_all: config.gateways.allow_all,
+            global_allowed,
+            telegram_allowed,
+            clawbot_allowed,
+        }
+    }
+
+    fn allows(&self, msg: &hakimi_gateway::GatewayMessage) -> bool {
+        if self.allow_all {
+            return true;
+        }
+        let platform = msg.platform.trim();
+        let bot_id = msg.bot_id.trim();
+        let user_id = msg.user_id.trim();
+        let chat_id = msg.chat_id.trim();
+
+        let mut has_policy = false;
+        if !self.global_allowed.is_empty() {
+            has_policy = true;
+            if gateway_allowlist_allows(&self.global_allowed, platform, bot_id, user_id, chat_id) {
+                return true;
+            }
+        }
+        match platform {
+            value if value.eq_ignore_ascii_case("telegram") => {
+                if !self.telegram_allowed.is_empty() {
+                    has_policy = true;
+                    if gateway_allowlist_allows(
+                        &self.telegram_allowed,
+                        platform,
+                        bot_id,
+                        user_id,
+                        chat_id,
+                    ) {
+                        return true;
+                    }
+                }
+            }
+            value if value.eq_ignore_ascii_case("clawbot") => {
+                if !self.clawbot_allowed.is_empty() {
+                    has_policy = true;
+                    if gateway_allowlist_allows(
+                        &self.clawbot_allowed,
+                        platform,
+                        bot_id,
+                        user_id,
+                        chat_id,
+                    ) {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        !has_policy
+    }
+}
+
+fn gateway_allowlist_allows(
+    entries: &[String],
+    platform: &str,
+    bot_id: &str,
+    user_id: &str,
+    chat_id: &str,
+) -> bool {
+    entries.iter().any(|entry| {
+        gateway_allowlist_entry_matches(entry, platform, bot_id, user_id)
+            || gateway_allowlist_entry_matches(entry, platform, bot_id, chat_id)
+    })
+}
+
+fn extend_string_allowlist(target: &mut Vec<String>, source: &[String]) {
+    target.extend(source.iter().filter_map(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    }));
+}
+
+fn extend_i64_allowlist(target: &mut Vec<String>, platform: &str, source: &[i64]) {
+    target.extend(source.iter().map(|value| format!("{platform}:{value}")));
+}
+
+fn gateway_allowlist_entry_matches(entry: &str, platform: &str, bot_id: &str, id: &str) -> bool {
+    let entry = entry.trim();
+    if entry.is_empty() || id.is_empty() {
+        return false;
+    }
+    if entry == id {
+        return true;
+    }
+    if let Some((entry_platform, rest)) = entry.split_once(':') {
+        if !entry_platform.eq_ignore_ascii_case(platform) {
+            return false;
+        }
+        if rest == id {
+            return true;
+        }
+        if let Some((entry_bot_id, entry_id)) = rest.split_once(':') {
+            return entry_bot_id == bot_id && entry_id == id;
+        }
+    }
+    false
+}
+
 fn hakimi_home_dir() -> std::path::PathBuf {
     dirs::home_dir()
         .map(|home| home.join(".hakimi"))
@@ -1410,6 +1547,9 @@ fn resolve_clawbot_gateway_config(
         if !role_cfg.login_notify_chat_id.is_empty() {
             resolved.login_notify_chat_id = role_cfg.login_notify_chat_id;
         }
+        if !role_cfg.allowed_users.is_empty() {
+            resolved.allowed_users = role_cfg.allowed_users;
+        }
     }
 
     if let Ok(url) = std::env::var("CLAWBOT_BASE_URL")
@@ -2770,6 +2910,7 @@ async fn start_gateway(
             login_notify_platform: clawbot_config.login_notify_platform,
             login_notify_bot_id: clawbot_config.login_notify_bot_id,
             login_notify_chat_id: clawbot_config.login_notify_chat_id,
+            allowed_users: clawbot_config.allowed_users,
         });
         gateway.add_adapter(Box::new(clawbot));
         info!("clawbot gateway registered");
@@ -2788,6 +2929,7 @@ async fn start_gateway(
         Arc::new(Mutex::new(HashMap::new()));
     let last_usage: Arc<Mutex<HashMap<String, GatewayUsageSnapshot>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let gateway_access = Arc::new(GatewayIngressPolicy::from_config(&config));
     let skill_store_ref = Arc::new(skill_store);
 
     // 3. Connect all platforms.
@@ -2979,6 +3121,11 @@ async fn start_gateway(
             if let Err(err) = gateway.route_message(&routed).await {
                 tracing::warn!(error = %err, "failed to route internal gateway notification");
             }
+            continue;
+        }
+
+        if !gateway_access.allows(&msg) {
+            warn!(platform = %platform, bot_id = %bot_id, chat_id = %chat_id, user_id = %msg.user_id, "unauthorized gateway message dropped");
             continue;
         }
 
@@ -4404,12 +4551,13 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
-        GatewayFinalDelivery, GatewayMode, GatewayStreamRenderSnapshot, GatewayStreamUiState,
-        GatewayUiContentTarget, GatewayUsageSnapshot, PluginCommandArgs, TopLevelCommand,
-        build_cron_delegation_goal, create_hakimi_state_backup, cron_delivery_targets,
-        cron_output_preview, cron_success_output_should_deliver, gateway_cron_response_for_path,
-        gateway_cron_response_for_path_with_delivery, gateway_service_exe_path,
-        gateway_service_unit, gateway_usage_response, is_top_level_cron_tick,
+        GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamRenderSnapshot,
+        GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, PluginCommandArgs,
+        TopLevelCommand, build_cron_delegation_goal, create_hakimi_state_backup,
+        cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
+        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
+        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
+        is_top_level_cron_tick,
         plan_gateway_final_delivery, queue_cron_delivery, resolve_clawbot_gateway_config,
         resolve_hakimi_update_target, restore_hakimi_state_backup,
         top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
@@ -4442,6 +4590,127 @@ mod tests {
             GatewayMode::from_str("status", true).unwrap(),
             GatewayMode::Status
         );
+    }
+
+    fn gateway_test_message(
+        platform: &str,
+        bot_id: &str,
+        user_id: &str,
+    ) -> hakimi_gateway::GatewayMessage {
+        hakimi_gateway::GatewayMessage {
+            platform: platform.to_string(),
+            bot_id: bot_id.to_string(),
+            chat_id: "chat-42".to_string(),
+            user_id: user_id.to_string(),
+            text: "hello".to_string(),
+            media: None,
+        }
+    }
+
+    #[test]
+    fn gateway_ingress_policy_allows_all_when_no_allowlist_is_configured() {
+        let config = hakimi_config::HakimiConfig::default();
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
+        assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_1")));
+    }
+
+    #[test]
+    fn gateway_ingress_policy_uses_telegram_allowlist() {
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.gateways.telegram.allowed_users = vec![42];
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
+        assert!(!policy.allows(&gateway_test_message("telegram", "telegram_bot", "7")));
+        assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_1")));
+    }
+
+    #[test]
+    fn gateway_ingress_policy_uses_role_telegram_allowlist() {
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.roles.insert(
+            "default".to_string(),
+            hakimi_config::RoleConfig {
+                allowed_users: vec![1001],
+                ..Default::default()
+            },
+        );
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message(
+            "telegram",
+            "telegram_bot",
+            "1001",
+        )));
+        assert!(!policy.allows(&gateway_test_message(
+            "telegram",
+            "telegram_bot",
+            "1002",
+        )));
+    }
+
+    #[test]
+    fn gateway_ingress_policy_uses_global_allowlist_for_any_platform() {
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.gateways.allowed_users = vec![
+            "telegram:telegram_bot:42".to_string(),
+            "clawbot:wxid_abc".to_string(),
+        ];
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
+        assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_abc")));
+        assert!(!policy.allows(&gateway_test_message(
+            "clawbot",
+            "clawbot",
+            "wxid_other",
+        )));
+    }
+
+    #[test]
+    fn gateway_ingress_policy_global_allowlist_restricts_unlisted_platform_users() {
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.gateways.allowed_users = vec!["telegram:42".to_string()];
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
+        assert!(!policy.allows(&gateway_test_message(
+            "clawbot",
+            "clawbot",
+            "wxid_other",
+        )));
+    }
+
+    #[test]
+    fn gateway_ingress_policy_uses_clawbot_allowlist() {
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.gateways.clawbot.allowed_users = vec!["wxid_abc".to_string()];
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_abc")));
+        assert!(!policy.allows(&gateway_test_message(
+            "clawbot",
+            "clawbot",
+            "wxid_other",
+        )));
+        assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
+    }
+
+    #[test]
+    fn gateway_ingress_policy_global_allow_all_overrides_allowlists() {
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.gateways.allow_all = true;
+        config.gateways.allowed_users = vec!["telegram:42".to_string()];
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "7")));
+        assert!(policy.allows(&gateway_test_message(
+            "clawbot",
+            "clawbot",
+            "wxid_other",
+        )));
     }
 
     #[test]
