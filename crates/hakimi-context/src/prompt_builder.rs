@@ -251,6 +251,61 @@ pub fn build_environment_hints(platform: &str, os: &str, home: &str, cwd: &str) 
     parts.join("\n")
 }
 
+/// Inject intent prediction context into a prompt section.
+#[allow(dead_code)]
+pub fn inject_intent_context(prediction: &IntentPrediction) -> String {
+    let mut parts = Vec::new();
+
+    parts.push(format!("Detected intent: {:?}", prediction.primary));
+    parts.push(format!("Confidence: {:.2}", prediction.confidence));
+
+    if !prediction.secondary.is_empty() {
+        let secondary_str: Vec<String> = prediction
+            .secondary
+            .iter()
+            .map(|(i, s)| format!("{:?} ({:.2})", i, s))
+            .collect();
+        parts.push(format!("Secondary intents: {}", secondary_str.join(", ")));
+    }
+
+    if !prediction.predicted_actions.is_empty() {
+        parts.push(format!(
+            "Suggested tools: {}",
+            prediction.predicted_actions.join(", ")
+        ));
+    }
+
+    if !prediction.context_hints.is_empty() {
+        parts.push(format!("Hints: {}", prediction.context_hints.join(", ")));
+    }
+
+    parts.join("\n")
+}
+
+/// Inject role profile context into a prompt section.
+#[allow(dead_code)]
+pub fn inject_role_context(profile: &RoleProfile) -> String {
+    let mut parts = Vec::new();
+
+    parts.push(format!(
+        "Active role: {} — {}",
+        profile.name, profile.description
+    ));
+    parts.push(format!("Tone: {}", profile.tone));
+    parts.push(format!("Verbosity: {}", profile.verbosity));
+
+    if !profile.preferred_tools.is_empty() {
+        parts.push(format!(
+            "Preferred tools: {}",
+            profile.preferred_tools.join(", ")
+        ));
+    }
+
+    parts.push(format!("Behavior: {}", profile.system_prompt_suffix));
+
+    parts.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,59 +389,4 @@ mod tests {
         assert!(!prompt.contains("this rule exists"));
         let _ = std::fs::remove_dir_all(dir);
     }
-}
-
-/// Inject intent prediction context into a prompt section.
-#[allow(dead_code)]
-pub fn inject_intent_context(prediction: &IntentPrediction) -> String {
-    let mut parts = Vec::new();
-
-    parts.push(format!("Detected intent: {:?}", prediction.primary));
-    parts.push(format!("Confidence: {:.2}", prediction.confidence));
-
-    if !prediction.secondary.is_empty() {
-        let secondary_str: Vec<String> = prediction
-            .secondary
-            .iter()
-            .map(|(i, s)| format!("{:?} ({:.2})", i, s))
-            .collect();
-        parts.push(format!("Secondary intents: {}", secondary_str.join(", ")));
-    }
-
-    if !prediction.predicted_actions.is_empty() {
-        parts.push(format!(
-            "Suggested tools: {}",
-            prediction.predicted_actions.join(", ")
-        ));
-    }
-
-    if !prediction.context_hints.is_empty() {
-        parts.push(format!("Hints: {}", prediction.context_hints.join(", ")));
-    }
-
-    parts.join("\n")
-}
-
-/// Inject role profile context into a prompt section.
-#[allow(dead_code)]
-pub fn inject_role_context(profile: &RoleProfile) -> String {
-    let mut parts = Vec::new();
-
-    parts.push(format!(
-        "Active role: {} — {}",
-        profile.name, profile.description
-    ));
-    parts.push(format!("Tone: {}", profile.tone));
-    parts.push(format!("Verbosity: {}", profile.verbosity));
-
-    if !profile.preferred_tools.is_empty() {
-        parts.push(format!(
-            "Preferred tools: {}",
-            profile.preferred_tools.join(", ")
-        ));
-    }
-
-    parts.push(format!("Behavior: {}", profile.system_prompt_suffix));
-
-    parts.join("\n")
 }
