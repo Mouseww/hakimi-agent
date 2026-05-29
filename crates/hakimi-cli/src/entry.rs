@@ -85,32 +85,30 @@ impl GatewayIngressPolicy {
             }
         }
         match platform {
-            value if value.eq_ignore_ascii_case("telegram") => {
-                if !self.telegram_allowed.is_empty() {
-                    has_policy = true;
-                    if gateway_allowlist_allows(
-                        &self.telegram_allowed,
-                        platform,
-                        bot_id,
-                        user_id,
-                        chat_id,
-                    ) {
-                        return true;
-                    }
+            value
+                if value.eq_ignore_ascii_case("telegram") && !self.telegram_allowed.is_empty() =>
+            {
+                has_policy = true;
+                if gateway_allowlist_allows(
+                    &self.telegram_allowed,
+                    platform,
+                    bot_id,
+                    user_id,
+                    chat_id,
+                ) {
+                    return true;
                 }
             }
-            value if value.eq_ignore_ascii_case("clawbot") => {
-                if !self.clawbot_allowed.is_empty() {
-                    has_policy = true;
-                    if gateway_allowlist_allows(
-                        &self.clawbot_allowed,
-                        platform,
-                        bot_id,
-                        user_id,
-                        chat_id,
-                    ) {
-                        return true;
-                    }
+            value if value.eq_ignore_ascii_case("clawbot") && !self.clawbot_allowed.is_empty() => {
+                has_policy = true;
+                if gateway_allowlist_allows(
+                    &self.clawbot_allowed,
+                    platform,
+                    bot_id,
+                    user_id,
+                    chat_id,
+                ) {
+                    return true;
                 }
             }
             _ => {}
