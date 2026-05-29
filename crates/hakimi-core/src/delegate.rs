@@ -437,7 +437,7 @@ mod tests {
         for tool_name in DELEGATION_BLOCKED_TOOLS {
             parent
                 .register(Arc::new(NamedTool {
-                    name: *tool_name,
+                    name: tool_name,
                     toolset: "core",
                 }))
                 .await;
