@@ -135,10 +135,10 @@ fn expand_home(path: &Path) -> PathBuf {
         return default_home_dir().unwrap_or_else(|| path.to_path_buf());
     }
 
-    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
-        if let Some(home) = default_home_dir() {
-            return home.join(rest);
-        }
+    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\"))
+        && let Some(home) = default_home_dir()
+    {
+        return home.join(rest);
     }
 
     path.to_path_buf()
