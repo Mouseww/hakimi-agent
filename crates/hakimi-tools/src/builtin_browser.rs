@@ -110,6 +110,10 @@ impl BrowserManager {
             .await
             .map_err(|e| HakimiError::Tool(format!("failed to create page: {e}")))?;
 
+        if let Err(e) = install_console_recorder(&page).await {
+            warn!(error = %e, "browser console recorder install failed");
+        }
+
         inner.current_page = Some(page.clone());
         Ok(page)
     }
@@ -154,6 +158,188 @@ fn generate_screenshot_filename(ext: &str) -> String {
         "screenshot_{ts}_{:.8}.{ext}",
         uuid.to_string().replace('-', "")
     )
+}
+
+const CONSOLE_RECORDER_SCRIPT: &str = r#"
+(function() {
+    if (window.__hakimiConsoleRecorderInstalled) return true;
+
+    const maxEntries = 200;
+    const messages = window.__hakimiConsoleBuffer || [];
+    const errors = window.__hakimiJsErrors || [];
+
+    Object.defineProperty(window, "__hakimiConsoleBuffer", {
+        value: messages,
+        configurable: true
+    });
+    Object.defineProperty(window, "__hakimiJsErrors", {
+        value: errors,
+        configurable: true
+    });
+    Object.defineProperty(window, "__hakimiConsoleRecorderInstalled", {
+        value: true,
+        configurable: true
+    });
+
+    const trim = (items) => {
+        if (items.length > maxEntries) {
+            items.splice(0, items.length - maxEntries);
+        }
+    };
+    const stringify = (value) => {
+        try {
+            if (value instanceof Error) return value.stack || value.message || String(value);
+            if (typeof value === "string") return value;
+            if (typeof value === "undefined") return "undefined";
+            if (typeof value === "bigint") return value.toString();
+            const json = JSON.stringify(value);
+            return typeof json === "undefined" ? String(value) : json;
+        } catch (_) {
+            try {
+                return String(value);
+            } catch (_) {
+                return "[unserializable]";
+            }
+        }
+    };
+    const pushMessage = (type, args) => {
+        messages.push({
+            type,
+            text: Array.from(args || []).map(stringify).join(" "),
+            timestamp: new Date().toISOString()
+        });
+        trim(messages);
+    };
+    const pushError = (message, source) => {
+        errors.push({
+            message: stringify(message),
+            source: source || "exception",
+            timestamp: new Date().toISOString()
+        });
+        trim(errors);
+    };
+
+    ["log", "debug", "info", "warn", "error"].forEach((level) => {
+        const original = console[level] && console[level].bind(console);
+        console[level] = function() {
+            pushMessage(level === "warn" ? "warning" : level, arguments);
+            if (original) return original.apply(console, arguments);
+        };
+    });
+
+    window.addEventListener("error", (event) => {
+        pushError(event.error || event.message || "Uncaught error", "exception");
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+        pushError(event.reason || "Unhandled promise rejection", "unhandledrejection");
+    });
+
+    return true;
+})();
+"#;
+
+async fn install_console_recorder(page: &Page) -> Result<()> {
+    page.evaluate_on_new_document(CONSOLE_RECORDER_SCRIPT)
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to install console recorder: {e}")))?;
+    ensure_console_recorder(page).await
+}
+
+async fn ensure_console_recorder(page: &Page) -> Result<()> {
+    page.evaluate(CONSOLE_RECORDER_SCRIPT)
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to enable console recorder: {e}")))?;
+    Ok(())
+}
+
+async fn get_console_output(page: &Page, clear: bool) -> Result<JsonValue> {
+    ensure_console_recorder(page).await?;
+
+    let clear_literal = if clear { "true" } else { "false" };
+    let js = format!(
+        r#"
+() => {{
+    const messages = Array.from(window.__hakimiConsoleBuffer || []);
+    const errors = Array.from(window.__hakimiJsErrors || []);
+    if ({clear_literal}) {{
+        if (window.__hakimiConsoleBuffer) window.__hakimiConsoleBuffer.length = 0;
+        if (window.__hakimiJsErrors) window.__hakimiJsErrors.length = 0;
+    }}
+    return JSON.stringify({{
+        success: true,
+        console_messages: messages,
+        js_errors: errors,
+        total_messages: messages.length,
+        total_errors: errors.length
+    }});
+}}
+"#
+    );
+
+    let result = page
+        .evaluate_function(js)
+        .await
+        .map_err(|e| HakimiError::Tool(format!("failed to read browser console: {e}")))?;
+
+    let raw = result.value().and_then(|v| v.as_str()).unwrap_or("{}");
+    serde_json::from_str(raw)
+        .map_err(|e| HakimiError::Tool(format!("failed to parse browser console data: {e}")))
+}
+
+async fn evaluate_page_expression(page: &Page, expression: &str) -> Result<JsonValue> {
+    if expression.trim().is_empty() {
+        return Err(HakimiError::Tool("expression must not be empty".into()));
+    }
+
+    let expression_literal = serde_json::to_string(expression)
+        .map_err(|e| HakimiError::Tool(format!("failed to encode expression: {e}")))?;
+    let js = r#"
+async () => {
+    const expression = __HAKIMI_EXPRESSION__;
+    const describe = (value) => {
+        const resultType = value === null
+            ? "null"
+            : Array.isArray(value)
+                ? "array"
+                : typeof value;
+        if (typeof value === "undefined") {
+            return { result: null, result_type: "undefined" };
+        }
+        if (typeof value === "bigint" || typeof value === "function") {
+            return { result: String(value), result_type: resultType };
+        }
+        try {
+            return { result: JSON.parse(JSON.stringify(value)), result_type: resultType };
+        } catch (_) {
+            return { result: String(value), result_type: resultType };
+        }
+    };
+
+    try {
+        const value = await (0, eval)(expression);
+        const output = describe(value);
+        output.success = true;
+        return JSON.stringify(output);
+    } catch (error) {
+        return JSON.stringify({
+            success: false,
+            error: error && (error.stack || error.message)
+                ? String(error.stack || error.message)
+                : String(error)
+        });
+    }
+}
+"#
+    .replace("__HAKIMI_EXPRESSION__", &expression_literal);
+
+    let result = page
+        .evaluate_function(js)
+        .await
+        .map_err(|e| HakimiError::Tool(format!("browser expression evaluation failed: {e}")))?;
+
+    let raw = result.value().and_then(|v| v.as_str()).unwrap_or("{}");
+    serde_json::from_str(raw)
+        .map_err(|e| HakimiError::Tool(format!("failed to parse browser eval data: {e}")))
 }
 
 /// Extract a clean text snapshot from a page's accessibility tree / DOM.
@@ -1054,6 +1240,78 @@ impl Tool for BrowserGetImagesTool {
 }
 
 // ---------------------------------------------------------------------------
+// browser_console
+// ---------------------------------------------------------------------------
+
+/// Read browser console output or evaluate JavaScript on the current page.
+pub struct BrowserConsoleTool {
+    manager: Arc<BrowserManager>,
+}
+
+impl BrowserConsoleTool {
+    pub fn new(manager: Arc<BrowserManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserConsoleTool {
+    fn name(&self) -> &str {
+        "browser_console"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Get browser console output and JavaScript errors from the current page, or evaluate a JavaScript expression in the page context."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{1f4dd}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "clear": {
+                    "type": "boolean",
+                    "description": "If true, clear the captured console and error buffers after reading. Default: false."
+                },
+                "expression": {
+                    "type": "string",
+                    "description": "Optional JavaScript expression to evaluate in the current page context, like DevTools console."
+                }
+            }
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        BrowserManager::is_chrome_available()
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(64 * 1024)
+    }
+
+    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let page = self.manager.get_page().await?;
+
+        if let Some(expression) = args.get("expression").and_then(|v| v.as_str()) {
+            let result = evaluate_page_expression(&page, expression).await?;
+            return Ok(result.to_string());
+        }
+
+        let clear = args.get("clear").and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let result = get_console_output(&page, clear).await?;
+        Ok(result.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // browser_screenshot
 // ---------------------------------------------------------------------------
 
@@ -1236,6 +1494,15 @@ mod tests {
     }
 
     #[test]
+    fn test_browser_console_metadata() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserConsoleTool::new(mgr);
+        assert_eq!(tool.name(), "browser_console");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{1f4dd}");
+    }
+
+    #[test]
     fn test_browser_scroll_metadata() {
         let mgr = BrowserManager::new();
         let tool = BrowserScrollTool::new(mgr);
@@ -1363,6 +1630,17 @@ mod tests {
     }
 
     #[test]
+    fn test_console_schema() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserConsoleTool::new(mgr);
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["clear"].is_object());
+        assert!(schema["properties"]["expression"].is_object());
+        assert!(schema.get("required").is_none());
+    }
+
+    #[test]
     fn test_screenshot_output_dir() {
         let dir = get_screenshot_dir();
         assert!(dir.ends_with(".hakimi/screenshots"));
@@ -1413,6 +1691,10 @@ mod tests {
             Some(64 * 1024)
         );
         assert_eq!(
+            BrowserConsoleTool::new(mgr.clone()).max_result_size(),
+            Some(64 * 1024)
+        );
+        assert_eq!(
             BrowserScreenshotTool::new(mgr.clone()).max_result_size(),
             Some(2048)
         );
@@ -1429,6 +1711,7 @@ mod tests {
         assert_eq!(BrowserBackTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserPressTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserGetImagesTool::new(mgr.clone()).toolset(), "browser");
+        assert_eq!(BrowserConsoleTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserScreenshotTool::new(mgr).toolset(), "browser");
     }
 }

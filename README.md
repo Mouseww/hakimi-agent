@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.103-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.104-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1166-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1168-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1166 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
+**Production features:** 1168 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers · 3-tier context compression · Anthropic prompt caching
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.104 Browser Console + Eval**:
+  - **Hermes Browser Parity**: optional Chromium automation now includes `browser_console` for captured console output, JavaScript errors, and page-context expression evaluation.
+  - **Rust-Native Capture**: a lightweight per-page recorder tracks `console.log`/`warn`/`error` calls and uncaught JS errors without adding a Python browser runtime.
+  - **Shared Registration**: CLI and TUI browser feature builds expose the same shared console/eval tool.
 - **v0.3.103 Browser Image Listing**:
   - **Hermes Browser Parity**: optional Chromium automation now includes `browser_get_images`, matching Hermes' current-page image extraction surface.
   - **Vision Handoff**: returns non-data image URLs with alt text and natural dimensions so agents can choose images for follow-up vision analysis.
@@ -328,7 +332,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - Auto-generates reusable YAML skill files from extracted patterns
 - Pattern merging and confidence scoring
 
-### 🛠️ 40 Built-in Tools
+### 🛠️ 41 Built-in Tools
 
 - **Files**: read_file, write_file, search_files, patch
 - **Shell**: terminal, process (background process management)
@@ -336,7 +340,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Home Assistant**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service
 - **Memory**: memory (persistent), session_search (FTS5 full-text)
 - **Code**: code_exec (Python/JS/Bash)
-- **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_screenshot (Chromium automation)
+- **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_screenshot (Chromium automation)
 - **Media**: vision_analyze (image analysis), video_analyze (video analysis request), image_describe (legacy alias), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
 - **Safety**: file_safety (path protection), secret_redaction, prompt_injection_detection
@@ -538,7 +542,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1166 |
+| Tests | ~500 | 1168 |
 
 ---
 
@@ -548,7 +552,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1166 tests)
+# Run all tests (1168 tests)
 cargo test --workspace
 
 # Debug logging
