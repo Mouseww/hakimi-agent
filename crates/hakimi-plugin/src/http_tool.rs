@@ -39,6 +39,12 @@ fn default_schema() -> JsonValue {
 pub struct HttpPluginConfig {
     /// Plugin name.
     pub name: String,
+    /// Optional semver-style plugin version.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Optional human-readable plugin description.
+    #[serde(default)]
+    pub description: Option<String>,
     /// List of HTTP tool definitions.
     pub tools: Vec<HttpToolConfig>,
 }
@@ -160,6 +166,8 @@ impl Tool for HttpTool {
 /// An HTTP-backed plugin that wraps multiple HTTP endpoints as tools.
 pub struct HttpToolPlugin {
     plugin_name: String,
+    version: String,
+    description: String,
     tools: Vec<Arc<dyn Tool>>,
 }
 
@@ -173,6 +181,14 @@ impl HttpToolPlugin {
             .collect();
         Self {
             plugin_name: config.name.clone(),
+            version: config
+                .version
+                .clone()
+                .unwrap_or_else(|| "0.2.1".to_string()),
+            description: config
+                .description
+                .clone()
+                .unwrap_or_else(|| "HTTP endpoint plugin".to_string()),
             tools,
         }
     }
@@ -184,11 +200,11 @@ impl Plugin for HttpToolPlugin {
     }
 
     fn version(&self) -> &str {
-        "0.2.1"
+        &self.version
     }
 
     fn description(&self) -> &str {
-        "HTTP endpoint plugin"
+        &self.description
     }
 
     fn tools(&self) -> Vec<Arc<dyn Tool>> {

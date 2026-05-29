@@ -215,6 +215,26 @@ tools:
     }
 
     #[test]
+    fn test_load_http_plugin_uses_declared_metadata() {
+        let mut loader = PluginLoader::new();
+        let yaml = r#"
+name: weather_api
+version: "1.2.3"
+description: Weather API wrapper
+tools:
+  - name: get_weather
+    endpoint: https://wttr.in/{city}
+    method: GET
+    description: Get weather
+"#;
+        loader.load_http_from_yaml(yaml).unwrap();
+
+        assert_eq!(loader.plugins()[0].name(), "weather_api");
+        assert_eq!(loader.plugins()[0].version(), "1.2.3");
+        assert_eq!(loader.plugins()[0].description(), "Weather API wrapper");
+    }
+
+    #[test]
     fn test_load_http_plugins_from_dir() {
         let tmp = TempDir::new().unwrap();
         let yaml = r#"

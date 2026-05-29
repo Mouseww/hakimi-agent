@@ -1,6 +1,8 @@
 # Weather API Plugin
 # Copy to ~/.hakimi/plugins/ and customize
 name: weather
+version: "1.0"
+description: "Weather lookup plugin backed by wttr.in"
 tools:
   - name: get_weather
     endpoint: "https://wttr.in/{city}?format=j1"

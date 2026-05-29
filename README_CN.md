@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.111-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.112-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1198-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1202-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,7 +73,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1198 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · 上下文文件 Prompt Injection 防护 · read_file 凭据读取防护
+**生产级特性：** 1202 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池与熔断 · 三层上下文压缩 · Anthropic Prompt 缓存 · 上下文文件 Prompt Injection 防护 · read_file 凭据读取防护
 
 ---
 
@@ -81,6 +81,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
+- **v0.3.112 插件列表可用性**
+  - 对齐 Hermes 最新插件 CLI：`hakimi plugins list` 现在支持 `--plain` 和 `--json`，便于终端脚本与机器读取。
+  - HTTP 插件配置可声明顶层 `version` 和 `description`，列表输出会展示真实插件元数据，不再固定为通用标签。
+  - `--tools` 与 `--no-tools` 可在简洁清单和工具级检查之间切换。
 - **v0.3.111 read_file 凭据读取防护**
   - 对齐 Hermes file_safety 语义：`read_file` 读取前会拒绝已知 Hakimi 凭据存储，包括 `config.yaml`、OAuth 缓存、MCP token 文件、项目 `.env*` 文件和 `cache/bws_cache.json`。
   - 对已存在路径先 canonicalize 再匹配，降低简单 symlink 绕过风险。
@@ -340,6 +344,8 @@ credential_pools:
 ```yaml
 # ~/.hakimi/plugins/weather.yaml
 name: weather
+version: "1.0"
+description: "Weather lookup plugin backed by wttr.in"
 tools:
   - name: get_weather
     endpoint: "https://wttr.in/{city}?format=j1"
@@ -347,7 +353,7 @@ tools:
     description: "获取城市天气"
 ```
 
-CLI 内嵌 HTTP 插件模板。使用 `hakimi plugins templates` 浏览模板，`hakimi plugins init weather [name]` 生成到 `~/.hakimi/plugins`，并用 `hakimi plugins list` 或 gateway `/plugins list` 查看已加载插件。
+CLI 内嵌 HTTP 插件模板。使用 `hakimi plugins templates` 浏览模板，`hakimi plugins init weather [name]` 生成到 `~/.hakimi/plugins`，并用 `hakimi plugins list --plain` / `hakimi plugins list --json` 或 gateway `/plugins list` 查看已加载插件。
 
 ---
 
@@ -422,7 +428,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1198 |
+| 测试 | ~500 | 1202 |
 
 ---
 
@@ -432,7 +438,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1198 tests)
+# 运行全部测试 (1202 tests)
 cargo test --workspace
 
 # Debug 日志

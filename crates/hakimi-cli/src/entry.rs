@@ -190,8 +190,181 @@ fn plugin_templates_response() -> String {
     lines.join("\n")
 }
 
-fn plugin_list_response() -> String {
-    let mut loader = hakimi_plugin::PluginLoader::new();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PluginListFormat {
+    Markdown,
+    Plain,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PluginListOptions {
+    format: PluginListFormat,
+    include_tools: Option<bool>,
+}
+
+impl Default for PluginListOptions {
+    fn default() -> Self {
+        Self {
+            format: PluginListFormat::Markdown,
+            include_tools: None,
+        }
+    }
+}
+
+impl PluginListOptions {
+    fn show_tools(&self) -> bool {
+        self.include_tools
+            .unwrap_or(matches!(self.format, PluginListFormat::Markdown))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PluginListEntry {
+    name: String,
+    version: String,
+    description: String,
+    tools: Vec<String>,
+}
+
+fn parse_plugin_list_options(args: &[String]) -> std::result::Result<PluginListOptions, String> {
+    let mut options = PluginListOptions::default();
+    for arg in args {
+        match arg.as_str() {
+            "--plain" => {
+                if matches!(options.format, PluginListFormat::Json) {
+                    return Err("`--plain` cannot be combined with `--json`".to_string());
+                }
+                options.format = PluginListFormat::Plain;
+            }
+            "--json" => {
+                if matches!(options.format, PluginListFormat::Plain) {
+                    return Err("`--json` cannot be combined with `--plain`".to_string());
+                }
+                options.format = PluginListFormat::Json;
+            }
+            "--tools" => options.include_tools = Some(true),
+            "--no-tools" => options.include_tools = Some(false),
+            "-h" | "--help" => return Err(plugin_list_help_response()),
+            other => return Err(format!("unknown plugins list option `{other}`")),
+        }
+    }
+    Ok(options)
+}
+
+fn plugin_list_help_response() -> String {
+    [
+        "Usage: `hakimi plugins list [--plain|--json] [--tools|--no-tools]`",
+        "",
+        "Options:",
+        "- `--plain` - compact one-line output for terminal scripts",
+        "- `--json` - machine-readable plugin metadata",
+        "- `--tools` - include tool names in plain or JSON output",
+        "- `--no-tools` - hide tool names in markdown output",
+    ]
+    .join("\n")
+}
+
+fn collect_plugin_list_entries(loader: &hakimi_plugin::PluginLoader) -> Vec<PluginListEntry> {
+    loader
+        .plugins()
+        .iter()
+        .map(|plugin| PluginListEntry {
+            name: plugin.name().to_string(),
+            version: plugin.version().to_string(),
+            description: plugin.description().to_string(),
+            tools: plugin
+                .tools()
+                .iter()
+                .map(|tool| tool.name().to_string())
+                .collect(),
+        })
+        .collect()
+}
+
+fn render_plugin_list(
+    entries: &[PluginListEntry],
+    plugin_dir: &std::path::Path,
+    options: PluginListOptions,
+) -> String {
+    match options.format {
+        PluginListFormat::Json => {
+            let payload = entries
+                .iter()
+                .map(|entry| {
+                    let mut item = serde_json::json!({
+                        "name": entry.name.as_str(),
+                        "version": entry.version.as_str(),
+                        "description": entry.description.as_str(),
+                    });
+                    if options.show_tools() {
+                        item["tools"] = serde_json::json!(&entry.tools);
+                    }
+                    item
+                })
+                .collect::<Vec<_>>();
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|err| {
+                format!(r#"{{"error":"failed to encode plugin list: {err}"}}"#)
+            })
+        }
+        PluginListFormat::Plain => {
+            if entries.is_empty() {
+                return String::new();
+            }
+            entries
+                .iter()
+                .map(|entry| {
+                    if options.show_tools() {
+                        let tools = if entry.tools.is_empty() {
+                            "-".to_string()
+                        } else {
+                            entry.tools.join(",")
+                        };
+                        format!("{}\t{}\t{}", entry.name, entry.version, tools)
+                    } else {
+                        format!("{}\t{}", entry.name, entry.version)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        PluginListFormat::Markdown => {
+            if entries.is_empty() {
+                return format!(
+                    "📦 No plugins found in `{}`.\nUse `hakimi plugins templates` to browse templates, then `hakimi plugins init weather` to scaffold one.",
+                    plugin_dir.display()
+                );
+            }
+
+            let mut lines = vec![format!("📦 **Plugins in `{}`:**", plugin_dir.display())];
+            for entry in entries {
+                lines.push(format!(
+                    "- `{}` v{} — {}",
+                    entry.name, entry.version, entry.description
+                ));
+                if options.show_tools() && !entry.tools.is_empty() {
+                    let tool_names = entry
+                        .tools
+                        .iter()
+                        .map(|tool| format!("`{tool}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    lines.push(format!("  Tools: {tool_names}"));
+                }
+            }
+            lines.push(
+                "Use `hakimi plugins list --plain` for compact output or `hakimi plugins list --json` for automation."
+                    .to_string(),
+            );
+            lines.join("\n")
+        }
+    }
+}
+
+fn plugin_list_response_with_loader(
+    mut loader: hakimi_plugin::PluginLoader,
+    options: PluginListOptions,
+) -> String {
     let plugin_dir = loader.plugin_dir().to_path_buf();
     if let Err(err) = loader.load_all() {
         return format!(
@@ -200,32 +373,17 @@ fn plugin_list_response() -> String {
         );
     }
 
-    if loader.plugins().is_empty() {
-        return format!(
-            "📦 No plugins found in `{}`.\nUse `hakimi plugins templates` to browse templates, then `hakimi plugins init weather` to scaffold one.",
-            plugin_dir.display()
-        );
-    }
+    let entries = collect_plugin_list_entries(&loader);
+    render_plugin_list(&entries, &plugin_dir, options)
+}
 
-    let mut lines = vec![format!("📦 **Plugins in `{}`:**", plugin_dir.display())];
-    for plugin in loader.plugins() {
-        let tools = plugin.tools();
-        lines.push(format!(
-            "- `{}` v{} — {}",
-            plugin.name(),
-            plugin.version(),
-            plugin.description()
-        ));
-        if !tools.is_empty() {
-            let tool_names = tools
-                .iter()
-                .map(|tool| format!("`{}`", tool.name()))
-                .collect::<Vec<_>>()
-                .join(", ");
-            lines.push(format!("  Tools: {tool_names}"));
-        }
-    }
-    lines.join("\n")
+fn plugin_list_response(args: &[String]) -> String {
+    let options = match parse_plugin_list_options(args) {
+        Ok(options) => options,
+        Err(err) if err.starts_with("Usage:") => return err,
+        Err(err) => return format!("❌ {err}\n{}", plugin_list_help_response()),
+    };
+    plugin_list_response_with_loader(hakimi_plugin::PluginLoader::new(), options)
 }
 
 fn plugin_help_response() -> String {
@@ -233,7 +391,7 @@ fn plugin_help_response() -> String {
         "Usage: `hakimi plugins <command>`",
         "",
         "Commands:",
-        "- `list` - scan `~/.hakimi/plugins` and show loaded HTTP plugins",
+        "- `list [--plain|--json] [--tools|--no-tools]` - scan `~/.hakimi/plugins` and show loaded HTTP plugins",
         "- `templates` - show bundled plugin config templates",
         "- `init <template> [name]` - write a template config to `~/.hakimi/plugins`",
         "- `path` - show the plugin directory",
@@ -254,7 +412,7 @@ fn top_level_plugins_response(args: &[String]) -> String {
     };
 
     match action {
-        "list" | "ls" => plugin_list_response(),
+        "list" | "ls" => plugin_list_response(&args[1..]),
         "templates" | "template" => plugin_templates_response(),
         "path" => {
             let loader = hakimi_plugin::PluginLoader::new();
@@ -4349,6 +4507,69 @@ mod tests {
         assert!(response.contains("`weather`"));
         assert!(response.contains("`http-api`"));
         assert!(response.contains("hakimi plugins init"));
+    }
+
+    #[test]
+    fn plugin_list_options_parse_machine_readable_formats() {
+        let json = super::parse_plugin_list_options(&["--json".to_string()]).unwrap();
+        assert_eq!(json.format, super::PluginListFormat::Json);
+        assert!(!json.show_tools());
+
+        let plain_with_tools =
+            super::parse_plugin_list_options(&["--plain".to_string(), "--tools".to_string()])
+                .unwrap();
+        assert_eq!(plain_with_tools.format, super::PluginListFormat::Plain);
+        assert!(plain_with_tools.show_tools());
+
+        assert!(
+            super::parse_plugin_list_options(&["--json".to_string(), "--plain".to_string()])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn render_plugin_list_json_outputs_machine_readable_metadata() {
+        let entries = vec![super::PluginListEntry {
+            name: "local_weather".to_string(),
+            version: "1.2.3".to_string(),
+            description: "Weather lookup".to_string(),
+            tools: vec!["get_weather".to_string()],
+        }];
+        let rendered = super::render_plugin_list(
+            &entries,
+            std::path::Path::new("/tmp/plugins"),
+            super::PluginListOptions {
+                format: super::PluginListFormat::Json,
+                include_tools: Some(true),
+            },
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(payload[0]["name"], "local_weather");
+        assert_eq!(payload[0]["version"], "1.2.3");
+        assert_eq!(payload[0]["description"], "Weather lookup");
+        assert_eq!(payload[0]["tools"][0], "get_weather");
+    }
+
+    #[test]
+    fn render_plugin_list_plain_stays_compact_without_descriptions() {
+        let entries = vec![super::PluginListEntry {
+            name: "local_weather".to_string(),
+            version: "1.2.3".to_string(),
+            description: "Weather lookup".to_string(),
+            tools: vec!["get_weather".to_string()],
+        }];
+        let rendered = super::render_plugin_list(
+            &entries,
+            std::path::Path::new("/tmp/plugins"),
+            super::PluginListOptions {
+                format: super::PluginListFormat::Plain,
+                include_tools: None,
+            },
+        );
+
+        assert_eq!(rendered, "local_weather\t1.2.3");
+        assert!(!rendered.contains("Weather lookup"));
     }
 
     #[test]

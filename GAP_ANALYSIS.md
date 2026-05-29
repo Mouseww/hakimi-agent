@@ -92,7 +92,7 @@ Generated: 2026-05-21
 ### Plugin System
 - **Plugin trait** — name, version, description, tools, init
 - **PluginLoader** — Directory-based discovery, HTTP tool plugins
-- **Plugin CLI/templates** — `hakimi plugins list|templates|init|path` plus gateway `/plugins` inspection for HTTP plugins
+- **Plugin CLI/templates** — `hakimi plugins list|templates|init|path` plus gateway `/plugins` inspection for HTTP plugins; `plugins list` supports Hermes-style `--plain` and `--json` output
 
 ### Retry & Error
 - **Jittered backoff** — Exponential backoff with random jitter
@@ -487,7 +487,7 @@ Generated: 2026-05-21
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
-- **Status**: Plugin trait + directory loader + HTTP tool plugin, embedded HTTP plugin templates, CLI `hakimi plugins list|templates|init|path`, and gateway `/plugins list|templates|path`
+- **Status**: Plugin trait + directory loader + HTTP tool plugin, embedded HTTP plugin templates, CLI `hakimi plugins list|templates|init|path`, gateway `/plugins list|templates|path`, and Hermes-style `plugins list --plain|--json` output with optional tool metadata
 - **What's missing**: Memory provider plugins (8 backends), model provider plugins, context engine plugins, kanban plugin, observability plugin, achievements plugin, Spotify plugin, disk-cleanup plugin. Plugin discovery from pip entry points.
 - **Hermes reference**: `plugins/` (entire directory)
 
@@ -605,7 +605,7 @@ Generated: 2026-05-21
 | 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 10 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends plus OSC 52 terminal fallback and exposes the command in shared slash parsing |
 | 25 | TUI `/history` Review | `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Hermes-style `/history [N]` / `/hist [N]` reviews recent user/assistant messages locally and gives gateway users a clear surface-boundary notice |
 | 26 | Session Title Generation | `hakimi-session/src/message_ops.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ First user messages auto-title untitled persisted sessions, preserve manual titles, avoid duplicate generated titles, and truncate Unicode safely |
-| 27 | Plugin CLI/Templates | `hakimi-cli/src/entry.rs`, `hakimi-cli/src/lib.rs`, `templates/plugin-*.yaml` | 4 | ✅ `hakimi plugins list|templates|init|path` and gateway `/plugins` now expose HTTP plugin discovery and safe template scaffolding |
+| 27 | Plugin CLI/Templates | `hakimi-cli/src/entry.rs`, `hakimi-cli/src/lib.rs`, `templates/plugin-*.yaml` | 8 | ✅ `hakimi plugins list|templates|init|path` and gateway `/plugins` expose HTTP plugin discovery, safe template scaffolding, metadata-aware list output, and `--plain`/`--json` formats |
 | 28 | Output Token Budget Recovery | `hakimi-core/src/error_classifier.rs`, `hakimi-core/src/loop_impl.rs` | 7 | ✅ Anthropic-style `available_tokens` errors now retry with a safe temporary `max_tokens` cap instead of compressing context when the prompt itself still fits |
 | 29 | Browser Navigation Controls | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 6 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_scroll`, `browser_back`, and `browser_press` in CLI and TUI feature builds |
 | 30 | Browser Image Listing | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 3 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_get_images` with image URL, alt text, and natural dimensions |
@@ -618,7 +618,7 @@ Generated: 2026-05-21
 | 37 | Read-File Credential Guard | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/builtin_read_file.rs` | 7 | ✅ `read_file` blocks Hakimi credential stores, MCP token files, profile credential stores, project `.env*`, and `cache/bws_cache.json` before file content reaches the agent |
 
 ### Summary
-- **Total tests**: 1198 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1202 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
