@@ -72,6 +72,89 @@ impl HarnessPhase {
     }
 }
 
+fn blank_string_as_none(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let mut normalized = String::new();
+        let mut last_was_separator = false;
+        for ch in value.chars() {
+            let is_safe =
+                ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-' | '/' | ':' | '@');
+            if is_safe {
+                normalized.push(ch);
+                last_was_separator = false;
+            } else if !last_was_separator {
+                normalized.push('-');
+                last_was_separator = true;
+            }
+        }
+
+        let trimmed = normalized.trim_matches('-');
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.chars().take(120).collect())
+        }
+    })
+}
+
+/// Source metadata for a loaded skill.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct SkillProvenance {
+    /// Hub/source adapter that installed the skill, for example `official` or `github`.
+    #[serde(default)]
+    pub source: Option<String>,
+
+    /// Source-specific identifier, such as an official skill path or repo path.
+    #[serde(default)]
+    pub identifier: Option<String>,
+
+    /// Trust classification carried by the source: `builtin`, `trusted`, or `community`.
+    #[serde(default)]
+    pub trust_level: Option<String>,
+
+    /// Optional upstream repository for hub-installed skills.
+    #[serde(default)]
+    pub repo: Option<String>,
+
+    /// Authoring origin, usually `user`, `agent`, or a human contributor id.
+    #[serde(default)]
+    pub created_by: Option<String>,
+}
+
+impl SkillProvenance {
+    pub(crate) fn normalize(&mut self) {
+        self.source = blank_string_as_none(self.source.take());
+        self.identifier = blank_string_as_none(self.identifier.take());
+        self.trust_level = blank_string_as_none(self.trust_level.take());
+        self.repo = blank_string_as_none(self.repo.take());
+        self.created_by = blank_string_as_none(self.created_by.take());
+    }
+
+    fn merge_missing(&mut self, other: &SkillProvenance) {
+        if self.source.is_none() {
+            self.source = other.source.clone();
+        }
+        if self.identifier.is_none() {
+            self.identifier = other.identifier.clone();
+        }
+        if self.trust_level.is_none() {
+            self.trust_level = other.trust_level.clone();
+        }
+        if self.repo.is_none() {
+            self.repo = other.repo.clone();
+        }
+        if self.created_by.is_none() {
+            self.created_by = other.created_by.clone();
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SkillMetadata {
+    #[serde(default)]
+    pub hermes: SkillProvenance,
+}
+
 /// A skill is a reusable prompt template stored as a markdown file with YAML frontmatter.
 ///
 /// The file format is:
@@ -126,6 +209,14 @@ pub struct Skill {
     /// Optional per-skill rendering budget in characters.
     #[serde(default)]
     pub max_context_chars: Option<usize>,
+
+    /// Provenance and trust metadata parsed from skill frontmatter.
+    #[serde(default)]
+    pub provenance: SkillProvenance,
+
+    /// Hermes-compatible nested metadata block.
+    #[serde(default)]
+    pub metadata: SkillMetadata,
 }
 
 impl Skill {
@@ -140,6 +231,29 @@ impl Skill {
             phases: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
+            provenance: SkillProvenance::default(),
+            metadata: SkillMetadata::default(),
+        }
+    }
+
+    /// Normalize and merge top-level and Hermes-style metadata after deserialization.
+    pub fn normalize_metadata(&mut self) {
+        self.provenance.normalize();
+        self.metadata.hermes.normalize();
+        self.provenance.merge_missing(&self.metadata.hermes);
+    }
+
+    pub fn merge_provenance(&mut self, provenance: &SkillProvenance) {
+        self.provenance.merge_missing(provenance);
+        self.provenance.normalize();
+    }
+
+    pub fn provenance_label(&self) -> String {
+        let source = self.provenance.source.as_deref().unwrap_or("local");
+        let trust = self.provenance.trust_level.as_deref().unwrap_or("local");
+        match self.provenance.identifier.as_deref() {
+            Some(identifier) => format!("{source}/{trust} ({identifier})"),
+            None => format!("{source}/{trust}"),
         }
     }
 
@@ -217,7 +331,13 @@ impl Skill {
         } else {
             format!(" Tags: {}.", self.tags.join(", "))
         };
-        format!("- {}: {}{}", self.name, self.description, tags)
+        format!(
+            "- {}: {}{} Source: {}.",
+            self.name,
+            self.description,
+            tags,
+            self.provenance_label()
+        )
     }
 
     pub fn checklist(&self) -> String {
@@ -268,6 +388,8 @@ mod tests {
             phases: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
+            provenance: SkillProvenance::default(),
+            metadata: SkillMetadata::default(),
         };
         assert!(skill.matches_query("help me with rust ownership"));
         assert!(skill.matches_query("cargo build error"));
@@ -285,6 +407,8 @@ mod tests {
             phases: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
+            provenance: SkillProvenance::default(),
+            metadata: SkillMetadata::default(),
         };
         assert!(skill.matches_query("help me with docker"));
         assert!(!skill.matches_query("help me with kubernetes"));
@@ -301,6 +425,8 @@ mod tests {
             phases: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
+            provenance: SkillProvenance::default(),
+            metadata: SkillMetadata::default(),
         };
         assert!(skill.matches_query("how to commit changes"));
         assert!(skill.matches_query("push to remote"));
@@ -317,6 +443,8 @@ mod tests {
             phases: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
+            provenance: SkillProvenance::default(),
+            metadata: SkillMetadata::default(),
         };
         // Name word "ai" is only 2 chars, should not match
         assert!(!skill.matches_query("the ai is here"));
@@ -334,6 +462,8 @@ mod tests {
             phases: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: Some(10),
+            provenance: SkillProvenance::default(),
+            metadata: SkillMetadata::default(),
         };
 
         assert_eq!(skill.render_body_capped().chars().count(), 10);

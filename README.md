@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.121-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.122-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1252-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1255-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1252 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard · Gateway stream pacing
+**Production features:** 1255 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard and provenance · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.122 Skills provenance metadata**:
+  - **Hermes Hub Lock Parity**: skills loaded from a `.hub/lock.json` now inherit source, identifier, trust level, repository, and creator metadata without trusting the skill body to self-report provenance.
+  - **Frontmatter Metadata**: Hakimi parses Hermes-style `metadata.hermes` provenance fields and explicit top-level `provenance` blocks, then normalizes blank/control-character-heavy labels before display.
+  - **Operator Visibility**: skill summaries and gateway `/skills` responses show a compact `source/trust` label so operators can distinguish local, official, trusted, and community skills.
 - **v0.3.121 Skills Guard**:
   - **Hermes Skills Guard Parity**: skill markdown is scanned before parsing so obvious prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns cannot enter the runtime system prompt.
   - **Non-Leaking Diagnostics**: blocked skills report stable finding ids and line numbers in logs without echoing the suspicious skill content.
@@ -612,7 +616,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1252 |
+| Tests | ~500 | 1255 |
 
 ---
 
@@ -622,7 +626,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1252 tests)
+# Run all tests (1255 tests)
 cargo test --workspace
 
 # Debug logging

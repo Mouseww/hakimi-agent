@@ -483,8 +483,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `tools/mcp_tool.py`
 
 ### 4. Skills System
-- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader also skips symlinked skill paths.
-- **What's missing**: Skills hub (community sharing), skill provenance tracking, skill preprocessing, skill sync, richer trust/source policy for installs, conditional skill loading (platform-gated), skill usage tracking, skill slash commands injected as user messages, skill index caching
+- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader also skips symlinked skill paths and now carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json` source/trust records into summaries and gateway `/skills` output.
+- **What's missing**: Skills hub (community sharing), skill preprocessing, skill sync, richer trust/source install policy beyond provenance display, conditional skill loading (platform-gated), skill usage tracking, skill slash commands injected as user messages, skill index caching
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
@@ -550,13 +550,13 @@ Generated: 2026-05-21
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
 | Cron Features | Full | Full | 0 | 0 |
-| Skills Features | Full | Partial | 1 | 6 |
+| Skills Features | Full | 2 | 1 | 5 |
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~68** (up from ~30)
+**Fully present in Hakimi: ~69** (up from ~30)
 **Partially implemented: ~9**
-**Missing entirely: ~75+**
+**Missing entirely: ~74+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (vision, CDP attach, cloud backends)
@@ -631,9 +631,10 @@ Generated: 2026-05-21
 | 44 | Gateway Stream Pacing | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 4 | ✅ Gateway progressive edits honor `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars`, and flush pending assistant text before tool/media/delegate boundaries |
 | 45 | Credential Pool Terminal Auth Quarantine | `hakimi-core/src/credential_pool.rs` | 7 | ✅ Terminal 401 OAuth reasons mark credentials `dead`, prevent cooldown re-entry, expose dead/exhausted stats separately, and support explicit revive after re-auth |
 | 46 | Skills Guard | `hakimi-skills/src/{safety.rs,loader.rs}` | 6 | ✅ Skill markdown is scanned before parsing; dangerous injection/exfiltration/persistence/destructive/invisible-Unicode/credential patterns and symlinked skill paths are blocked before prompt injection |
+| 47 | Skills Provenance Metadata | `hakimi-skills/src/{skill.rs,loader.rs,store.rs}`, `hakimi-cli/src/entry.rs` | 3 | ✅ Skill loading preserves Hermes-style `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json` source/trust records, then surfaces normalized provenance labels in summaries and gateway `/skills` |
 
 ### Summary
-- **Total tests**: 1252 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1255 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

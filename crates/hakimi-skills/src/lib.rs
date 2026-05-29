@@ -10,5 +10,5 @@ pub use loader::SkillLoader;
 pub use safety::{
     SkillSafetyFinding, SkillSafetyReport, SkillSafetySeverity, SkillSafetyVerdict, scan_skill_text,
 };
-pub use skill::{HarnessPhase, Skill};
+pub use skill::{HarnessPhase, Skill, SkillMetadata, SkillProvenance};
 pub use store::SkillStore;

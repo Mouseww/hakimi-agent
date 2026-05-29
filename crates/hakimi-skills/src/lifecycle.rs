@@ -377,6 +377,8 @@ mod tests {
             phases,
             ttl_steps: 1,
             max_context_chars: None,
+            provenance: crate::skill::SkillProvenance::default(),
+            metadata: crate::skill::SkillMetadata::default(),
         }
     }
 

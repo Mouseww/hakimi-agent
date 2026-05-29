@@ -82,7 +82,12 @@ impl SkillStore {
     pub fn summary(&self) -> String {
         let mut summary = format!("🧠 Loaded {} skills:\n", self.skills.len());
         for skill in &self.skills {
-            summary.push_str(&format!("  • {} — {}\n", skill.name, skill.description));
+            summary.push_str(&format!(
+                "  • {} — {} [{}]\n",
+                skill.name,
+                skill.description,
+                skill.provenance_label()
+            ));
         }
         summary
     }
@@ -119,6 +124,8 @@ mod tests {
             phases,
             ttl_steps: 4,
             max_context_chars: None,
+            provenance: crate::skill::SkillProvenance::default(),
+            metadata: crate::skill::SkillMetadata::default(),
         }
     }
 

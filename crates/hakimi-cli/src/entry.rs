@@ -3473,7 +3473,12 @@ Just send a message to chat with me!"
                     Some(Command::Skills(_)) => {
                         let mut msg = "🧠 Loaded Skills:\n".to_string();
                         for skill in skill_store_ref.skills() {
-                            msg.push_str(&format!("- `{}`: {}\n", skill.name, skill.description));
+                            msg.push_str(&format!(
+                                "- `{}`: {} [{}]\n",
+                                skill.name,
+                                skill.description,
+                                skill.provenance_label()
+                            ));
                         }
                         msg
                     }
