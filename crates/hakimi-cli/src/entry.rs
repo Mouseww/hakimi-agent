@@ -2140,6 +2140,7 @@ fn configure_clawbot_gateway(config: &mut hakimi_config::HakimiConfig) -> Result
         login_notify_platform: config.gateways.clawbot.login_notify_platform.clone(),
         login_notify_bot_id: config.gateways.clawbot.login_notify_bot_id.clone(),
         login_notify_chat_id: config.gateways.clawbot.login_notify_chat_id.clone(),
+        allowed_users: config.gateways.clawbot.allowed_users.clone(),
     });
     Ok(())
 }
