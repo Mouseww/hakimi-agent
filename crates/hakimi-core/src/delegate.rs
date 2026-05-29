@@ -24,8 +24,7 @@ fn is_delegation_blocked_tool(tool_name: &str) -> bool {
 
 fn delegation_allows_tool(tool: &dyn Tool, toolsets: &[String]) -> bool {
     !is_delegation_blocked_tool(tool.name())
-        && (toolsets.is_empty()
-            || toolsets.iter().any(|toolset| toolset == tool.toolset()))
+        && (toolsets.is_empty() || toolsets.iter().any(|toolset| toolset == tool.toolset()))
 }
 
 fn now_progress_timestamp() -> String {
@@ -374,9 +373,7 @@ mod tests {
     use hakimi_tools::{Tool, ToolRegistry};
     use serde_json::{Value as JsonValue, json};
 
-    use super::{
-        DELEGATION_BLOCKED_TOOLS, delegation_allows_tool, is_delegation_blocked_tool,
-    };
+    use super::{DELEGATION_BLOCKED_TOOLS, delegation_allows_tool, is_delegation_blocked_tool};
 
     struct NamedTool {
         name: &'static str,
@@ -406,10 +403,7 @@ mod tests {
         }
     }
 
-    async fn filtered_child_registry(
-        parent: &ToolRegistry,
-        toolsets: &[String],
-    ) -> ToolRegistry {
+    async fn filtered_child_registry(parent: &ToolRegistry, toolsets: &[String]) -> ToolRegistry {
         let child = ToolRegistry::new();
         for tool_name in parent.list().await {
             if let Some(tool) = parent.get(&tool_name).await
@@ -479,11 +473,9 @@ mod tests {
             }))
             .await;
 
-        let child = filtered_child_registry(
-            &parent,
-            &["shell".to_string(), "communication".to_string()],
-        )
-        .await;
+        let child =
+            filtered_child_registry(&parent, &["shell".to_string(), "communication".to_string()])
+                .await;
 
         assert!(child.get("terminal").await.is_some());
         assert!(child.get("read_file").await.is_none());
