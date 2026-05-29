@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.122"
+version = "0.3.123"
 edition = "2024"
 
 [workspace.dependencies]
@@ -53,7 +53,7 @@ ratatui = "0.29"
 crossterm = "0.28"
 
 # Database
-rusqlite = { version = "0.35", features = ["bundled"] }
+rusqlite = { version = "0.35", features = ["bundled", "backup"] }
 
 # Config / paths
 dirs = "6"

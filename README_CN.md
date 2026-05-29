@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.122-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.123-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1255-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1262-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1255 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard 与 provenance · Gateway stream pacing
+**生产级特性：** 1262 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard 与 provenance · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.123 Rust-native backup/import**
+  - 对齐 Hermes backup/import：顶层 `hakimi backup [output]` 现在用 Rust 原生归档用户状态，不再依赖外部 `tar` 命令。
+  - `hakimi import <archive> --force` 会恢复到 `~/.hakimi`，同时阻断路径穿越和二进制降级条目。
+  - 备份会跳过 binaries、嵌套 backups、checkpoints、SQLite sidecar、PID 文件、symlink 和依赖/cache 目录；`.db` 文件会优先通过 SQLite backup API 生成快照。
 
 - **v0.3.122 Skills provenance metadata**
   - 对齐 Hermes Hub Lock：从 `.hub/lock.json` 加载的技能会继承 source、identifier、trust level、repository 和 creator 元数据，不依赖 skill 正文自报来源。
@@ -475,7 +480,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1255 |
+| 测试 | ~500 | 1262 |
 
 ---
 
@@ -485,7 +490,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1255 tests)
+# 运行全部测试 (1262 tests)
 cargo test --workspace
 
 # Debug 日志

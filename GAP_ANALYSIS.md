@@ -61,6 +61,7 @@ Generated: 2026-05-21
 - **Message CRUD** — Save, retrieve, search messages
 - **Session metadata** — ID, source, user, model, timestamps, message counts, token counts
 - **Auto-generated session titles** — First user message names untitled persisted sessions with collision-safe, Unicode-safe titles
+- **Rust-native backup/import** — `hakimi backup` and `hakimi import` archive and restore user state with traversal guards, binary/cache exclusions, symlink skipping, and SQLite snapshot support
 
 ### Memory
 - **MemoryProvider trait** — `system_prompt_block()`, `prefetch()`, `handle_tool_call()`
@@ -508,8 +509,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `tools/delegate_tool.py`
 
 ### 11. Session Store
-- **Status**: SQLite with WAL, FTS5, message CRUD
-- **What's missing**: Session resume with full history restoration, session search with LLM summarization of results, session export/dump, session lifecycle events (start/end callbacks)
+- **Status**: SQLite with WAL, FTS5, message CRUD, and Rust-native full state backup/import
+- **What's missing**: Session resume with full history restoration, session search with LLM summarization of results, richer session export/dump formats, session lifecycle events (start/end callbacks)
 - **Hermes reference**: `hermes_state.py`, `hermes_cli/dump.py`
 
 ### 12. Knowledge Graph
@@ -632,9 +633,10 @@ Generated: 2026-05-21
 | 45 | Credential Pool Terminal Auth Quarantine | `hakimi-core/src/credential_pool.rs` | 7 | ✅ Terminal 401 OAuth reasons mark credentials `dead`, prevent cooldown re-entry, expose dead/exhausted stats separately, and support explicit revive after re-auth |
 | 46 | Skills Guard | `hakimi-skills/src/{safety.rs,loader.rs}` | 6 | ✅ Skill markdown is scanned before parsing; dangerous injection/exfiltration/persistence/destructive/invisible-Unicode/credential patterns and symlinked skill paths are blocked before prompt injection |
 | 47 | Skills Provenance Metadata | `hakimi-skills/src/{skill.rs,loader.rs,store.rs}`, `hakimi-cli/src/entry.rs` | 3 | ✅ Skill loading preserves Hermes-style `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json` source/trust records, then surfaces normalized provenance labels in summaries and gateway `/skills` |
+| 48 | Rust-Native Backup/Import | `hakimi-cli/src/backup.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ `hakimi backup [output]` and `hakimi import <archive> --force` archive/restore `~/.hakimi` user state without external tar, skip binary/cache/sidecar/symlink entries, snapshot SQLite DBs, and block path traversal on import |
 
 ### Summary
-- **Total tests**: 1255 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1262 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

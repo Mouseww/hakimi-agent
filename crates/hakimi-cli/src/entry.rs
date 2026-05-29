@@ -1839,6 +1839,21 @@ pub struct PluginCommandArgs {
     pub args: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct BackupCommandArgs {
+    /// Optional output file or directory for the backup archive.
+    pub output: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct ImportCommandArgs {
+    /// Backup archive created by `hakimi backup`.
+    pub archive: std::path::PathBuf,
+    /// Overwrite existing Hakimi state files.
+    #[arg(long)]
+    pub force: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum TopLevelCommand {
     /// Run setup diagnostics and print remediation hints.
@@ -1849,6 +1864,10 @@ pub enum TopLevelCommand {
     Cron(CronCommandArgs),
     /// Manage HTTP tool plugins.
     Plugins(PluginCommandArgs),
+    /// Back up Hakimi user state.
+    Backup(BackupCommandArgs),
+    /// Import a Hakimi user-state backup.
+    Import(ImportCommandArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -3563,24 +3582,11 @@ Just send a message to chat with me!"
                     }
                     Some(Command::Auth(_)) => "🔐 **Auth Status:** Not logged into any external providers.".to_string(),
                     Some(Command::Backup(_)) => {
-                        let home =
-                            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-                        let backup_file = home.join(format!(
-                            ".hakimi-backup-{}.tar.gz",
-                            chrono::Local::now().format("%Y%m%d%H%M%S")
-                        ));
-                        match std::process::Command::new("tar")
-                            .arg("-czf")
-                            .arg(&backup_file)
-                            .arg("-C")
-                            .arg(&home)
-                            .arg(".hakimi")
-                            .output()
+                        match tokio::task::spawn_blocking(|| crate::backup::backup_response(None))
+                            .await
                         {
-                            Ok(_) => {
-                                format!("✅ Backup created successfully at {}", backup_file.display())
-                            }
-                            Err(e) => format!("❌ Failed to create backup: {}", e),
+                            Ok(response) => response,
+                            Err(err) => format!("Failed to create backup: {err}"),
                         }
                     }
                     Some(Command::Copy(_)) => "`/copy [N]` is available in the local Hakimi TUI for copying recent assistant responses. In gateway chats, use your chat client's native copy action.".to_string(),
@@ -4709,6 +4715,20 @@ pub async fn run() -> Result<()> {
     }
     if let Some(TopLevelCommand::Plugins(plugin_args)) = &args.command {
         println!("{}", top_level_plugins_response(&plugin_args.args));
+        return Ok(());
+    }
+    if let Some(TopLevelCommand::Backup(backup_args)) = &args.command {
+        println!(
+            "{}",
+            crate::backup::backup_response(backup_args.output.as_deref())
+        );
+        return Ok(());
+    }
+    if let Some(TopLevelCommand::Import(import_args)) = &args.command {
+        println!(
+            "{}",
+            crate::backup::import_response(&import_args.archive, import_args.force)
+        );
         return Ok(());
     }
 

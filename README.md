@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.122-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.123-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1255-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1262-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1255 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard and provenance · Gateway stream pacing
+**Production features:** 1262 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard and provenance · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.123 Rust-native backup/import**:
+  - **Hermes Backup Parity**: top-level `hakimi backup [output]` creates a compressed archive of user state without shelling out to `tar`.
+  - **Safe Import Boundary**: `hakimi import <archive> --force` restores into `~/.hakimi` while blocking path traversal and binary downgrade entries.
+  - **State-Safe Exclusions**: backups skip binaries, nested backups, checkpoints, SQLite sidecars, PID files, symlinks, and dependency/cache directories while snapshotting `.db` files through SQLite's backup API when possible.
 - **v0.3.122 Skills provenance metadata**:
   - **Hermes Hub Lock Parity**: skills loaded from a `.hub/lock.json` now inherit source, identifier, trust level, repository, and creator metadata without trusting the skill body to self-report provenance.
   - **Frontmatter Metadata**: Hakimi parses Hermes-style `metadata.hermes` provenance fields and explicit top-level `provenance` blocks, then normalizes blank/control-character-heavy labels before display.
@@ -616,7 +620,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1255 |
+| Tests | ~500 | 1262 |
 
 ---
 
@@ -626,7 +630,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1255 tests)
+# Run all tests (1262 tests)
 cargo test --workspace
 
 # Debug logging
