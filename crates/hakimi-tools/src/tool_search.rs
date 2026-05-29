@@ -559,7 +559,7 @@ mod tests {
             "mcp-slack",
             "Post a message into a Slack channel",
         )) as Arc<dyn Tool>;
-        let tools = vec![github, slack];
+        let tools = [github, slack];
         let catalog = build_catalog_from_tools(tools.iter(), true);
         let hits = search_catalog(&catalog, "create github issue", 2);
 
