@@ -4557,9 +4557,8 @@ mod tests {
         cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
         gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
-        is_top_level_cron_tick,
-        plan_gateway_final_delivery, queue_cron_delivery, resolve_clawbot_gateway_config,
-        resolve_hakimi_update_target, restore_hakimi_state_backup,
+        is_top_level_cron_tick, plan_gateway_final_delivery, queue_cron_delivery,
+        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
         top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
@@ -4639,16 +4638,8 @@ mod tests {
         );
         let policy = GatewayIngressPolicy::from_config(&config);
 
-        assert!(policy.allows(&gateway_test_message(
-            "telegram",
-            "telegram_bot",
-            "1001",
-        )));
-        assert!(!policy.allows(&gateway_test_message(
-            "telegram",
-            "telegram_bot",
-            "1002",
-        )));
+        assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "1001",)));
+        assert!(!policy.allows(&gateway_test_message("telegram", "telegram_bot", "1002",)));
     }
 
     #[test]
@@ -4662,11 +4653,7 @@ mod tests {
 
         assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
         assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_abc")));
-        assert!(!policy.allows(&gateway_test_message(
-            "clawbot",
-            "clawbot",
-            "wxid_other",
-        )));
+        assert!(!policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_other",)));
     }
 
     #[test]
@@ -4676,11 +4663,7 @@ mod tests {
         let policy = GatewayIngressPolicy::from_config(&config);
 
         assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
-        assert!(!policy.allows(&gateway_test_message(
-            "clawbot",
-            "clawbot",
-            "wxid_other",
-        )));
+        assert!(!policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_other",)));
     }
 
     #[test]
@@ -4690,11 +4673,7 @@ mod tests {
         let policy = GatewayIngressPolicy::from_config(&config);
 
         assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_abc")));
-        assert!(!policy.allows(&gateway_test_message(
-            "clawbot",
-            "clawbot",
-            "wxid_other",
-        )));
+        assert!(!policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_other",)));
         assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
     }
 
@@ -4706,11 +4685,7 @@ mod tests {
         let policy = GatewayIngressPolicy::from_config(&config);
 
         assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "7")));
-        assert!(policy.allows(&gateway_test_message(
-            "clawbot",
-            "clawbot",
-            "wxid_other",
-        )));
+        assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_other",)));
     }
 
     #[test]
