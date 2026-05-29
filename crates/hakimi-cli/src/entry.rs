@@ -1237,6 +1237,7 @@ fn gateway_mcp_response(
         _ => "Usage: /mcp <list|add|remove>".to_string(),
     }
 }
+
 fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
     let Some(snapshot) = snapshot else {
         return "📊 No usage data yet. Send a message first, then run `/usage`.".to_string();
@@ -4990,6 +4991,7 @@ mod tests {
         assert!(response.contains("Tokens/hr"));
     }
 
+
     #[test]
     fn gateway_mcp_response_lists_configured_servers() {
         let yaml = r#"
@@ -5027,6 +5029,7 @@ mcp_servers:
             "Usage: /mcp <list|add|remove>"
         );
     }
+
     #[test]
     fn update_target_falls_back_to_current_exe_when_path_has_no_match() {
         let current = PathBuf::from("/tmp/hakimi-current-test");
