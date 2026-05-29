@@ -3530,7 +3530,7 @@ Just send a message to chat with me!"
                             Err(e) => format!("❌ Failed to read logs: {}", e),
                         }
                     }
-                    Some(Command::Mcp(cmd)) => gateway_mcp_response(cmd.as_deref(), &config.mcp_servers)
+                    Some(Command::Mcp(cmd)) => gateway_mcp_response(cmd.as_deref(), &config.mcp_servers),
                     Some(Command::Memory(cmd)) => {
                         let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
                         let memory_dir = home.join(".hakimi").join("memory");
