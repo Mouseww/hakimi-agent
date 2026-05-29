@@ -1233,11 +1233,10 @@ fn gateway_mcp_response(
         "add" | "remove" => {
             "MCP server add/remove is config-file managed. Edit `mcp_servers` in your Hakimi config and restart the gateway."
                 .to_string()
-        },
+        }
         _ => "Usage: /mcp <list|add|remove>".to_string(),
     }
 }
-
 fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
     let Some(snapshot) = snapshot else {
         return "📊 No usage data yet. Send a message first, then run `/usage`.".to_string();
@@ -4587,7 +4586,8 @@ mod tests {
         TopLevelCommand, build_cron_delegation_goal, create_hakimi_state_backup,
         cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
+        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
+        gateway_usage_response,
         is_top_level_cron_tick, plan_gateway_final_delivery, queue_cron_delivery,
         resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
         top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
@@ -4989,6 +4989,7 @@ mod tests {
         assert!(response.contains("Requests/min"));
         assert!(response.contains("Tokens/hr"));
     }
+
     #[test]
     fn gateway_mcp_response_lists_configured_servers() {
         let yaml = r#"
@@ -5014,11 +5015,18 @@ mcp_servers:
     fn gateway_mcp_response_reports_config_file_boundary() {
         let config = hakimi_config::HakimiConfig::default();
 
-        assert!(gateway_mcp_response(None, &config.mcp_servers).contains("No configured MCP servers"));
-        assert!(gateway_mcp_response(Some("add demo"), &config.mcp_servers).contains("config-file managed"));
-        assert_eq!(gateway_mcp_response(Some("bogus"), &config.mcp_servers), "Usage: /mcp <list|add|remove>");
+        assert!(
+            gateway_mcp_response(None, &config.mcp_servers).contains("No configured MCP servers")
+        );
+        assert!(
+            gateway_mcp_response(Some("add demo"), &config.mcp_servers)
+                .contains("config-file managed")
+        );
+        assert_eq!(
+            gateway_mcp_response(Some("bogus"), &config.mcp_servers),
+            "Usage: /mcp <list|add|remove>"
+        );
     }
-
     #[test]
     fn update_target_falls_back_to_current_exe_when_path_has_no_match() {
         let current = PathBuf::from("/tmp/hakimi-current-test");
