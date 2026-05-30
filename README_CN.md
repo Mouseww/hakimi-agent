@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.135-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.136-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1331-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -80,6 +80,10 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.136 IPv4-mapped 元数据 URL 防护**
+  - 元数据安全底线补充回归覆盖：URL safety 现在显式覆盖 `::ffff:169.254.169.254`、`::ffff:100.100.100.200` 等 IPv4-mapped IPv6 元数据字面量。
+  - 发布链修复：本版本承接 v0.3.135 的 SSRF guard 修复，并在 bracketed IPv6 host 的 CI 修复后保持公开包与 tag 历史单调前进。
 
 - **v0.3.135 Web/媒体工具 URL 安全**
   - 对齐 Hermes SSRF guard：`web_extract`、`vision_analyze` 和 `video_analyze` 现在会在发起请求前拒绝 localhost、private、link-local、CGNAT、benchmark-space 与云元数据目标。

@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.135-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.136-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1331-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -80,6 +80,9 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.136 IPv4-mapped metadata URL guard**:
+  - **Metadata Floor Regression**: URL safety now has explicit coverage for IPv4-mapped IPv6 metadata literals such as `::ffff:169.254.169.254` and `::ffff:100.100.100.200`.
+  - **Release Chain Repair**: this release carries the v0.3.135 SSRF guard fixes forward after the bracketed IPv6 host CI repair, keeping the public package and tag history monotonic.
 - **v0.3.135 URL safety for web/media tools**:
   - **Hermes SSRF Guard Parity**: `web_extract`, `vision_analyze`, and `video_analyze` now reject localhost, private, link-local, CGNAT, benchmark-space, and cloud metadata targets before fetching.
   - **Redirect Boundary**: tool-managed HTTP clients stop redirects that would leave the public URL boundary instead of following them into internal networks.
