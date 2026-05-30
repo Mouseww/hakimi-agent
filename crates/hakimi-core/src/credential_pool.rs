@@ -2,6 +2,7 @@
 //! configurable rotation strategies and automatic exhaustion detection.
 
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
 // Instant helpers – Instant doesn't implement Serialize/Deserialize, so we
@@ -16,8 +17,16 @@ fn now_millis() -> u64 {
     start.elapsed().as_millis() as u64
 }
 
+fn epoch_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
 /// Error threshold before auto-exhausting a credential.
 const ERROR_THRESHOLD: u32 = 5;
+const DEAD_MANUAL_PRUNE_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 
 const TERMINAL_AUTH_REASONS: &[&str] = &[
     "token_invalidated",
@@ -51,6 +60,10 @@ pub struct Credential {
     pub base_url: Option<String>,
     /// Organization ID (some providers require this).
     pub org_id: Option<String>,
+    /// Source identity for persistence/sync semantics. `manual:*` entries are
+    /// independent; singleton OAuth entries such as `device_code` are not.
+    #[serde(default)]
+    pub source: Option<String>,
     /// Higher values are preferred during selection.
     pub priority: i32,
     /// Maximum concurrent requests allowed for this credential.
@@ -73,6 +86,9 @@ pub struct Credential {
     /// Last normalized provider error reason.
     #[serde(default)]
     pub last_error_reason: Option<String>,
+    /// Unix epoch millis when this credential last entered a non-OK status.
+    #[serde(default)]
+    pub last_status_at_epoch_ms: Option<u64>,
     /// Consecutive error count.
     #[serde(default)]
     pub error_count: u32,
@@ -95,6 +111,7 @@ impl Credential {
             api_key: api_key.into(),
             base_url: None,
             org_id: None,
+            source: None,
             priority: 0,
             max_concurrent: 10,
             active_requests: 0,
@@ -103,6 +120,7 @@ impl Credential {
             status: CredentialStatus::Ok,
             last_error_status: None,
             last_error_reason: None,
+            last_status_at_epoch_ms: None,
             error_count: 0,
             last_used_ms: None,
             total_requests: 0,
@@ -178,6 +196,7 @@ pub struct CredentialStats {
     pub status: CredentialStatus,
     pub last_error_status: Option<u16>,
     pub last_error_reason: Option<String>,
+    pub last_status_at_epoch_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -274,6 +293,7 @@ impl CredentialPool {
         cred.status = CredentialStatus::Dead;
         cred.last_error_status = status_code;
         cred.last_error_reason = Self::normalized_error_reason(error_reason);
+        cred.last_status_at_epoch_ms = Some(epoch_millis());
         cred.active_requests = 0;
     }
 
@@ -288,6 +308,43 @@ impl CredentialPool {
         cred.status = CredentialStatus::Exhausted;
         cred.last_error_status = status_code;
         cred.last_error_reason = Self::normalized_error_reason(error_reason);
+        cred.last_status_at_epoch_ms = Some(epoch_millis());
+    }
+
+    fn is_manual_source(source: Option<&str>) -> bool {
+        let Some(source) = source.map(str::trim).filter(|s| !s.is_empty()) else {
+            return true;
+        };
+        let source = source.to_ascii_lowercase();
+        source == "manual" || source.starts_with("manual:")
+    }
+
+    fn prune_stale_dead_credentials_at(&mut self, now_epoch_ms: u64, ttl_ms: u64) -> usize {
+        let before = self.credentials.len();
+        self.credentials.retain(|cred| {
+            if cred.effective_status() != CredentialStatus::Dead {
+                return true;
+            }
+            if !Self::is_manual_source(cred.source.as_deref()) {
+                return true;
+            }
+            let Some(marked_at) = cred.last_status_at_epoch_ms else {
+                return true;
+            };
+            now_epoch_ms.saturating_sub(marked_at) <= ttl_ms
+        });
+        if self.current_index >= self.credentials.len() && !self.credentials.is_empty() {
+            self.current_index %= self.credentials.len();
+        }
+        before.saturating_sub(self.credentials.len())
+    }
+
+    /// Prune stale dead manual credentials after Hermes' quiet-window TTL.
+    ///
+    /// Singleton-seeded OAuth credentials are intentionally retained while dead
+    /// so a stale singleton cannot silently re-seed the same invalid tokens.
+    pub fn prune_stale_dead_credentials(&mut self) -> usize {
+        self.prune_stale_dead_credentials_at(epoch_millis(), DEAD_MANUAL_PRUNE_TTL_MS)
     }
 
     /// Mark a credential as permanently dead after a terminal auth failure.
@@ -346,6 +403,7 @@ impl CredentialPool {
             cred.status = CredentialStatus::Ok;
             cred.last_error_status = None;
             cred.last_error_reason = None;
+            cred.last_status_at_epoch_ms = None;
             cred.error_count = 0;
         }
     }
@@ -363,6 +421,7 @@ impl CredentialPool {
             cred.status = CredentialStatus::Ok;
             cred.last_error_status = None;
             cred.last_error_reason = None;
+            cred.last_status_at_epoch_ms = None;
             cred.error_count = 0;
         }
     }
@@ -508,6 +567,7 @@ impl CredentialPool {
         for cred in &mut self.credentials {
             Self::clear_expired_exhaustion(cred, now);
         }
+        self.prune_stale_dead_credentials();
     }
 
     /// Compute pool-level statistics.
@@ -534,6 +594,7 @@ impl CredentialPool {
                 status: c.effective_status(),
                 last_error_status: c.last_error_status,
                 last_error_reason: c.last_error_reason.clone(),
+                last_status_at_epoch_ms: c.last_status_at_epoch_ms,
             })
             .collect();
 
@@ -603,6 +664,8 @@ pub struct CredentialConfig {
     pub base_url: Option<String>,
     /// Organization ID.
     pub org_id: Option<String>,
+    /// Source identity used by persistence/sync semantics.
+    pub source: Option<String>,
     /// Selection priority (higher = preferred).
     pub priority: Option<i32>,
     /// Max concurrent requests for this credential.
@@ -639,6 +702,7 @@ impl CredentialPoolConfig {
             let mut cred = Credential::new(id, &cc.api_key);
             cred.base_url = cc.base_url.clone();
             cred.org_id = cc.org_id.clone();
+            cred.source = cc.source.clone();
             cred.priority = cc.priority.unwrap_or(0);
             cred.max_concurrent = cc.max_concurrent.unwrap_or(10);
             pool.add_credential(cred);
@@ -895,12 +959,77 @@ mod tests {
         pool.add_credential(make_cred("a"));
 
         pool.mark_dead("a", Some(401), Some("invalid_token"));
+        assert!(pool.credentials[0].last_status_at_epoch_ms.is_some());
         pool.revive_credential("a");
 
         assert_eq!(pool.credentials[0].effective_status(), CredentialStatus::Ok);
         assert_eq!(pool.credentials[0].last_error_status, None);
         assert_eq!(pool.credentials[0].last_error_reason, None);
+        assert_eq!(pool.credentials[0].last_status_at_epoch_ms, None);
         assert_eq!(pool.available_count(), 1);
+    }
+
+    #[test]
+    fn test_prunes_stale_dead_manual_credentials() {
+        let mut manual = make_cred("manual");
+        manual.source = Some("manual:device_code".to_string());
+        manual.status = CredentialStatus::Dead;
+        manual.is_exhausted = true;
+        manual.last_status_at_epoch_ms = Some(1_000);
+
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(manual);
+
+        let pruned = pool.prune_stale_dead_credentials_at(
+            1_000 + DEAD_MANUAL_PRUNE_TTL_MS + 1,
+            DEAD_MANUAL_PRUNE_TTL_MS,
+        );
+
+        assert_eq!(pruned, 1);
+        assert_eq!(pool.total_count(), 0);
+    }
+
+    #[test]
+    fn test_retains_dead_singleton_credentials_for_reauth_sync() {
+        let mut singleton = make_cred("singleton");
+        singleton.source = Some("device_code".to_string());
+        singleton.status = CredentialStatus::Dead;
+        singleton.is_exhausted = true;
+        singleton.last_status_at_epoch_ms = Some(1_000);
+
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(singleton);
+
+        let pruned = pool.prune_stale_dead_credentials_at(
+            1_000 + DEAD_MANUAL_PRUNE_TTL_MS + 1,
+            DEAD_MANUAL_PRUNE_TTL_MS,
+        );
+
+        assert_eq!(pruned, 0);
+        assert_eq!(pool.total_count(), 1);
+        assert_eq!(
+            pool.credentials[0].effective_status(),
+            CredentialStatus::Dead
+        );
+    }
+
+    #[test]
+    fn test_prune_treats_missing_source_as_manual() {
+        let mut legacy = make_cred("legacy");
+        legacy.status = CredentialStatus::Dead;
+        legacy.is_exhausted = true;
+        legacy.last_status_at_epoch_ms = Some(1_000);
+
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(legacy);
+
+        assert_eq!(
+            pool.prune_stale_dead_credentials_at(
+                1_000 + DEAD_MANUAL_PRUNE_TTL_MS + 1,
+                DEAD_MANUAL_PRUNE_TTL_MS,
+            ),
+            1
+        );
     }
 
     #[test]
@@ -1093,6 +1222,7 @@ mod tests {
                     api_key: "sk-test-1".to_string(),
                     base_url: Some("https://api.example.com".to_string()),
                     org_id: Some("org1".to_string()),
+                    source: Some("manual:primary".to_string()),
                     priority: Some(10),
                     max_concurrent: Some(5),
                 },
@@ -1101,6 +1231,7 @@ mod tests {
                     api_key: "sk-test-2".to_string(),
                     base_url: None,
                     org_id: None,
+                    source: None,
                     priority: None,
                     max_concurrent: None,
                 },
@@ -1119,11 +1250,16 @@ mod tests {
             Some("https://api.example.com".to_string())
         );
         assert_eq!(pool.credentials[0].org_id, Some("org1".to_string()));
+        assert_eq!(
+            pool.credentials[0].source.as_deref(),
+            Some("manual:primary")
+        );
         assert_eq!(pool.credentials[0].priority, 10);
         assert_eq!(pool.credentials[0].max_concurrent, 5);
 
         assert_eq!(pool.credentials[1].id, "openai-cred-1");
         assert_eq!(pool.credentials[1].api_key, "sk-test-2");
+        assert_eq!(pool.credentials[1].source, None);
         assert_eq!(pool.credentials[1].priority, 0);
         assert_eq!(pool.credentials[1].max_concurrent, 10);
     }

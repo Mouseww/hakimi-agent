@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.139-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.140-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1357-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1360-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1357 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · compact read_file gutters · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · SQLite-backed Kanban task tools · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1360 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers, terminal auth quarantine, and stale manual credential cleanup · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · compact read_file gutters · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · SQLite-backed Kanban task tools · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.140 Credential pool dead-entry cleanup**:
+  - **Hermes Pool Hygiene Parity**: dead manual credentials now carry status timestamps and are pruned after a 24-hour quiet window.
+  - **OAuth Singleton Safety**: singleton-seeded OAuth credentials such as `device_code` stay quarantined while dead, preventing stale singleton tokens from silently re-entering rotation.
+  - **Operator Visibility**: pool stats now expose the last status timestamp alongside status code and reason for safer diagnostics.
 - **v0.3.139 Compact read_file gutters**:
   - **Hermes Latest File-Read Parity**: `read_file` now renders line numbers as compact `N|content` instead of fixed-width padded gutters.
   - **Token-Efficient Output**: the fixed padding path was removed from Hakimi's Rust-native file reader so every read uses the lower-token format Hermes now standardizes on.
@@ -581,12 +585,14 @@ credential_pools:
     strategy: round_robin
     credentials:
       - api_key: "sk-key-1"
+        source: "manual:primary"
         priority: 10
       - api_key: "sk-key-2"
+        source: "manual:backup"
         priority: 5
 ```
 
-20+ error types auto-classified: auth failure -> rotate key; terminal OAuth failure -> quarantine credential; rate limit -> exponential backoff; context overflow -> trigger compression; model not found -> fallback model.
+20+ error types auto-classified: auth failure -> rotate key; terminal OAuth failure -> quarantine credential; stale dead manual credentials -> prune after 24 hours; rate limit -> exponential backoff; context overflow -> trigger compression; model not found -> fallback model.
 
 ### 🔧 MCP (Model Context Protocol)
 
@@ -682,7 +688,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1357 |
+| Tests | ~500 | 1360 |
 
 ---
 
@@ -692,7 +698,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1357 tests)
+# Run all tests (1360 tests)
 cargo test --workspace
 
 # Debug logging

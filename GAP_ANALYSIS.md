@@ -115,7 +115,7 @@ Generated: 2026-05-31
 - **HakimiError enum** — Transport, Tool, Config, Session, Context, Io, Json, Other
 - **Responses stream recovery** — Incomplete Responses SSE maps to continuation, and truncated streams retry before surfacing partial output
 - **Output-token budget recovery** — Provider errors with `available_tokens` lower only the retry `max_tokens` budget, preserving the current prompt/context instead of forcing context compression
-- **Credential pool terminal auth quarantine** — 401 OAuth terminal reasons mark credentials `dead`, keep them out of rotation without TTL re-entry, and preserve last status/reason for diagnostics until explicit re-auth
+- **Credential pool dead-entry hygiene** — 401 OAuth terminal reasons mark credentials `dead`, keep them out of rotation without TTL re-entry, preserve last status/reason/timestamp for diagnostics, prune stale dead manual credentials after a 24-hour quiet window, and retain dead singleton-seeded OAuth entries until explicit re-auth sync can rewrite them
 - **Think scrubber** — Stateful Hermes-style removal of reasoning/thinking blocks from streaming and non-streaming assistant content
 
 ### Config
@@ -171,7 +171,7 @@ Generated: 2026-05-31
 #### 2. Credential Pool / Multi-Credential Failover
 - **What**: Persistent multi-credential pool for same-provider failover with round-robin and fill-first strategies
 - **Hermes location**: `agent/credential_pool.py`
-- **Details**: Hakimi supports API-key pools, round-robin/fill-first/random/least-used strategies, temporary exhaustion, and Hermes-style terminal auth quarantine for 401 OAuth reasons such as `token_revoked`, `invalid_grant`, and `refresh_token_reused`. Remaining parity is persisted OAuth singleton syncing/refresh, write-side re-auth clearing, and live integration with richer recovery loops.
+- **Details**: Hakimi supports API-key pools, round-robin/fill-first/random/least-used strategies, temporary exhaustion, Hermes-style terminal auth quarantine for 401 OAuth reasons such as `token_revoked`, `invalid_grant`, and `refresh_token_reused`, and Hermes-style stale dead manual credential pruning while preserving dead singleton-seeded OAuth entries. Remaining parity is persisted OAuth singleton syncing/refresh, write-side re-auth clearing, and live integration with richer recovery loops.
 - **Priority**: **Critical** — Production reliability for high-traffic deployments
 
 #### 3. ~~Error Classifier (Rich Taxonomy)~~ ✅ DONE
@@ -664,9 +664,10 @@ Generated: 2026-05-31
 | 60 | Tirith-Style Command Content Guard | `hakimi-tools/src/command_safety.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process}.rs` | 13 | ✅ Terminal/process shell boundaries block remote script pipe/substitution, encoded shell payload, terminal control-character, invisible/bidirectional Unicode, Unicode URL-host, sudo-stdin, and catastrophic host-command payloads before spawning |
 | 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 12 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, 9 Hermes-named `kanban_*` tools, and gateway `/kanban` CRUD/status/link operations |
 | 62 | Compact Read-File Gutter | `hakimi-tools/src/builtin_read_file.rs` | 1 | ✅ `read_file` matches Hermes latest compact `N|content` line-number format and no longer emits fixed-width padded gutters |
+| 63 | Credential Pool Dead-Entry Cleanup | `hakimi-core/src/credential_pool.rs`, `hakimi-config/src/config.rs` | 3 | ✅ Dead credentials carry status timestamps; stale dead manual entries prune after 24h while singleton-seeded OAuth entries stay quarantined for explicit re-auth sync |
 
 ### Summary
-- **Total tests**: 1357 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1360 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

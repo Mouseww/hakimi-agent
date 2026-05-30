@@ -13,6 +13,8 @@ pub struct CredentialConfig {
     pub base_url: Option<String>,
     /// Organization ID.
     pub org_id: Option<String>,
+    /// Source identity used by credential-pool persistence/sync semantics.
+    pub source: Option<String>,
     /// Selection priority (higher = preferred).
     pub priority: Option<i32>,
     /// Max concurrent requests for this credential.

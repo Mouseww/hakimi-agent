@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.139-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.140-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1357-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1360-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1357 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 紧凑 read_file 行号 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · SQLite 持久化 Kanban 任务工具 · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1360 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断、终态认证隔离与 stale manual 凭证清理 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 紧凑 read_file 行号 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · SQLite 持久化 Kanban 任务工具 · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.140 凭证池 dead-entry 清理**
+  - 对齐 Hermes pool hygiene：dead manual 凭证会记录状态时间戳，并在 24 小时静默窗口后自动清理。
+  - OAuth singleton 安全边界：`device_code` 等 singleton 来源 OAuth 凭证 dead 后继续隔离，避免陈旧 singleton token 静默重回轮换。
+  - 诊断可见性：pool stats 会暴露最后状态时间戳，并保留状态码与 reason，便于排查凭证健康状态。
 
 - **v0.3.139 紧凑 read_file 行号**
   - 对齐 Hermes 最新文件读取行为：`read_file` 现在输出紧凑 `N|content` 行号，不再使用固定宽度空格填充。
@@ -457,12 +462,14 @@ credential_pools:
     strategy: round_robin
     credentials:
       - api_key: "sk-key-1"
+        source: "manual:primary"
         priority: 10
       - api_key: "sk-key-2"
+        source: "manual:backup"
         priority: 5
 ```
 
-20+ 错误类型自动分类：认证失败 → 轮换密钥；OAuth 终态失败 → 隔离凭证；限流 → 指数退避；上下文溢出 → 触发压缩；模型不存在 → 切换备选。
+20+ 错误类型自动分类：认证失败 → 轮换密钥；OAuth 终态失败 → 隔离凭证；stale dead manual 凭证 → 24 小时后清理；限流 → 指数退避；上下文溢出 → 触发压缩；模型不存在 → 切换备选。
 
 ### 🔧 MCP (Model Context Protocol)
 
@@ -557,7 +564,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1357 |
+| 测试 | ~500 | 1360 |
 
 ---
 
@@ -567,7 +574,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1357 tests)
+# 运行全部测试 (1360 tests)
 cargo test --workspace
 
 # Debug 日志
