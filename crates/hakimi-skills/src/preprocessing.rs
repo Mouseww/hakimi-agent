@@ -171,7 +171,7 @@ fn shell_command(command: &str) -> Command {
 fn render_shell_output(stdout: Vec<u8>, stderr: Vec<u8>) -> String {
     let raw = if stdout.is_empty() { stderr } else { stdout };
     let text = String::from_utf8_lossy(&raw)
-        .trim_end_matches(|ch| ch == '\r' || ch == '\n')
+        .trim_end_matches(['\r', '\n'])
         .to_string();
     truncate_chars(&text, INLINE_SHELL_MAX_OUTPUT)
 }
