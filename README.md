@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.138-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.139-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1356-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1357-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1356 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · SQLite-backed Kanban task tools · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1357 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · compact read_file gutters · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · SQLite-backed Kanban task tools · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.139 Compact read_file gutters**:
+  - **Hermes Latest File-Read Parity**: `read_file` now renders line numbers as compact `N|content` instead of fixed-width padded gutters.
+  - **Token-Efficient Output**: the fixed padding path was removed from Hakimi's Rust-native file reader so every read uses the lower-token format Hermes now standardizes on.
+  - **Regression Coverage**: added an offline test covering offset/limit reads and proving padded gutters are not emitted.
 - **v0.3.138 Kanban board tool surface**:
   - **Hermes Named Tool Parity**: Hakimi now exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, and `kanban_link`.
   - **Durable SQLite Store**: tasks, comments, dependency links, status transitions, completion summaries, and heartbeats persist under `~/.hakimi/kanban.db` or an explicit `HAKIMI_KANBAN_DB` / `HERMES_KANBAN_DB` override.
@@ -465,7 +469,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 
 ### 🛠️ 50 Built-in Tools
 
-- **Files**: read_file, write_file, search_files, patch
+- **Files**: read_file (compact `N|content` gutters), write_file, search_files, patch
 - **Shell**: terminal, process (background process management)
 - **Web**: web_search, web_extract
 - **Home Assistant**: ha_list_entities, ha_get_state, ha_list_services, ha_call_service
@@ -678,7 +682,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1310 |
+| Tests | ~500 | 1357 |
 
 ---
 
@@ -688,7 +692,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1356 tests)
+# Run all tests (1357 tests)
 cargo test --workspace
 
 # Debug logging

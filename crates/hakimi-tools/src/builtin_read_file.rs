@@ -102,7 +102,7 @@ impl Tool for ReadFileTool {
         let mut result = String::new();
         for (i, line) in lines[start..end].iter().enumerate() {
             let line_num = start + i + 1;
-            result.push_str(&format!("{line_num:>6}|{line}\n"));
+            result.push_str(&format!("{line_num}|{line}\n"));
         }
 
         if end < total_lines {
@@ -115,5 +115,41 @@ impl Tool for ReadFileTool {
         }
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_ctx(workdir: &std::path::Path) -> ToolContext {
+        ToolContext {
+            session_id: "test-session".to_string(),
+            workdir: workdir.to_string_lossy().into_owned(),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn read_file_uses_compact_line_gutter() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sample.txt");
+        std::fs::write(&path, "alpha\nbeta\ngamma").unwrap();
+
+        let tool = ReadFileTool;
+        let output = tool
+            .execute(
+                &json!({
+                    "path": "sample.txt",
+                    "offset": 2,
+                    "limit": 2
+                }),
+                &test_ctx(temp.path()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(output, "2|beta\n3|gamma\n");
+        assert!(!output.contains("     2|"));
     }
 }

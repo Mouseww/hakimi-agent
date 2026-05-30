@@ -1,13 +1,13 @@
 # GAP ANALYSIS: Hermes Agent vs Hakimi Agent
 
-Generated: 2026-05-21
+Generated: 2026-05-31
 
 ---
 
 ## COMPLETE in Hakimi (match found)
 
 ### Core Tools
-- **read_file** — File reading with line numbers and pagination
+- **read_file** — File reading with compact `N|content` line gutters and pagination
 - **write_file** — File writing with auto-directory creation, static write denylist, and optional safe-root sandbox
 - **patch** — Find-and-replace edits in files with the same write safety boundary
 - **search_files** — Content search (regex) and file search (glob)
@@ -174,11 +174,10 @@ Generated: 2026-05-21
 - **Details**: Hakimi supports API-key pools, round-robin/fill-first/random/least-used strategies, temporary exhaustion, and Hermes-style terminal auth quarantine for 401 OAuth reasons such as `token_revoked`, `invalid_grant`, and `refresh_token_reused`. Remaining parity is persisted OAuth singleton syncing/refresh, write-side re-auth clearing, and live integration with richer recovery loops.
 - **Priority**: **Critical** — Production reliability for high-traffic deployments
 
-#### 3. Error Classifier (Rich Taxonomy)
+#### 3. ~~Error Classifier (Rich Taxonomy)~~ ✅ DONE
 - **What**: Structured API error classification with priority-ordered recovery strategies
 - **Hermes location**: `agent/error_classifier.py`
-- **Details**: 20+ FailoverReason enums (auth, billing, rate_limit, overloaded, context_overflow, model_not_found, thinking_signature, etc.). Each maps to a recovery action (retry, rotate, fallback, compress, abort). Hakimi only has basic Transport/IO retry.
-- **Priority**: **Critical** — Production-grade error handling
+- **Status**: ✅ Done — `hakimi-core/src/error_classifier.rs` defines 20+ `FailoverReason` variants, maps them to `RecoveryAction`, and is wired into loop recovery for context compression, abort, retry, credential rotation, and fallback decisions.
 
 #### 4. ~~Prompt Caching (Anthropic-specific)~~ ✅ DONE
 - **What**: Anthropic prompt caching with TTL-aware cache breakpoints
@@ -187,11 +186,10 @@ Generated: 2026-05-21
 
 ### High Priority
 
-#### 8. Clarify Tool
+#### 8. ~~Clarify Tool~~ ✅ DONE
 - **What**: Agent can present structured multiple-choice or open-ended questions to the user
 - **Hermes location**: `tools/clarify_tool.py`
-- **Details**: CLI: arrow-key navigation. Gateway: numbered list. Max 4 choices + "Other" option.
-- **Priority**: **High** — Important for interactive workflows
+- **Status**: ✅ Done — `hakimi-tools/src/builtin_clarify.rs` supports open-ended questions, max-4 option multiple choice, automatic `Other`, and structured JSON clarify requests for UI/gateway handling.
 
 #### 9. ~~Home Assistant Integration (4 tools)~~ ✅ DONE
 - **What**: Smart home control via Home Assistant REST API
@@ -591,7 +589,7 @@ Generated: 2026-05-21
 
 ---
 
-## IMPLEMENTATION STATUS (Updated: 2026-05-29)
+## IMPLEMENTATION STATUS (Updated: 2026-05-31)
 
 ### Phase 1: Critical Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
@@ -665,9 +663,10 @@ Generated: 2026-05-21
 | 59 | URL Safety for Web/Media Fetches | `hakimi-tools/src/url_safety.rs`, `hakimi-tools/src/{builtin_web_extract,builtin_vision_analyze,builtin_video_analyze}.rs` | 10 | ✅ Web/media tools reject localhost/private/link-local/CGNAT/metadata targets before fetch and stop unsafe redirects; trusted local deployments can opt into private targets while metadata endpoints stay blocked, including bracketed IPv6 literals and IPv4-mapped metadata addresses |
 | 60 | Tirith-Style Command Content Guard | `hakimi-tools/src/command_safety.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process}.rs` | 13 | ✅ Terminal/process shell boundaries block remote script pipe/substitution, encoded shell payload, terminal control-character, invisible/bidirectional Unicode, Unicode URL-host, sudo-stdin, and catastrophic host-command payloads before spawning |
 | 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 12 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, 9 Hermes-named `kanban_*` tools, and gateway `/kanban` CRUD/status/link operations |
+| 62 | Compact Read-File Gutter | `hakimi-tools/src/builtin_read_file.rs` | 1 | ✅ `read_file` matches Hermes latest compact `N|content` line-number format and no longer emits fixed-width padded gutters |
 
 ### Summary
-- **Total tests**: 1356 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1357 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
