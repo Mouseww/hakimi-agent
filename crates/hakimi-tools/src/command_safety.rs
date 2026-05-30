@@ -196,7 +196,7 @@ fn scan_non_ascii_url_host(command: &str) -> Option<CommandSafetyFinding> {
         LazyLock::new(|| Regex::new(r#"https?://[^\s"'`<>)]+"#).expect("valid URL regex"));
     for url_match in URL_RE.find_iter(command) {
         if let Some(host) = url_host_slice(url_match.as_str())
-            && host.chars().any(|ch| !ch.is_ascii())
+            && !host.is_ascii()
         {
             return Some(CommandSafetyFinding {
                 rule_id: "unicode_url_host",
