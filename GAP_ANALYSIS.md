@@ -33,6 +33,7 @@ Generated: 2026-05-21
 ### Runtime Environment
 - **Linux install/gateway path hygiene** — The real binary stays under `~/.hakimi/bin/hakimi`, `/usr/local/bin/hakimi` is maintained as a symlink/launcher, and managed systemd gateway units prefer the canonical binary path with a stable service PATH (`~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin`).
 - **Terminal PATH diagnostics** — Terminal/process commands prefix the current PATH with Hakimi's managed bins, and foreground terminal failures distinguish missing explicit paths, PATH misses, non-executable binaries, and systemd/Hakimi vs interactive shell PATH drift.
+- **Terminal/process command content guard** — `terminal` and `process start` block Hermes Tirith-style high-confidence command payloads before shell spawn: remote script pipes/substitutions, encoded shell payloads, terminal control characters, invisible/bidirectional Unicode, Unicode URL hostnames, `sudo -S` password flows, and catastrophic host commands.
 
 ### Agent Loop
 - **Core conversation loop** — Message → LLM → tool dispatch → loop until done
@@ -472,7 +473,7 @@ Generated: 2026-05-21
 #### 59. URL Safety / Tirith Security
 - **What**: URL safety checking and security policy enforcement
 - **Hermes location**: `tools/url_safety.py`, `tools/tirith_security.py`
-- **Details**: Hakimi now covers Hermes-style URL safety for web/media fetches, including preflight SSRF checks, metadata endpoint hard blocks, redirect target checks, and an explicit private-URL env override for trusted local deployments. Remaining parity is Tirith command-content scanning and verified binary management.
+- **Details**: Hakimi now covers Hermes-style URL safety for web/media fetches, including preflight SSRF checks, metadata endpoint hard blocks, redirect target checks, and an explicit private-URL env override for trusted local deployments. `terminal` and `process start` now also cover Tirith-style command-content scanning for high-confidence unsafe payloads. Remaining parity is verified Tirith binary management and richer interactive approval handling.
 - **Priority**: **Low** — Security
 
 #### 60. Image Routing / Generation Registry
@@ -656,9 +657,10 @@ Generated: 2026-05-21
 | 57 | Write Safe Root Sandbox | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/{builtin_write_file,builtin_patch}.rs` | 8 | ✅ `write_file` and `patch` honor `HAKIMI_WRITE_SAFE_ROOT` / `HERMES_WRITE_SAFE_ROOT`, block writes outside the trusted workspace, preserve static sensitive-path denies, and use cross-platform absolute path resolution |
 | 58 | Skills Hub Live Source Adapters | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 3 | ✅ Source refresh accepts `github:owner/repo/path`, GitHub tree URLs, and `well-known:domain`, discovers GitHub `SKILL.md` directories through safe Contents API calls, extracts frontmatter metadata, and caches them through the existing hub index path |
 | 59 | URL Safety for Web/Media Fetches | `hakimi-tools/src/url_safety.rs`, `hakimi-tools/src/{builtin_web_extract,builtin_vision_analyze,builtin_video_analyze}.rs` | 10 | ✅ Web/media tools reject localhost/private/link-local/CGNAT/metadata targets before fetch and stop unsafe redirects; trusted local deployments can opt into private targets while metadata endpoints stay blocked, including bracketed IPv6 literals and IPv4-mapped metadata addresses |
+| 60 | Tirith-Style Command Content Guard | `hakimi-tools/src/command_safety.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process}.rs` | 13 | ✅ Terminal/process shell boundaries block remote script pipe/substitution, encoded shell payload, terminal control-character, invisible/bidirectional Unicode, Unicode URL-host, sudo-stdin, and catastrophic host-command payloads before spawning |
 
 ### Summary
-- **Total tests**: 1331 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1344 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

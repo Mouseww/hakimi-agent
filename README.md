@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.136-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.137-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1331-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1344-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1331 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · write safe-root sandbox · SSRF-safe web/media fetches · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1344 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.137 Command content safety guard**:
+  - **Hermes Tirith Security Parity**: `terminal` and `process start` now scan command content before shell execution and block high-confidence unsafe payloads.
+  - **Remote Script Boundary**: direct `curl|sh`, `wget|bash`, process substitution, command substitution, and base64-decoded payloads piped into shells are stopped before spawn.
+  - **Terminal Injection Guard**: literal terminal control characters, invisible/bidirectional Unicode, Unicode URL hostnames, `sudo -S` password flows, and catastrophic host commands are rejected with redacted command previews.
 - **v0.3.136 IPv4-mapped metadata URL guard**:
   - **Metadata Floor Regression**: URL safety now has explicit coverage for IPv4-mapped IPv6 metadata literals such as `::ffff:169.254.169.254` and `::ffff:100.100.100.200`.
   - **Release Chain Repair**: this release carries the v0.3.135 SSRF guard fixes forward after the bracketed IPv6 host CI repair, keeping the public package and tag history monotonic.
@@ -679,7 +683,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1331 tests)
+# Run all tests (1344 tests)
 cargo test --workspace
 
 # Debug logging

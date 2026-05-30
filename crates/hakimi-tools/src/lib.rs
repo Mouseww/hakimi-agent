@@ -25,6 +25,7 @@ mod builtin_vision_analyze;
 mod builtin_web_extract;
 mod builtin_web_search;
 mod builtin_write_file;
+mod command_safety;
 mod context;
 mod fts_search;
 mod plugin;
