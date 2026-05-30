@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::lifecycle::SkillWorkingSet;
 use crate::loader::SkillLoader;
+use crate::preprocessing::SkillPreprocessOptions;
 use crate::skill::Skill;
 
 /// Store for managing and loading skills.
@@ -33,6 +34,18 @@ impl SkillStore {
     /// Create a new skill store and load skills from the given path.
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let loader = SkillLoader::load_from_dir(path)?;
+        Ok(Self {
+            skills: loader.skills().to_vec(),
+            working_set: SkillWorkingSet::new(),
+        })
+    }
+
+    /// Create a new skill store with explicit SKILL.md preprocessing options.
+    pub fn load_with_options(
+        path: &Path,
+        preprocess_options: SkillPreprocessOptions,
+    ) -> anyhow::Result<Self> {
+        let loader = SkillLoader::load_from_dir_with_options(path, preprocess_options)?;
         Ok(Self {
             skills: loader.skills().to_vec(),
             working_set: SkillWorkingSet::new(),

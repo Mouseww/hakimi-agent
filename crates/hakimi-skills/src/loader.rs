@@ -5,18 +5,31 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use tracing::{debug, warn};
 
+use crate::preprocessing::{SkillPreprocessOptions, preprocess_skill_content};
 use crate::safety::scan_skill_text;
 use crate::skill::{Skill, SkillProvenance};
 
 /// Loads skills from a directory of markdown files with YAML frontmatter.
 pub struct SkillLoader {
     skills: Vec<Skill>,
+    preprocess_options: SkillPreprocessOptions,
 }
 
 impl SkillLoader {
     /// Create a new empty SkillLoader.
     pub fn new() -> Self {
-        Self { skills: Vec::new() }
+        Self {
+            skills: Vec::new(),
+            preprocess_options: SkillPreprocessOptions::default(),
+        }
+    }
+
+    /// Create a new empty SkillLoader with explicit preprocessing options.
+    pub fn with_preprocess_options(preprocess_options: SkillPreprocessOptions) -> Self {
+        Self {
+            skills: Vec::new(),
+            preprocess_options,
+        }
     }
 
     /// Load all `.md` files from the given directory as skills.
@@ -25,7 +38,15 @@ impl SkillLoader {
     /// The frontmatter must contain at least a `name` field. The rest of the
     /// file becomes the skill's content.
     pub fn load_from_dir(dir: &Path) -> Result<Self> {
-        let mut loader = Self::new();
+        Self::load_from_dir_with_options(dir, SkillPreprocessOptions::default())
+    }
+
+    /// Load all `.md` files using explicit SKILL.md preprocessing options.
+    pub fn load_from_dir_with_options(
+        dir: &Path,
+        preprocess_options: SkillPreprocessOptions,
+    ) -> Result<Self> {
+        let mut loader = Self::with_preprocess_options(preprocess_options);
 
         if !dir.exists() {
             debug!(path = %dir.display(), "Skills directory does not exist");
@@ -123,6 +144,8 @@ impl SkillLoader {
         if let Some(provenance) = hub_lock.provenance_for(&skill.name) {
             skill.merge_provenance(provenance);
         }
+        skill.content =
+            preprocess_skill_content(&skill.content, path.parent(), &self.preprocess_options);
         Ok(Some(skill))
     }
 
@@ -578,6 +601,65 @@ Check release evidence."#,
             skill.provenance_label(),
             "official/builtin (software-development/release-check)"
         );
+    }
+
+    #[test]
+    fn test_load_from_dir_substitutes_skill_dir_template_vars() {
+        let dir = TempDir::new().unwrap();
+        let dir_path = dir.path();
+
+        write_skill(
+            dir_path,
+            "paths.md",
+            r#"---
+name: paths
+---
+Run scripts from ${HERMES_SKILL_DIR} or ${HAKIMI_SKILL_DIR}."#,
+        );
+
+        let loader = SkillLoader::load_from_dir_with_options(
+            dir_path,
+            SkillPreprocessOptions {
+                template_vars: true,
+                inline_shell: false,
+                inline_shell_timeout_secs: 5,
+                session_id: None,
+            },
+        )
+        .unwrap();
+        let content = &loader.skills()[0].content;
+
+        assert!(content.contains(&dir_path.display().to_string()));
+        assert!(!content.contains("${HERMES_SKILL_DIR}"));
+        assert!(!content.contains("${HAKIMI_SKILL_DIR}"));
+    }
+
+    #[test]
+    fn test_load_from_dir_with_options_expands_inline_shell() {
+        let dir = TempDir::new().unwrap();
+        let dir_path = dir.path();
+
+        write_skill(
+            dir_path,
+            "shell.md",
+            r#"---
+name: shell
+---
+Status: !`echo ready`"#,
+        );
+
+        let loader = SkillLoader::load_from_dir_with_options(
+            dir_path,
+            SkillPreprocessOptions {
+                template_vars: true,
+                inline_shell: true,
+                inline_shell_timeout_secs: 5,
+                session_id: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(loader.skills()[0].content, "Status: ready");
     }
 
     #[test]

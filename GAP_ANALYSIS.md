@@ -73,6 +73,7 @@ Generated: 2026-05-21
 - **Skill struct** — Name, content, frontmatter metadata
 - **Skills Hub manifest install policy** — `hakimi skills browse|search|inspect|install|list|path` and gateway `/skills browse|search|inspect|install` use a local `.hub/index.json` manifest, require explicit community trust, scan SKILL.md before install, and record lock/audit provenance
 - **Skills platform-gated loading** — `SKILL.md` frontmatter `platforms` scalar/list metadata is parsed and incompatible OS-specific skills are skipped before runtime prompt injection
+- **Skills template preprocessing** — Runtime skill bodies resolve `${HERMES_SKILL_DIR}` / `${HAKIMI_SKILL_DIR}` and session-id aliases before prompt injection; trusted callers can opt into bounded inline-shell expansion
 
 ### MCP
 - **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments, credential-stripped remote error surfaces, and gateway `/mcp list` inventory over configured servers
@@ -486,8 +487,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `tools/mcp_tool.py`
 
 ### 4. Skills System
-- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader skips symlinked skill paths, carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json`, supports Hermes-style `platforms` frontmatter gates, and now has a local Skills Hub manifest workflow for browse/search/inspect/install with explicit community trust, safe bundle-path checks, lock updates, and audit logging.
-- **What's missing**: Remote/multi-source community hub adapters, skill preprocessing, skill sync/update, skill usage tracking, skill slash commands injected as user messages, skill index caching
+- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader skips symlinked skill paths, carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json`, supports Hermes-style `platforms` frontmatter gates, preprocesses skill templates with skill-dir/session variables plus opt-in inline-shell expansion, and now has a local Skills Hub manifest workflow for browse/search/inspect/install with explicit community trust, safe bundle-path checks, lock updates, and audit logging.
+- **What's missing**: Remote/multi-source community hub adapters, skill sync/update, skill usage tracking, skill slash commands injected as user messages, skill index caching
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
@@ -553,11 +554,11 @@ Generated: 2026-05-21
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
 | Cron Features | Full | Full | 0 | 0 |
-| Skills Features | Full | 3 | 1 | 4 |
+| Skills Features | Full | 4 | 1 | 3 |
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~69** (up from ~30)
+**Fully present in Hakimi: ~70** (up from ~30)
 **Partially implemented: ~9**
 **Missing entirely: ~74+**
 
@@ -638,9 +639,10 @@ Generated: 2026-05-21
 | 48 | Rust-Native Backup/Import | `hakimi-cli/src/backup.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ `hakimi backup [output]` and `hakimi import <archive> --force` archive/restore `~/.hakimi` user state without external tar, skip binary/cache/sidecar/symlink entries, snapshot SQLite DBs, and block path traversal on import |
 | 49 | Skills Hub Manifest Install Policy | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ Local `.hub/index.json` skills can be browsed/searched/inspected/installed from CLI and gateway; community installs require explicit trust, SKILL.md is scanned, bundle paths are guarded, and lock/audit provenance is recorded |
 | 50 | Skills Platform Gates | `hakimi-skills/src/{skill.rs,loader.rs}` | 4 | ✅ Skill frontmatter `platforms` accepts scalar/list values, recognizes Hermes OS aliases, and skips incompatible skills before prompt injection |
+| 51 | Skills Template Preprocessing | `hakimi-skills/src/{preprocessing.rs,loader.rs,store.rs}` | 7 | ✅ Runtime skill bodies substitute Hermes/Hakimi skill-dir and session-id variables before prompt injection; trusted callers can opt into bounded inline-shell expansion with skill-directory CWD |
 
 ### Summary
-- **Total tests**: 1273 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1280 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

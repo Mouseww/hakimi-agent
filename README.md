@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.125-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.126-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1273-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1280-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1273 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, and platform gates · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1280 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, platform gates, and template preprocessing · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.126 Skills template preprocessing**:
+  - **Hermes SKILL.md Preprocessing**: runtime skill bodies now resolve `${HERMES_SKILL_DIR}` / `${HAKIMI_SKILL_DIR}` and session-id aliases before prompt injection.
+  - **Opt-In Inline Shell**: trusted skill packs can enable `` !`cmd` `` expansion through loader options or `HAKIMI_SKILLS_INLINE_SHELL`, with skill-directory CWD, timeout handling, and capped output.
+  - **Safe Loader Boundary**: preprocessing runs only after safety scanning, platform gating, and provenance merge, keeping untrusted SKILL.md text out of the runtime prompt.
 - **v0.3.125 Skills platform-gated loading**:
   - **Hermes Skill Metadata Parity**: `SKILL.md` frontmatter can now declare `platforms` as a scalar or list, matching Hermes' platform-gated skill loading semantics.
   - **Rust-Native OS Matching**: Hakimi recognizes `macos`/`darwin`, `windows`/`win32`, `linux`, `termux`, and `android` aliases before a skill enters the runtime prompt.
@@ -628,7 +632,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1273 |
+| Tests | ~500 | 1280 |
 
 ---
 
@@ -638,7 +642,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1273 tests)
+# Run all tests (1280 tests)
 cargo test --workspace
 
 # Debug logging
