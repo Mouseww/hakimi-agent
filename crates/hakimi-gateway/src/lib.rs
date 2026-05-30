@@ -30,6 +30,81 @@ pub use telegram::TelegramAdapterConfig;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+const SILENCE_NARRATION_MAX_CHARS: usize = 64;
+
+/// Return true when text is only an outbound silence narration token.
+///
+/// This is intentionally narrow: substantive prose that contains "silent" is
+/// delivered, while bare loop-prone tokens such as `*(silent)*`, `no reply`,
+/// `.`, `...`, `…`, and `🔇` are dropped before reaching chat adapters.
+pub fn is_silence_narration(content: &str) -> bool {
+    let stripped = content.trim();
+    if stripped.is_empty() || stripped.chars().count() > SILENCE_NARRATION_MAX_CHARS {
+        return false;
+    }
+
+    let marker_trimmed = trim_silence_wrappers(stripped);
+    if marker_trimmed.is_empty() {
+        return false;
+    }
+    if marker_trimmed
+        .chars()
+        .all(|c| matches!(c, '.' | '…' | '🔇'))
+    {
+        return true;
+    }
+
+    let unwrapped = strip_parenthesized_token(marker_trimmed);
+    let normalized = unwrapped
+        .trim()
+        .trim_end_matches('.')
+        .trim()
+        .to_ascii_lowercase();
+
+    matches!(
+        normalized.as_str(),
+        "silent" | "silence" | "no response" | "no reply"
+    )
+}
+
+fn trim_silence_wrappers(mut text: &str) -> &str {
+    loop {
+        let trimmed = text
+            .trim()
+            .trim_matches(|c| matches!(c, '*' | '_' | '~' | '`'))
+            .trim();
+        if trimmed.len() == text.len() {
+            return trimmed;
+        }
+        text = trimmed;
+    }
+}
+
+fn strip_parenthesized_token(text: &str) -> &str {
+    let text = text.trim();
+    if let Some(inner) = text
+        .strip_prefix('(')
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        inner.trim()
+    } else {
+        text
+    }
+}
+
+fn silence_filter_env_override() -> Option<bool> {
+    for key in [
+        "HAKIMI_FILTER_SILENCE_NARRATION",
+        "HERMES_FILTER_SILENCE_NARRATION",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            let normalized = value.trim().to_ascii_lowercase();
+            return Some(matches!(normalized.as_str(), "1" | "true" | "yes" | "on"));
+        }
+    }
+    None
+}
+
 // ---------------------------------------------------------------------------
 // Gateway message types
 // ---------------------------------------------------------------------------
@@ -142,6 +217,7 @@ pub trait PlatformAdapter: Send + Sync {
 /// Central gateway that owns a set of platform adapters and routes messages.
 pub struct Gateway {
     adapters: Vec<Box<dyn PlatformAdapter>>,
+    filter_silence_narration: bool,
 }
 
 /// A received inbound message paired with its originating platform adapter name.
@@ -157,7 +233,13 @@ impl Gateway {
     pub fn new() -> Self {
         Self {
             adapters: Vec::new(),
+            filter_silence_narration: silence_filter_env_override().unwrap_or(true),
         }
+    }
+
+    /// Enable or disable outbound silence-narration filtering.
+    pub fn set_filter_silence_narration(&mut self, enabled: bool) {
+        self.filter_silence_narration = silence_filter_env_override().unwrap_or(enabled);
     }
 
     /// Register a platform adapter.
@@ -198,6 +280,15 @@ impl Gateway {
                 )
             })?;
 
+        if self.should_filter_outbound_text(msg) {
+            tracing::warn!(
+                platform = %msg.platform,
+                chat_id = %msg.chat_id,
+                "dropped silence-narration outbound gateway message"
+            );
+            return Ok(());
+        }
+
         if let Some(media) = msg.media.as_deref()
             && !media.trim().is_empty()
         {
@@ -220,6 +311,15 @@ impl Gateway {
                     msg.bot_id
                 )
             })?;
+
+        if self.should_filter_outbound_text(msg) {
+            tracing::warn!(
+                platform = %msg.platform,
+                chat_id = %msg.chat_id,
+                "dropped silence-narration outbound gateway message"
+            );
+            return Ok(None);
+        }
 
         adapter.send_message_get_id(&msg.chat_id, &msg.text).await
     }
@@ -267,7 +367,30 @@ impl Gateway {
                 )
             })?;
 
+        if self.filter_silence_narration && is_silence_narration(text) {
+            tracing::warn!(
+                platform = %platform,
+                chat_id = %chat_id,
+                "dropped silence-narration gateway message edit"
+            );
+            return Ok(());
+        }
+
         adapter.edit_message(chat_id, message_id, text).await
+    }
+
+    fn should_filter_outbound_text(&self, msg: &GatewayMessage) -> bool {
+        if !self.filter_silence_narration {
+            return false;
+        }
+        if msg
+            .media
+            .as_deref()
+            .is_some_and(|media| !media.trim().is_empty())
+        {
+            return false;
+        }
+        is_silence_narration(&msg.text)
     }
 
     /// Delete an existing message by ID when supported by the adapter.
@@ -342,5 +465,188 @@ impl Gateway {
 impl Default for Gateway {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn silence_narration_detects_wrapped_tokens() {
+        for content in [
+            "*(silent)*",
+            "*Silence.*",
+            "🔇",
+            ".",
+            "…",
+            "...",
+            "(silent)",
+            "_silent_",
+            "`silent`",
+            "~silent~",
+            "no response",
+            "No Reply.",
+        ] {
+            assert!(is_silence_narration(content), "{content}");
+        }
+    }
+
+    #[test]
+    fn silence_narration_rejects_substantive_messages() {
+        for content in [
+            "Silence is golden - here is the plan...",
+            "Silent install completed",
+            "The deployment ran silently in the background",
+            "ok",
+            "Here is the result:\n\n- item one\n- item two",
+            "silent xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "",
+            "   ",
+        ] {
+            assert!(!is_silence_narration(content), "{content}");
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingAdapter {
+        calls: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl PlatformAdapter for RecordingAdapter {
+        fn name(&self) -> &str {
+            "test"
+        }
+
+        fn bot_id(&self) -> &str {
+            "bot"
+        }
+
+        async fn connect(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn send_message(&self, _chat_id: &str, text: &str) -> anyhow::Result<()> {
+            self.calls.lock().unwrap().push(text.to_string());
+            Ok(())
+        }
+
+        async fn send_media(
+            &self,
+            _chat_id: &str,
+            media: &str,
+            caption: &str,
+        ) -> anyhow::Result<()> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("{media}|{caption}"));
+            Ok(())
+        }
+
+        async fn send_message_get_id(
+            &self,
+            _chat_id: &str,
+            text: &str,
+        ) -> anyhow::Result<Option<i64>> {
+            self.calls.lock().unwrap().push(text.to_string());
+            Ok(Some(42))
+        }
+
+        async fn disconnect(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn gateway_message(text: &str) -> GatewayMessage {
+        GatewayMessage {
+            platform: "test".to_string(),
+            bot_id: "bot".to_string(),
+            chat_id: "chat".to_string(),
+            user_id: "user".to_string(),
+            text: text.to_string(),
+            media: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn route_message_drops_silence_narration() {
+        let adapter = RecordingAdapter::default();
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+
+        gateway
+            .route_message(&gateway_message("*(silent)*"))
+            .await
+            .unwrap();
+
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn route_message_delivers_real_message() {
+        let adapter = RecordingAdapter::default();
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+
+        gateway
+            .route_message(&gateway_message("Silence is golden - deploy is green."))
+            .await
+            .unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], "Silence is golden - deploy is green.");
+    }
+
+    #[tokio::test]
+    async fn route_message_get_id_drops_and_returns_none() {
+        let adapter = RecordingAdapter::default();
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+
+        let message_id = gateway
+            .route_message_get_id(&gateway_message("..."))
+            .await
+            .unwrap();
+
+        assert!(message_id.is_none());
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn route_message_delivers_when_filter_disabled() {
+        let adapter = RecordingAdapter::default();
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.set_filter_silence_narration(false);
+        gateway.add_adapter(Box::new(adapter));
+
+        gateway.route_message(&gateway_message("🔇")).await.unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], "🔇");
+    }
+
+    #[tokio::test]
+    async fn route_message_keeps_media_with_silent_caption() {
+        let adapter = RecordingAdapter::default();
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+        let mut msg = gateway_message("silent");
+        msg.media = Some("/tmp/image.png".to_string());
+
+        gateway.route_message(&msg).await.unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], "/tmp/image.png|silent");
     }
 }

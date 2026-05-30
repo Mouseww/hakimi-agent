@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.131-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.132-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1302-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1310-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1302 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1310 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.132 Gateway silence-narration filter**:
+  - **Hermes Delivery Safety Parity**: outbound gateway routing now drops bare loop-prone silence narration such as `*(silent)*`, `.`, `...`, `…`, `🔇`, `silent`, `no response`, and `no reply` before chat adapters send it.
+  - **Configurable Boundary**: `gateways.filter_silence_narration` defaults to `true`; `HAKIMI_FILTER_SILENCE_NARRATION` or `HERMES_FILTER_SILENCE_NARRATION` can override it for migrations and emergency opt-out.
+  - **Media-Safe Filtering**: messages with media attachments are still delivered even when the caption is a silence token, so generated image/audio delivery is not suppressed.
 - **v0.3.131 Skills Hub source indexes**:
   - **Hermes Multi-Source Hub Parity**: `hakimi skills sources list|add|refresh|remove` registers local or HTTPS Skills Hub indexes and refreshes them into `.hub/index-cache`.
   - **Unified Discovery**: `browse`, `search`, `inspect`, and `install` now merge the primary `.hub/index.json` with refreshed source caches while deduplicating by identifier and preferring higher-trust entries.
@@ -488,6 +492,8 @@ hakimi --gateway status   # show managed service status and exit
 
 By default the lifecycle shortcuts target `hakimi.service`. If your unit uses another name, set `HAKIMI_GATEWAY_SERVICE=<service-name>` before running `hakimi --gateway install`, `hakimi --gateway restart`, or `hakimi --gateway status`.
 
+Outbound gateway delivery drops bare silence narration tokens by default to avoid bot-to-bot echo loops. Set `gateways.filter_silence_narration: false`, `HAKIMI_FILTER_SILENCE_NARRATION=0`, or `HERMES_FILTER_SILENCE_NARRATION=0` only when you explicitly want those placeholder messages to be delivered.
+
 Inside gateway chats, `/cron` now supports `list`, `status`, `add --repeat N`, `edit`, `pause <job-id>`, `resume <job-id>`, `run <job-id>`, and `remove <job-id>` against the shared SQLite-backed `cron.db`; jobs created from a gateway chat keep that `platform:chat_id` as their delivery target, while host operators can run `hakimi cron tick` to execute due jobs once with the same tick lock used by the gateway scheduler. Repeat-limited jobs track completed runs and are removed automatically when the limit is reached.
 
 **Legacy generic ClawBot HTTP bridge:**
@@ -648,7 +654,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1302 |
+| Tests | ~500 | 1310 |
 
 ---
 
@@ -658,7 +664,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1302 tests)
+# Run all tests (1310 tests)
 cargo test --workspace
 
 # Debug logging

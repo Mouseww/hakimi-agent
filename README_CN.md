@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.131-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.132-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1302-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1310-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1302 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1310 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.132 Gateway silence-narration filter**
+  - 对齐 Hermes delivery safety：gateway 外发路由会在聊天适配器发送前丢弃纯沉默叙述，例如 `*(silent)*`、`.`、`...`、`…`、`🔇`、`silent`、`no response` 和 `no reply`。
+  - `gateways.filter_silence_narration` 默认开启；迁移或紧急回退时可用 `HAKIMI_FILTER_SILENCE_NARRATION` 或 `HERMES_FILTER_SILENCE_NARRATION` 覆盖。
+  - 带媒体附件的消息不会因为 caption 是沉默 token 被丢弃，避免影响图片、音频等生成结果投递。
 
 - **v0.3.131 Skills Hub source indexes**
   - 对齐 Hermes 多来源 Skills Hub：`hakimi skills sources list|add|refresh|remove` 可登记本地或 HTTPS Skills Hub index，并刷新到 `.hub/index-cache`。
@@ -398,6 +403,8 @@ Telegram · Discord · Slack · DingTalk · WeCom · Signal · Matrix · Webhook
 
 Telegram 现在会直接上传本地生成图片，并把 TTS 生成的本地音频作为原生音频消息发送，因此 `image_generate` / `text_to_speech` 的结果可以直接投递给 gateway 用户，而不是只返回文件路径。针对语音输入链路，Hakimi 现在还提供 `transcribe_audio`，可转写本地音频文件或远程音频 URL；CLI 的按键录音模式仍是后续事项。
 
+gateway 外发默认会过滤纯沉默叙述 token，避免机器人互相回显 `*(silent)*`、`.`、`no reply` 一类占位文本造成循环。确实需要投递这些占位文本时，可设置 `gateways.filter_silence_narration: false`、`HAKIMI_FILTER_SILENCE_NARRATION=0` 或 `HERMES_FILTER_SILENCE_NARRATION=0`。
+
 在 gateway 会话里，`/cron` 现在已经支持 `list`、`status`、`add --repeat N`、`edit`、`pause <job-id>`、`resume <job-id>`、`run <job-id>`、`remove <job-id>`，会直接操作共享的 SQLite `cron.db`；gateway 聊天中创建的任务会保留当前 `platform:chat_id` 作为投递目标，宿主机运维侧也可以运行 `hakimi cron tick`，用 gateway scheduler 相同的 tick lock 执行一次到期任务。设置 repeat 上限的任务会追踪已完成次数，并在达到上限后自动移除。
 
 ### 🧠 智能上下文压缩
@@ -515,7 +522,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1302 |
+| 测试 | ~500 | 1310 |
 
 ---
 
@@ -525,7 +532,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1302 tests)
+# 运行全部测试 (1310 tests)
 cargo test --workspace
 
 # Debug 日志

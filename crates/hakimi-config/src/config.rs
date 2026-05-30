@@ -523,7 +523,7 @@ pub struct HakimiConfig {
 }
 
 /// Configuration for all gateway platforms.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewaysConfig {
     /// Allow all inbound gateway users regardless of allowlists.
     #[serde(default)]
@@ -532,6 +532,10 @@ pub struct GatewaysConfig {
     /// or qualified as `platform:id` / `platform:bot_id:id`.
     #[serde(default)]
     pub allowed_users: Vec<String>,
+    /// Drop outbound messages that are only silence narration, such as
+    /// `*(silent)*`, `.`, or `no reply`, before they reach chat adapters.
+    #[serde(default = "default_gateway_filter_silence_narration")]
+    pub filter_silence_narration: bool,
     /// Streaming delivery behavior for gateway chat platforms.
     #[serde(default)]
     pub streaming: GatewayStreamingConfig,
@@ -539,6 +543,23 @@ pub struct GatewaysConfig {
     pub telegram: TelegramGatewayConfig,
     #[serde(default)]
     pub clawbot: ClawBotGatewayConfig,
+}
+
+fn default_gateway_filter_silence_narration() -> bool {
+    true
+}
+
+impl Default for GatewaysConfig {
+    fn default() -> Self {
+        Self {
+            allow_all: false,
+            allowed_users: Vec::new(),
+            filter_silence_narration: default_gateway_filter_silence_narration(),
+            streaming: GatewayStreamingConfig::default(),
+            telegram: TelegramGatewayConfig::default(),
+            clawbot: ClawBotGatewayConfig::default(),
+        }
+    }
 }
 
 /// Runtime streaming behavior for gateway chat platforms.
@@ -820,6 +841,7 @@ mod tests {
         assert_eq!(config.gateways.streaming.edit_interval_ms, 800);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 24);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
+        assert!(config.gateways.filter_silence_narration);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
     }
@@ -922,6 +944,16 @@ gateways:
     }
 
     #[test]
+    fn test_gateway_silence_filter_flag_can_disable_filter() {
+        let yaml = r#"
+gateways:
+  filter_silence_narration: false
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!config.gateways.filter_silence_narration);
+    }
+
+    #[test]
     fn test_serialize_roundtrip() {
         let config = HakimiConfig::default();
         let yaml = serde_yaml::to_string(&config).unwrap();
@@ -978,6 +1010,7 @@ tools:
     max_search_limit: 30
 
 gateways:
+  filter_silence_narration: false
   streaming:
     edit_interval_ms: 1200
     buffer_threshold_chars: 40
@@ -1007,6 +1040,7 @@ gateways:
         assert_eq!(config.tools.tool_search.threshold_pct, 15.0);
         assert_eq!(config.tools.tool_search.search_default_limit, 7);
         assert_eq!(config.tools.tool_search.max_search_limit, 30);
+        assert!(!config.gateways.filter_silence_narration);
         assert_eq!(config.gateways.streaming.edit_interval_ms, 1200);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 40);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 45);

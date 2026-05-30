@@ -96,6 +96,7 @@ Generated: 2026-05-21
 - **Gateway ingress access policy** — Config-driven allowlist merges global gateway users, Telegram user IDs, role allowlists, and ClawBot sender IDs before command/agent handling
 - **Gateway fresh-final streaming** — Configurable `gateways.streaming.fresh_final_after_seconds` sends long streamed completions as a fresh final message and lets Telegram clean up stale preview bubbles
 - **Gateway stream pacing** — Configurable `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars` control progressive edit cadence and force pending-text flushes before tool/media/delegate boundaries
+- **Gateway silence-narration filter** — Configurable outbound guard drops bare loop-prone silence narration such as `*(silent)*`, `.`, `...`, `…`, `🔇`, `silent`, `no response`, and `no reply` before chat adapters send it
 - **Telegram adapter** — Telegram Bot API integration
 - **Discord adapter** — Discord bot with embeds
 - **Slack adapter** — Slack bot with blocks
@@ -116,7 +117,7 @@ Generated: 2026-05-21
 - **Think scrubber** — Stateful Hermes-style removal of reasoning/thinking blocks from streaming and non-streaming assistant content
 
 ### Config
-- **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers, gateway ingress policy
+- **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers, gateway ingress policy, gateway silence-narration filtering
 - **Profile support** — `--profile` CLI flag
 - **Defaults** — Sensible defaults via `serde(default)`
 
@@ -365,7 +366,7 @@ Generated: 2026-05-21
 #### 39. Gateway Streaming Consumer
 - **What**: Bridges sync agent callbacks to async platform delivery with progressive message editing
 - **Hermes location**: `gateway/stream_consumer.py`
-- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, and Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup. Remaining parity is configurable edit interval/buffer threshold, native draft transport, overflow chunking, flood-control backoff, and per-platform display policy.
+- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup, configurable edit interval/buffer threshold, and a default-on silence-narration filter for loop-prone bare tokens. Remaining parity is native draft transport, overflow chunking, flood-control backoff, and per-platform display policy.
 - **Priority**: **Medium** — Real-time streaming UX on messaging platforms
 
 #### 40. Usage Pricing / Account Usage Tracking
@@ -495,7 +496,7 @@ Generated: 2026-05-21
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
-- **Status**: 8 platforms plus config-driven ingress access policy, fresh-final streaming, and configurable stream pacing. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
+- **Status**: 8 platforms plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, and outbound silence-narration filtering. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
 - **What's missing**: 12+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
@@ -647,9 +648,10 @@ Generated: 2026-05-21
 | 53 | Skills Bundled Sync/Update | `hakimi-skills/src/sync.rs`, `hakimi-cli/src/skills.rs` | 7 | ✅ `hakimi skills sync --source <dir>` seeds bundled SKILL.md trees, writes `.bundled_manifest` origin hashes, updates only unmodified synced copies, preserves user edits/deletions, and exposes CLI/gateway text or JSON summaries |
 | 54 | Skills Slash-Command Invocation | `hakimi-skills/src/slash.rs`, `hakimi-core/src/agent.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Loaded skills can be invoked as `/skill-name optional instruction`; CLI query and gateway chats inject the selected full skill content as a user message while preserving built-in command priority |
 | 55 | Skills Hub Source Indexes | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 6 | ✅ `hakimi skills sources list/add/refresh/remove` manages local/HTTPS index sources, caches refreshed catalogs under `.hub/index-cache`, merges cached entries into discovery, deduplicates by identifier, and blocks unsafe remote source hosts |
+| 56 | Gateway Silence-Narration Filter | `hakimi-gateway/src/lib.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Outbound gateway routing drops bare silence narration before adapter send/edit/get-id paths, defaults on through `gateways.filter_silence_narration`, supports Hakimi/Hermes env overrides, and preserves media deliveries |
 
 ### Summary
-- **Total tests**: 1302 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1310 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

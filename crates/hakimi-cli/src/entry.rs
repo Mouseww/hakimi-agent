@@ -2017,6 +2017,8 @@ embedding:
   normalize: true
 
 gateways:
+  # Drop bare silence narration such as "*(silent)*", ".", or "no reply".
+  filter_silence_narration: true
   streaming:
     # Minimum interval between progressive gateway message edits.
     edit_interval_ms: 800
@@ -3022,6 +3024,7 @@ async fn start_gateway(
 
     // Initialize gateway.
     let mut gateway = hakimi_gateway::Gateway::new();
+    gateway.set_filter_silence_narration(config.gateways.filter_silence_narration);
 
     // Configure Telegram gateway.
     let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
