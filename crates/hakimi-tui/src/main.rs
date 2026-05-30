@@ -191,6 +191,7 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         Arc::new(hakimi_tools::SkillManageTool),
         Arc::new(hakimi_tools::ImageGenerateTool),
     ];
+    builtin_tools.extend(hakimi_tools::kanban_tools());
     // Browser tools (shared browser instance)
     #[cfg(feature = "browser")]
     {

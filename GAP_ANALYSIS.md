@@ -29,6 +29,7 @@ Generated: 2026-05-21
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 - **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
 - **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, `browser_get_images`, `browser_console`, `browser_dialog`, and `browser_screenshot`
+- **Kanban tools (basic)** — `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, and `kanban_link` persist tasks, comments, status transitions, liveness, and dependency links in SQLite
 
 ### Runtime Environment
 - **Linux install/gateway path hygiene** — The real binary stays under `~/.hakimi/bin/hakimi`, `/usr/local/bin/hakimi` is maintained as a symlink/launcher, and managed systemd gateway units prefer the canonical binary path with a stable service PATH (`~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin`).
@@ -209,10 +210,10 @@ Generated: 2026-05-21
 - **Details**: Reference models generate parallel responses, aggregator synthesizes. Uses claude-opus-4.6, gemini-3-pro, gpt-5.4-pro, deepseek-v3.2.
 - **Priority**: **High** — Advanced reasoning capability
 
-#### 12. Kanban Multi-Agent Coordination (9 tools)
+#### 12. Kanban Multi-Agent Coordination
 - **What**: Durable SQLite-backed board for multi-agent task collaboration
 - **Hermes location**: `tools/kanban_tools.py`, `hermes_cli/kanban.py`, `hermes_cli/kanban_db.py`
-- **Details**: kanban_show, kanban_list, kanban_complete, kanban_block, kanban_heartbeat, kanban_comment, kanban_create, kanban_link, kanban_unblock. Dispatcher spawns workers.
+- **Details**: Hakimi now covers the 9 Hermes-named structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat operations on a local SQLite board. Remaining parity is dispatcher-spawned workers, board switching, assignee/profile routing, worker logs, notification subscriptions, swarm creation, and dashboard-level management.
 - **Priority**: **High** — Multi-agent orchestration
 
 #### 13. Gateway Platform Adapters (17+ missing)
@@ -490,17 +491,22 @@ Generated: 2026-05-21
 - **What's missing**: home-channel/all/plugin delivery expansion
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
-### 3. MCP Client
+### 3. Kanban Multi-Agent Coordination
+- **Status**: SQLite-backed tasks/comments/dependency links exist, and the agent tool surface exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, and `kanban_link`; gateway `/kanban` now performs real board operations instead of returning a placeholder.
+- **What's missing**: dispatcher-spawned workers, board switching, profile/assignee routing, worker logs, notification subscriptions, swarm creation, and dashboard-level management.
+- **Hermes reference**: `tools/kanban_tools.py`, `hermes_cli/kanban.py`, `hermes_cli/kanban_db.py`
+
+### 4. MCP Client
 - **Status**: stdio, StreamableHTTP, and SSE transports work; SSE has reconnect backoff; Node-based stdio servers recover from narrowed PATH; remote transport/adapter error messages are credential-stripped before surfacing to the agent; stdio MCP servers can issue `sampling/createMessage` through Hakimi's configured LLM transport
 - **What's missing**: sampling tool-use loops, richer HTTP/SSE server-initiated flow handling, thread-safe background event loop
 - **Hermes reference**: `tools/mcp_tool.py`
 
-### 4. Skills System
+### 5. Skills System
 - **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader skips symlinked skill paths, carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json`, supports Hermes-style `platforms` frontmatter gates, preprocesses skill templates with skill-dir/session variables plus opt-in inline-shell expansion, has a Skills Hub workflow for local/HTTPS indexes, GitHub repo/tree sources, and well-known skill indexes with explicit community trust, safe bundle-path checks, lock updates, and audit logging, records runtime skill activation in a non-sensitive `.usage.json` sidecar, can sync bundled skill trees with `.bundled_manifest` origin hashes while preserving user edits/deletions, and injects loaded skill slash-command invocations as normal user messages from CLI query and gateway chats.
 - **What's missing**: skills.sh adapter and richer remote freshness policy
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
-### 5. Gateway
+### 6. Gateway
 - **Status**: 8 platforms plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, and outbound silence-narration filtering. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
 - **What's missing**: 12+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
@@ -511,8 +517,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `plugins/` (entire directory)
 
 ### 8. CLI Commands
-- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/mcp list`、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/profile`、`/setup`、`/mcp`、`/kanban` 等尚未形成与 Hermes 对齐的完整管理闭环
+- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/profile`、`/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher/board/swarm 管理面
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 10. Delegation
@@ -555,7 +561,7 @@ Generated: 2026-05-21
 
 | Category | Hermes Features | Hakimi Complete | Hakimi Partial | Hakimi Missing |
 |----------|----------------|-----------------|----------------|----------------|
-| Core Tools | 40+ | 27 | 1 | 13+ |
+| Core Tools | 40+ | 28 | 1 | 12+ |
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 1 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
@@ -567,9 +573,9 @@ Generated: 2026-05-21
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~73** (up from ~30)
-**Partially implemented: ~9**
-**Missing entirely: ~72+**
+**Fully present in Hakimi: ~74** (up from ~30)
+**Partially implemented: ~10**
+**Missing entirely: ~71+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (vision, CDP attach, cloud backends)
@@ -578,7 +584,7 @@ Generated: 2026-05-21
 4. CLI command completeness (33+ missing commands)
 5. Bedrock transport
 6. ACP adapter / IDE integration
-7. Kanban multi-agent coordination
+7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
 10. Voice mode (push-to-talk capture + playback)
@@ -658,9 +664,10 @@ Generated: 2026-05-21
 | 58 | Skills Hub Live Source Adapters | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 3 | ✅ Source refresh accepts `github:owner/repo/path`, GitHub tree URLs, and `well-known:domain`, discovers GitHub `SKILL.md` directories through safe Contents API calls, extracts frontmatter metadata, and caches them through the existing hub index path |
 | 59 | URL Safety for Web/Media Fetches | `hakimi-tools/src/url_safety.rs`, `hakimi-tools/src/{builtin_web_extract,builtin_vision_analyze,builtin_video_analyze}.rs` | 10 | ✅ Web/media tools reject localhost/private/link-local/CGNAT/metadata targets before fetch and stop unsafe redirects; trusted local deployments can opt into private targets while metadata endpoints stay blocked, including bracketed IPv6 literals and IPv4-mapped metadata addresses |
 | 60 | Tirith-Style Command Content Guard | `hakimi-tools/src/command_safety.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process}.rs` | 13 | ✅ Terminal/process shell boundaries block remote script pipe/substitution, encoded shell payload, terminal control-character, invisible/bidirectional Unicode, Unicode URL-host, sudo-stdin, and catastrophic host-command payloads before spawning |
+| 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 12 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, 9 Hermes-named `kanban_*` tools, and gateway `/kanban` CRUD/status/link operations |
 
 ### Summary
-- **Total tests**: 1344 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1356 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.137-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.138-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1344-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1356-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1344 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1356 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · SQLite-backed Kanban task tools · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.138 Kanban board tool surface**:
+  - **Hermes Named Tool Parity**: Hakimi now exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, and `kanban_link`.
+  - **Durable SQLite Store**: tasks, comments, dependency links, status transitions, completion summaries, and heartbeats persist under `~/.hakimi/kanban.db` or an explicit `HAKIMI_KANBAN_DB` / `HERMES_KANBAN_DB` override.
+  - **Gateway Slash Command**: gateway `/kanban` now performs real board operations (`list`, `show`, `create`, `comment`, `complete`, `block`, `unblock`, `heartbeat`, `link`, `stats`) instead of returning a placeholder.
 - **v0.3.137 Command content safety guard**:
   - **Hermes Tirith Security Parity**: `terminal` and `process start` now scan command content before shell execution and block high-confidence unsafe payloads.
   - **Remote Script Boundary**: direct `curl|sh`, `wget|bash`, process substitution, command substitution, and base64-decoded payloads piped into shells are stopped before spawn.
@@ -459,7 +463,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - Auto-generates reusable YAML skill files from extracted patterns
 - Pattern merging and confidence scoring
 
-### 🛠️ 41 Built-in Tools
+### 🛠️ 50 Built-in Tools
 
 - **Files**: read_file, write_file, search_files, patch
 - **Shell**: terminal, process (background process management)
@@ -470,6 +474,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_dialog, browser_screenshot (Chromium automation)
 - **Media**: vision_analyze (image analysis), video_analyze (video analysis request), image_describe (legacy alias), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
+- **Coordination**: kanban_show, kanban_list, kanban_create, kanban_complete, kanban_block, kanban_unblock, kanban_comment, kanban_heartbeat, kanban_link
 - **Safety**: file_safety (path protection, write safe-root sandbox, and read-file credential guard), secret_redaction, prompt_injection_detection
 - **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
 
@@ -683,7 +688,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1344 tests)
+# Run all tests (1356 tests)
 cargo test --workspace
 
 # Debug logging

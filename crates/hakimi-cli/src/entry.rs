@@ -2774,6 +2774,9 @@ async fn build_agent(
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::TodoTool))
         .await;
+    for tool in hakimi_tools::kanban_tools() {
+        tool_registry.register(tool).await;
+    }
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::ProcessTool))
         .await;
@@ -3646,7 +3649,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Hooks(_)) => "🪝 No active hooks configured.".to_string(),
-                    Some(Command::Kanban(_)) => "📋 Kanban board integration coming soon.".to_string(),
+                    Some(Command::Kanban(cmd)) => hakimi_tools::kanban_response(cmd.as_deref()),
                     Some(Command::Logs(arg)) => {
                         let lines = arg.unwrap_or_else(|| "50".to_string()).parse::<usize>().unwrap_or(50);
                         let log_file = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join(".hakimi").join("logs").join("gateway.log");

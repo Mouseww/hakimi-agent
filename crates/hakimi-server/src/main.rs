@@ -269,6 +269,7 @@ async fn build_agent(
         Arc::new(hakimi_tools::TextToSpeechTool),
         Arc::new(hakimi_tools::ImageGenerateTool),
     ];
+    builtin_tools.extend(hakimi_tools::kanban_tools());
     // Browser tools (shared browser instance)
     #[cfg(feature = "browser")]
     {

@@ -19,6 +19,7 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
+rusqlite = { workspace = true }
 urlencoding = "2"
 uuid = { workspace = true }
 hakimi-session = { path = "../hakimi-session" }

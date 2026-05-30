@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.137-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.138-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1344-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1356-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1344 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1356 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · SQLite 持久化 Kanban 任务工具 · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.138 Kanban 看板工具面**
+  - 对齐 Hermes 9 个命名工具：新增 `kanban_show`、`kanban_list`、`kanban_create`、`kanban_complete`、`kanban_block`、`kanban_unblock`、`kanban_comment`、`kanban_heartbeat` 和 `kanban_link`。
+  - 任务、评论、依赖链接、状态流转、完成摘要与 heartbeat 都持久化到 `~/.hakimi/kanban.db`，也支持 `HAKIMI_KANBAN_DB` / `HERMES_KANBAN_DB` 覆盖。
+  - gateway `/kanban` 现在执行真实看板操作（`list`、`show`、`create`、`comment`、`complete`、`block`、`unblock`、`heartbeat`、`link`、`stats`），不再返回占位文本。
 
 - **v0.3.137 命令内容安全防护**
   - 对齐 Hermes Tirith security：`terminal` 与 `process start` 会在 shell 执行前扫描命令内容，并阻断高置信危险载荷。
@@ -398,7 +403,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - 从提取的模式自动生成可复用的 YAML 技能文件
 - 模式合并与置信度评分
 
-### 🛠️ 41 个内置工具
+### 🛠️ 50 个内置工具
 
 - **文件**: read_file, write_file, search_files, patch
 - **终端**: terminal, process (后台进程管理)
@@ -409,6 +414,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_dialog, browser_screenshot (Chromium 自动化)
 - **媒体**: vision_analyze (图片分析), video_analyze (视频分析请求), image_describe (旧工具兼容别名), image_generate, text_to_speech, transcribe_audio
 - **效率**: todo, clarify, checkpoint (git 快照回滚)
+- **协作**: kanban_show, kanban_list, kanban_create, kanban_complete, kanban_block, kanban_unblock, kanban_comment, kanban_heartbeat, kanban_link
 - **安全**: file_safety (路径保护、写入 safe-root 沙箱与 read_file 凭据读取防护), secret_redaction (密钥脱敏), prompt_injection_detection
 - **元操作**: delegate_task (子 Agent 委派), skill_manage, send_message
 
@@ -488,7 +494,7 @@ hakimi-agent/
 │   ├── hakimi-context/     # 上下文引擎，压缩，意图推理，角色适配
 │   ├── hakimi-core/        # Agent 循环，错误分类器，凭证池，护栏
 │   ├── hakimi-transports/  # LLM 传输 (OpenAI/Anthropic/Gemini) + Prompt 缓存
-│   ├── hakimi-tools/       # 41 个内置工具 + 注册表
+│   ├── hakimi-tools/       # 50 个内置工具 + 注册表
 │   ├── hakimi-knowledge/   # 知识图谱记忆 (petgraph)
 │   ├── hakimi-skills/      # 技能系统 + 元技能提炼
 │   ├── hakimi-cron/        # 定时任务调度器 (SQLite 持久化)
@@ -546,7 +552,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1344 |
+| 测试 | ~500 | 1356 |
 
 ---
 
@@ -556,7 +562,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1344 tests)
+# 运行全部测试 (1356 tests)
 cargo test --workspace
 
 # Debug 日志
@@ -572,7 +578,7 @@ cargo clippy --workspace
 
 - [x] 核心 Agent 循环 + 工具分发
 - [x] OpenAI / Anthropic / Gemini 传输 + SSE 流式
-- [x] 41 个内置工具
+- [x] 50 个内置工具
 - [x] 8 个平台适配器
 - [x] MCP 客户端 (stdio/HTTP/SSE) + 服务器目录
 - [x] 插件系统 + 模板
