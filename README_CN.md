@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.130-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.131-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1302-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -81,7 +81,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 
 ### 🌟 最新发布
 
-- **v0.3.130 Skills Hub source indexes**
+- **v0.3.131 Skills Hub source indexes**
   - 对齐 Hermes 多来源 Skills Hub：`hakimi skills sources list|add|refresh|remove` 可登记本地或 HTTPS Skills Hub index，并刷新到 `.hub/index-cache`。
   - `browse`、`search`、`inspect` 和 `install` 会合并主 `.hub/index.json` 与已刷新的来源缓存，按 identifier 去重并优先保留更高 trust 的条目。
   - 远程 index 来源必须使用 HTTPS，拒绝 loopback/private/link-local 主机，限制 index 大小，并继续要求 community 安装显式传入 `--trust-community`。

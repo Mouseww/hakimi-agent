@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.130-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.131-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1302-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -80,7 +80,7 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 ## Capabilities
 
 ### 🌟 What's New
-- **v0.3.130 Skills Hub source indexes**:
+- **v0.3.131 Skills Hub source indexes**:
   - **Hermes Multi-Source Hub Parity**: `hakimi skills sources list|add|refresh|remove` registers local or HTTPS Skills Hub indexes and refreshes them into `.hub/index-cache`.
   - **Unified Discovery**: `browse`, `search`, `inspect`, and `install` now merge the primary `.hub/index.json` with refreshed source caches while deduplicating by identifier and preferring higher-trust entries.
   - **Safe Remote Boundary**: remote index sources require HTTPS, reject loopback/private/link-local hosts, cap index size, and keep community installs behind `--trust-community`.
