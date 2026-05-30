@@ -78,10 +78,11 @@ impl SkillLoader {
                 }
 
                 match loader.load_file(&path, &hub_lock) {
-                    Ok(skill) => {
+                    Ok(Some(skill)) => {
                         debug!(name = %skill.name, path = %path.display(), "Loaded skill");
                         loader.skills.push(skill);
                     }
+                    Ok(None) => {}
                     Err(e) => {
                         warn!(path = %path.display(), error = %e, "Failed to load skill file");
                     }
@@ -97,7 +98,7 @@ impl SkillLoader {
     }
 
     /// Load a single skill file.
-    fn load_file(&self, path: &Path, hub_lock: &HubLockFile) -> Result<Skill> {
+    fn load_file(&self, path: &Path, hub_lock: &HubLockFile) -> Result<Option<Skill>> {
         let raw = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read skill file: {}", path.display()))?;
         let safety = scan_skill_text(&raw);
@@ -110,10 +111,19 @@ impl SkillLoader {
         }
 
         let mut skill = parse_skill(&raw, path)?;
+        if !skill.matches_current_platform() {
+            debug!(
+                name = %skill.name,
+                platforms = ?skill.platforms,
+                path = %path.display(),
+                "Skipping skill that does not match current platform"
+            );
+            return Ok(None);
+        }
         if let Some(provenance) = hub_lock.provenance_for(&skill.name) {
             skill.merge_provenance(provenance);
         }
-        Ok(skill)
+        Ok(Some(skill))
     }
 
     /// Get all loaded skills.
@@ -195,6 +205,7 @@ fn parse_skill(raw: &str, path: &Path) -> Result<Skill> {
         trigger: None,
         tags: Vec::new(),
         phases: Vec::new(),
+        platforms: Vec::new(),
         ttl_steps: 4,
         max_context_chars: None,
         provenance: crate::skill::SkillProvenance::default(),
@@ -406,6 +417,28 @@ Content"#;
     }
 
     #[test]
+    fn test_parse_skill_platforms_accepts_scalar_or_list() {
+        let scalar = r#"---
+name: scalar-platform
+platforms: linux
+---
+Content"#;
+        let list = r#"---
+name: list-platform
+platforms:
+  - macos
+  - linux
+---
+Content"#;
+
+        let scalar = parse_skill(scalar, Path::new("scalar.md")).unwrap();
+        let list = parse_skill(list, Path::new("list.md")).unwrap();
+
+        assert_eq!(scalar.platforms, vec!["linux"]);
+        assert_eq!(list.platforms, vec!["macos", "linux"]);
+    }
+
+    #[test]
     fn test_load_from_dir() {
         let dir = TempDir::new().unwrap();
         let dir_path = dir.path();
@@ -443,6 +476,36 @@ Content two"#,
         let names: Vec<&str> = loader.skills().iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"skill-one"));
         assert!(names.contains(&"skill-two"));
+    }
+
+    #[test]
+    fn test_load_from_dir_skips_incompatible_platform_skill() {
+        let dir = TempDir::new().unwrap();
+        let dir_path = dir.path();
+
+        write_skill(
+            dir_path,
+            "portable.md",
+            r#"---
+name: portable-skill
+---
+Portable content"#,
+        );
+        write_skill(
+            dir_path,
+            "incompatible.md",
+            r#"---
+name: incompatible-skill
+platforms:
+  - definitely-not-this-os
+---
+Platform-specific content"#,
+        );
+
+        let loader = SkillLoader::load_from_dir(dir_path).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        assert_eq!(loader.skills()[0].name, "portable-skill");
     }
 
     #[test]

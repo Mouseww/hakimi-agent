@@ -72,6 +72,7 @@ Generated: 2026-05-21
 - **SkillStore** — In-memory skill storage
 - **Skill struct** — Name, content, frontmatter metadata
 - **Skills Hub manifest install policy** — `hakimi skills browse|search|inspect|install|list|path` and gateway `/skills browse|search|inspect|install` use a local `.hub/index.json` manifest, require explicit community trust, scan SKILL.md before install, and record lock/audit provenance
+- **Skills platform-gated loading** — `SKILL.md` frontmatter `platforms` scalar/list metadata is parsed and incompatible OS-specific skills are skipped before runtime prompt injection
 
 ### MCP
 - **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments, credential-stripped remote error surfaces, and gateway `/mcp list` inventory over configured servers
@@ -485,8 +486,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `tools/mcp_tool.py`
 
 ### 4. Skills System
-- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader skips symlinked skill paths, carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json`, and now has a local Skills Hub manifest workflow for browse/search/inspect/install with explicit community trust, safe bundle-path checks, lock updates, and audit logging.
-- **What's missing**: Remote/multi-source community hub adapters, skill preprocessing, skill sync/update, conditional skill loading (platform-gated), skill usage tracking, skill slash commands injected as user messages, skill index caching
+- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader skips symlinked skill paths, carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json`, supports Hermes-style `platforms` frontmatter gates, and now has a local Skills Hub manifest workflow for browse/search/inspect/install with explicit community trust, safe bundle-path checks, lock updates, and audit logging.
+- **What's missing**: Remote/multi-source community hub adapters, skill preprocessing, skill sync/update, skill usage tracking, skill slash commands injected as user messages, skill index caching
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
@@ -636,9 +637,10 @@ Generated: 2026-05-21
 | 47 | Skills Provenance Metadata | `hakimi-skills/src/{skill.rs,loader.rs,store.rs}`, `hakimi-cli/src/entry.rs` | 3 | ✅ Skill loading preserves Hermes-style `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json` source/trust records, then surfaces normalized provenance labels in summaries and gateway `/skills` |
 | 48 | Rust-Native Backup/Import | `hakimi-cli/src/backup.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ `hakimi backup [output]` and `hakimi import <archive> --force` archive/restore `~/.hakimi` user state without external tar, skip binary/cache/sidecar/symlink entries, snapshot SQLite DBs, and block path traversal on import |
 | 49 | Skills Hub Manifest Install Policy | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ Local `.hub/index.json` skills can be browsed/searched/inspected/installed from CLI and gateway; community installs require explicit trust, SKILL.md is scanned, bundle paths are guarded, and lock/audit provenance is recorded |
+| 50 | Skills Platform Gates | `hakimi-skills/src/{skill.rs,loader.rs}` | 4 | ✅ Skill frontmatter `platforms` accepts scalar/list values, recognizes Hermes OS aliases, and skips incompatible skills before prompt injection |
 
 ### Summary
-- **Total tests**: 1269 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1273 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

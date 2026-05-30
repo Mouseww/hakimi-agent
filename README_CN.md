@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.124-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.125-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1269-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1273-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1269 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard、provenance 与 hub install policy · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1273 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy 与平台门控 · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.125 Skills platform-gated loading**
+  - 对齐 Hermes skill metadata：`SKILL.md` frontmatter 现在可以用 scalar 或 list 声明 `platforms`。
+  - Hakimi 会在 skill 进入运行时 prompt 前识别 `macos`/`darwin`、`windows`/`win32`、`linux`、`termux` 与 `android` 别名。
+  - 不兼容当前 OS 的技能会被跳过，避免把平台专属操作说明注入到无关会话。
 
 - **v0.3.124 Skills Hub manifest install policy**
   - 对齐 Hermes Skills Hub 的一个离线可验证切片：顶层 `hakimi skills browse|search|inspect|install|list|path` 可读取本地 `.hub/index.json` manifest，并与 gateway `/skills browse|search|inspect|install` 共用同一响应逻辑。
@@ -485,7 +490,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1269 |
+| 测试 | ~500 | 1273 |
 
 ---
 
@@ -495,7 +500,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1269 tests)
+# 运行全部测试 (1273 tests)
 cargo test --workspace
 
 # Debug 日志

@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 /// Coarse harness phase used to decide when a skill should be active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -202,6 +202,13 @@ pub struct Skill {
     #[serde(default)]
     pub phases: Vec<HarnessPhase>,
 
+    /// Optional operating-system gates for loading this skill.
+    ///
+    /// Hermes-compatible labels include `macos`, `darwin`, `linux`, `windows`,
+    /// `win32`, `termux`, and `android`. Empty means all platforms.
+    #[serde(default, deserialize_with = "deserialize_string_list")]
+    pub platforms: Vec<String>,
+
     /// How many run steps a stale skill may remain before eviction.
     #[serde(default = "default_ttl_steps")]
     pub ttl_steps: u32,
@@ -229,6 +236,7 @@ impl Skill {
             trigger: None,
             tags: Vec::new(),
             phases: Vec::new(),
+            platforms: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
             provenance: SkillProvenance::default(),
@@ -310,6 +318,18 @@ impl Skill {
         self.phases.is_empty() || self.phases.contains(&phase)
     }
 
+    pub fn matches_current_platform(&self) -> bool {
+        self.matches_platform(current_platform())
+    }
+
+    pub fn matches_platform(&self, platform: &str) -> bool {
+        self.platforms.is_empty()
+            || self
+                .platforms
+                .iter()
+                .any(|allowed| platform_matches(allowed, platform))
+    }
+
     pub fn context_cost(&self) -> usize {
         self.render_body_capped().len()
     }
@@ -373,6 +393,58 @@ fn default_ttl_steps() -> u32 {
     4
 }
 
+fn deserialize_string_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    let value = Option::<OneOrMany>::deserialize(deserializer)?;
+    Ok(match value {
+        Some(OneOrMany::One(value)) => vec![value],
+        Some(OneOrMany::Many(values)) => values,
+        None => Vec::new(),
+    })
+}
+
+fn current_platform() -> &'static str {
+    if is_termux() {
+        "termux"
+    } else {
+        std::env::consts::OS
+    }
+}
+
+fn is_termux() -> bool {
+    std::env::var_os("TERMUX_VERSION").is_some()
+        || std::env::var("PREFIX")
+            .map(|value| value.contains("com.termux"))
+            .unwrap_or(false)
+}
+
+fn platform_matches(allowed: &str, current: &str) -> bool {
+    let allowed = canonical_platform(allowed);
+    let current = canonical_platform(current);
+
+    allowed == current || (current == "termux" && matches!(allowed.as_str(), "linux" | "android"))
+}
+
+fn canonical_platform(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "darwin" | "macos" | "osx" => "macos".to_string(),
+        "win" | "win32" | "win64" | "windows" => "windows".to_string(),
+        "linux" | "gnu/linux" => "linux".to_string(),
+        "termux" => "termux".to_string(),
+        "android" => "android".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,6 +458,7 @@ mod tests {
             trigger: None,
             tags: vec!["rust".to_string(), "cargo".to_string()],
             phases: Vec::new(),
+            platforms: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
             provenance: SkillProvenance::default(),
@@ -405,6 +478,7 @@ mod tests {
             trigger: None,
             tags: vec![],
             phases: Vec::new(),
+            platforms: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
             provenance: SkillProvenance::default(),
@@ -423,6 +497,7 @@ mod tests {
             trigger: Some("version control commit push pull branch".to_string()),
             tags: vec![],
             phases: Vec::new(),
+            platforms: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
             provenance: SkillProvenance::default(),
@@ -441,6 +516,7 @@ mod tests {
             trigger: None,
             tags: vec![],
             phases: Vec::new(),
+            platforms: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: None,
             provenance: SkillProvenance::default(),
@@ -460,6 +536,7 @@ mod tests {
             trigger: None,
             tags: vec![],
             phases: Vec::new(),
+            platforms: Vec::new(),
             ttl_steps: default_ttl_steps(),
             max_context_chars: Some(10),
             provenance: SkillProvenance::default(),
@@ -468,5 +545,25 @@ mod tests {
 
         assert_eq!(skill.render_body_capped().chars().count(), 10);
         assert_eq!(skill.checklist().chars().count(), 10);
+    }
+
+    #[test]
+    fn platform_matching_accepts_hermes_aliases() {
+        let mut skill = Skill::new("mac-only", "# macOS");
+        skill.platforms = vec!["darwin".to_string()];
+
+        assert!(skill.matches_platform("macos"));
+        assert!(!skill.matches_platform("linux"));
+
+        skill.platforms = vec!["win32".to_string()];
+        assert!(skill.matches_platform("windows"));
+    }
+
+    #[test]
+    fn platform_matching_treats_empty_as_cross_platform() {
+        let skill = Skill::new("portable", "# Portable");
+
+        assert!(skill.matches_platform("linux"));
+        assert!(skill.matches_platform("windows"));
     }
 }

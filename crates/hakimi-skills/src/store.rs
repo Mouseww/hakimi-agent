@@ -122,6 +122,7 @@ mod tests {
             trigger: None,
             tags: tags.iter().map(|tag| tag.to_string()).collect(),
             phases,
+            platforms: Vec::new(),
             ttl_steps: 4,
             max_context_chars: None,
             provenance: crate::skill::SkillProvenance::default(),

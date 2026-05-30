@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.124-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.125-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1269-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1273-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1269 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, and hub install policy · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1273 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, and platform gates · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.125 Skills platform-gated loading**:
+  - **Hermes Skill Metadata Parity**: `SKILL.md` frontmatter can now declare `platforms` as a scalar or list, matching Hermes' platform-gated skill loading semantics.
+  - **Rust-Native OS Matching**: Hakimi recognizes `macos`/`darwin`, `windows`/`win32`, `linux`, `termux`, and `android` aliases before a skill enters the runtime prompt.
+  - **Prompt Hygiene**: incompatible skills are skipped after the safety scan and parse step, so OS-specific instructions do not leak into unrelated sessions.
 - **v0.3.124 Skills Hub manifest install policy**:
   - **Hermes Skills Hub Slice**: top-level `hakimi skills browse|search|inspect|install|list|path` now works from a local `.hub/index.json` manifest and uses the same response path for gateway `/skills browse|search|inspect|install`.
   - **Trust Boundary**: community skills require explicit `--trust-community` before non-interactive install, while builtin/trusted skills can install directly after the safety scan.
@@ -624,7 +628,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1269 |
+| Tests | ~500 | 1273 |
 
 ---
 
@@ -634,7 +638,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1269 tests)
+# Run all tests (1273 tests)
 cargo test --workspace
 
 # Debug logging
