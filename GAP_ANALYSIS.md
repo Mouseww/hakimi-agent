@@ -8,8 +8,8 @@ Generated: 2026-05-21
 
 ### Core Tools
 - **read_file** — File reading with line numbers and pagination
-- **write_file** — File writing with auto-directory creation
-- **patch** — Find-and-replace edits in files
+- **write_file** — File writing with auto-directory creation, static write denylist, and optional safe-root sandbox
+- **patch** — Find-and-replace edits in files with the same write safety boundary
 - **search_files** — Content search (regex) and file search (glob)
 - **terminal** — Shell command execution (foreground + background)
 - **Terminal shell hooks** — Opt-in `HAKIMI_PRE_TOOL_HOOK` / `HAKIMI_POST_TOOL_HOOK` commands receive Hermes-style terminal tool payloads and can block unsafe pre-tool calls
@@ -302,9 +302,9 @@ Generated: 2026-05-21
 - **Priority**: **Medium** — Safety and cost control
 
 #### 28. ~~File Safety / Path Security~~ ✅ DONE
-- **What**: Write-denied paths, path traversal protection, symlink resolution
+- **What**: Write-denied paths, optional write safe-root sandbox, path traversal protection, symlink resolution
 - **Hermes location**: `agent/file_safety.py`, `tools/path_security.py`
-- **Status**: ✅ Done in v0.3.111 — `read_file` now applies a shared Hakimi credential read guard before opening files, covering `config.yaml`, OAuth/token stores, project `.env*` files, `mcp-tokens/`, and Hermes' latest `cache/bws_cache.json` pattern. Existing paths are canonicalized before matching, and Windows absolute paths are resolved with `Path::is_absolute()`.
+- **Status**: ✅ Done through v0.3.133 — `read_file` applies a shared Hakimi credential read guard before opening files, covering `config.yaml`, OAuth/token stores, project `.env*` files, `mcp-tokens/`, and Hermes' latest `cache/bws_cache.json` pattern. `write_file` and `patch` now share a Rust-native write guard with static sensitive path denies plus `HAKIMI_WRITE_SAFE_ROOT` / `HERMES_WRITE_SAFE_ROOT` sandboxing; existing paths are canonicalized before matching, and mutation tools resolve Windows absolute paths with `Path::is_absolute()`.
 
 #### 29. ~~Secret Redaction~~ ✅ DONE
 - **What**: Regex-based secret masking for logs and tool output
@@ -595,7 +595,7 @@ Generated: 2026-05-21
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
 | 6 | MCP HTTP/SSE | `hakimi-mcp/src/http_transport.rs`, `sse_transport.rs` | 19 | ✅ StreamableHTTP, SSE, auto-reconnect, per-server timeouts |
-| 7 | File Safety + Secret Redaction | `hakimi-core/src/file_safety.rs`, `hakimi-common/src/redact.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process,builtin_code_exec,plugin}.rs` | 27 | ✅ WriteDeniedPaths, PathSecurity, shared SecretRedactor, PromptInjectionDetector, and forced redaction for shell/process/code/plugin output |
+| 7 | File Safety + Secret Redaction | `hakimi-common/src/file_safety.rs`, `hakimi-core/src/file_safety.rs`, `hakimi-common/src/redact.rs`, `hakimi-tools/src/{builtin_write_file,builtin_patch,builtin_terminal,builtin_process,builtin_code_exec,plugin}.rs` | 35 | ✅ WriteDeniedPaths, optional write safe-root sandbox, PathSecurity, shared SecretRedactor, PromptInjectionDetector, and forced redaction for shell/process/code/plugin output |
 | 8 | Tool Guardrails | `hakimi-core/src/guardrails.rs` | 12 | ✅ Loop detection, idempotency tracking, halt decisions |
 | 9 | LLM Context Compression | `hakimi-context/src/{compressor.rs,factory.rs}`, CLI/server construction | 25 | ✅ Config-selectable `llm` engine, summary model selection, Resolved/Pending tracking, tool output pruning, and local fallback |
 | 10 | Profiles | `hakimi-cli/src/profiles.rs` | 10 | ✅ ~/.hakimi/profiles/, create/delete/use, separate config/memory/sessions |
@@ -649,9 +649,10 @@ Generated: 2026-05-21
 | 54 | Skills Slash-Command Invocation | `hakimi-skills/src/slash.rs`, `hakimi-core/src/agent.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Loaded skills can be invoked as `/skill-name optional instruction`; CLI query and gateway chats inject the selected full skill content as a user message while preserving built-in command priority |
 | 55 | Skills Hub Source Indexes | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 6 | ✅ `hakimi skills sources list/add/refresh/remove` manages local/HTTPS index sources, caches refreshed catalogs under `.hub/index-cache`, merges cached entries into discovery, deduplicates by identifier, and blocks unsafe remote source hosts |
 | 56 | Gateway Silence-Narration Filter | `hakimi-gateway/src/lib.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Outbound gateway routing drops bare silence narration before adapter send/edit/get-id paths, defaults on through `gateways.filter_silence_narration`, supports Hakimi/Hermes env overrides, and preserves media deliveries |
+| 57 | Write Safe Root Sandbox | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/{builtin_write_file,builtin_patch}.rs` | 8 | ✅ `write_file` and `patch` honor `HAKIMI_WRITE_SAFE_ROOT` / `HERMES_WRITE_SAFE_ROOT`, block writes outside the trusted workspace, preserve static sensitive-path denies, and use cross-platform absolute path resolution |
 
 ### Summary
-- **Total tests**: 1310 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1318 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

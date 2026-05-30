@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.132-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.133-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1310-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1318-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1310 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1318 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 写入 safe-root 沙箱 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.133 Write Safe Root Sandbox**
+  - 对齐 Hermes file-write safety：`write_file` 和 `patch` 现在支持 `HAKIMI_WRITE_SAFE_ROOT` / `HERMES_WRITE_SAFE_ROOT`，配置后会拒绝写入受信工作区之外的路径。
+  - `/etc`、`/private/etc`、`/root/.ssh`、`/proc`、`/sys` 和 `/dev` 等敏感系统/凭据路径仍会被静态拒绝，即使 safe root 配得很宽也不会放行。
+  - 文件变更工具统一使用 `Path::is_absolute()` 判断绝对路径，避免 Windows `C:\...` 路径被误拼到当前工作目录下。
 
 - **v0.3.132 Gateway silence-narration filter**
   - 对齐 Hermes delivery safety：gateway 外发路由会在聊天适配器发送前丢弃纯沉默叙述，例如 `*(silent)*`、`.`、`...`、`…`、`🔇`、`silent`、`no response` 和 `no reply`。
@@ -385,7 +390,7 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 - **浏览器**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_dialog, browser_screenshot (Chromium 自动化)
 - **媒体**: vision_analyze (图片分析), video_analyze (视频分析请求), image_describe (旧工具兼容别名), image_generate, text_to_speech, transcribe_audio
 - **效率**: todo, clarify, checkpoint (git 快照回滚)
-- **安全**: file_safety (路径保护与 read_file 凭据读取防护), secret_redaction (密钥脱敏), prompt_injection_detection
+- **安全**: file_safety (路径保护、写入 safe-root 沙箱与 read_file 凭据读取防护), secret_redaction (密钥脱敏), prompt_injection_detection
 - **元操作**: delegate_task (子 Agent 委派), skill_manage, send_message
 
 ### 🔌 传输层
@@ -532,7 +537,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1310 tests)
+# 运行全部测试 (1318 tests)
 cargo test --workspace
 
 # Debug 日志

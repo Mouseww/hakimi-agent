@@ -23,6 +23,39 @@ const HAKIMI_CREDENTIAL_FILES: &[&[&str]] = &[
     &["cache", "bws_cache.json"],
 ];
 
+const WRITE_DENIED_PATHS: &[&str] = &[
+    "/etc/passwd",
+    "/etc/shadow",
+    "/etc/sudoers",
+    "/etc/ssh",
+    "/private/etc",
+    "/private/var",
+    "/root/.ssh",
+    "/root/.gnupg",
+    "/root/.aws/credentials",
+    "/root/.config/gcloud",
+    "/boot",
+    "/proc",
+    "/sys",
+    "/dev",
+];
+
+const WRITE_DENIED_PREFIXES: &[&str] = &[
+    "/etc/",
+    "/private/etc/",
+    "/private/var/",
+    "/root/.ssh/",
+    "/root/.gnupg/",
+    "/root/.aws/",
+    "/root/.config/gcloud/",
+    "/boot/",
+    "/proc/",
+    "/sys/",
+    "/dev/",
+];
+
+const WRITE_SAFE_ROOT_ENV_VARS: &[&str] = &["HAKIMI_WRITE_SAFE_ROOT", "HERMES_WRITE_SAFE_ROOT"];
+
 /// Return a user-facing read denial when a path points at known secret stores.
 pub fn get_read_block_error(path: &Path) -> Option<String> {
     let home = default_home_dir();
@@ -73,6 +106,49 @@ pub fn get_read_block_error_with_homes(
     None
 }
 
+/// Return a user-facing write denial for sensitive paths or safe-root escapes.
+pub fn get_write_block_error(path: &Path) -> Option<String> {
+    let safe_root = configured_write_safe_root();
+    get_write_block_error_with_safe_root(path, safe_root.as_deref())
+}
+
+/// Testable variant of [`get_write_block_error`] with an explicit safe root.
+pub fn get_write_block_error_with_safe_root(
+    path: &Path,
+    safe_root: Option<&Path>,
+) -> Option<String> {
+    let resolved = resolve_for_safety(path);
+    let display_path = path.display();
+
+    if is_static_write_denied(&resolved) {
+        return Some(format!(
+            "Access denied: {display_path} is a sensitive system or credential path and cannot be written by Hakimi. (Defense-in-depth; terminal access can still bypass.)"
+        ));
+    }
+
+    if let Some(root) = safe_root {
+        let resolved_root = resolve_for_safety(root);
+        if !resolved.starts_with(&resolved_root) {
+            return Some(format!(
+                "Access denied: {display_path} is outside the configured write safe root '{}'. Set HAKIMI_WRITE_SAFE_ROOT or HERMES_WRITE_SAFE_ROOT to restrict file writes to a trusted workspace.",
+                resolved_root.display()
+            ));
+        }
+    }
+
+    None
+}
+
+/// Return true when a write should be denied by static or safe-root policy.
+pub fn is_write_denied(path: &Path) -> bool {
+    get_write_block_error(path).is_some()
+}
+
+/// Testable variant of [`is_write_denied`] with an explicit safe root.
+pub fn is_write_denied_with_safe_root(path: &Path, safe_root: Option<&Path>) -> bool {
+    get_write_block_error_with_safe_root(path, safe_root).is_some()
+}
+
 fn is_hakimi_credential_file(resolved: &Path, base: &Path) -> bool {
     HAKIMI_CREDENTIAL_FILES
         .iter()
@@ -110,6 +186,27 @@ fn relative_path(parts: &[&str]) -> PathBuf {
         path.push(part);
         path
     })
+}
+
+fn configured_write_safe_root() -> Option<PathBuf> {
+    for key in WRITE_SAFE_ROOT_ENV_VARS {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(PathBuf::from(trimmed));
+            }
+        }
+    }
+    None
+}
+
+fn is_static_write_denied(path: &Path) -> bool {
+    let path_str = path.to_string_lossy().replace('\\', "/");
+
+    WRITE_DENIED_PATHS.iter().any(|denied| path_str == *denied)
+        || WRITE_DENIED_PREFIXES
+            .iter()
+            .any(|prefix| path_str.starts_with(prefix))
 }
 
 fn default_home_dir() -> Option<PathBuf> {
@@ -242,5 +339,63 @@ mod tests {
         let path = Path::new("/workspace/app/.env.example");
 
         assert!(get_read_block_error_with_homes(path, None, None).is_none());
+    }
+
+    #[test]
+    fn blocks_static_write_denied_paths() {
+        assert!(is_write_denied_with_safe_root(
+            Path::new("/etc/shadow"),
+            None
+        ));
+        assert!(is_write_denied_with_safe_root(
+            Path::new("/private/etc/hosts"),
+            None
+        ));
+        assert!(is_write_denied_with_safe_root(
+            Path::new("/root/.ssh/authorized_keys"),
+            None
+        ));
+    }
+
+    #[test]
+    fn allows_regular_writes_without_safe_root() {
+        assert!(!is_write_denied_with_safe_root(
+            Path::new("/workspace/app/src/main.rs"),
+            None
+        ));
+    }
+
+    #[test]
+    fn write_safe_root_allows_root_and_children() {
+        let root = Path::new("/workspace/app");
+
+        assert!(!is_write_denied_with_safe_root(root, Some(root)));
+        assert!(!is_write_denied_with_safe_root(
+            Path::new("/workspace/app/src/main.rs"),
+            Some(root)
+        ));
+    }
+
+    #[test]
+    fn write_safe_root_denies_outside_siblings() {
+        let root = Path::new("/workspace/app");
+
+        let err = get_write_block_error_with_safe_root(
+            Path::new("/workspace/app-other/file.txt"),
+            Some(root),
+        )
+        .unwrap();
+
+        assert!(err.contains("outside the configured write safe root"));
+    }
+
+    #[test]
+    fn write_safe_root_does_not_override_static_deny() {
+        let root = Path::new("/");
+
+        let err =
+            get_write_block_error_with_safe_root(Path::new("/etc/passwd"), Some(root)).unwrap();
+
+        assert!(err.contains("sensitive system or credential path"));
     }
 }

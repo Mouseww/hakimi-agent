@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.132-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.133-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1310-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1318-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1310 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1318 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · write safe-root sandbox · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.133 Write Safe Root Sandbox**:
+  - **Hermes File-Write Safety Parity**: `write_file` and `patch` now honor `HAKIMI_WRITE_SAFE_ROOT` / `HERMES_WRITE_SAFE_ROOT`, denying writes outside the configured trusted workspace.
+  - **Static Deny Boundary**: sensitive system and credential paths such as `/etc`, `/private/etc`, `/root/.ssh`, `/proc`, `/sys`, and `/dev` remain blocked even if a broad safe root is configured.
+  - **Cross-Platform Path Resolution**: file mutation tools now use `Path::is_absolute()` so Windows absolute paths are checked directly instead of being joined under the current workdir.
 - **v0.3.132 Gateway silence-narration filter**:
   - **Hermes Delivery Safety Parity**: outbound gateway routing now drops bare loop-prone silence narration such as `*(silent)*`, `.`, `...`, `…`, `🔇`, `silent`, `no response`, and `no reply` before chat adapters send it.
   - **Configurable Boundary**: `gateways.filter_silence_narration` defaults to `true`; `HAKIMI_FILTER_SILENCE_NARRATION` or `HERMES_FILTER_SILENCE_NARRATION` can override it for migrations and emergency opt-out.
@@ -451,7 +455,7 @@ These features do not exist in the original Hermes Agent — they are unique to 
 - **Browser**: browser_navigate, browser_snapshot, browser_click, browser_type, browser_scroll, browser_back, browser_press, browser_get_images, browser_console, browser_dialog, browser_screenshot (Chromium automation)
 - **Media**: vision_analyze (image analysis), video_analyze (video analysis request), image_describe (legacy alias), image_generate, text_to_speech, transcribe_audio
 - **Productivity**: todo, clarify, checkpoint (shadow git snapshots)
-- **Safety**: file_safety (path protection and read-file credential guard), secret_redaction, prompt_injection_detection
+- **Safety**: file_safety (path protection, write safe-root sandbox, and read-file credential guard), secret_redaction, prompt_injection_detection
 - **Meta**: delegate_task (sub-agent delegation), skill_manage, send_message
 
 ### 🔌 Gateway Platforms
@@ -664,7 +668,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1310 tests)
+# Run all tests (1318 tests)
 cargo test --workspace
 
 # Debug logging

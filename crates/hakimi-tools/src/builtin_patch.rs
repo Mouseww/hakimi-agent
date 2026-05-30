@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, get_write_block_error};
 use serde_json::{Value as JsonValue, json};
+use std::path::PathBuf;
 use tokio::fs;
 use tracing::debug;
 
@@ -73,14 +74,18 @@ impl Tool for PatchTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        // Resolve path relative to workdir if not absolute
-        let full_path = if path.starts_with('/') {
-            std::path::PathBuf::from(path)
+        let requested_path = PathBuf::from(path);
+        let full_path = if requested_path.is_absolute() {
+            requested_path
         } else {
-            std::path::PathBuf::from(&ctx.workdir).join(path)
+            PathBuf::from(&ctx.workdir).join(requested_path)
         };
 
         debug!(path = %full_path.display(), replace_all, "patching file");
+
+        if let Some(error) = get_write_block_error(&full_path) {
+            return Err(HakimiError::Tool(error));
+        }
 
         let content = fs::read_to_string(&full_path).await.map_err(|e| {
             debug!(path = %full_path.display(), error = %e, "failed to read file for patching");
@@ -194,6 +199,20 @@ mod tests {
 
         let _ = fs::remove_file(&file).await;
         let _ = fs::remove_dir(&dir).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_patch_denies_static_sensitive_path_before_reading() {
+        let ctx = test_ctx("/tmp");
+        let args = json!({
+            "path": "/etc/passwd",
+            "old_string": "root",
+            "new_string": "blocked"
+        });
+
+        let err = PatchTool.execute(&args, &ctx).await.unwrap_err();
+        assert!(format!("{err}").contains("sensitive system or credential path"));
     }
 
     #[tokio::test]
