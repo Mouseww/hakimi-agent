@@ -4,6 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use tracing::debug;
 
 use crate::Tool;
+use crate::url_safety::{assert_safe_http_url, safe_http_redirect_policy};
 
 const MAX_VIDEO_BASE64_BYTES: usize = 50 * 1024 * 1024;
 const VIDEO_SIZE_WARN_BYTES: usize = 20 * 1024 * 1024;
@@ -104,8 +105,11 @@ impl Tool for VideoAnalyzeTool {
 }
 
 async fn download_video(url: &str) -> Result<(Vec<u8>, String)> {
+    assert_safe_http_url(url)?;
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
+        .redirect(safe_http_redirect_policy(5))
         .build()
         .map_err(|e| HakimiError::Tool(format!("Failed to create HTTP client: {e}")))?;
 
@@ -331,6 +335,23 @@ mod tests {
                 .to_string()
                 .contains("missing required parameter: video_url")
         );
+    }
+
+    #[tokio::test]
+    async fn execute_blocks_metadata_video_url() {
+        let tool = VideoAnalyzeTool;
+        let err = tool
+            .execute(
+                &json!({
+                    "video_url": "http://169.254.169.254/latest/meta-data",
+                    "question": "What happens?"
+                }),
+                &test_context(),
+            )
+            .await
+            .expect_err("metadata video URL should be rejected before download");
+
+        assert!(err.to_string().contains("metadata"));
     }
 
     #[tokio::test]

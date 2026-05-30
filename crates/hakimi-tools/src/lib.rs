@@ -32,6 +32,7 @@ mod registry;
 pub mod shell_env;
 pub mod tool_search;
 mod trait_def;
+mod url_safety;
 
 #[cfg(feature = "browser")]
 pub use builtin_browser::*;

@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.134-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.135-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1321-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1330-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1321 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 写入 safe-root 沙箱 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1330 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.135 Web/媒体工具 URL 安全**
+  - 对齐 Hermes SSRF guard：`web_extract`、`vision_analyze` 和 `video_analyze` 现在会在发起请求前拒绝 localhost、private、link-local、CGNAT、benchmark-space 与云元数据目标。
+  - 工具管理的 HTTP client 会在重定向目标越过公网 URL 边界时停止跟随，避免被 3xx 跳转带入内网。
+  - 可信本地部署可用 `HAKIMI_ALLOW_PRIVATE_URLS=true` 或 `HERMES_ALLOW_PRIVATE_URLS=true` 开启 private 目标，但元数据端点仍始终阻断。
 
 - **v0.3.134 Skills Hub live source adapters**
   - 对齐 Hermes source adapters：`hakimi skills sources add` 除本地/HTTPS index 文件外，现在支持 `github:owner/repo/path`、GitHub tree URL 和 `well-known:domain` 来源。
@@ -542,7 +547,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1321 tests)
+# 运行全部测试 (1330 tests)
 cargo test --workspace
 
 # Debug 日志

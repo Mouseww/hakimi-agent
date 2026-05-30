@@ -143,6 +143,9 @@ Generated: 2026-05-21
 - **Platform-specific formatting** — Telegram, Discord, Slack markdown hints
 - **Context file injection guard** — AGENTS.md, CLAUDE.md, .cursorrules, SOUL.md, and `.cursor/rules/*.mdc` are scanned before system prompt injection; suspicious content is replaced with a non-leaking blocked placeholder
 
+### URL Safety
+- **Web/media SSRF guard** — `web_extract`, `vision_analyze`, and `video_analyze` block localhost, private, link-local, CGNAT, benchmark-space, and cloud metadata targets before fetching, and re-check redirect targets through the tool-managed HTTP clients
+
 ### Delegation
 - **CoreDelegateExecutor** — Spawns child agents with filtered tool registries
 - **Toolset filtering** — Only includes tools from specified toolsets
@@ -469,6 +472,7 @@ Generated: 2026-05-21
 #### 59. URL Safety / Tirith Security
 - **What**: URL safety checking and security policy enforcement
 - **Hermes location**: `tools/url_safety.py`, `tools/tirith_security.py`
+- **Details**: Hakimi now covers Hermes-style URL safety for web/media fetches, including preflight SSRF checks, metadata endpoint hard blocks, redirect target checks, and an explicit private-URL env override for trusted local deployments. Remaining parity is Tirith command-content scanning and verified binary management.
 - **Priority**: **Low** — Security
 
 #### 60. Image Routing / Generation Registry
@@ -651,9 +655,10 @@ Generated: 2026-05-21
 | 56 | Gateway Silence-Narration Filter | `hakimi-gateway/src/lib.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Outbound gateway routing drops bare silence narration before adapter send/edit/get-id paths, defaults on through `gateways.filter_silence_narration`, supports Hakimi/Hermes env overrides, and preserves media deliveries |
 | 57 | Write Safe Root Sandbox | `hakimi-common/src/file_safety.rs`, `hakimi-tools/src/{builtin_write_file,builtin_patch}.rs` | 8 | ✅ `write_file` and `patch` honor `HAKIMI_WRITE_SAFE_ROOT` / `HERMES_WRITE_SAFE_ROOT`, block writes outside the trusted workspace, preserve static sensitive-path denies, and use cross-platform absolute path resolution |
 | 58 | Skills Hub Live Source Adapters | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 3 | ✅ Source refresh accepts `github:owner/repo/path`, GitHub tree URLs, and `well-known:domain`, discovers GitHub `SKILL.md` directories through safe Contents API calls, extracts frontmatter metadata, and caches them through the existing hub index path |
+| 59 | URL Safety for Web/Media Fetches | `hakimi-tools/src/url_safety.rs`, `hakimi-tools/src/{builtin_web_extract,builtin_vision_analyze,builtin_video_analyze}.rs` | 9 | ✅ Web/media tools reject localhost/private/link-local/CGNAT/metadata targets before fetch and stop unsafe redirects; trusted local deployments can opt into private targets while metadata endpoints stay blocked |
 
 ### Summary
-- **Total tests**: 1321 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1330 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

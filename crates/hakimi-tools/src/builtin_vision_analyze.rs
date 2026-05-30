@@ -9,6 +9,7 @@ use serde_json::{Value as JsonValue, json};
 use tracing::debug;
 
 use crate::Tool;
+use crate::url_safety::{assert_safe_http_url, safe_http_redirect_policy};
 
 /// Built-in tool for real image analysis via vision-capable models.
 pub struct VisionAnalyzeTool;
@@ -103,8 +104,11 @@ impl Tool for VisionAnalyzeTool {
 
 /// Download an image from a URL and return (bytes, mime_type).
 async fn download_image(url: &str) -> Result<(Vec<u8>, String)> {
+    assert_safe_http_url(url)?;
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .redirect(safe_http_redirect_policy(5))
         .build()
         .map_err(|e| HakimiError::Tool(format!("Failed to create HTTP client: {e}")))?;
 
@@ -266,6 +270,30 @@ mod tests {
             .await;
         // Should fail at download, not at parameter parsing.
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_blocks_metadata_image_url() {
+        let tool = VisionAnalyzeTool;
+        let ctx = ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: ".".to_string(),
+            model: None,
+            delegate_executor: None,
+            ..Default::default()
+        };
+
+        let err = tool
+            .execute(
+                &json!({"image_url": "http://169.254.169.254/latest/meta-data"}),
+                &ctx,
+            )
+            .await
+            .expect_err("metadata image URL should be rejected before download");
+
+        assert!(err.to_string().contains("metadata"));
     }
 
     #[test]

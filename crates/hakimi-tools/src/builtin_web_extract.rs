@@ -5,6 +5,7 @@ use serde_json::{Value as JsonValue, json};
 use tracing::debug;
 
 use crate::Tool;
+use crate::url_safety::{assert_safe_http_url, safe_http_redirect_policy};
 
 /// Built-in tool that fetches a URL and extracts readable text content
 /// using a readability-style scoring algorithm.
@@ -65,17 +66,12 @@ impl Tool for WebExtractTool {
 
         debug!(url = %url, max_length, "web extract request");
 
-        // Validate URL
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            return Err(HakimiError::Tool(
-                "URL must start with http:// or https://".into(),
-            ));
-        }
+        assert_safe_http_url(url)?;
 
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (compatible; HakimiAgent/0.1; +https://github.com/Mouseww/hakimi-agent)")
             .timeout(std::time::Duration::from_secs(30))
-            .redirect(reqwest::redirect::Policy::limited(5))
+            .redirect(safe_http_redirect_policy(5))
             .build()
             .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
 
@@ -662,5 +658,19 @@ mod tests {
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["url"].is_object());
         assert!(schema["properties"]["max_length"].is_object());
+    }
+
+    #[tokio::test]
+    async fn web_extract_blocks_metadata_urls_before_fetch() {
+        let tool = WebExtractTool;
+        let err = tool
+            .execute(
+                &json!({"url": "http://169.254.169.254/latest/meta-data"}),
+                &ToolContext::default(),
+            )
+            .await
+            .expect_err("metadata URL should be rejected before fetch");
+
+        assert!(err.to_string().contains("metadata"));
     }
 }
