@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use hakimi_skills::{Skill, SkillHub, SkillHubEntry, SkillHubInstallOptions};
+use hakimi_skills::{Skill, SkillHub, SkillHubEntry, SkillHubInstallOptions, SkillUsageStore};
 use serde_json::json;
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ pub fn gateway_skills_response(raw: Option<&str>, loaded_skills: &[Skill]) -> St
         &args[..]
     };
     match hub_args.first().map(String::as_str) {
-        Some("browse" | "search" | "inspect" | "install" | "list" | "path" | "help") => {
+        Some("browse" | "search" | "inspect" | "install" | "list" | "path" | "usage" | "help") => {
             skills_response_for_dir(hub_args, &default_skills_dir())
         }
         _ => gateway_skills_help(),
@@ -148,6 +148,7 @@ pub(crate) fn skills_response_for_dir(args: &[String], skills_dir: &Path) -> Str
             hub.skills_dir().display(),
             hub.index_path().display()
         ),
+        "usage" => render_skill_usage(skills_dir, options.json),
         "help" | "-h" | "--help" => skills_help_response(),
         other => format!(
             "Unknown skills command `{other}`.\n{}",
@@ -296,6 +297,35 @@ fn empty_dash(value: &str) -> &str {
     if value.trim().is_empty() { "-" } else { value }
 }
 
+fn render_skill_usage(skills_dir: &Path, as_json: bool) -> String {
+    let usage_store = SkillUsageStore::new(skills_dir);
+    let usage = usage_store.report();
+    if as_json {
+        return serde_json::to_string_pretty(&usage)
+            .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#));
+    }
+    if usage.is_empty() {
+        return format!(
+            "No skill usage recorded in `{}`.",
+            usage_store.path().display()
+        );
+    }
+
+    let mut lines = vec![format!(
+        "Skill usage from `{}`:",
+        usage_store.path().display()
+    )];
+    for item in usage {
+        let last_used = item.record.last_used_at.as_deref().unwrap_or("-");
+        let last_viewed = item.record.last_viewed_at.as_deref().unwrap_or("-");
+        lines.push(format!(
+            "- `{}`: used {}, viewed {}, last used {}, last viewed {}",
+            item.name, item.record.use_count, item.record.view_count, last_used, last_viewed
+        ));
+    }
+    lines.join("\n")
+}
+
 fn loaded_skills_response(loaded_skills: &[Skill]) -> String {
     if loaded_skills.is_empty() {
         return "Loaded Skills: none".to_string();
@@ -323,6 +353,7 @@ fn skills_help_response() -> String {
         "- install <identifier-or-name> [--category NAME] [--force] [--trust-community] [--index PATH] - install a scanned skill",
         "- list [--json] - list hub-installed skills recorded in .hub/lock.json",
         "- path - show the skills directory and index path",
+        "- usage [--json] - show runtime skill use/view counters from .usage.json",
         "",
         "Community skills require --trust-community so non-interactive installs cannot silently cross trust boundaries.",
     ]
@@ -338,6 +369,7 @@ fn gateway_skills_help() -> String {
         "- `/skills inspect <identifier>` - preview hub skill metadata",
         "- `/skills install <identifier> [--trust-community]` - install a scanned skill for the next reload",
         "- `/skills hub list` - list hub-installed skills",
+        "- `/skills usage` - show runtime skill use/view counters",
     ]
     .join("\n")
 }
@@ -405,5 +437,19 @@ mod tests {
 
         assert!(response.contains("Loaded Skills"));
         assert!(response.contains("release-check"));
+    }
+
+    #[test]
+    fn usage_renders_recorded_skill_counts() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        let usage = SkillUsageStore::new(&skills_dir);
+        usage.record_use("release-check").unwrap();
+
+        let response = skills_response_for_dir(&["usage".to_string()], &skills_dir);
+
+        assert!(response.contains("Skill usage"));
+        assert!(response.contains("release-check"));
+        assert!(response.contains("used 1"));
     }
 }

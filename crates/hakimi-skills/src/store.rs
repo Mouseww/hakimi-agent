@@ -4,6 +4,7 @@ use crate::lifecycle::SkillWorkingSet;
 use crate::loader::SkillLoader;
 use crate::preprocessing::SkillPreprocessOptions;
 use crate::skill::Skill;
+use crate::usage::SkillUsageStore;
 
 /// Store for managing and loading skills.
 ///
@@ -14,6 +15,7 @@ use crate::skill::Skill;
 pub struct SkillStore {
     skills: Vec<Skill>,
     working_set: SkillWorkingSet,
+    usage_store: Option<SkillUsageStore>,
 }
 
 impl SkillStore {
@@ -28,6 +30,7 @@ impl SkillStore {
         Self {
             skills,
             working_set: SkillWorkingSet::new(),
+            usage_store: None,
         }
     }
 
@@ -37,6 +40,7 @@ impl SkillStore {
         Ok(Self {
             skills: loader.skills().to_vec(),
             working_set: SkillWorkingSet::new(),
+            usage_store: Some(SkillUsageStore::new(path)),
         })
     }
 
@@ -49,6 +53,7 @@ impl SkillStore {
         Ok(Self {
             skills: loader.skills().to_vec(),
             working_set: SkillWorkingSet::new(),
+            usage_store: Some(SkillUsageStore::new(path)),
         })
     }
 
@@ -61,6 +66,7 @@ impl SkillStore {
         let mut fork = Self {
             skills: self.skills.clone(),
             working_set: SkillWorkingSet::new(),
+            usage_store: self.usage_store.clone(),
         };
         fork.observe(seed_text);
         fork
@@ -84,11 +90,31 @@ impl SkillStore {
     /// Observe a user/model/tool event and refresh the active skill working set.
     pub fn observe(&mut self, text: &str) {
         self.working_set.observe(text, &self.skills);
+        self.record_active_skill_uses();
     }
 
     /// Observe a tool result and refresh skill lifecycle state.
     pub fn observe_tool_result(&mut self, text: &str) {
         self.working_set.observe_tool_result(text, &self.skills);
+        self.record_active_skill_uses();
+    }
+
+    pub fn record_use(&self, skill_name: &str) {
+        if let Some(usage_store) = &self.usage_store {
+            usage_store.bump_use(skill_name);
+        }
+    }
+
+    pub fn record_view(&self, skill_name: &str) {
+        if let Some(usage_store) = &self.usage_store {
+            usage_store.bump_view(skill_name);
+        }
+    }
+
+    fn record_active_skill_uses(&self) {
+        if let Some(usage_store) = &self.usage_store {
+            usage_store.bump_uses(&self.working_set.active_skill_names());
+        }
     }
 
     /// Get a summary of loaded skills.
@@ -126,6 +152,7 @@ impl SkillStore {
 mod tests {
     use super::*;
     use crate::skill::{HarnessPhase, Skill};
+    use tempfile::TempDir;
 
     fn skill(name: &str, tags: &[&str], phases: Vec<HarnessPhase>) -> Skill {
         Skill {
@@ -160,5 +187,30 @@ mod tests {
         assert!(parent_active.contains(&"rust-debugging".to_string()));
         assert!(child_active.contains(&"python-testing".to_string()));
         assert!(!child_active.contains(&"rust-debugging".to_string()));
+    }
+
+    #[test]
+    fn loaded_store_records_runtime_skill_use() {
+        let tmp = TempDir::new().unwrap();
+        let skill_path = tmp.path().join("release.md");
+        std::fs::write(
+            skill_path,
+            r#"---
+name: release-check
+tags:
+  - release
+---
+# Release
+Check release evidence."#,
+        )
+        .unwrap();
+        let mut store = SkillStore::load(tmp.path()).unwrap();
+
+        store.observe("please review the release");
+
+        let usage = crate::usage::SkillUsageStore::new(tmp.path()).report();
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].name, "release-check");
+        assert_eq!(usage[0].record.use_count, 1);
     }
 }

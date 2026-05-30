@@ -11,6 +11,5 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
-
-[dev-dependencies]
+chrono = { workspace = true }
 tempfile = "3"

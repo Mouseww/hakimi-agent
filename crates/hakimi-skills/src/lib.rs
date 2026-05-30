@@ -6,6 +6,7 @@ pub mod preprocessing;
 pub mod safety;
 pub mod skill;
 pub mod store;
+pub mod usage;
 
 pub use hub::{InstalledSkill, SkillHub, SkillHubEntry, SkillHubIndex, SkillHubInstallOptions};
 pub use lifecycle::{ActiveSkill, EvictedSkill, SkillRepresentation, SkillWorkingSet};
@@ -19,3 +20,4 @@ pub use safety::{
 };
 pub use skill::{HarnessPhase, Skill, SkillMetadata, SkillProvenance};
 pub use store::SkillStore;
+pub use usage::{SkillUsageRecord, SkillUsageSnapshot, SkillUsageStore};
