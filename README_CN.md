@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.128-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.129-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1293-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1296-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1293 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、平台门控、模板预处理、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1296 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断与终态认证隔离 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · Gateway 入站访问策略 · MCP sampling/createMessage · Skills Guard、provenance、hub install policy、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.129 Skills slash-command invocation**
+  - 对齐 Hermes skill command：已加载 skill 现在可以用 `/skill-name optional instruction` 直接调用，并支持 hyphen/underscore 别名以兼容 gateway 命令约束。
+  - CLI `--query` 与 gateway 聊天会把 skill slash command 转换成普通 user message，注入所选 skill 的完整内容和尾随用户指令。
+  - 显式 skill 调用复用现有 `.usage.json` 使用计数路径，同时不改变内置 slash command 的优先级。
 
 - **v0.3.128 Skills bundled sync/update**
   - 对齐 Hermes manifest sync：`hakimi skills sync --source <dir>` 会把 bundled `SKILL.md` 目录同步到 `~/.hakimi/skills`，并写入 `.bundled_manifest` origin hash。
@@ -505,7 +510,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1293 |
+| 测试 | ~500 | 1296 |
 
 ---
 
@@ -515,7 +520,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1293 tests)
+# 运行全部测试 (1296 tests)
 cargo test --workspace
 
 # Debug 日志

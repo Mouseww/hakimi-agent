@@ -530,6 +530,14 @@ impl AIAgent {
         self.streaming_callback = callback;
     }
 
+    /// Convert a loaded skill slash command into the user-message payload that
+    /// should be sent to the model, recording the explicit skill use if found.
+    pub fn build_skill_slash_invocation_message(&mut self, input: &str) -> Option<String> {
+        self.skill_store
+            .as_mut()
+            .and_then(|store| store.build_slash_invocation_message(input))
+    }
+
     /// Build a [`ToolContext`] from the agent's current state.
     ///
     /// Includes a [`CoreDelegateExecutor`] so that the `delegate_task` tool

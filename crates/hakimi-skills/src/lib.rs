@@ -5,6 +5,7 @@ pub mod loader;
 pub mod preprocessing;
 pub mod safety;
 pub mod skill;
+pub mod slash;
 pub mod store;
 pub mod sync;
 pub mod usage;
@@ -20,6 +21,7 @@ pub use safety::{
     SkillSafetyFinding, SkillSafetyReport, SkillSafetySeverity, SkillSafetyVerdict, scan_skill_text,
 };
 pub use skill::{HarnessPhase, Skill, SkillMetadata, SkillProvenance};
+pub use slash::{SkillSlashInvocation, normalize_skill_command_name};
 pub use store::SkillStore;
 pub use sync::{SkillSync, SkillSyncReport};
 pub use usage::{SkillUsageRecord, SkillUsageSnapshot, SkillUsageStore};

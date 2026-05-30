@@ -3423,9 +3423,18 @@ async fn start_gateway(
                 })
             };
 
-            // Handle commands.
-            if text.starts_with('/') {
-                let response = match Command::parse(&text) {
+            // Handle commands. Unknown slash commands may be loaded skill
+            // invocations; those continue into the normal agent turn below.
+            let parsed_command = if text.starts_with('/') {
+                Command::parse(&text)
+            } else {
+                None
+            };
+            let is_loaded_skill_slash = text.starts_with('/')
+                && parsed_command.is_none()
+                && skill_store_ref.resolve_slash_invocation(&text).is_some();
+            if text.starts_with('/') && !is_loaded_skill_slash {
+                let response = match parsed_command {
                     Some(Command::Help) => {
                         "🤖 **Hakimi Agent Commands**\n\n\
 **Chat control**\n\
@@ -4022,12 +4031,18 @@ Just send a message to chat with me!"
                 };
                 turn_agent.set_streaming_callback(Some(std::sync::Arc::new(callback)));
 
+                let raw_user_text = turn_agent
+                    .build_skill_slash_invocation_message(&text)
+                    .unwrap_or_else(|| text.clone());
+
                 let user_text = {
                     let trackers = turn_trackers.lock().await;
                     trackers
                         .get(&chat_id)
-                        .map(|tracker| tracker.decorate_user_text(&text, is_concurrent_turn))
-                        .unwrap_or_else(|| text.clone())
+                        .map(|tracker| {
+                            tracker.decorate_user_text(&raw_user_text, is_concurrent_turn)
+                        })
+                        .unwrap_or_else(|| raw_user_text.clone())
                 };
 
                 let mut msg = hakimi_common::Message::user(&user_text);
@@ -4782,7 +4797,10 @@ pub async fn run() -> Result<()> {
 
     if let Some(query) = args.query {
         let mut a = agent;
-        println!("{}", a.query(&query).await?);
+        let user_message = a
+            .build_skill_slash_invocation_message(&query)
+            .unwrap_or(query);
+        println!("{}", a.query(&user_message).await?);
         return Ok(());
     }
 

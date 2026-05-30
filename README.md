@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.128-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.129-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1293-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1296-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1293 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, platform gates, template preprocessing, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1296 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.129 Skills slash-command invocation**:
+  - **Hermes Skill Command Parity**: loaded skills can now be invoked as `/skill-name optional instruction`, with hyphen/underscore aliases matching gateway command constraints.
+  - **User Message Injection**: CLI `--query` and gateway chats convert skill slash commands into normal user messages that include the full selected skill content and the trailing user instruction.
+  - **Usage Accounting**: explicit skill slash invocations reuse the existing `.usage.json` counter path without changing built-in slash-command behavior.
 - **v0.3.128 Skills bundled sync/update**:
   - **Hermes Manifest Sync Parity**: `hakimi skills sync --source <dir>` seeds bundled `SKILL.md` trees into `~/.hakimi/skills` while writing `.bundled_manifest` origin hashes.
   - **User Edit Safety**: unchanged synced skills update when the bundled source changes, user-modified skills are preserved, and deleted skills are not silently re-added.
@@ -640,7 +644,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1293 |
+| Tests | ~500 | 1296 |
 
 ---
 
@@ -650,7 +654,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1293 tests)
+# Run all tests (1296 tests)
 cargo test --workspace
 
 # Debug logging
