@@ -219,6 +219,24 @@ mod tests {
     }
 
     #[test]
+    fn blocks_ipv4_mapped_metadata_literals() {
+        assert!(
+            assert_safe_http_url_with_private_override(
+                "http://[::ffff:169.254.169.254]/latest/meta-data",
+                true,
+            )
+            .is_err()
+        );
+        assert!(
+            assert_safe_http_url_with_private_override(
+                "http://[::ffff:100.100.100.200]/latest/meta-data",
+                true,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn rejects_non_http_schemes() {
         assert!(assert_safe_http_url("file:///etc/passwd").is_err());
         assert!(assert_safe_http_url("ftp://example.com/file").is_err());
