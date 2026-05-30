@@ -363,6 +363,9 @@ async fn edge_tts_synthesize(text: &str, voice: &str, client: &reqwest::Client) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_tool_metadata() {
@@ -400,8 +403,9 @@ mod tests {
 
     #[test]
     fn test_get_output_dir_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // Clear any env var
-        // SAFETY: tests run single-threaded for env var manipulation
+        // SAFETY: guarded by ENV_LOCK because process env is shared across tests.
         unsafe {
             std::env::remove_var("HAKIMI_TTS_OUTPUT_DIR");
         }
@@ -417,7 +421,8 @@ mod tests {
 
     #[test]
     fn test_get_output_dir_env() {
-        // SAFETY: tests run single-threaded for env var manipulation
+        let _guard = ENV_LOCK.lock().unwrap();
+        // SAFETY: guarded by ENV_LOCK because process env is shared across tests.
         unsafe {
             std::env::set_var("HAKIMI_TTS_OUTPUT_DIR", "/custom/tts/dir");
         }
