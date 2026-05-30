@@ -397,7 +397,7 @@ fn render_sources_response(hub: &SkillHub, args: &[String], options: SkillCliOpt
         },
         "add" => {
             if args.len() < 3 {
-                return "Usage: hakimi skills sources add <name> <https-url-or-index-path> [--trust builtin|trusted|community]".to_string();
+                return "Usage: hakimi skills sources add <name> <index-path|https-index-url|github:owner/repo/path|well-known:domain> [--trust builtin|trusted|community]".to_string();
             }
             match hub.add_source(&args[1], &args[2], options.source_trust.as_deref()) {
                 Ok(source) => format!(
@@ -443,11 +443,11 @@ fn render_sources_response(hub: &SkillHub, args: &[String], options: SkillCliOpt
             "",
             "Commands:",
             "- list [--json] - list configured remote/local index sources",
-            "- add <name> <https-url-or-index-path> [--trust builtin|trusted|community] - register a source",
+            "- add <name> <index-path|https-index-url|github:owner/repo/path|well-known:domain> [--trust builtin|trusted|community] - register a source",
             "- refresh [--json] - fetch sources into .hub/index-cache for browse/search/install",
             "- remove <name> - remove a source and cached index",
             "",
-            "Remote sources must use https:// and cannot embed credentials or target local/private hosts.",
+            "Remote sources must use safe https:// endpoints; GitHub sources may use github:owner/repo/path or GitHub tree URLs.",
         ]
         .join("\n"),
         other => format!(

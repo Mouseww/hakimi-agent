@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::env;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -10,6 +11,7 @@ use serde_json::{Value as JsonValue, json};
 use crate::safety::scan_skill_text;
 
 const MAX_INDEX_BYTES: u64 = 2 * 1024 * 1024;
+const GITHUB_API_BASE: &str = "https://api.github.com/repos";
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SkillHubIndex {
@@ -42,6 +44,22 @@ pub struct SkillHubSourceRefresh {
     pub cached_path: PathBuf,
     pub skills: usize,
     pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GithubSourceSpec {
+    owner: String,
+    repo: String,
+    path: String,
+    ref_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubContentEntry {
+    name: String,
+    path: String,
+    #[serde(rename = "type")]
+    kind: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -347,8 +365,7 @@ impl SkillHub {
     pub fn refresh_sources(&self) -> Result<Vec<SkillHubSourceRefresh>> {
         let mut reports = Vec::new();
         for source in self.sources()? {
-            let raw = read_source_index(&source)?;
-            let index = parse_source_index(&raw, &source)?;
+            let index = load_source_index(&source)?;
             let skills = index.skills.len();
             let cache_path = self.cached_source_path(&source.name);
             ensure_hub_ignore(&self.skills_dir)?;
@@ -518,7 +535,11 @@ fn normalize_source(
     if location.is_empty() {
         bail!("source `{name}` location must not be empty");
     }
-    if looks_like_url(location) {
+    if let Some(index_url) = well_known_index_url(location)? {
+        validate_index_url(&index_url)?;
+    } else if let Some(spec) = parse_github_source_location(location)? {
+        validate_github_source_spec(&spec)?;
+    } else if looks_like_url(location) {
         validate_index_url(location)?;
     }
     let trust_level = trust_level
@@ -529,6 +550,18 @@ fn normalize_source(
         location: location.to_string(),
         trust_level,
     })
+}
+
+fn load_source_index(source: &SkillHubSource) -> Result<SkillHubIndex> {
+    if let Some(index_url) = well_known_index_url(&source.location)? {
+        let raw = fetch_https_index(&index_url)?;
+        parse_source_index(&raw, source)
+    } else if let Some(spec) = parse_github_source_location(&source.location)? {
+        fetch_github_source_index(&spec, source)
+    } else {
+        let raw = read_source_index(source)?;
+        parse_source_index(&raw, source)
+    }
 }
 
 fn read_source_index(source: &SkillHubSource) -> Result<String> {
@@ -560,6 +593,349 @@ fn parse_source_index(raw: &str, source: &SkillHubSource) -> Result<SkillHubInde
 fn looks_like_url(location: &str) -> bool {
     let lower = location.to_ascii_lowercase();
     lower.starts_with("http://") || lower.starts_with("https://")
+}
+
+fn well_known_index_url(location: &str) -> Result<Option<String>> {
+    let Some(raw) = location.trim().strip_prefix("well-known:") else {
+        return Ok(None);
+    };
+    let raw = raw.trim();
+    if raw.is_empty() {
+        bail!("well-known skills source must include a domain or index URL");
+    }
+    let mut url = if looks_like_url(raw) {
+        raw.to_string()
+    } else {
+        format!("https://{raw}")
+    };
+    if url.ends_with("/index.json") {
+        return Ok(Some(url));
+    }
+    url = url.trim_end_matches('/').to_string();
+    Ok(Some(format!("{url}/.well-known/skills/index.json")))
+}
+
+fn parse_github_source_location(location: &str) -> Result<Option<GithubSourceSpec>> {
+    let location = location.trim();
+    if let Some(rest) = location.strip_prefix("github:") {
+        let parts = safe_github_path_parts(rest)?;
+        if parts.len() < 2 {
+            bail!("github skills source must be github:owner/repo[/path]");
+        }
+        return Ok(Some(GithubSourceSpec {
+            owner: parts[0].clone(),
+            repo: parts[1].clone(),
+            path: parts[2..].join("/"),
+            ref_name: None,
+        }));
+    }
+
+    if !location.starts_with("https://github.com/") {
+        return Ok(None);
+    }
+
+    let parsed = reqwest::Url::parse(location)
+        .with_context(|| format!("invalid GitHub skills source URL `{location}`"))?;
+    if parsed.host_str() != Some("github.com") {
+        return Ok(None);
+    }
+    let parts = parsed
+        .path_segments()
+        .map(|segments| segments.map(str::to_string).collect::<Vec<_>>())
+        .unwrap_or_default();
+    if parts.len() < 2 {
+        bail!("github skills source URL must include owner and repo");
+    }
+    let owner = parts[0].clone();
+    let repo = parts[1].clone();
+    let (ref_name, path) = if parts.get(2).is_some_and(|part| part == "tree") {
+        let Some(branch) = parts.get(3) else {
+            bail!("github skills source tree URL must include a branch");
+        };
+        (Some(branch.clone()), parts[4..].join("/"))
+    } else {
+        (None, parts[2..].join("/"))
+    };
+    let spec = GithubSourceSpec {
+        owner,
+        repo,
+        path,
+        ref_name,
+    };
+    validate_github_source_spec(&spec)?;
+    Ok(Some(spec))
+}
+
+fn safe_github_path_parts(value: &str) -> Result<Vec<String>> {
+    let normalized = value.trim().replace('\\', "/");
+    if normalized.is_empty() || normalized.starts_with('/') {
+        bail!("unsafe github skills source path");
+    }
+    let mut parts = Vec::new();
+    for part in normalized.split('/').filter(|part| !part.is_empty()) {
+        if part == "."
+            || part == ".."
+            || part.contains(':')
+            || !part
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+        {
+            bail!("unsafe github skills source path");
+        }
+        parts.push(part.to_string());
+    }
+    Ok(parts)
+}
+
+fn validate_github_source_spec(spec: &GithubSourceSpec) -> Result<()> {
+    safe_github_path_parts(&format!("{}/{}", spec.owner, spec.repo))?;
+    if !spec.path.is_empty() {
+        safe_github_path_parts(&spec.path)?;
+    }
+    if let Some(ref_name) = &spec.ref_name {
+        safe_github_path_parts(ref_name)?;
+    }
+    Ok(())
+}
+
+fn fetch_github_source_index(
+    spec: &GithubSourceSpec,
+    source: &SkillHubSource,
+) -> Result<SkillHubIndex> {
+    let client = github_client()?;
+    let entries = fetch_github_contents(&client, spec, &spec.path)?;
+    let skill_paths = github_skill_paths(&entries, &spec.path);
+    let mut skills = Vec::new();
+
+    for skill_path in skill_paths {
+        let Some(skill_md) = fetch_github_skill_md(&client, spec, &skill_path)? else {
+            continue;
+        };
+        skills.push(github_skill_entry(spec, source, &skill_path, &skill_md)?);
+    }
+
+    Ok(SkillHubIndex {
+        version: 1,
+        skills: normalize_and_dedupe_entries(skills),
+    })
+}
+
+fn github_client() -> Result<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::limited(3))
+        .user_agent("hakimi-skills-hub")
+        .build()
+        .context("failed to build GitHub Skills Hub client")
+}
+
+fn fetch_github_contents(
+    client: &reqwest::blocking::Client,
+    spec: &GithubSourceSpec,
+    path: &str,
+) -> Result<Vec<GithubContentEntry>> {
+    let url = github_contents_url(spec, path);
+    let response = github_get(client, &url, "application/vnd.github+json")?
+        .send()
+        .with_context(|| format!("failed to fetch GitHub skills source `{url}`"))?;
+    let status = response.status();
+    if !status.is_success() {
+        bail!("GitHub skills source `{url}` returned HTTP {status}");
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_INDEX_BYTES)
+    {
+        bail!("GitHub skills source `{url}` is larger than {MAX_INDEX_BYTES} bytes");
+    }
+    let text = response
+        .text()
+        .with_context(|| format!("failed to read GitHub skills source `{url}`"))?;
+    if text.len() as u64 > MAX_INDEX_BYTES {
+        bail!("GitHub skills source `{url}` is larger than {MAX_INDEX_BYTES} bytes");
+    }
+    parse_github_contents_json(&text, &url)
+}
+
+fn parse_github_contents_json(raw: &str, url: &str) -> Result<Vec<GithubContentEntry>> {
+    let value: JsonValue = serde_json::from_str(raw)
+        .with_context(|| format!("failed to parse GitHub skills source `{url}`"))?;
+    match value {
+        JsonValue::Array(_) => serde_json::from_value(value)
+            .with_context(|| format!("failed to parse GitHub skills source `{url}`")),
+        JsonValue::Object(_) => {
+            let entry: GithubContentEntry = serde_json::from_value(value)
+                .with_context(|| format!("failed to parse GitHub skills source `{url}`"))?;
+            Ok(vec![entry])
+        }
+        _ => bail!("GitHub skills source `{url}` returned unexpected JSON"),
+    }
+}
+
+fn fetch_github_skill_md(
+    client: &reqwest::blocking::Client,
+    spec: &GithubSourceSpec,
+    skill_path: &str,
+) -> Result<Option<String>> {
+    let path = if skill_path.is_empty() {
+        "SKILL.md".to_string()
+    } else {
+        format!("{}/SKILL.md", skill_path.trim_matches('/'))
+    };
+    let url = github_contents_url(spec, &path);
+    let response = github_get(client, &url, "application/vnd.github.v3.raw")?
+        .send()
+        .with_context(|| format!("failed to fetch GitHub skill `{url}`"))?;
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !status.is_success() {
+        bail!("GitHub skill `{url}` returned HTTP {status}");
+    }
+    let text = response
+        .text()
+        .with_context(|| format!("failed to read GitHub skill `{url}`"))?;
+    if text.len() as u64 > MAX_INDEX_BYTES {
+        bail!("GitHub skill `{url}` is larger than {MAX_INDEX_BYTES} bytes");
+    }
+    Ok(Some(text))
+}
+
+fn github_get(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    accept: &str,
+) -> Result<reqwest::blocking::RequestBuilder> {
+    validate_index_url(url)?;
+    let mut request = client
+        .get(url)
+        .header(reqwest::header::ACCEPT, accept)
+        .header(reqwest::header::USER_AGENT, "hakimi-skills-hub");
+    if let Some(token) = github_token_from_env() {
+        request = request.bearer_auth(token);
+    }
+    Ok(request)
+}
+
+fn github_token_from_env() -> Option<String> {
+    env::var("GH_TOKEN")
+        .ok()
+        .or_else(|| env::var("GITHUB_TOKEN").ok())
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+fn github_contents_url(spec: &GithubSourceSpec, path: &str) -> String {
+    let mut url = format!("{}/{}/{}/contents", GITHUB_API_BASE, spec.owner, spec.repo);
+    let path = path.trim_matches('/');
+    if !path.is_empty() {
+        url.push('/');
+        url.push_str(path);
+    }
+    if let Some(ref_name) = &spec.ref_name {
+        url.push_str("?ref=");
+        url.push_str(ref_name);
+    }
+    url
+}
+
+fn github_skill_paths(entries: &[GithubContentEntry], base_path: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    if entries
+        .iter()
+        .any(|entry| entry.kind == "file" && entry.name.eq_ignore_ascii_case("SKILL.md"))
+    {
+        paths.push(base_path.trim_matches('/').to_string());
+    }
+    paths.extend(
+        entries
+            .iter()
+            .filter(|entry| entry.kind == "dir")
+            .map(|entry| entry.path.trim_matches('/').to_string()),
+    );
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn github_skill_entry(
+    spec: &GithubSourceSpec,
+    source: &SkillHubSource,
+    skill_path: &str,
+    skill_md: &str,
+) -> Result<SkillHubEntry> {
+    let fallback_name = skill_path
+        .trim_matches('/')
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or(&spec.repo);
+    let name = frontmatter_string(skill_md, "name").unwrap_or_else(|| fallback_name.to_string());
+    let description = frontmatter_string(skill_md, "description")
+        .or_else(|| first_markdown_heading(skill_md))
+        .unwrap_or_default();
+    let tags = frontmatter_string_list(skill_md, "tags");
+    let identifier_path = skill_path.trim_matches('/');
+    let identifier = if identifier_path.is_empty() {
+        format!("github:{}/{}", spec.owner, spec.repo)
+    } else {
+        format!("github:{}/{}/{}", spec.owner, spec.repo, identifier_path)
+    };
+    let mut files = BTreeMap::new();
+    files.insert("SKILL.md".to_string(), skill_md.to_string());
+
+    Ok(SkillHubEntry {
+        name,
+        description,
+        source: source.name.clone(),
+        identifier,
+        trust_level: source.trust_level.clone(),
+        repo: Some(format!("{}/{}", spec.owner, spec.repo)),
+        category: None,
+        tags,
+        created_by: None,
+        files,
+    }
+    .normalized())
+}
+
+fn frontmatter_string(skill_md: &str, key: &str) -> Option<String> {
+    let value = frontmatter_value(skill_md)?;
+    value
+        .get(key)
+        .and_then(JsonValue::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn frontmatter_string_list(skill_md: &str, key: &str) -> Vec<String> {
+    let Some(value) = frontmatter_value(skill_md).and_then(|value| value.get(key).cloned()) else {
+        return Vec::new();
+    };
+    match value {
+        JsonValue::Array(items) => items
+            .into_iter()
+            .filter_map(|item| item.as_str().map(str::to_string))
+            .collect(),
+        JsonValue::String(item) => vec![item],
+        _ => Vec::new(),
+    }
+}
+
+fn frontmatter_value(skill_md: &str) -> Option<JsonValue> {
+    let body = skill_md.strip_prefix("---")?;
+    let end = body.find("\n---")?;
+    let frontmatter = &body[..end];
+    serde_yaml::from_str(frontmatter).ok()
+}
+
+fn first_markdown_heading(skill_md: &str) -> Option<String> {
+    skill_md.lines().find_map(|line| {
+        let heading = line.trim().strip_prefix("# ")?;
+        let heading = heading.trim();
+        (!heading.is_empty()).then(|| heading.to_string())
+    })
 }
 
 fn fetch_https_index(location: &str) -> Result<String> {
@@ -1165,6 +1541,70 @@ mod tests {
         assert!(http.to_string().contains("https://"));
         assert!(localhost.to_string().contains("not allowed"));
         assert!(credential.to_string().contains("not allowed"));
+    }
+
+    #[test]
+    fn well_known_sources_expand_to_index_url() {
+        let domain = well_known_index_url("well-known:skills.example.com").unwrap();
+        let full = well_known_index_url("well-known:https://skills.example.com/catalog/index.json")
+            .unwrap();
+
+        assert_eq!(
+            domain.as_deref(),
+            Some("https://skills.example.com/.well-known/skills/index.json")
+        );
+        assert_eq!(
+            full.as_deref(),
+            Some("https://skills.example.com/catalog/index.json")
+        );
+    }
+
+    #[test]
+    fn github_sources_validate_safe_repo_paths() {
+        let spec = parse_github_source_location(
+            "https://github.com/NousResearch/hermes-agent/tree/main/skills/software",
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(spec.owner, "NousResearch");
+        assert_eq!(spec.repo, "hermes-agent");
+        assert_eq!(spec.ref_name.as_deref(), Some("main"));
+        assert_eq!(spec.path, "skills/software");
+
+        let err = parse_github_source_location("github:owner/repo/../secrets")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unsafe github"));
+    }
+
+    #[test]
+    fn github_skill_entry_extracts_frontmatter_metadata() {
+        let source =
+            normalize_source("github-live", "github:owner/repo/skills", Some("trusted")).unwrap();
+        let spec = GithubSourceSpec {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            path: "skills".to_string(),
+            ref_name: None,
+        };
+
+        let entry = github_skill_entry(
+            &spec,
+            &source,
+            "skills/review",
+            "---\nname: code-review\ndescription: Review Rust changes\ntags:\n  - rust\n---\n# Review\nBody.",
+        )
+        .unwrap();
+
+        assert_eq!(entry.name, "code-review");
+        assert_eq!(entry.description, "Review Rust changes");
+        assert_eq!(entry.source, "github-live");
+        assert_eq!(entry.identifier, "github:owner/repo/skills/review");
+        assert_eq!(entry.trust_level, "trusted");
+        assert_eq!(entry.repo.as_deref(), Some("owner/repo"));
+        assert_eq!(entry.tags, vec!["rust"]);
+        assert!(entry.files.contains_key("SKILL.md"));
     }
 
     #[test]
