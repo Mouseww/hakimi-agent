@@ -5,7 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
@@ -13,6 +13,7 @@ use crate::Tool;
 
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
+const DEFAULT_BOARD: &str = "default";
 const VALID_STATUSES: &[&str] = &[
     "triage", "todo", "ready", "running", "blocked", "review", "done", "archived",
 ];
@@ -111,6 +112,10 @@ impl Default for KanbanStore {
 impl KanbanStore {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
+    }
+
+    pub fn for_board(board: Option<&str>) -> Result<Self> {
+        Ok(Self::new(resolve_kanban_db_path(board)?))
     }
 
     fn connect(&self) -> Result<Connection> {
@@ -420,6 +425,28 @@ impl KanbanStore {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct KanbanBoardMetadata {
+    slug: String,
+    name: String,
+    description: Option<String>,
+    created_at: i64,
+}
+
+impl KanbanBoardMetadata {
+    fn new(slug: String, name: Option<&str>, description: Option<&str>) -> Self {
+        Self {
+            name: name
+                .and_then(non_empty_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| default_board_name(&slug)),
+            slug,
+            description: description.and_then(non_empty_str).map(str::to_string),
+            created_at: now_epoch(),
+        }
+    }
+}
+
 impl KanbanTask {
     fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
@@ -550,7 +577,10 @@ impl Tool for KanbanTool {
         match self.kind {
             KanbanToolKind::Show => json!({
                 "type": "object",
-                "properties": {"task_id": {"type": "string"}},
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "board": board_schema_prop()
+                },
                 "required": ["task_id"]
             }),
             KanbanToolKind::List => json!({
@@ -558,7 +588,8 @@ impl Tool for KanbanTool {
                 "properties": {
                     "status": {"type": "string", "enum": VALID_STATUSES},
                     "assignee": {"type": "string"},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT}
+                    "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+                    "board": board_schema_prop()
                 }
             }),
             KanbanToolKind::Create => json!({
@@ -568,7 +599,8 @@ impl Tool for KanbanTool {
                     "body": {"type": "string"},
                     "assignee": {"type": "string"},
                     "status": {"type": "string", "enum": VALID_STATUSES},
-                    "priority": {"type": "integer"}
+                    "priority": {"type": "integer"},
+                    "board": board_schema_prop()
                 },
                 "required": ["title"]
             }),
@@ -577,7 +609,8 @@ impl Tool for KanbanTool {
                 "type": "object",
                 "properties": {
                     "task_id": {"type": "string"},
-                    "reason": {"type": "string"}
+                    "reason": {"type": "string"},
+                    "board": board_schema_prop()
                 },
                 "required": ["task_id", "reason"]
             }),
@@ -585,7 +618,8 @@ impl Tool for KanbanTool {
                 "type": "object",
                 "properties": {
                     "task_id": {"type": "string"},
-                    "status": {"type": "string", "enum": ["triage", "todo", "ready", "running", "review"]}
+                    "status": {"type": "string", "enum": ["triage", "todo", "ready", "running", "review"]},
+                    "board": board_schema_prop()
                 },
                 "required": ["task_id"]
             }),
@@ -596,7 +630,8 @@ impl Tool for KanbanTool {
                 "properties": {
                     "parent_id": {"type": "string"},
                     "child_id": {"type": "string"},
-                    "relation": {"type": "string"}
+                    "relation": {"type": "string"},
+                    "board": board_schema_prop()
                 },
                 "required": ["parent_id", "child_id"]
             }),
@@ -608,12 +643,16 @@ impl Tool for KanbanTool {
     }
 
     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
-        execute_kanban_tool(self.kind, args, &KanbanStore::default())
+        let store = KanbanStore::for_board(None)?;
+        execute_kanban_tool(self.kind, args, &store)
     }
 }
 
 pub fn kanban_response(raw: Option<&str>) -> String {
-    kanban_response_with_store(raw, &KanbanStore::default())
+    match KanbanStore::for_board(None) {
+        Ok(store) => kanban_response_with_store(raw, &store),
+        Err(err) => format!("Warning: {err}"),
+    }
 }
 
 fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String {
@@ -622,9 +661,20 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
         return kanban_help();
     }
 
+    let (board, rest) = match extract_leading_board(rest) {
+        Ok(parsed) => parsed,
+        Err(err) => return format!("Warning: {err}"),
+    };
+    let board_store = match board.as_deref().map(KanbanStore::for_board).transpose() {
+        Ok(store) => store,
+        Err(err) => return format!("Warning: {err}"),
+    };
+    let store = board_store.as_ref().unwrap_or(store);
+
     let mut parts = rest.split_whitespace();
     let command = parts.next().unwrap_or_default();
     let response = match command {
+        "boards" => kanban_boards_response(parts.collect::<Vec<_>>()),
         "list" | "ls" => {
             let status = parts.next();
             json_result(store.list_tasks(status, None, DEFAULT_LIMIT))
@@ -709,6 +759,13 @@ fn execute_kanban_tool(
     args: &JsonValue,
     store: &KanbanStore,
 ) -> Result<String> {
+    let board = args.get("board").and_then(JsonValue::as_str);
+    let board_store = board
+        .and_then(non_empty_str)
+        .map(KanbanStore::for_board)
+        .transpose()?;
+    let store = board_store.as_ref().unwrap_or(store);
+
     match kind {
         KanbanToolKind::Show => {
             let task_id = require_str(args, "task_id")?;
@@ -811,6 +868,7 @@ fn task_id_note_schema(note_name: &str) -> JsonValue {
     let mut properties = serde_json::Map::new();
     properties.insert("task_id".to_string(), json!({"type": "string"}));
     properties.insert(note_name.to_string(), json!({"type": "string"}));
+    properties.insert("board".to_string(), board_schema_prop());
     json!({
         "type": "object",
         "properties": properties,
@@ -818,11 +876,64 @@ fn task_id_note_schema(note_name: &str) -> JsonValue {
     })
 }
 
+fn board_schema_prop() -> JsonValue {
+    json!({
+        "type": "string",
+        "description": "Optional Kanban board slug. Defaults to HAKIMI_KANBAN_BOARD/HERMES_KANBAN_BOARD, the current board file, then default."
+    })
+}
+
+fn kanban_boards_response(args: Vec<&str>) -> Result<String> {
+    let command = args.first().copied().unwrap_or("help");
+    match command {
+        "help" | "-h" | "--help" | "?" => Ok(kanban_boards_help()),
+        "list" | "ls" => board_list_json(),
+        "show" | "current" => {
+            let slug = current_board_slug()?;
+            board_summary_json(&slug)
+        }
+        "create" | "new" => {
+            let slug = args.get(1).copied().ok_or_else(|| {
+                HakimiError::Tool("usage: /kanban boards create <slug> [name]".into())
+            })?;
+            let name = args.get(2..).map(|rest| rest.join(" "));
+            let meta = create_board(slug, name.as_deref(), None)?;
+            Ok(json!(meta).to_string())
+        }
+        "switch" | "use" => {
+            let slug = args
+                .get(1)
+                .copied()
+                .ok_or_else(|| HakimiError::Tool("usage: /kanban boards switch <slug>".into()))?;
+            switch_board(slug)?;
+            board_summary_json(&normalize_board_slug(slug)?)
+        }
+        _ => Err(HakimiError::Tool(format!(
+            "unknown /kanban boards command: {command}; run /kanban boards help"
+        ))),
+    }
+}
+
+fn kanban_boards_help() -> String {
+    [
+        "**/kanban boards** - manage isolated Kanban boards.",
+        "",
+        "Common subcommands:",
+        "  `list`",
+        "  `show`",
+        "  `create <slug> [name]`",
+        "  `switch <slug>`",
+    ]
+    .join("\n")
+}
+
 fn kanban_help() -> String {
     [
         "**/kanban** - manage the local SQLite task board.",
         "",
         "Common subcommands:",
+        "  `--board <slug> <subcommand>`",
+        "  `boards list|show|create|switch`",
         "  `list [status]`",
         "  `show <id>`",
         "  `create <title>`",
@@ -860,16 +971,229 @@ fn non_empty_str(value: &str) -> Option<&str> {
     (!trimmed.is_empty()).then_some(trimmed)
 }
 
+fn extract_leading_board(rest: &str) -> Result<(Option<String>, String)> {
+    let mut parts = rest.split_whitespace();
+    let Some(first) = parts.next() else {
+        return Ok((None, String::new()));
+    };
+    if let Some(slug) = first.strip_prefix("--board=") {
+        let board = normalize_board_slug(slug)?;
+        return Ok((Some(board), parts.collect::<Vec<_>>().join(" ")));
+    }
+    if first == "--board" {
+        let slug = parts
+            .next()
+            .ok_or_else(|| HakimiError::Tool("--board requires a board slug".into()))?;
+        let board = normalize_board_slug(slug)?;
+        return Ok((Some(board), parts.collect::<Vec<_>>().join(" ")));
+    }
+    Ok((None, rest.to_string()))
+}
+
 fn default_kanban_db_path() -> PathBuf {
     std::env::var("HAKIMI_KANBAN_DB")
         .or_else(|_| std::env::var("HERMES_KANBAN_DB"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| kanban_home().join("kanban.db"))
+}
+
+fn resolve_kanban_db_path(board: Option<&str>) -> Result<PathBuf> {
+    if let Some(board) = board.and_then(non_empty_str) {
+        let slug = normalize_board_slug(board)?;
+        if slug == DEFAULT_BOARD {
+            return Ok(default_kanban_db_path());
+        }
+        return Ok(board_dir(&slug).join("kanban.db"));
+    }
+
+    if std::env::var("HAKIMI_KANBAN_DB").is_ok() || std::env::var("HERMES_KANBAN_DB").is_ok() {
+        return Ok(default_kanban_db_path());
+    }
+    if let Some(raw) = std::env::var("HAKIMI_KANBAN_BOARD")
+        .ok()
+        .or_else(|| std::env::var("HERMES_KANBAN_BOARD").ok())
+    {
+        if let Some(slug) = non_empty_str(&raw) {
+            return resolve_kanban_db_path(Some(slug));
+        }
+    }
+    let current = current_board_slug()?;
+    resolve_kanban_db_path(Some(&current))
+}
+
+fn kanban_home() -> PathBuf {
+    std::env::var("HAKIMI_KANBAN_HOME")
+        .or_else(|_| std::env::var("HERMES_KANBAN_HOME"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".hakimi")
-                .join("kanban.db")
         })
+}
+
+fn boards_root() -> PathBuf {
+    kanban_home().join("kanban").join("boards")
+}
+
+fn board_dir(slug: &str) -> PathBuf {
+    boards_root().join(slug)
+}
+
+fn current_board_path() -> PathBuf {
+    kanban_home().join("kanban").join("current")
+}
+
+fn current_board_slug() -> Result<String> {
+    if let Some(raw) = std::env::var("HAKIMI_KANBAN_BOARD")
+        .ok()
+        .or_else(|| std::env::var("HERMES_KANBAN_BOARD").ok())
+    {
+        if let Some(slug) = non_empty_str(&raw) {
+            return normalize_board_slug(slug);
+        }
+    }
+    let path = current_board_path();
+    if let Ok(raw) = std::fs::read_to_string(path) {
+        if let Some(slug) = non_empty_str(&raw) {
+            if let Ok(slug) = normalize_board_slug(slug) {
+                if board_exists(&slug) {
+                    return Ok(slug);
+                }
+            }
+        }
+    }
+    Ok(DEFAULT_BOARD.to_string())
+}
+
+fn board_exists(slug: &str) -> bool {
+    slug == DEFAULT_BOARD
+        || board_dir(slug).join("board.json").exists()
+        || board_dir(slug).join("kanban.db").exists()
+}
+
+fn normalize_board_slug(slug: &str) -> Result<String> {
+    let slug = slug.trim().to_ascii_lowercase();
+    if slug.is_empty() {
+        return Err(HakimiError::Tool("kanban board slug is required".into()));
+    }
+    if slug.len() > 64
+        || !slug
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_')
+        || matches!(slug.as_bytes().first(), Some(b'-' | b'_'))
+    {
+        return Err(HakimiError::Tool(format!(
+            "invalid kanban board slug: {slug}; use 1-64 lowercase letters, digits, hyphen, or underscore"
+        )));
+    }
+    Ok(slug)
+}
+
+fn default_board_name(slug: &str) -> String {
+    slug.replace(['-', '_'], " ")
+        .split_whitespace()
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn read_board_metadata(slug: &str) -> KanbanBoardMetadata {
+    let path = board_dir(slug).join("board.json");
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| KanbanBoardMetadata::new(slug.to_string(), None, None))
+}
+
+fn write_board_metadata(meta: &KanbanBoardMetadata) -> Result<()> {
+    let dir = board_dir(&meta.slug);
+    std::fs::create_dir_all(&dir).map_err(HakimiError::Io)?;
+    let body = serde_json::to_string_pretty(meta)
+        .map_err(|err| HakimiError::Tool(format!("kanban board metadata error: {err}")))?;
+    std::fs::write(dir.join("board.json"), body + "\n").map_err(HakimiError::Io)
+}
+
+fn create_board(
+    slug: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<KanbanBoardMetadata> {
+    let slug = normalize_board_slug(slug)?;
+    if board_exists(&slug) {
+        return Ok(read_board_metadata(&slug));
+    }
+    let meta = KanbanBoardMetadata::new(slug, name, description);
+    write_board_metadata(&meta)?;
+    let _ = KanbanStore::for_board(Some(&meta.slug))?.stats()?;
+    Ok(meta)
+}
+
+fn switch_board(slug: &str) -> Result<()> {
+    let slug = normalize_board_slug(slug)?;
+    if !board_exists(&slug) {
+        return Err(HakimiError::Tool(format!("kanban board not found: {slug}")));
+    }
+    let path = current_board_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(HakimiError::Io)?;
+    }
+    std::fs::write(path, format!("{slug}\n")).map_err(HakimiError::Io)
+}
+
+fn board_list_json() -> Result<String> {
+    let current = current_board_slug()?;
+    let mut slugs = vec![DEFAULT_BOARD.to_string()];
+    let root = boards_root();
+    if root.exists() {
+        for entry in std::fs::read_dir(root).map_err(HakimiError::Io)? {
+            let entry = entry.map_err(HakimiError::Io)?;
+            if !entry.file_type().map_err(HakimiError::Io)?.is_dir() {
+                continue;
+            }
+            let slug = entry.file_name().to_string_lossy().to_string();
+            if normalize_board_slug(&slug).is_ok() && slug != DEFAULT_BOARD {
+                slugs.push(slug);
+            }
+        }
+    }
+    slugs.sort();
+    slugs.dedup();
+    let boards = slugs
+        .into_iter()
+        .map(|slug| board_summary(&slug, &current))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(json!({
+        "current": current,
+        "boards": boards,
+    })
+    .to_string())
+}
+
+fn board_summary_json(slug: &str) -> Result<String> {
+    let current = current_board_slug()?;
+    Ok(board_summary(slug, &current)?.to_string())
+}
+
+fn board_summary(slug: &str, current: &str) -> Result<JsonValue> {
+    let slug = normalize_board_slug(slug)?;
+    let meta = read_board_metadata(&slug);
+    let store = KanbanStore::for_board(Some(&slug))?;
+    let stats = store.stats()?;
+    Ok(json!({
+        "slug": slug,
+        "name": meta.name,
+        "description": meta.description,
+        "current": meta.slug == current,
+        "db_path": stats["db_path"],
+        "by_status": stats["by_status"],
+    }))
 }
 
 fn now_epoch() -> i64 {
@@ -883,7 +1207,10 @@ fn db_err(err: rusqlite::Error) -> HakimiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn store() -> (tempfile::TempDir, KanbanStore) {
         let dir = tempdir().unwrap();
@@ -1053,5 +1380,146 @@ mod tests {
         let created = kanban_response_with_store(Some("create Review release"), &store);
         let value: JsonValue = serde_json::from_str(&created).unwrap();
         assert_eq!(value["title"], "Review release");
+    }
+
+    #[test]
+    fn board_slug_validation_blocks_path_traversal() {
+        assert_eq!(normalize_board_slug("Project_A").unwrap(), "project_a");
+        assert!(normalize_board_slug("../secret").is_err());
+        assert!(normalize_board_slug("-hidden").is_err());
+    }
+
+    #[test]
+    fn explicit_board_tool_args_use_isolated_databases() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempdir().unwrap();
+        let home = dir.path().to_string_lossy().to_string();
+        let _env = EnvGroup::new(&[("HAKIMI_KANBAN_HOME", Some(&home))]);
+
+        create_board("alpha", None, None).unwrap();
+        create_board("beta", None, None).unwrap();
+        let default_store = KanbanStore::for_board(None).unwrap();
+
+        execute_kanban_tool(
+            KanbanToolKind::Create,
+            &json!({"title": "Alpha task", "board": "alpha"}),
+            &default_store,
+        )
+        .unwrap();
+        execute_kanban_tool(
+            KanbanToolKind::Create,
+            &json!({"title": "Beta task", "board": "beta"}),
+            &default_store,
+        )
+        .unwrap();
+
+        let alpha = execute_kanban_tool(
+            KanbanToolKind::List,
+            &json!({"board": "alpha"}),
+            &default_store,
+        )
+        .unwrap();
+        let beta = execute_kanban_tool(
+            KanbanToolKind::List,
+            &json!({"board": "beta"}),
+            &default_store,
+        )
+        .unwrap();
+
+        assert!(alpha.contains("Alpha task"));
+        assert!(!alpha.contains("Beta task"));
+        assert!(beta.contains("Beta task"));
+        assert!(!beta.contains("Alpha task"));
+    }
+
+    #[test]
+    fn slash_boards_create_switch_and_route_commands() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempdir().unwrap();
+        let home = dir.path().to_string_lossy().to_string();
+        let _env = EnvGroup::new(&[("HAKIMI_KANBAN_HOME", Some(&home))]);
+        let store = KanbanStore::for_board(Some(DEFAULT_BOARD)).unwrap();
+
+        let created = kanban_response_with_store(Some("boards create project-x Project X"), &store);
+        let created: JsonValue = serde_json::from_str(&created).unwrap();
+        assert_eq!(created["slug"], "project-x");
+        assert_eq!(created["name"], "Project X");
+
+        let duplicate =
+            kanban_response_with_store(Some("boards create project-x Ignored Name"), &store);
+        let duplicate: JsonValue = serde_json::from_str(&duplicate).unwrap();
+        assert_eq!(duplicate["slug"], "project-x");
+        assert_eq!(duplicate["name"], "Project X");
+
+        let switched = kanban_response_with_store(Some("boards switch project-x"), &store);
+        let switched: JsonValue = serde_json::from_str(&switched).unwrap();
+        assert_eq!(switched["slug"], "project-x");
+        assert_eq!(current_board_slug().unwrap(), "project-x");
+
+        let routed = kanban_response(Some("create Routed task"));
+        let routed: JsonValue = serde_json::from_str(&routed).unwrap();
+        assert_eq!(routed["title"], "Routed task");
+
+        let default_list = kanban_response_with_store(Some("--board default list"), &store);
+        assert!(!default_list.contains("Routed task"));
+        let project_list = kanban_response_with_store(Some("--board project-x list"), &store);
+        assert!(project_list.contains("Routed task"));
+    }
+
+    struct EnvGroup {
+        _guards: Vec<EnvGuard>,
+    }
+
+    impl EnvGroup {
+        fn new(overrides: &[(&'static str, Option<&str>)]) -> Self {
+            let mut guards = Vec::new();
+            let keys = [
+                "HAKIMI_KANBAN_HOME",
+                "HERMES_KANBAN_HOME",
+                "HAKIMI_KANBAN_DB",
+                "HERMES_KANBAN_DB",
+                "HAKIMI_KANBAN_BOARD",
+                "HERMES_KANBAN_BOARD",
+            ];
+            for key in keys {
+                let value = overrides
+                    .iter()
+                    .find_map(|(override_key, value)| (*override_key == key).then_some(*value))
+                    .flatten();
+                guards.push(EnvGuard::set(key, value));
+            }
+            Self { _guards: guards }
+        }
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        old: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            let old = std::env::var(key).ok();
+            unsafe {
+                if let Some(value) = value {
+                    std::env::set_var(key, value);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+            Self { key, old }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                if let Some(old) = &self.old {
+                    std::env::set_var(self.key, old);
+                } else {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
     }
 }
