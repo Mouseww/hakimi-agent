@@ -10,7 +10,10 @@ pub mod store;
 pub mod sync;
 pub mod usage;
 
-pub use hub::{InstalledSkill, SkillHub, SkillHubEntry, SkillHubIndex, SkillHubInstallOptions};
+pub use hub::{
+    InstalledSkill, SkillHub, SkillHubEntry, SkillHubIndex, SkillHubInstallOptions, SkillHubSource,
+    SkillHubSourceRefresh, SkillHubSources,
+};
 pub use lifecycle::{ActiveSkill, EvictedSkill, SkillRepresentation, SkillWorkingSet};
 pub use loader::SkillLoader;
 pub use preprocessing::{

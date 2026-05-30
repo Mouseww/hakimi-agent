@@ -15,6 +15,7 @@ struct SkillCliOptions {
     trust_community: bool,
     category: Option<String>,
     sync_source: Option<PathBuf>,
+    source_trust: Option<String>,
 }
 
 impl Default for SkillCliOptions {
@@ -27,6 +28,7 @@ impl Default for SkillCliOptions {
             trust_community: false,
             category: None,
             sync_source: None,
+            source_trust: None,
         }
     }
 }
@@ -59,8 +61,8 @@ pub fn gateway_skills_response(raw: Option<&str>, loaded_skills: &[Skill]) -> St
     };
     match hub_args.first().map(String::as_str) {
         Some(
-            "browse" | "search" | "inspect" | "install" | "sync" | "list" | "path" | "usage"
-            | "help",
+            "browse" | "search" | "inspect" | "install" | "sync" | "sources" | "source" | "list"
+            | "path" | "usage" | "help",
         ) => skills_response_for_dir(hub_args, &default_skills_dir()),
         _ => gateway_skills_help(),
     }
@@ -158,10 +160,13 @@ pub(crate) fn skills_response_for_dir(args: &[String], skills_dir: &Path) -> Str
                 Err(err) => format!("Error: {err}"),
             }
         }
+        "sources" | "source" => render_sources_response(&hub, &rest, options),
         "path" => format!(
-            "Skills directory: `{}`\nHub index: `{}`",
+            "Skills directory: `{}`\nHub index: `{}`\nHub sources: `{}`\nIndex cache: `{}`",
             hub.skills_dir().display(),
-            hub.index_path().display()
+            hub.index_path().display(),
+            hub.sources_path().display(),
+            hub.index_cache_dir().display()
         ),
         "usage" => render_skill_usage(skills_dir, options.json),
         "help" | "-h" | "--help" => skills_help_response(),
@@ -232,6 +237,16 @@ fn parse_skill_cli_options(args: &[String]) -> Result<(SkillCliOptions, Vec<Stri
                     return Err(format!("{} requires a path", args[i]));
                 };
                 options.sync_source = Some(PathBuf::from(value));
+                i += 2;
+            }
+            "--trust-level" | "--trust" => {
+                let Some(value) = args.get(i + 1) else {
+                    return Err(format!(
+                        "{} requires builtin, trusted, or community",
+                        args[i]
+                    ));
+                };
+                options.source_trust = Some(value.clone());
                 i += 2;
             }
             arg if arg.starts_with("--") => return Err(format!("unknown option `{arg}`")),
@@ -354,6 +369,93 @@ fn render_skill_usage(skills_dir: &Path, as_json: bool) -> String {
     lines.join("\n")
 }
 
+fn render_sources_response(hub: &SkillHub, args: &[String], options: SkillCliOptions) -> String {
+    match args.first().map(String::as_str).unwrap_or("list") {
+        "list" | "ls" => match hub.sources() {
+            Ok(sources) if options.json => serde_json::to_string_pretty(&sources)
+                .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#)),
+            Ok(sources) if sources.is_empty() => {
+                format!(
+                    "No Skills Hub sources configured in `{}`.",
+                    hub.sources_path().display()
+                )
+            }
+            Ok(sources) => {
+                let mut lines = vec![format!(
+                    "Skills Hub sources from `{}`:",
+                    hub.sources_path().display()
+                )];
+                for source in sources {
+                    lines.push(format!(
+                        "- `{}` [{}] {}",
+                        source.name, source.trust_level, source.location
+                    ));
+                }
+                lines.join("\n")
+            }
+            Err(err) => format!("Error: {err}"),
+        },
+        "add" => {
+            if args.len() < 3 {
+                return "Usage: hakimi skills sources add <name> <https-url-or-index-path> [--trust builtin|trusted|community]".to_string();
+            }
+            match hub.add_source(&args[1], &args[2], options.source_trust.as_deref()) {
+                Ok(source) => format!(
+                    "Added Skills Hub source `{}` [{}] {}.\nRun `hakimi skills sources refresh` before browse/search uses it.",
+                    source.name, source.trust_level, source.location
+                ),
+                Err(err) => format!("Error: {err}"),
+            }
+        }
+        "remove" | "rm" => {
+            let Some(name) = args.get(1) else {
+                return "Usage: hakimi skills sources remove <name>".to_string();
+            };
+            match hub.remove_source(name) {
+                Ok(true) => format!("Removed Skills Hub source `{name}` and its cached index."),
+                Ok(false) => format!("Skills Hub source `{name}` was not configured."),
+                Err(err) => format!("Error: {err}"),
+            }
+        }
+        "refresh" | "update" => match hub.refresh_sources() {
+            Ok(reports) if options.json => serde_json::to_string_pretty(&reports)
+                .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#)),
+            Ok(reports) if reports.is_empty() => {
+                "No Skills Hub sources configured. Add one with `hakimi skills sources add`."
+                    .to_string()
+            }
+            Ok(reports) => {
+                let mut lines = vec!["Refreshed Skills Hub sources:".to_string()];
+                for report in reports {
+                    lines.push(format!(
+                        "- `{}`: {} skills -> {}",
+                        report.name,
+                        report.skills,
+                        report.cached_path.display()
+                    ));
+                }
+                lines.join("\n")
+            }
+            Err(err) => format!("Error: {err}"),
+        },
+        "help" | "-h" | "--help" => [
+            "Usage: hakimi skills sources <command>",
+            "",
+            "Commands:",
+            "- list [--json] - list configured remote/local index sources",
+            "- add <name> <https-url-or-index-path> [--trust builtin|trusted|community] - register a source",
+            "- refresh [--json] - fetch sources into .hub/index-cache for browse/search/install",
+            "- remove <name> - remove a source and cached index",
+            "",
+            "Remote sources must use https:// and cannot embed credentials or target local/private hosts.",
+        ]
+        .join("\n"),
+        other => format!(
+            "Unknown skills sources command `{other}`.\nUsage: hakimi skills sources list|add|refresh|remove"
+        ),
+    }
+}
+
 fn render_sync_report(report: &SkillSyncReport, as_json: bool) -> String {
     if as_json {
         return serde_json::to_string_pretty(report)
@@ -421,6 +523,7 @@ fn skills_help_response() -> String {
         "- inspect <identifier-or-name> [--json] [--index PATH] - preview metadata without installing",
         "- install <identifier-or-name> [--category NAME] [--force] [--trust-community] [--index PATH] - install a scanned skill",
         "- sync --source DIR [--json] - seed/update bundled skills without overwriting user edits",
+        "- sources list|add|refresh|remove [--json] - manage remote/local hub index sources",
         "- list [--json] - list hub-installed skills recorded in .hub/lock.json",
         "- path - show the skills directory and index path",
         "- usage [--json] - show runtime skill use/view counters from .usage.json",
@@ -439,6 +542,7 @@ fn gateway_skills_help() -> String {
         "- `/skills inspect <identifier>` - preview hub skill metadata",
         "- `/skills install <identifier> [--trust-community]` - install a scanned skill for the next reload",
         "- `/skills sync --source <dir>` - seed/update bundled skills without overwriting user edits",
+        "- `/skills sources refresh` - refresh configured hub source indexes",
         "- `/skills hub list` - list hub-installed skills",
         "- `/skills usage` - show runtime skill use/view counters",
     ]
@@ -545,5 +649,60 @@ mod tests {
 
         assert!(response.contains("Copied: 1"));
         assert!(response.contains("release-check"));
+    }
+
+    #[test]
+    fn sources_refresh_makes_file_source_searchable() {
+        let tmp = TempDir::new().unwrap();
+        let index = write_index(tmp.path());
+        let skills_dir = tmp.path().join("skills");
+
+        let add = skills_response_for_dir(
+            &[
+                "sources".to_string(),
+                "add".to_string(),
+                "trusted-pack".to_string(),
+                index.display().to_string(),
+                "--trust-level".to_string(),
+                "trusted".to_string(),
+            ],
+            &skills_dir,
+        );
+        let refresh =
+            skills_response_for_dir(&["sources".to_string(), "refresh".to_string()], &skills_dir);
+        let search =
+            skills_response_for_dir(&["search".to_string(), "rust".to_string()], &skills_dir);
+
+        assert!(add.contains("trusted-pack"));
+        assert!(refresh.contains("trusted-pack"));
+        assert!(search.contains("rust-helper"));
+    }
+
+    #[test]
+    fn sources_json_lists_configured_sources() {
+        let tmp = TempDir::new().unwrap();
+        let index = write_index(tmp.path());
+        let skills_dir = tmp.path().join("skills");
+        let _ = skills_response_for_dir(
+            &[
+                "sources".to_string(),
+                "add".to_string(),
+                "local-pack".to_string(),
+                index.display().to_string(),
+            ],
+            &skills_dir,
+        );
+
+        let response = skills_response_for_dir(
+            &[
+                "sources".to_string(),
+                "list".to_string(),
+                "--json".to_string(),
+            ],
+            &skills_dir,
+        );
+
+        assert!(response.contains("local-pack"));
+        assert!(response.contains("community"));
     }
 }

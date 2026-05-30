@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.129-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.130-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1296-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1302-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1296 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1302 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, multi-source index caches, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.130 Skills Hub source indexes**:
+  - **Hermes Multi-Source Hub Parity**: `hakimi skills sources list|add|refresh|remove` registers local or HTTPS Skills Hub indexes and refreshes them into `.hub/index-cache`.
+  - **Unified Discovery**: `browse`, `search`, `inspect`, and `install` now merge the primary `.hub/index.json` with refreshed source caches while deduplicating by identifier and preferring higher-trust entries.
+  - **Safe Remote Boundary**: remote index sources require HTTPS, reject loopback/private/link-local hosts, cap index size, and keep community installs behind `--trust-community`.
 - **v0.3.129 Skills slash-command invocation**:
   - **Hermes Skill Command Parity**: loaded skills can now be invoked as `/skill-name optional instruction`, with hyphen/underscore aliases matching gateway command constraints.
   - **User Message Injection**: CLI `--query` and gateway chats convert skill slash commands into normal user messages that include the full selected skill content and the trailing user instruction.
@@ -644,7 +648,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1296 |
+| Tests | ~500 | 1302 |
 
 ---
 
@@ -654,7 +658,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1296 tests)
+# Run all tests (1302 tests)
 cargo test --workspace
 
 # Debug logging

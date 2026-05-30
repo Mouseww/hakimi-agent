@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -7,12 +9,39 @@ use serde_json::{Value as JsonValue, json};
 
 use crate::safety::scan_skill_text;
 
+const MAX_INDEX_BYTES: u64 = 2 * 1024 * 1024;
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SkillHubIndex {
     #[serde(default)]
     pub version: u32,
     #[serde(default)]
     pub skills: Vec<SkillHubEntry>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SkillHubSources {
+    #[serde(default)]
+    pub version: u32,
+    #[serde(default)]
+    pub sources: Vec<SkillHubSource>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SkillHubSource {
+    pub name: String,
+    pub location: String,
+    #[serde(default = "default_trust_level")]
+    pub trust_level: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SkillHubSourceRefresh {
+    pub name: String,
+    pub location: String,
+    pub cached_path: PathBuf,
+    pub skills: usize,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -55,6 +84,17 @@ impl SkillHubEntry {
             .into_iter()
             .filter_map(|tag| normalize_label(&tag))
             .collect();
+        self
+    }
+
+    fn with_source_defaults(mut self, source: &SkillHubSource) -> Self {
+        let source_name = normalize_label(&source.name).unwrap_or_else(default_source);
+        if self.source.trim().is_empty() || self.source == "local-index" {
+            self.source = source_name;
+        }
+        if self.trust_level.trim().is_empty() || self.trust_level == "community" {
+            self.trust_level = source.trust_level.clone();
+        }
         self
     }
 
@@ -140,27 +180,12 @@ impl SkillHub {
     }
 
     pub fn load_index(&self) -> Result<SkillHubIndex> {
-        if !self.index_path.exists() {
-            return Ok(SkillHubIndex::default());
+        let mut index = read_index_file(&self.index_path)?;
+        for cached_path in self.cached_index_paths()? {
+            let cached = read_index_file(&cached_path)?;
+            index.skills.extend(cached.skills);
         }
-        let raw = std::fs::read_to_string(&self.index_path).with_context(|| {
-            format!(
-                "failed to read skills hub index: {}",
-                self.index_path.display()
-            )
-        })?;
-        let mut index: SkillHubIndex = serde_json::from_str(&raw).with_context(|| {
-            format!(
-                "failed to parse skills hub index: {}",
-                self.index_path.display()
-            )
-        })?;
-        index.skills = index
-            .skills
-            .into_iter()
-            .map(SkillHubEntry::normalized)
-            .filter(|entry| !entry.name.is_empty())
-            .collect();
+        index.skills = normalize_and_dedupe_entries(index.skills);
         Ok(index)
     }
 
@@ -282,12 +307,106 @@ impl SkillHub {
         read_installed_lock(&self.lock_path())
     }
 
+    pub fn sources(&self) -> Result<Vec<SkillHubSource>> {
+        read_sources_file(&self.sources_path())
+    }
+
+    pub fn add_source(
+        &self,
+        name: &str,
+        location: &str,
+        trust_level: Option<&str>,
+    ) -> Result<SkillHubSource> {
+        let source = normalize_source(name, location, trust_level)?;
+        let mut sources = self.sources()?;
+        sources.retain(|existing| existing.name != source.name);
+        sources.push(source.clone());
+        sources.sort_by(|a, b| a.name.cmp(&b.name));
+        write_sources_file(&self.sources_path(), &sources)?;
+        Ok(source)
+    }
+
+    pub fn remove_source(&self, name: &str) -> Result<bool> {
+        let normalized =
+            normalize_label(name).ok_or_else(|| anyhow::anyhow!("invalid source name"))?;
+        let mut sources = self.sources()?;
+        let before = sources.len();
+        sources.retain(|source| source.name != normalized);
+        if sources.len() == before {
+            return Ok(false);
+        }
+        write_sources_file(&self.sources_path(), &sources)?;
+        let cache_path = self.cached_source_path(&normalized);
+        if cache_path.exists() {
+            std::fs::remove_file(&cache_path)
+                .with_context(|| format!("failed to remove {}", cache_path.display()))?;
+        }
+        Ok(true)
+    }
+
+    pub fn refresh_sources(&self) -> Result<Vec<SkillHubSourceRefresh>> {
+        let mut reports = Vec::new();
+        for source in self.sources()? {
+            let raw = read_source_index(&source)?;
+            let index = parse_source_index(&raw, &source)?;
+            let skills = index.skills.len();
+            let cache_path = self.cached_source_path(&source.name);
+            ensure_hub_ignore(&self.skills_dir)?;
+            if let Some(parent) = cache_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            let rendered = serde_json::to_string_pretty(&index)?;
+            std::fs::write(&cache_path, rendered + "\n")
+                .with_context(|| format!("failed to write {}", cache_path.display()))?;
+            reports.push(SkillHubSourceRefresh {
+                name: source.name,
+                location: source.location,
+                cached_path: cache_path,
+                skills,
+                status: "refreshed".to_string(),
+            });
+        }
+        Ok(reports)
+    }
+
     fn lock_path(&self) -> PathBuf {
         self.skills_dir.join(".hub").join("lock.json")
     }
 
     fn audit_log_path(&self) -> PathBuf {
         self.skills_dir.join(".hub").join("audit.log")
+    }
+
+    pub fn sources_path(&self) -> PathBuf {
+        self.skills_dir.join(".hub").join("sources.json")
+    }
+
+    pub fn index_cache_dir(&self) -> PathBuf {
+        self.skills_dir.join(".hub").join("index-cache")
+    }
+
+    fn cached_source_path(&self, name: &str) -> PathBuf {
+        self.index_cache_dir().join(format!("{name}.json"))
+    }
+
+    fn cached_index_paths(&self) -> Result<Vec<PathBuf>> {
+        let dir = self.index_cache_dir();
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut paths = Vec::new();
+        for entry in
+            std::fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))?
+        {
+            let entry = entry.with_context(|| format!("failed to read {}", dir.display()))?;
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "json") {
+                paths.push(path);
+            }
+        }
+        paths.sort();
+        Ok(paths)
     }
 }
 
@@ -311,6 +430,211 @@ fn sort_entries(entries: &mut [SkillHubEntry]) {
             .then_with(|| a.name.cmp(&b.name))
             .then_with(|| a.identifier.cmp(&b.identifier))
     });
+}
+
+fn read_index_file(path: &Path) -> Result<SkillHubIndex> {
+    if !path.exists() {
+        return Ok(SkillHubIndex::default());
+    }
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read skills hub index: {}", path.display()))?;
+    parse_index_json(&raw, path)
+}
+
+fn parse_index_json(raw: &str, path: &Path) -> Result<SkillHubIndex> {
+    let mut index: SkillHubIndex = serde_json::from_str(raw)
+        .with_context(|| format!("failed to parse skills hub index: {}", path.display()))?;
+    index.skills = normalize_and_dedupe_entries(index.skills);
+    Ok(index)
+}
+
+fn normalize_and_dedupe_entries(entries: Vec<SkillHubEntry>) -> Vec<SkillHubEntry> {
+    let mut deduped: BTreeMap<String, SkillHubEntry> = BTreeMap::new();
+    for entry in entries.into_iter().map(SkillHubEntry::normalized) {
+        if entry.name.is_empty() {
+            continue;
+        }
+        let key = entry.identifier.clone();
+        match deduped.get(&key) {
+            Some(existing) if existing.trust_rank() >= entry.trust_rank() => {}
+            _ => {
+                deduped.insert(key, entry);
+            }
+        }
+    }
+    deduped.into_values().collect()
+}
+
+fn read_sources_file(path: &Path) -> Result<Vec<SkillHubSource>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read skills hub sources: {}", path.display()))?;
+    let parsed: SkillHubSources = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse skills hub sources: {}", path.display()))?;
+    parsed
+        .sources
+        .into_iter()
+        .map(|source| normalize_source(&source.name, &source.location, Some(&source.trust_level)))
+        .collect()
+}
+
+fn write_sources_file(path: &Path, sources: &[SkillHubSource]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let rendered = serde_json::to_string_pretty(&SkillHubSources {
+        version: 1,
+        sources: sources.to_vec(),
+    })?;
+    std::fs::write(path, rendered + "\n")
+        .with_context(|| format!("failed to write skills hub sources: {}", path.display()))
+}
+
+fn ensure_hub_ignore(skills_dir: &Path) -> Result<()> {
+    let hub_dir = skills_dir.join(".hub");
+    std::fs::create_dir_all(&hub_dir)
+        .with_context(|| format!("failed to create {}", hub_dir.display()))?;
+    let ignore_path = hub_dir.join(".ignore");
+    if ignore_path.exists() {
+        return Ok(());
+    }
+    std::fs::write(
+        &ignore_path,
+        "# Exclude hub internals and untrusted catalog cache from search tools\n*\n",
+    )
+    .with_context(|| format!("failed to write {}", ignore_path.display()))
+}
+
+fn normalize_source(
+    name: &str,
+    location: &str,
+    trust_level: Option<&str>,
+) -> Result<SkillHubSource> {
+    let name = normalize_label(name).ok_or_else(|| anyhow::anyhow!("invalid source name"))?;
+    let location = location.trim();
+    if location.is_empty() {
+        bail!("source `{name}` location must not be empty");
+    }
+    if looks_like_url(location) {
+        validate_index_url(location)?;
+    }
+    let trust_level = trust_level
+        .and_then(normalize_trust_level)
+        .unwrap_or_else(default_trust_level);
+    Ok(SkillHubSource {
+        name,
+        location: location.to_string(),
+        trust_level,
+    })
+}
+
+fn read_source_index(source: &SkillHubSource) -> Result<String> {
+    if looks_like_url(&source.location) {
+        fetch_https_index(&source.location)
+    } else {
+        let path = PathBuf::from(&source.location);
+        std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read skills hub source `{}`", source.name))
+    }
+}
+
+fn parse_source_index(raw: &str, source: &SkillHubSource) -> Result<SkillHubIndex> {
+    let mut index: SkillHubIndex = serde_json::from_str(raw)
+        .with_context(|| format!("failed to parse skills hub source `{}`", source.name))?;
+    if index.version == 0 {
+        index.version = 1;
+    }
+    index.skills = normalize_and_dedupe_entries(
+        index
+            .skills
+            .into_iter()
+            .map(|entry| entry.with_source_defaults(source))
+            .collect(),
+    );
+    Ok(index)
+}
+
+fn looks_like_url(location: &str) -> bool {
+    let lower = location.to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
+fn fetch_https_index(location: &str) -> Result<String> {
+    validate_index_url(location)?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .user_agent("hakimi-skills-hub")
+        .build()
+        .context("failed to build Skills Hub HTTP client")?;
+    let response = client
+        .get(location)
+        .send()
+        .with_context(|| format!("failed to fetch skills hub source `{location}`"))?;
+    let status = response.status();
+    if !status.is_success() {
+        bail!("skills hub source `{location}` returned HTTP {status}");
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_INDEX_BYTES)
+    {
+        bail!("skills hub source `{location}` is larger than {MAX_INDEX_BYTES} bytes");
+    }
+    let text = response
+        .text()
+        .with_context(|| format!("failed to read skills hub source `{location}`"))?;
+    if text.len() as u64 > MAX_INDEX_BYTES {
+        bail!("skills hub source `{location}` is larger than {MAX_INDEX_BYTES} bytes");
+    }
+    Ok(text)
+}
+
+fn validate_index_url(location: &str) -> Result<()> {
+    let parsed = reqwest::Url::parse(location.trim())
+        .with_context(|| format!("invalid remote skills hub source URL `{location}`"))?;
+    if parsed.scheme() != "https" {
+        bail!("remote skills hub sources must use https:// URLs");
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        bail!("remote skills hub source host is not allowed");
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("remote skills hub source host is not allowed"))?;
+    let host_lower = host.to_ascii_lowercase();
+    if host_lower == "localhost"
+        || host_lower.ends_with(".localhost")
+        || host_lower.ends_with(".local")
+    {
+        bail!("remote skills hub source host is not allowed");
+    }
+    if let Ok(ip) = host_lower.parse::<IpAddr>() {
+        match ip {
+            IpAddr::V4(ip) => {
+                if ip.is_loopback()
+                    || ip.is_private()
+                    || ip.is_link_local()
+                    || ip.is_unspecified()
+                    || ip.octets()[0] == 0
+                {
+                    bail!("remote skills hub source IP is not allowed");
+                }
+            }
+            IpAddr::V6(ip) => {
+                let first = ip.segments()[0];
+                let unique_local = (first & 0xfe00) == 0xfc00;
+                let link_local = (first & 0xffc0) == 0xfe80;
+                if ip.is_loopback() || ip.is_unspecified() || unique_local || link_local {
+                    bail!("remote skills hub source IP is not allowed");
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn resolve_entry<'a>(
@@ -751,5 +1075,115 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("bundle file path"));
+    }
+
+    #[test]
+    fn load_index_merges_cached_sources_and_prefers_trust() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        let index = skills_dir.join(".hub/index.json");
+        std::fs::create_dir_all(index.parent().unwrap()).unwrap();
+        std::fs::write(
+            &index,
+            r##"{
+  "skills": [
+    {"name":"release-check","description":"Local","source":"local","identifier":"same/id","trust_level":"community","files":{"SKILL.md":"# Local"}}
+  ]
+}"##,
+        )
+        .unwrap();
+        let cache = skills_dir.join(".hub/index-cache/trusted.json");
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(
+            &cache,
+            r##"{
+  "skills": [
+    {"name":"release-check","description":"Trusted","source":"trusted-source","identifier":"same/id","trust_level":"trusted","files":{"SKILL.md":"# Trusted"}},
+    {"name":"lint-helper","description":"Lint","source":"trusted-source","identifier":"trusted/lint","trust_level":"trusted","files":{"SKILL.md":"# Lint"}}
+  ]
+}"##,
+        )
+        .unwrap();
+        let hub = SkillHub::new(skills_dir.clone());
+
+        let loaded = hub.load_index().unwrap();
+
+        assert_eq!(loaded.skills.len(), 2);
+        let release = loaded
+            .skills
+            .iter()
+            .find(|entry| entry.identifier == "same/id")
+            .unwrap();
+        assert_eq!(release.description, "Trusted");
+        assert_eq!(release.trust_level, "trusted");
+    }
+
+    #[test]
+    fn refresh_file_source_caches_index_with_source_defaults() {
+        let tmp = TempDir::new().unwrap();
+        let source_index = write_index(
+            tmp.path(),
+            r##"{
+  "skills": [
+    {"name":"ops-runbook","description":"Ops","files":{"SKILL.md":"# Ops"}}
+  ]
+}"##,
+        );
+        let hub = SkillHub::new(tmp.path().join("skills"));
+        let source_location = source_index.display().to_string();
+        hub.add_source("official-pack", &source_location, Some("trusted"))
+            .unwrap();
+
+        let report = hub.refresh_sources().unwrap();
+        let loaded = hub.load_index().unwrap();
+
+        assert_eq!(report[0].skills, 1);
+        assert!(report[0].cached_path.exists());
+        assert_eq!(loaded.skills[0].source, "official-pack");
+        assert_eq!(loaded.skills[0].trust_level, "trusted");
+    }
+
+    #[test]
+    fn remote_sources_require_safe_https_urls() {
+        let tmp = TempDir::new().unwrap();
+        let hub = SkillHub::new(tmp.path().join("skills"));
+
+        let http = hub
+            .add_source("local", "http://example.com/index.json", None)
+            .unwrap_err();
+        let localhost = hub
+            .add_source("loopback", "https://127.0.0.1/index.json", None)
+            .unwrap_err();
+        let credential = hub
+            .add_source(
+                "credentialed",
+                "https://user:secret@example.com/index.json",
+                None,
+            )
+            .unwrap_err();
+
+        assert!(http.to_string().contains("https://"));
+        assert!(localhost.to_string().contains("not allowed"));
+        assert!(credential.to_string().contains("not allowed"));
+    }
+
+    #[test]
+    fn remove_source_deletes_cached_index() {
+        let tmp = TempDir::new().unwrap();
+        let hub = SkillHub::new(tmp.path().join("skills"));
+        let source_index = write_index(
+            tmp.path(),
+            r##"{"skills":[{"name":"one","files":{"SKILL.md":"# One"}}]}"##,
+        );
+        let source_location = source_index.display().to_string();
+        hub.add_source("cache-me", &source_location, None).unwrap();
+        hub.refresh_sources().unwrap();
+        let cache = tmp.path().join("skills/.hub/index-cache/cache-me.json");
+        assert!(cache.exists());
+
+        assert!(hub.remove_source("cache-me").unwrap());
+
+        assert!(!cache.exists());
+        assert!(hub.sources().unwrap().is_empty());
     }
 }

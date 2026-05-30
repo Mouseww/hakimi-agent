@@ -76,6 +76,7 @@ Generated: 2026-05-21
 - **Skills template preprocessing** — Runtime skill bodies resolve `${HERMES_SKILL_DIR}` / `${HAKIMI_SKILL_DIR}` and session-id aliases before prompt injection; trusted callers can opt into bounded inline-shell expansion
 - **Skills usage telemetry** — Runtime skill activation records non-sensitive use/view counters in `.usage.json`, and `hakimi skills usage` plus gateway `/skills usage` expose the sidecar for operator inspection
 - **Skills bundled sync/update** — `hakimi skills sync --source <dir>` seeds bundled skills with `.bundled_manifest` origin hashes, updates only unmodified synced copies, preserves user edits/deletions, and exposes the same summary/JSON path through gateway `/skills sync`
+- **Skills Hub source indexes** — `hakimi skills sources list|add|refresh|remove` registers local or HTTPS hub indexes, refreshes them into `.hub/index-cache`, and merges refreshed caches with `.hub/index.json` for browse/search/inspect/install while keeping HTTPS and trust boundaries explicit
 
 ### MCP
 - **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments, credential-stripped remote error surfaces, and gateway `/mcp list` inventory over configured servers
@@ -489,8 +490,8 @@ Generated: 2026-05-21
 - **Hermes reference**: `tools/mcp_tool.py`
 
 ### 4. Skills System
-- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader skips symlinked skill paths, carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json`, supports Hermes-style `platforms` frontmatter gates, preprocesses skill templates with skill-dir/session variables plus opt-in inline-shell expansion, has a local Skills Hub manifest workflow for browse/search/inspect/install with explicit community trust, safe bundle-path checks, lock updates, and audit logging, records runtime skill activation in a non-sensitive `.usage.json` sidecar, can sync bundled skill trees with `.bundled_manifest` origin hashes while preserving user edits/deletions, and injects loaded skill slash-command invocations as normal user messages from CLI query and gateway chats.
-- **What's missing**: Remote/multi-source community hub adapters, skill index caching
+- **Status**: Basic loader from markdown files with YAML frontmatter plus a Hermes-style safety scan that blocks dangerous prompt-injection, exfiltration, persistence, destructive, invisible-Unicode, and embedded-credential patterns before skill content enters the runtime system prompt. The loader skips symlinked skill paths, carries Hermes-style skill provenance from `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json`, supports Hermes-style `platforms` frontmatter gates, preprocesses skill templates with skill-dir/session variables plus opt-in inline-shell expansion, has a Skills Hub workflow for local and refreshed multi-source indexes with explicit community trust, safe bundle-path checks, lock updates, and audit logging, records runtime skill activation in a non-sensitive `.usage.json` sidecar, can sync bundled skill trees with `.bundled_manifest` origin hashes while preserving user edits/deletions, and injects loaded skill slash-command invocations as normal user messages from CLI query and gateway chats.
+- **What's missing**: Full live GitHub tree / well-known / skills.sh adapters, richer remote freshness policy
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 5. Gateway
@@ -556,13 +557,13 @@ Generated: 2026-05-21
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
 | Cron Features | Full | Full | 0 | 0 |
-| Skills Features | Full | 5 | 1 | 2 |
+| Skills Features | Full | 6 | 1 | 1 |
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~71** (up from ~30)
+**Fully present in Hakimi: ~72** (up from ~30)
 **Partially implemented: ~9**
-**Missing entirely: ~73+**
+**Missing entirely: ~72+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (vision, CDP attach, cloud backends)
@@ -645,9 +646,10 @@ Generated: 2026-05-21
 | 52 | Skills Usage Telemetry | `hakimi-skills/src/{usage.rs,store.rs}`, `hakimi-cli/src/skills.rs` | 6 | ✅ Runtime skill activation writes `.usage.json` use/view counters best-effort, and CLI/gateway `skills usage` renders text or JSON reports without exposing skill content |
 | 53 | Skills Bundled Sync/Update | `hakimi-skills/src/sync.rs`, `hakimi-cli/src/skills.rs` | 7 | ✅ `hakimi skills sync --source <dir>` seeds bundled SKILL.md trees, writes `.bundled_manifest` origin hashes, updates only unmodified synced copies, preserves user edits/deletions, and exposes CLI/gateway text or JSON summaries |
 | 54 | Skills Slash-Command Invocation | `hakimi-skills/src/slash.rs`, `hakimi-core/src/agent.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Loaded skills can be invoked as `/skill-name optional instruction`; CLI query and gateway chats inject the selected full skill content as a user message while preserving built-in command priority |
+| 55 | Skills Hub Source Indexes | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 6 | ✅ `hakimi skills sources list/add/refresh/remove` manages local/HTTPS index sources, caches refreshed catalogs under `.hub/index-cache`, merges cached entries into discovery, deduplicates by identifier, and blocks unsafe remote source hosts |
 
 ### Summary
-- **Total tests**: 1296 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1302 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
