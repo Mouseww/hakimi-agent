@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.127-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.128-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1286-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1293-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1286 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, platform gates, template preprocessing, and usage telemetry · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1293 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers and terminal auth quarantine · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · Gateway ingress access policy · MCP sampling/createMessage · Skills guard, provenance, hub install policy, platform gates, template preprocessing, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.128 Skills bundled sync/update**:
+  - **Hermes Manifest Sync Parity**: `hakimi skills sync --source <dir>` seeds bundled `SKILL.md` trees into `~/.hakimi/skills` while writing `.bundled_manifest` origin hashes.
+  - **User Edit Safety**: unchanged synced skills update when the bundled source changes, user-modified skills are preserved, and deleted skills are not silently re-added.
+  - **Gateway Visibility**: gateway `/skills sync --source <dir>` uses the same summary/JSON response path without exposing skill bodies.
 - **v0.3.127 Skills usage telemetry**:
   - **Hermes Usage Sidecar Parity**: runtime skill activation now records non-sensitive use counters in `~/.hakimi/skills/.usage.json` without modifying user-authored `SKILL.md` files.
   - **Best-Effort Runtime Tracking**: dynamic skill prompt injection bumps usage counters without breaking the agent if the sidecar is missing, corrupt, or temporarily unwritable.
@@ -636,7 +640,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1286 |
+| Tests | ~500 | 1293 |
 
 ---
 
@@ -646,7 +650,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1286 tests)
+# Run all tests (1293 tests)
 cargo test --workspace
 
 # Debug logging

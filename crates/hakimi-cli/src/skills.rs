@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use hakimi_skills::{Skill, SkillHub, SkillHubEntry, SkillHubInstallOptions, SkillUsageStore};
+use hakimi_skills::{
+    Skill, SkillHub, SkillHubEntry, SkillHubInstallOptions, SkillSync, SkillSyncReport,
+    SkillUsageStore,
+};
 use serde_json::json;
 
 #[derive(Debug, Clone)]
@@ -11,6 +14,7 @@ struct SkillCliOptions {
     force: bool,
     trust_community: bool,
     category: Option<String>,
+    sync_source: Option<PathBuf>,
 }
 
 impl Default for SkillCliOptions {
@@ -22,6 +26,7 @@ impl Default for SkillCliOptions {
             force: false,
             trust_community: false,
             category: None,
+            sync_source: None,
         }
     }
 }
@@ -53,9 +58,10 @@ pub fn gateway_skills_response(raw: Option<&str>, loaded_skills: &[Skill]) -> St
         &args[..]
     };
     match hub_args.first().map(String::as_str) {
-        Some("browse" | "search" | "inspect" | "install" | "list" | "path" | "usage" | "help") => {
-            skills_response_for_dir(hub_args, &default_skills_dir())
-        }
+        Some(
+            "browse" | "search" | "inspect" | "install" | "sync" | "list" | "path" | "usage"
+            | "help",
+        ) => skills_response_for_dir(hub_args, &default_skills_dir()),
         _ => gateway_skills_help(),
     }
 }
@@ -143,6 +149,15 @@ pub(crate) fn skills_response_for_dir(args: &[String], skills_dir: &Path) -> Str
             }
             Err(err) => format!("Error: {err}"),
         },
+        "sync" => {
+            let Some(source) = options.sync_source.or_else(default_sync_source) else {
+                return "Usage: hakimi skills sync --source <bundled-skills-dir> [--json]\nSet HAKIMI_BUNDLED_SKILLS to omit --source.".to_string();
+            };
+            match SkillSync::new(skills_dir, source).sync() {
+                Ok(report) => render_sync_report(&report, options.json),
+                Err(err) => format!("Error: {err}"),
+            }
+        }
         "path" => format!(
             "Skills directory: `{}`\nHub index: `{}`",
             hub.skills_dir().display(),
@@ -212,6 +227,13 @@ fn parse_skill_cli_options(args: &[String]) -> Result<(SkillCliOptions, Vec<Stri
                 options.category = Some(value.clone());
                 i += 2;
             }
+            "--source" | "--bundled" => {
+                let Some(value) = args.get(i + 1) else {
+                    return Err(format!("{} requires a path", args[i]));
+                };
+                options.sync_source = Some(PathBuf::from(value));
+                i += 2;
+            }
             arg if arg.starts_with("--") => return Err(format!("unknown option `{arg}`")),
             _ => {
                 rest.push(args[i].clone());
@@ -220,6 +242,12 @@ fn parse_skill_cli_options(args: &[String]) -> Result<(SkillCliOptions, Vec<Stri
         }
     }
     Ok((options, rest))
+}
+
+fn default_sync_source() -> Option<PathBuf> {
+    std::env::var_os("HAKIMI_BUNDLED_SKILLS")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 fn render_skill_entries(entries: &[SkillHubEntry], hub: &SkillHub, as_json: bool) -> String {
@@ -326,6 +354,47 @@ fn render_skill_usage(skills_dir: &Path, as_json: bool) -> String {
     lines.join("\n")
 }
 
+fn render_sync_report(report: &SkillSyncReport, as_json: bool) -> String {
+    if as_json {
+        return serde_json::to_string_pretty(report)
+            .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#));
+    }
+    let mut lines = vec![
+        format!(
+            "Synced bundled skills via `{}`.",
+            report.manifest_path.display()
+        ),
+        format!(
+            "Copied: {} · Updated: {} · User-modified: {} · Skipped: {} · Cleaned: {} · Bundled: {}",
+            report.copied.len(),
+            report.updated.len(),
+            report.user_modified.len(),
+            report.skipped,
+            report.cleaned.len(),
+            report.total_bundled
+        ),
+    ];
+    if !report.copied.is_empty() {
+        lines.push(format!("Copied: {}", report.copied.join(", ")));
+    }
+    if !report.updated.is_empty() {
+        lines.push(format!("Updated: {}", report.updated.join(", ")));
+    }
+    if !report.user_modified.is_empty() {
+        lines.push(format!(
+            "Kept user-modified skills: {}",
+            report.user_modified.join(", ")
+        ));
+    }
+    if !report.cleaned.is_empty() {
+        lines.push(format!(
+            "Cleaned manifest entries: {}",
+            report.cleaned.join(", ")
+        ));
+    }
+    lines.join("\n")
+}
+
 fn loaded_skills_response(loaded_skills: &[Skill]) -> String {
     if loaded_skills.is_empty() {
         return "Loaded Skills: none".to_string();
@@ -351,6 +420,7 @@ fn skills_help_response() -> String {
         "- search <query> [--limit N] [--json] [--index PATH] - search the local hub index",
         "- inspect <identifier-or-name> [--json] [--index PATH] - preview metadata without installing",
         "- install <identifier-or-name> [--category NAME] [--force] [--trust-community] [--index PATH] - install a scanned skill",
+        "- sync --source DIR [--json] - seed/update bundled skills without overwriting user edits",
         "- list [--json] - list hub-installed skills recorded in .hub/lock.json",
         "- path - show the skills directory and index path",
         "- usage [--json] - show runtime skill use/view counters from .usage.json",
@@ -368,6 +438,7 @@ fn gateway_skills_help() -> String {
         "- `/skills search <query>` - search hub skills",
         "- `/skills inspect <identifier>` - preview hub skill metadata",
         "- `/skills install <identifier> [--trust-community]` - install a scanned skill for the next reload",
+        "- `/skills sync --source <dir>` - seed/update bundled skills without overwriting user edits",
         "- `/skills hub list` - list hub-installed skills",
         "- `/skills usage` - show runtime skill use/view counters",
     ]
@@ -451,5 +522,28 @@ mod tests {
         assert!(response.contains("Skill usage"));
         assert!(response.contains("release-check"));
         assert!(response.contains("used 1"));
+    }
+
+    #[test]
+    fn sync_renders_manifest_summary() {
+        let tmp = TempDir::new().unwrap();
+        let source = tmp.path().join("bundled");
+        let skill = source.join("ops/release");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: release-check\n---\n# Release",
+        )
+        .unwrap();
+        let args = vec![
+            "sync".to_string(),
+            "--source".to_string(),
+            source.display().to_string(),
+        ];
+
+        let response = skills_response_for_dir(&args, &tmp.path().join("skills"));
+
+        assert!(response.contains("Copied: 1"));
+        assert!(response.contains("release-check"));
     }
 }
