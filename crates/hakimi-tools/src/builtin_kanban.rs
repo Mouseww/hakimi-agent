@@ -1013,13 +1013,8 @@ fn resolve_kanban_db_path(board: Option<&str>) -> Result<PathBuf> {
     if std::env::var("HAKIMI_KANBAN_DB").is_ok() || std::env::var("HERMES_KANBAN_DB").is_ok() {
         return Ok(default_kanban_db_path());
     }
-    if let Some(raw) = std::env::var("HAKIMI_KANBAN_BOARD")
-        .ok()
-        .or_else(|| std::env::var("HERMES_KANBAN_BOARD").ok())
-    {
-        if let Some(slug) = non_empty_str(&raw) {
-            return resolve_kanban_db_path(Some(slug));
-        }
+    if let Some(slug) = env_board_slug() {
+        return resolve_kanban_db_path(Some(&slug));
     }
     let current = current_board_slug()?;
     resolve_kanban_db_path(Some(&current))
@@ -1049,25 +1044,26 @@ fn current_board_path() -> PathBuf {
 }
 
 fn current_board_slug() -> Result<String> {
-    if let Some(raw) = std::env::var("HAKIMI_KANBAN_BOARD")
-        .ok()
-        .or_else(|| std::env::var("HERMES_KANBAN_BOARD").ok())
-    {
-        if let Some(slug) = non_empty_str(&raw) {
-            return normalize_board_slug(slug);
-        }
+    if let Some(slug) = env_board_slug() {
+        return normalize_board_slug(&slug);
     }
-    let path = current_board_path();
-    if let Ok(raw) = std::fs::read_to_string(path) {
-        if let Some(slug) = non_empty_str(&raw) {
-            if let Ok(slug) = normalize_board_slug(slug) {
-                if board_exists(&slug) {
-                    return Ok(slug);
-                }
-            }
-        }
+    if let Some(slug) = current_board_file_slug() {
+        return Ok(slug);
     }
     Ok(DEFAULT_BOARD.to_string())
+}
+
+fn env_board_slug() -> Option<String> {
+    let raw = std::env::var("HAKIMI_KANBAN_BOARD")
+        .ok()
+        .or_else(|| std::env::var("HERMES_KANBAN_BOARD").ok())?;
+    non_empty_str(&raw).map(str::to_string)
+}
+
+fn current_board_file_slug() -> Option<String> {
+    let raw = std::fs::read_to_string(current_board_path()).ok()?;
+    let slug = normalize_board_slug(non_empty_str(&raw)?).ok()?;
+    board_exists(&slug).then_some(slug)
 }
 
 fn board_exists(slug: &str) -> bool {
