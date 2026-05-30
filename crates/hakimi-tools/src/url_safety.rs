@@ -50,7 +50,10 @@ pub(crate) fn safe_http_redirect_policy(limit: usize) -> reqwest::redirect::Poli
 }
 
 fn assert_safe_host(host: &str, port: u16, allow_private: bool) -> Result<()> {
-    let normalized = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    let mut normalized = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if normalized.starts_with('[') && normalized.ends_with(']') {
+        normalized = normalized[1..normalized.len() - 1].to_string();
+    }
     if normalized.is_empty() {
         return Err(HakimiError::Tool("URL hostname cannot be empty".into()));
     }
