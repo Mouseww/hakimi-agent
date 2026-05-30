@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.142-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.143-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1377-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1383-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1377 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断、终态认证隔离与 stale manual 凭证清理 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 紧凑 read_file 行号 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · 支持隔离 board 的 SQLite 持久化 Kanban 任务工具 · TUI slash command autocomplete · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1383 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断、终态认证隔离、reset-window 恢复与 stale manual 凭证清理 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 紧凑 read_file 行号 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · 支持隔离 board 的 SQLite 持久化 Kanban 任务工具 · TUI slash command autocomplete · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.143 凭证池 reset-window 同步**
+  - 对齐 Hermes pool recovery：provider 失败现在可以保留显式 reset timestamp 和 retry-after 窗口，不再只能退回固定 cooldown。
+  - 安全诊断：pool stats 会保留脱敏且截断的 provider 错误消息，并同时展示状态码、reason 与 retry window 元数据。
+  - re-auth 恢复：新的 singleton OAuth 凭证可按 source 替换 stale dead entry，清除终态状态而不复制旧凭证。
 
 - **v0.3.142 Kanban board 隔离**
   - 对齐 Hermes board 语义：Kanban 工具现在支持可选 `board` 参数，`/kanban --board <slug> ...` 可以把 slash command 路由到隔离 board 数据库。
@@ -574,7 +579,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1377 |
+| 测试 | ~500 | 1383 |
 
 ---
 
@@ -584,7 +589,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1377 tests)
+# 运行全部测试 (1383 tests)
 cargo test --workspace
 
 # Debug 日志

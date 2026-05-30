@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.142-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.143-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1377-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1383-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,17 @@ Hakimi is a Rust rewrite of [Hermes Agent](https://github.com/NousResearch/herme
 | Tool registration | Runtime AST scanning | Compile-time trait (zero overhead) |
 | Type safety | Runtime crashes | Compile-time guarantees |
 
-**Production features:** 1377 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers, terminal auth quarantine, and stale manual credential cleanup · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · compact read_file gutters · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · SQLite-backed Kanban task tools with isolated boards · TUI slash command autocomplete · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
+**Production features:** 1383 tests · 20+ API error types auto-classified with recovery · Multi-key credential pool with circuit breakers, terminal auth quarantine, reset-window recovery, and stale manual credential cleanup · 3-tier context compression · Anthropic prompt caching · Progressive MCP/plugin tool disclosure · compact read_file gutters · write safe-root sandbox · SSRF-safe web/media fetches · Tirith-style command content guard · Gateway ingress access policy and outbound silence filter · MCP sampling/createMessage · SQLite-backed Kanban task tools with isolated boards · TUI slash command autocomplete · Skills guard, provenance, hub install policy, multi-source index caches with GitHub/well-known adapters, platform gates, template preprocessing, slash-command invocation, usage telemetry, and bundled sync/update · Rust-native backup/import · Gateway stream pacing
 
 ---
 
 ## Capabilities
 
 ### 🌟 What's New
+- **v0.3.143 Credential pool reset-window sync**:
+  - **Hermes Pool Recovery Parity**: provider failures can now preserve explicit reset timestamps and retry-after windows instead of falling back to a fixed cooldown.
+  - **Safe Diagnostics**: credential pool stats retain redacted, capped provider error messages alongside status code, reason, and retry window metadata.
+  - **Re-auth Recovery**: fresh singleton OAuth credentials can replace stale dead entries by source, clearing terminal state without duplicating the old credential.
 - **v0.3.142 Kanban board isolation**:
   - **Hermes Board Parity**: Kanban tools now accept an optional `board` argument, and `/kanban --board <slug> ...` routes slash commands to isolated board databases.
   - **Board Management Surface**: `/kanban boards list|show|create|switch` adds a Rust-native current-board workflow under `~/.hakimi/kanban/current`.
@@ -696,7 +700,7 @@ Response + Token Usage Stats + Knowledge Updates
 | Role adaptation | None | 8 roles with auto-detection |
 | Conversation model | Flat message list | Decision tree with backtracking |
 | Skill extraction | Manual | Automatic pattern extraction |
-| Tests | ~500 | 1377 |
+| Tests | ~500 | 1383 |
 
 ---
 
@@ -706,7 +710,7 @@ Response + Token Usage Stats + Knowledge Updates
 # Build everything
 cargo build --workspace
 
-# Run all tests (1377 tests)
+# Run all tests (1383 tests)
 cargo test --workspace
 
 # Debug logging

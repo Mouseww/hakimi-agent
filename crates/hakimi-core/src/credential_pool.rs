@@ -2,7 +2,11 @@
 //! configurable rotation strategies and automatic exhaustion detection.
 
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use hakimi_common::redact_sensitive_text;
+use regex::Regex;
 
 // ---------------------------------------------------------------------------
 // Instant helpers – Instant doesn't implement Serialize/Deserialize, so we
@@ -27,6 +31,10 @@ fn epoch_millis() -> u64 {
 /// Error threshold before auto-exhausting a credential.
 const ERROR_THRESHOLD: u32 = 5;
 const DEAD_MANUAL_PRUNE_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
+const EXHAUSTED_TTL_401_MS: u64 = 5 * 60 * 1_000;
+const EXHAUSTED_TTL_429_MS: u64 = 60 * 60 * 1_000;
+const EXHAUSTED_TTL_DEFAULT_MS: u64 = 60 * 60 * 1_000;
+const MAX_ERROR_MESSAGE_CHARS: usize = 512;
 
 const TERMINAL_AUTH_REASONS: &[&str] = &[
     "token_invalidated",
@@ -36,6 +44,27 @@ const TERMINAL_AUTH_REASONS: &[&str] = &[
     "unauthorized_client",
     "refresh_token_reused",
 ];
+
+static QUOTA_RESET_DELAY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)quotaResetDelay[:\s"]+(\d+(?:\.\d+)?)(ms|s)"#)
+        .expect("valid quota reset delay regex")
+});
+
+static RETRY_AFTER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)retry\s+(?:after\s+)?(\d+(?:\.\d+)?)\s*(?:sec|secs|seconds|s\b)")
+        .expect("valid retry-after regex")
+});
+
+static RESET_HR_MIN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)resets?\s+in\s+(\d+)\s*hr\s+(\d+)\s*min").expect("valid reset hr/min regex")
+});
+
+static RESET_HR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)resets?\s+in\s+(\d+)\s*hr\b").expect("valid reset hr regex"));
+
+static RESET_MIN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)resets?\s+in\s+(\d+)\s*min\b").expect("valid reset min regex")
+});
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -86,6 +115,12 @@ pub struct Credential {
     /// Last normalized provider error reason.
     #[serde(default)]
     pub last_error_reason: Option<String>,
+    /// Last provider error message, redacted and capped for diagnostics.
+    #[serde(default)]
+    pub last_error_message: Option<String>,
+    /// Absolute Unix epoch millis when this credential may be retried.
+    #[serde(default)]
+    pub last_error_reset_at_epoch_ms: Option<u64>,
     /// Unix epoch millis when this credential last entered a non-OK status.
     #[serde(default)]
     pub last_status_at_epoch_ms: Option<u64>,
@@ -120,6 +155,8 @@ impl Credential {
             status: CredentialStatus::Ok,
             last_error_status: None,
             last_error_reason: None,
+            last_error_message: None,
+            last_error_reset_at_epoch_ms: None,
             last_status_at_epoch_ms: None,
             error_count: 0,
             last_used_ms: None,
@@ -196,6 +233,8 @@ pub struct CredentialStats {
     pub status: CredentialStatus,
     pub last_error_status: Option<u16>,
     pub last_error_reason: Option<String>,
+    pub last_error_message: Option<String>,
+    pub last_error_reset_at_epoch_ms: Option<u64>,
     pub last_status_at_epoch_ms: Option<u64>,
 }
 
@@ -253,11 +292,17 @@ impl CredentialPool {
         match cred.effective_status() {
             CredentialStatus::Dead => return false,
             CredentialStatus::Exhausted => {
-                let Some(until) = cred.exhausted_until_ms else {
-                    return false;
-                };
-                if now_millis() < until {
-                    return false;
+                if let Some(reset_at) = cred.last_error_reset_at_epoch_ms {
+                    if epoch_millis() < reset_at {
+                        return false;
+                    }
+                } else {
+                    let Some(until) = cred.exhausted_until_ms else {
+                        return false;
+                    };
+                    if now_millis() < until {
+                        return false;
+                    }
                 }
                 // Cooldown has expired; refresh() will clear the marker before acquisition.
             }
@@ -271,6 +316,16 @@ impl CredentialPool {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(|s| s.to_ascii_lowercase())
+    }
+
+    fn normalized_error_message(message: Option<&str>) -> Option<String> {
+        let message = message.map(str::trim).filter(|s| !s.is_empty())?;
+        Some(
+            redact_sensitive_text(message)
+                .chars()
+                .take(MAX_ERROR_MESSAGE_CHARS)
+                .collect(),
+        )
     }
 
     pub fn is_terminal_auth_failure(status_code: Option<u16>, error_reason: Option<&str>) -> bool {
@@ -287,12 +342,15 @@ impl CredentialPool {
         cred: &mut Credential,
         status_code: Option<u16>,
         error_reason: Option<&str>,
+        error_message: Option<&str>,
     ) {
         cred.is_exhausted = true;
         cred.exhausted_until_ms = None;
         cred.status = CredentialStatus::Dead;
         cred.last_error_status = status_code;
         cred.last_error_reason = Self::normalized_error_reason(error_reason);
+        cred.last_error_message = Self::normalized_error_message(error_message);
+        cred.last_error_reset_at_epoch_ms = None;
         cred.last_status_at_epoch_ms = Some(epoch_millis());
         cred.active_requests = 0;
     }
@@ -302,13 +360,79 @@ impl CredentialPool {
         cooldown_ms: u64,
         status_code: Option<u16>,
         error_reason: Option<&str>,
+        error_message: Option<&str>,
+        reset_at_epoch_ms: Option<u64>,
     ) {
+        let now_epoch_ms = epoch_millis();
+        let reset_at_epoch_ms = reset_at_epoch_ms
+            .filter(|reset_at| *reset_at > now_epoch_ms)
+            .unwrap_or_else(|| now_epoch_ms.saturating_add(cooldown_ms));
+        let monotonic_cooldown_ms = reset_at_epoch_ms.saturating_sub(now_epoch_ms);
         cred.is_exhausted = true;
-        cred.exhausted_until_ms = Some(now_millis() + cooldown_ms);
+        cred.exhausted_until_ms = Some(now_millis().saturating_add(monotonic_cooldown_ms));
         cred.status = CredentialStatus::Exhausted;
         cred.last_error_status = status_code;
         cred.last_error_reason = Self::normalized_error_reason(error_reason);
+        cred.last_error_message = Self::normalized_error_message(error_message);
+        cred.last_error_reset_at_epoch_ms = Some(reset_at_epoch_ms);
         cred.last_status_at_epoch_ms = Some(epoch_millis());
+    }
+
+    fn default_exhaustion_ttl_ms(status_code: Option<u16>) -> u64 {
+        match status_code {
+            Some(401) => EXHAUSTED_TTL_401_MS,
+            Some(429) => EXHAUSTED_TTL_429_MS,
+            _ => EXHAUSTED_TTL_DEFAULT_MS,
+        }
+    }
+
+    fn provider_reset_at_epoch_ms(
+        status_code: Option<u16>,
+        error_message: Option<&str>,
+        reset_at_epoch_ms: Option<u64>,
+    ) -> u64 {
+        let now = epoch_millis();
+        if let Some(reset_at) = reset_at_epoch_ms.filter(|reset_at| *reset_at > now) {
+            return reset_at;
+        }
+        if let Some(delay_ms) = error_message.and_then(Self::extract_retry_delay_ms) {
+            return now.saturating_add(delay_ms);
+        }
+        now.saturating_add(Self::default_exhaustion_ttl_ms(status_code))
+    }
+
+    fn extract_retry_delay_ms(message: &str) -> Option<u64> {
+        if let Some(caps) = QUOTA_RESET_DELAY_RE.captures(message) {
+            let value = caps.get(1)?.as_str().parse::<f64>().ok()?;
+            let unit = caps.get(2)?.as_str().to_ascii_lowercase();
+            return Some(if unit == "ms" {
+                value.max(0.0).ceil() as u64
+            } else {
+                (value.max(0.0) * 1_000.0).ceil() as u64
+            });
+        }
+        if let Some(caps) = RETRY_AFTER_RE.captures(message) {
+            let value = caps.get(1)?.as_str().parse::<f64>().ok()?;
+            return Some((value.max(0.0) * 1_000.0).ceil() as u64);
+        }
+        if let Some(caps) = RESET_HR_MIN_RE.captures(message) {
+            let hours = caps.get(1)?.as_str().parse::<u64>().ok()?;
+            let minutes = caps.get(2)?.as_str().parse::<u64>().ok()?;
+            return Some(
+                hours
+                    .saturating_mul(60 * 60 * 1_000)
+                    .saturating_add(minutes.saturating_mul(60 * 1_000)),
+            );
+        }
+        if let Some(caps) = RESET_HR_RE.captures(message) {
+            let hours = caps.get(1)?.as_str().parse::<u64>().ok()?;
+            return Some(hours.saturating_mul(60 * 60 * 1_000));
+        }
+        if let Some(caps) = RESET_MIN_RE.captures(message) {
+            let minutes = caps.get(1)?.as_str().parse::<u64>().ok()?;
+            return Some(minutes.saturating_mul(60 * 1_000));
+        }
+        None
     }
 
     fn is_manual_source(source: Option<&str>) -> bool {
@@ -350,7 +474,7 @@ impl CredentialPool {
     /// Mark a credential as permanently dead after a terminal auth failure.
     pub fn mark_dead(&mut self, id: &str, status_code: Option<u16>, error_reason: Option<&str>) {
         if let Some(cred) = self.credentials.iter_mut().find(|c| c.id == id) {
-            Self::apply_dead_status(cred, status_code, error_reason);
+            Self::apply_dead_status(cred, status_code, error_reason, None);
         }
     }
 
@@ -371,9 +495,9 @@ impl CredentialPool {
             cred.last_error_reason = Self::normalized_error_reason(error_reason);
 
             if Self::is_terminal_auth_failure(status_code, error_reason) {
-                Self::apply_dead_status(cred, status_code, error_reason);
+                Self::apply_dead_status(cred, status_code, error_reason, None);
             } else if cred.error_count >= ERROR_THRESHOLD {
-                Self::apply_exhausted_status(cred, 60_000, status_code, error_reason);
+                Self::apply_exhausted_status(cred, 60_000, status_code, error_reason, None, None);
             }
         }
     }
@@ -388,9 +512,50 @@ impl CredentialPool {
     ) {
         if let Some(cred) = self.credentials.iter_mut().find(|c| c.id == id) {
             if Self::is_terminal_auth_failure(status_code, error_reason) {
-                Self::apply_dead_status(cred, status_code, error_reason);
+                Self::apply_dead_status(cred, status_code, error_reason, None);
             } else {
-                Self::apply_exhausted_status(cred, cooldown_ms, status_code, error_reason);
+                Self::apply_exhausted_status(
+                    cred,
+                    cooldown_ms,
+                    status_code,
+                    error_reason,
+                    None,
+                    None,
+                );
+            }
+        }
+    }
+
+    /// Mark a credential using Hermes-style provider context.
+    ///
+    /// Provider reset timestamps win over parsed retry-after delays, which win
+    /// over status-code defaults (401: 5m, 429/default: 1h). Terminal OAuth
+    /// 401 reasons still become permanently dead until explicit re-auth.
+    pub fn mark_provider_failure(
+        &mut self,
+        id: &str,
+        status_code: Option<u16>,
+        error_reason: Option<&str>,
+        error_message: Option<&str>,
+        reset_at_epoch_ms: Option<u64>,
+    ) {
+        if let Some(cred) = self.credentials.iter_mut().find(|c| c.id == id) {
+            cred.error_count += 1;
+            cred.total_errors += 1;
+            if Self::is_terminal_auth_failure(status_code, error_reason) {
+                Self::apply_dead_status(cred, status_code, error_reason, error_message);
+            } else {
+                let reset_at_epoch_ms =
+                    Self::provider_reset_at_epoch_ms(status_code, error_message, reset_at_epoch_ms);
+                let cooldown_ms = reset_at_epoch_ms.saturating_sub(epoch_millis());
+                Self::apply_exhausted_status(
+                    cred,
+                    cooldown_ms,
+                    status_code,
+                    error_reason,
+                    error_message,
+                    Some(reset_at_epoch_ms),
+                );
             }
         }
     }
@@ -398,31 +563,83 @@ impl CredentialPool {
     /// Clear a dead credential after explicit re-auth or token replacement.
     pub fn revive_credential(&mut self, id: &str) {
         if let Some(cred) = self.credentials.iter_mut().find(|c| c.id == id) {
-            cred.is_exhausted = false;
-            cred.exhausted_until_ms = None;
-            cred.status = CredentialStatus::Ok;
-            cred.last_error_status = None;
-            cred.last_error_reason = None;
-            cred.last_status_at_epoch_ms = None;
-            cred.error_count = 0;
+            Self::clear_health_status(cred);
         }
     }
 
-    fn clear_expired_exhaustion(cred: &mut Credential, now: u64) {
+    /// Upsert fresh credential material from a write-side re-auth sync.
+    ///
+    /// Singleton OAuth entries are matched by non-manual `source` first, so a
+    /// fresh `device_code`/`loopback_pkce` login clears stale dead state instead
+    /// of creating a duplicate entry that leaves the dead singleton in place.
+    pub fn sync_reauthenticated_credential(&mut self, mut updated: Credential) -> bool {
+        let target_idx = updated
+            .source
+            .as_deref()
+            .and_then(|source| {
+                if Self::is_manual_source(Some(source)) {
+                    None
+                } else {
+                    self.credentials
+                        .iter()
+                        .position(|cred| cred.source.as_deref() == Some(source))
+                }
+            })
+            .or_else(|| {
+                self.credentials
+                    .iter()
+                    .position(|cred| cred.id == updated.id)
+            });
+
+        Self::clear_health_status(&mut updated);
+        if let Some(idx) = target_idx {
+            let existing = &mut self.credentials[idx];
+            let active_requests = existing.active_requests;
+            let last_used_ms = existing.last_used_ms;
+            let total_requests = existing.total_requests;
+            let total_errors = existing.total_errors;
+            *existing = updated;
+            existing.active_requests = active_requests;
+            existing.last_used_ms = last_used_ms;
+            existing.total_requests = total_requests;
+            existing.total_errors = total_errors;
+            true
+        } else {
+            self.add_credential(updated);
+            false
+        }
+    }
+
+    fn clear_health_status(cred: &mut Credential) {
+        cred.is_exhausted = false;
+        cred.exhausted_until_ms = None;
+        cred.status = CredentialStatus::Ok;
+        cred.last_error_status = None;
+        cred.last_error_reason = None;
+        cred.last_error_message = None;
+        cred.last_error_reset_at_epoch_ms = None;
+        cred.last_status_at_epoch_ms = None;
+        cred.error_count = 0;
+    }
+
+    fn clear_expired_exhaustion(cred: &mut Credential, now_mono: u64, now_epoch: u64) {
         if cred.status == CredentialStatus::Dead {
             return;
         }
         if cred.is_exhausted
-            && let Some(until) = cred.exhausted_until_ms
-            && now >= until
+            && let Some(reset_at) = cred.last_error_reset_at_epoch_ms
         {
-            cred.is_exhausted = false;
-            cred.exhausted_until_ms = None;
-            cred.status = CredentialStatus::Ok;
-            cred.last_error_status = None;
-            cred.last_error_reason = None;
-            cred.last_status_at_epoch_ms = None;
-            cred.error_count = 0;
+            if now_epoch < reset_at {
+                return;
+            }
+            Self::clear_health_status(cred);
+            return;
+        }
+        if cred.is_exhausted
+            && let Some(until) = cred.exhausted_until_ms
+            && now_mono >= until
+        {
+            Self::clear_health_status(cred);
         }
     }
 
@@ -531,7 +748,7 @@ impl CredentialPool {
     /// Mark a credential as exhausted for `cooldown_ms` milliseconds.
     pub fn mark_exhausted(&mut self, id: &str, cooldown_ms: u64) {
         if let Some(cred) = self.credentials.iter_mut().find(|c| c.id == id) {
-            Self::apply_exhausted_status(cred, cooldown_ms, None, None);
+            Self::apply_exhausted_status(cred, cooldown_ms, None, None, None, None);
         }
     }
 
@@ -563,9 +780,10 @@ impl CredentialPool {
 
     /// Clear expired exhaustion markers.
     pub fn refresh(&mut self) {
-        let now = now_millis();
+        let now_mono = now_millis();
+        let now_epoch = epoch_millis();
         for cred in &mut self.credentials {
-            Self::clear_expired_exhaustion(cred, now);
+            Self::clear_expired_exhaustion(cred, now_mono, now_epoch);
         }
         self.prune_stale_dead_credentials();
     }
@@ -594,6 +812,8 @@ impl CredentialPool {
                 status: c.effective_status(),
                 last_error_status: c.last_error_status,
                 last_error_reason: c.last_error_reason.clone(),
+                last_error_message: c.last_error_message.clone(),
+                last_error_reset_at_epoch_ms: c.last_error_reset_at_epoch_ms,
                 last_status_at_epoch_ms: c.last_status_at_epoch_ms,
             })
             .collect();
@@ -954,6 +1174,101 @@ mod tests {
     }
 
     #[test]
+    fn test_provider_failure_uses_explicit_reset_and_redacts_message() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        let reset_at = epoch_millis() + 123_456;
+        pool.mark_provider_failure(
+            "a",
+            Some(429),
+            Some("rate_limit_exceeded"),
+            Some("retry after 99 seconds token=sk-abcdefghijklmnopqrstuvwxyz1234567890"),
+            Some(reset_at),
+        );
+
+        let cred = &pool.credentials[0];
+        assert_eq!(cred.effective_status(), CredentialStatus::Exhausted);
+        assert_eq!(cred.last_error_status, Some(429));
+        assert_eq!(
+            cred.last_error_reason.as_deref(),
+            Some("rate_limit_exceeded")
+        );
+        assert_eq!(cred.last_error_reset_at_epoch_ms, Some(reset_at));
+        let message = cred.last_error_message.as_deref().unwrap();
+        assert!(message.contains("retry after 99 seconds"));
+        assert!(!message.contains("abcdefghijklmnopqrstuvwxyz1234567890"));
+        assert_eq!(pool.available_count(), 0);
+    }
+
+    #[test]
+    fn test_provider_failure_parses_retry_delay_from_message() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        let before = epoch_millis();
+        pool.mark_provider_failure(
+            "a",
+            Some(429),
+            Some("quota"),
+            Some("quotaResetDelay: 2500ms"),
+            None,
+        );
+
+        let reset_at = pool.credentials[0].last_error_reset_at_epoch_ms.unwrap();
+        assert!(reset_at >= before + 2_500);
+        assert!(reset_at <= before + 5_000);
+        assert_eq!(
+            pool.credentials[0].effective_status(),
+            CredentialStatus::Exhausted
+        );
+    }
+
+    #[test]
+    fn test_provider_failure_uses_status_defaults() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+        pool.add_credential(make_cred("b"));
+
+        let before = epoch_millis();
+        pool.mark_provider_failure("a", Some(401), Some("token_expired"), None, None);
+        pool.mark_provider_failure("b", Some(429), Some("rate_limit"), None, None);
+
+        let a_reset = pool.credentials[0].last_error_reset_at_epoch_ms.unwrap();
+        let b_reset = pool.credentials[1].last_error_reset_at_epoch_ms.unwrap();
+        assert!(a_reset >= before + EXHAUSTED_TTL_401_MS);
+        assert!(a_reset <= before + EXHAUSTED_TTL_401_MS + 2_000);
+        assert!(b_reset >= before + EXHAUSTED_TTL_429_MS);
+        assert!(b_reset <= before + EXHAUSTED_TTL_429_MS + 2_000);
+    }
+
+    #[test]
+    fn test_provider_failure_terminal_auth_marks_dead_without_reset() {
+        let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
+        pool.add_credential(make_cred("a"));
+
+        pool.mark_provider_failure(
+            "a",
+            Some(401),
+            Some("invalid_grant"),
+            Some("refresh failed access_token=sk-abcdefghijklmnopqrstuvwxyz1234567890"),
+            Some(epoch_millis() + 60_000),
+        );
+
+        let cred = &pool.credentials[0];
+        assert_eq!(cred.effective_status(), CredentialStatus::Dead);
+        assert_eq!(cred.last_error_reset_at_epoch_ms, None);
+        assert_eq!(pool.available_count(), 0);
+        assert!(
+            !cred
+                .last_error_message
+                .as_deref()
+                .unwrap()
+                .contains("abcdefghijklmnopqrstuvwxyz1234567890")
+        );
+    }
+
+    #[test]
     fn test_revive_credential_clears_dead_state() {
         let mut pool = CredentialPool::new("p", RotationStrategy::RoundRobin);
         pool.add_credential(make_cred("a"));
@@ -967,6 +1282,58 @@ mod tests {
         assert_eq!(pool.credentials[0].last_error_reason, None);
         assert_eq!(pool.credentials[0].last_status_at_epoch_ms, None);
         assert_eq!(pool.available_count(), 1);
+    }
+
+    #[test]
+    fn test_sync_reauthenticated_credential_replaces_singleton_by_source() {
+        let mut old = make_cred("old");
+        old.source = Some("device_code".to_string());
+        old.status = CredentialStatus::Dead;
+        old.is_exhausted = true;
+        old.last_error_status = Some(401);
+        old.last_error_reason = Some("invalid_grant".to_string());
+        old.last_status_at_epoch_ms = Some(epoch_millis());
+        old.total_requests = 7;
+        old.total_errors = 3;
+
+        let mut pool = CredentialPool::new("openai-codex", RotationStrategy::RoundRobin);
+        pool.add_credential(old);
+
+        let mut fresh = Credential::new("fresh", "new-access-token");
+        fresh.source = Some("device_code".to_string());
+        fresh.max_concurrent = 4;
+
+        let replaced = pool.sync_reauthenticated_credential(fresh);
+
+        assert!(replaced);
+        assert_eq!(pool.total_count(), 1);
+        assert_eq!(pool.credentials[0].id, "fresh");
+        assert_eq!(pool.credentials[0].api_key, "new-access-token");
+        assert_eq!(pool.credentials[0].effective_status(), CredentialStatus::Ok);
+        assert_eq!(pool.credentials[0].last_error_status, None);
+        assert_eq!(pool.credentials[0].last_error_reason, None);
+        assert_eq!(pool.credentials[0].total_requests, 7);
+        assert_eq!(pool.credentials[0].total_errors, 3);
+        assert_eq!(pool.available_count(), 1);
+    }
+
+    #[test]
+    fn test_sync_reauthenticated_manual_credential_matches_id() {
+        let mut old = make_cred("manual");
+        old.source = Some("manual:primary".to_string());
+        old.status = CredentialStatus::Dead;
+        old.is_exhausted = true;
+
+        let mut pool = CredentialPool::new("openai", RotationStrategy::RoundRobin);
+        pool.add_credential(old);
+
+        let mut fresh = Credential::new("manual", "new-key");
+        fresh.source = Some("manual:primary".to_string());
+
+        assert!(pool.sync_reauthenticated_credential(fresh));
+        assert_eq!(pool.total_count(), 1);
+        assert_eq!(pool.credentials[0].api_key, "new-key");
+        assert_eq!(pool.credentials[0].effective_status(), CredentialStatus::Ok);
     }
 
     #[test]
