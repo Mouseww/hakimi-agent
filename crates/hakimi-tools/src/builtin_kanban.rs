@@ -665,7 +665,11 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
         Ok(parsed) => parsed,
         Err(err) => return format!("Warning: {err}"),
     };
-    let board_store = match board.as_deref().map(KanbanStore::for_board).transpose() {
+    let board_store = match board
+        .as_deref()
+        .map(|slug| KanbanStore::for_board(Some(slug)))
+        .transpose()
+    {
         Ok(store) => store,
         Err(err) => return format!("Warning: {err}"),
     };
@@ -762,7 +766,7 @@ fn execute_kanban_tool(
     let board = args.get("board").and_then(JsonValue::as_str);
     let board_store = board
         .and_then(non_empty_str)
-        .map(KanbanStore::for_board)
+        .map(|slug| KanbanStore::for_board(Some(slug)))
         .transpose()?;
     let store = board_store.as_ref().unwrap_or(store);
 
