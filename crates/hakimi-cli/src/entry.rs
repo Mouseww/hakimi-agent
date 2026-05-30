@@ -3694,6 +3694,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Webhook(_)) => "🪝 Webhook endpoints are live at `/api/webhook/`.".to_string(),
+                    Some(Command::Quit) => "`/quit` exits local CLI/TUI sessions. Gateway chats remain open; close the chat client or stop the gateway service if needed.".to_string(),
                     _ => "⚠️ This command is not yet fully implemented for gateway mode.".to_string(),
                 };
 

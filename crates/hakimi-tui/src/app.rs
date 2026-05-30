@@ -6,11 +6,14 @@ use crate::{
 };
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use hakimi_common::{SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix};
 use tokio::sync::mpsc;
 
 const TOOL_CHAT_PREVIEW_CHARS: usize = 120;
 const TOOL_PANEL_PREVIEW_CHARS: usize = 80;
 const HISTORY_PREVIEW_CHARS: usize = 160;
+const COMPLETION_HINT_LIMIT: usize = 5;
+const COMPLETION_HINT_CHARS: usize = 96;
 
 fn compact_one_line(input: &str, max_chars: usize) -> String {
     let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -80,6 +83,56 @@ fn render_history_messages(
     Ok(lines.join("\n"))
 }
 
+fn render_completion_hint(matches: &[&SlashCommandSpec]) -> Option<String> {
+    let first = matches.first()?;
+    let hint = if matches.len() == 1 {
+        let args = if first.args_hint.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", first.args_hint)
+        };
+        format!("Slash match: /{}{} - {}", first.name, args, first.summary)
+    } else {
+        let mut names: Vec<String> = matches
+            .iter()
+            .take(COMPLETION_HINT_LIMIT)
+            .map(|spec| format!("/{}", spec.name))
+            .collect();
+        if matches.len() > COMPLETION_HINT_LIMIT {
+            names.push(format!("+{} more", matches.len() - COMPLETION_HINT_LIMIT));
+        }
+        format!("Slash matches: {}", names.join(", "))
+    };
+    Some(compact_one_line(&hint, COMPLETION_HINT_CHARS))
+}
+
+enum TuiCommand {
+    Help,
+    History(Option<String>),
+    Copy(Option<String>),
+    Clear,
+    Tools,
+    Quit,
+}
+
+fn parse_tui_command(input: &str) -> Option<TuiCommand> {
+    let rest = input.trim().strip_prefix('/')?;
+    let (cmd, arg) = match rest.split_once(char::is_whitespace) {
+        Some((cmd, arg)) => (cmd, Some(arg.trim().to_string())),
+        None => (rest, None),
+    };
+
+    match canonical_slash_command(cmd)? {
+        "help" => Some(TuiCommand::Help),
+        "history" => Some(TuiCommand::History(arg)),
+        "copy" => Some(TuiCommand::Copy(arg)),
+        "clear" => Some(TuiCommand::Clear),
+        "tools" => Some(TuiCommand::Tools),
+        "quit" => Some(TuiCommand::Quit),
+        _ => None,
+    }
+}
+
 /// The main application state.
 pub struct App {
     /// Chat messages displayed in the main panel.
@@ -88,6 +141,8 @@ pub struct App {
     pub input: String,
     /// Cursor position within the input.
     pub cursor_position: usize,
+    /// Contextual hint for slash command completion.
+    pub completion_hint: Option<String>,
     /// Vertical scroll offset for chat history (0 = bottom/latest).
     pub scroll_offset: usize,
     /// Whether the tools activity panel is visible.
@@ -128,6 +183,7 @@ impl App {
             )],
             input: String::new(),
             cursor_position: 0,
+            completion_hint: None,
             scroll_offset: 0,
             show_tools_panel: true,
             is_thinking: false,
@@ -177,6 +233,7 @@ impl App {
                     self.handle_slash_command(&text);
                     self.input.clear();
                     self.cursor_position = 0;
+                    self.completion_hint = None;
                     return;
                 }
 
@@ -194,6 +251,7 @@ impl App {
 
                 self.input.clear();
                 self.cursor_position = 0;
+                self.completion_hint = None;
             }
 
             // Scroll up
@@ -222,7 +280,11 @@ impl App {
 
             // Toggle tools panel
             KeyCode::Tab => {
+                if self.apply_slash_completion() {
+                    return;
+                }
                 self.show_tools_panel = !self.show_tools_panel;
+                self.refresh_completion_hint();
             }
 
             // Backspace
@@ -231,6 +293,7 @@ impl App {
                 let after = &self.input[self.cursor_position..];
                 self.input = format!("{before}{after}");
                 self.cursor_position -= 1;
+                self.refresh_completion_hint();
             }
 
             // Delete
@@ -238,26 +301,31 @@ impl App {
                 let before = &self.input[..self.cursor_position];
                 let after = &self.input[self.cursor_position + 1..];
                 self.input = format!("{before}{after}");
+                self.refresh_completion_hint();
             }
 
             // Home
             KeyCode::Home => {
                 self.cursor_position = 0;
+                self.refresh_completion_hint();
             }
 
             // End
             KeyCode::End => {
                 self.cursor_position = self.input.len();
+                self.refresh_completion_hint();
             }
 
             // Left arrow
             KeyCode::Left if self.cursor_position > 0 => {
                 self.cursor_position -= 1;
+                self.refresh_completion_hint();
             }
 
             // Right arrow
             KeyCode::Right if self.cursor_position < self.input.len() => {
                 self.cursor_position += 1;
+                self.refresh_completion_hint();
             }
 
             // Regular character input
@@ -266,6 +334,7 @@ impl App {
                 let after = &self.input[self.cursor_position..];
                 self.input = format!("{before}{c}{after}");
                 self.cursor_position += 1;
+                self.refresh_completion_hint();
             }
 
             // Escape — could be used for interrupt in future
@@ -277,28 +346,67 @@ impl App {
         }
     }
 
+    fn current_slash_token(&self) -> Option<&str> {
+        if !self.input.starts_with('/') {
+            return None;
+        }
+        let token_end = self
+            .input
+            .find(char::is_whitespace)
+            .unwrap_or(self.input.len());
+        if self.cursor_position > token_end {
+            return None;
+        }
+        Some(&self.input[..token_end])
+    }
+
+    fn refresh_completion_hint(&mut self) {
+        let Some(token) = self.current_slash_token() else {
+            self.completion_hint = None;
+            return;
+        };
+        let completion = complete_slash_command_prefix(token);
+        self.completion_hint = render_completion_hint(&completion.matches);
+    }
+
+    fn apply_slash_completion(&mut self) -> bool {
+        let Some(token) = self.current_slash_token() else {
+            self.completion_hint = None;
+            return false;
+        };
+        let completion = complete_slash_command_prefix(token);
+        if let Some(replacement) = completion.replacement {
+            let rest = self.input[token.len()..].to_string();
+            self.input = format!("{replacement}{rest}");
+            self.cursor_position = replacement.len();
+            self.completion_hint = render_completion_hint(&completion.matches);
+            return true;
+        }
+        if !completion.matches.is_empty() {
+            self.completion_hint = render_completion_hint(&completion.matches);
+            return true;
+        }
+        self.completion_hint = Some(format!("No slash command matches `{token}`"));
+        true
+    }
+
     /// Handle slash commands locally (without sending to agent).
     fn handle_slash_command(&mut self, cmd: &str) {
-        let parts: Vec<&str> = cmd.splitn(2, char::is_whitespace).collect();
-        let command = parts[0].to_ascii_lowercase();
-        match command.as_str() {
-            "/help" => {
+        match parse_tui_command(cmd) {
+            Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /quit          — Exit the application",
+                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /quit          — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
             }
-            "/history" | "/hist" => {
-                match render_history_messages(&self.messages, parts.get(1).copied()) {
+            Some(TuiCommand::History(arg)) => {
+                match render_history_messages(&self.messages, arg.as_deref()) {
                     Ok(history) => self.messages.push(ChatMessage::system(history)),
                     Err(message) => self.messages.push(ChatMessage::error(message)),
                 }
             }
-            "/copy" | "/cp" => {
-                let response = copy_assistant_response(
-                    &self.messages,
-                    parts.get(1).copied(),
-                    write_clipboard_text,
-                );
+            Some(TuiCommand::Copy(arg)) => {
+                let response =
+                    copy_assistant_response(&self.messages, arg.as_deref(), write_clipboard_text);
                 match response {
                     crate::clipboard::CopyAssistantResponse::Copied { chars } => self
                         .messages
@@ -309,19 +417,19 @@ impl App {
                     other => self.messages.push(ChatMessage::system(other.message())),
                 }
             }
-            "/clear" => {
+            Some(TuiCommand::Clear) => {
                 self.messages.clear();
                 self.messages
                     .push(ChatMessage::system("Chat history cleared."));
                 self.scroll_offset = 0;
             }
-            "/tools" => {
+            Some(TuiCommand::Tools) => {
                 self.show_tools_panel = !self.show_tools_panel;
                 let state = if self.show_tools_panel { "on" } else { "off" };
                 self.messages
                     .push(ChatMessage::system(format!("Tools panel: {state}")));
             }
-            "/quit" | "/exit" => {
+            Some(TuiCommand::Quit) => {
                 let _ = self.cmd_tx.send(AgentCommand::Shutdown);
                 self.should_quit = true;
             }
@@ -535,6 +643,7 @@ mod tests {
         let (app, _cmd_rx, _event_tx) = make_app();
         assert!(app.input.is_empty());
         assert_eq!(app.cursor_position, 0);
+        assert!(app.completion_hint.is_none());
     }
 
     #[test]
@@ -704,6 +813,82 @@ mod tests {
         assert!(!app.show_tools_panel);
         app.handle_key_event(key(KeyCode::Tab));
         assert!(app.show_tools_panel);
+    }
+
+    #[test]
+    fn tab_completes_unique_slash_command_prefix() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/hist".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key(KeyCode::Tab));
+
+        assert_eq!(app.input, "/history ");
+        assert_eq!(app.cursor_position, "/history ".len());
+        assert!(app.show_tools_panel);
+        assert!(
+            app.completion_hint
+                .as_deref()
+                .unwrap_or_default()
+                .contains("/history")
+        );
+    }
+
+    #[test]
+    fn tab_on_ambiguous_slash_prefix_shows_candidates_without_toggling_panel() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/c".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key(KeyCode::Tab));
+
+        assert_eq!(app.input, "/c");
+        assert_eq!(app.cursor_position, 2);
+        assert!(app.show_tools_panel);
+        let hint = app.completion_hint.as_deref().unwrap_or_default();
+        assert!(hint.contains("/clear"));
+        assert!(hint.contains("/config"));
+    }
+
+    #[test]
+    fn tab_keeps_tools_toggle_for_regular_input() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "hello".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key(KeyCode::Tab));
+
+        assert_eq!(app.input, "hello");
+        assert!(!app.show_tools_panel);
+        assert!(app.completion_hint.is_none());
+    }
+
+    #[test]
+    fn slash_completion_hint_clears_after_first_argument() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/history 2".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        assert!(app.completion_hint.is_none());
+    }
+
+    #[test]
+    fn slash_alias_commands_still_execute_locally() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("question"));
+        app.messages.push(crate::ChatMessage::assistant("answer"));
+        for c in "/hist 1".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("showing 1 of 2 messages"));
+        assert!(content.contains("[Hakimi #2] answer"));
     }
 
     // ---------------------------------------------------------------

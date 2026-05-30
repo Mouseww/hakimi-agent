@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.140-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.141-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1360-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1374-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -73,13 +73,18 @@ Hakimi 是 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 的 Rust
 | 工具注册 | 运行时 AST 扫描 | 编译期 trait (零开销) |
 | 类型安全 | 运行时崩溃 | 编译期捕获 |
 
-**生产级特性：** 1360 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断、终态认证隔离与 stale manual 凭证清理 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 紧凑 read_file 行号 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · SQLite 持久化 Kanban 任务工具 · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
+**生产级特性：** 1374 个测试 · 20+ API 错误类型自动分类与恢复 · 多密钥凭证池、熔断、终态认证隔离与 stale manual 凭证清理 · 三层上下文压缩 · Anthropic Prompt 缓存 · MCP/插件工具渐进披露 · 紧凑 read_file 行号 · 写入 safe-root 沙箱 · Web/媒体抓取 SSRF 防护 · Tirith 风格命令内容防护 · Gateway 入站访问策略与外发沉默叙述过滤 · MCP sampling/createMessage · SQLite 持久化 Kanban 任务工具 · TUI slash command autocomplete · Skills Guard、provenance、hub install policy、带 GitHub/well-known 适配器的多来源 index cache、平台门控、模板预处理、slash-command 调用、使用遥测与 bundled sync/update · Rust 原生备份/导入 · Gateway stream pacing
 
 ---
 
 ## 核心能力
 
 ### 🌟 最新发布
+
+- **v0.3.141 TUI slash command autocomplete**
+  - 对齐 Hermes TUI 输入体验：Hakimi TUI 现在支持 Tab 补全 slash command 前缀，包括 `/hist` -> `/history `、`/cp` -> `/copy ` 等别名。
+  - 共享命令目录：CLI、gateway 与 TUI command parser 复用 `hakimi-common` 中的 Rust 原生命令目录，避免多处分散维护别名列表。
+  - 非破坏式 Tab 行为：普通聊天输入下 Tab 仍切换 tools panel；只有光标位于首个 slash-command token 内时才进入补全，并对歧义前缀显示有界候选提示。
 
 - **v0.3.140 凭证池 dead-entry 清理**
   - 对齐 Hermes pool hygiene：dead manual 凭证会记录状态时间戳，并在 24 小时静默窗口后自动清理。
@@ -564,7 +569,7 @@ hakimi-agent/
 | 角色适配 | 无 | 8 角色自动检测 |
 | 对话模型 | 扁平消息列表 | 决策树 + 回溯 |
 | 技能提炼 | 手动 | 自动模式提取 |
-| 测试 | ~500 | 1360 |
+| 测试 | ~500 | 1374 |
 
 ---
 
@@ -574,7 +579,7 @@ hakimi-agent/
 # 编译全部
 cargo build --workspace
 
-# 运行全部测试 (1360 tests)
+# 运行全部测试 (1374 tests)
 cargo test --workspace
 
 # Debug 日志

@@ -11,6 +11,11 @@ pub mod skills;
 
 use std::fmt;
 
+use hakimi_common::canonical_slash_command;
+pub use hakimi_common::{
+    SlashCommandCompletion, SlashCommandSpec, complete_slash_command_prefix, slash_command_catalog,
+};
+
 // ---------------------------------------------------------------------------
 // Command enum
 // ---------------------------------------------------------------------------
@@ -98,6 +103,8 @@ pub enum Command {
     Voice(Option<String>),
     /// Webhook management
     Webhook(Option<String>),
+    /// Exit a local interactive surface.
+    Quit,
 }
 
 impl Command {
@@ -115,47 +122,48 @@ impl Command {
             None => (rest, None),
         };
 
-        match cmd.to_lowercase().as_str() {
-            "help" | "h" | "?" => Some(Command::Help),
+        match canonical_slash_command(cmd)? {
+            "help" => Some(Command::Help),
             "stop" => Some(Command::Stop),
             "restart" => Some(Command::Restart),
-            "clear" | "cls" => Some(Command::Clear),
-            "model" | "m" => Some(Command::Model(arg.map(String::from))),
-            "config" | "cfg" => Some(Command::Config(arg.map(String::from))),
-            "resume" | "r" => Some(Command::Resume(arg.map(String::from))),
-            "history" | "hist" => Some(Command::History(arg.map(String::from))),
-            "tools" | "t" => Some(Command::Tools(arg.map(String::from))),
-            "skills" | "s" => Some(Command::Skills(arg.map(String::from))),
+            "clear" => Some(Command::Clear),
+            "model" => Some(Command::Model(arg.map(String::from))),
+            "config" => Some(Command::Config(arg.map(String::from))),
+            "resume" => Some(Command::Resume(arg.map(String::from))),
+            "history" => Some(Command::History(arg.map(String::from))),
+            "tools" => Some(Command::Tools(arg.map(String::from))),
+            "skills" => Some(Command::Skills(arg.map(String::from))),
             "status" => Some(Command::Status),
-            "usage" | "u" => Some(Command::Usage),
-            "profile" | "p" => Some(Command::Profile(arg.map(String::from))),
+            "usage" => Some(Command::Usage),
+            "profile" => Some(Command::Profile(arg.map(String::from))),
             "doctor" => Some(Command::Doctor),
             "setup" => Some(Command::Setup),
             "cron" => Some(Command::Cron(arg.map(String::from))),
-            "plugins" | "plugin" => Some(Command::Plugins(arg.map(String::from))),
+            "plugins" => Some(Command::Plugins(arg.map(String::from))),
             "update" => Some(Command::Update),
             "auth" => Some(Command::Auth(arg.map(String::from))),
             "backup" => Some(Command::Backup(arg.map(String::from))),
-            "copy" | "cp" => Some(Command::Copy(arg.map(String::from))),
-            "browser" | "b" => Some(Command::Browser(arg.map(String::from))),
-            "checkpoints" | "ckpt" => Some(Command::Checkpoints(arg.map(String::from))),
+            "copy" => Some(Command::Copy(arg.map(String::from))),
+            "browser" => Some(Command::Browser(arg.map(String::from))),
+            "checkpoints" => Some(Command::Checkpoints(arg.map(String::from))),
             "dump" => Some(Command::Dump(arg.map(String::from))),
-            "gateway" | "gw" => Some(Command::Gateway(arg.map(String::from))),
+            "gateway" => Some(Command::Gateway(arg.map(String::from))),
             "goals" => Some(Command::Goals(arg.map(String::from))),
             "hooks" => Some(Command::Hooks(arg.map(String::from))),
-            "kanban" | "kb" => Some(Command::Kanban(arg.map(String::from))),
-            "logs" | "l" => Some(Command::Logs(arg.map(String::from))),
+            "kanban" => Some(Command::Kanban(arg.map(String::from))),
+            "logs" => Some(Command::Logs(arg.map(String::from))),
             "mcp" => Some(Command::Mcp(arg.map(String::from))),
-            "memory" | "mem" => Some(Command::Memory(arg.map(String::from))),
-            "pairing" | "pair" => Some(Command::Pairing(arg.map(String::from))),
+            "memory" => Some(Command::Memory(arg.map(String::from))),
+            "pairing" => Some(Command::Pairing(arg.map(String::from))),
             "platforms" => Some(Command::Platforms(arg.map(String::from))),
             "providers" => Some(Command::Providers(arg.map(String::from))),
-            "skin" | "theme" => Some(Command::Skin(arg.map(String::from))),
-            "tips" | "tip" => Some(Command::Tips(arg.map(String::from))),
-            "tools_config" | "tc" => Some(Command::ToolsConfig(arg.map(String::from))),
+            "skin" => Some(Command::Skin(arg.map(String::from))),
+            "tips" => Some(Command::Tips(arg.map(String::from))),
+            "tools_config" => Some(Command::ToolsConfig(arg.map(String::from))),
             "uninstall" => Some(Command::Uninstall(arg.map(String::from))),
-            "voice" | "v" => Some(Command::Voice(arg.map(String::from))),
-            "webhook" | "wh" => Some(Command::Webhook(arg.map(String::from))),
+            "voice" => Some(Command::Voice(arg.map(String::from))),
+            "webhook" => Some(Command::Webhook(arg.map(String::from))),
+            "quit" => Some(Command::Quit),
             _ => None,
         }
     }
@@ -235,6 +243,7 @@ impl fmt::Display for Command {
             Command::Voice(Some(v)) => write!(f, "/voice {v}"),
             Command::Webhook(None) => write!(f, "/webhook"),
             Command::Webhook(Some(w)) => write!(f, "/webhook {w}"),
+            Command::Quit => write!(f, "/quit"),
         }
     }
 }
@@ -294,5 +303,48 @@ mod tests {
             Command::parse("/plugins list"),
             Some(Command::Plugins(Some("list".into())))
         );
+        assert_eq!(Command::parse("/quit"), Some(Command::Quit));
+        assert_eq!(Command::parse("/exit"), Some(Command::Quit));
+    }
+
+    #[test]
+    fn slash_command_catalog_aliases_are_parseable() {
+        for spec in slash_command_catalog() {
+            assert!(Command::parse(&format!("/{}", spec.name)).is_some());
+            for alias in spec.aliases {
+                assert!(
+                    Command::parse(&format!("/{alias}")).is_some(),
+                    "alias `{alias}` should parse"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn slash_completion_expands_single_prefix_and_alias() {
+        let model = complete_slash_command_prefix("/mod");
+        assert_eq!(model.replacement, Some("/model ".to_string()));
+        assert_eq!(model.matches[0].name, "model");
+
+        let copy = complete_slash_command_prefix("/cp");
+        assert_eq!(copy.replacement, Some("/copy ".to_string()));
+        assert_eq!(copy.matches[0].name, "copy");
+    }
+
+    #[test]
+    fn slash_completion_reports_ambiguous_prefix_without_guessing() {
+        let completion = complete_slash_command_prefix("/c");
+        assert!(completion.replacement.is_none());
+        assert!(completion.matches.iter().any(|spec| spec.name == "clear"));
+        assert!(completion.matches.iter().any(|spec| spec.name == "config"));
+        assert!(completion.matches.iter().any(|spec| spec.name == "copy"));
+        assert!(completion.matches.iter().any(|spec| spec.name == "cron"));
+    }
+
+    #[test]
+    fn slash_completion_ignores_non_slash_input() {
+        let completion = complete_slash_command_prefix("model");
+        assert!(completion.replacement.is_none());
+        assert!(completion.matches.is_empty());
     }
 }

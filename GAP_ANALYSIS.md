@@ -135,6 +135,7 @@ Generated: 2026-05-31
 
 ### TUI
 - **Ratatui TUI** — Terminal UI with chat panel, tools activity panel, status bar
+- **TUI slash command autocomplete** — Tab completion for slash command prefixes, aliases, and bounded ambiguous-candidate hints while preserving normal Tab tools-panel toggling outside slash command entry
 - **TUI `/history [N]` command** — Reviews recent user/assistant turns locally without sending the command to the model
 - **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers plus OSC 52 terminal fallback
 - **Spinner animation** — Thinking indicator
@@ -540,8 +541,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
-- **Status**: Basic Ratatui TUI with chat, tools panel, status bar
-- **What's missing**: Slash command autocomplete, session picker, skill browser, config editor, theme/skin support, checkpoint viewer, cron job management, gateway status panel
+- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/history`, `/copy`, and shared-catalog slash command autocomplete
+- **What's missing**: Session picker, skill browser, config editor, theme/skin support, checkpoint viewer, cron job management, gateway status panel
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
 ### 15. Error Handling
@@ -665,9 +666,10 @@ Generated: 2026-05-31
 | 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 12 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, 9 Hermes-named `kanban_*` tools, and gateway `/kanban` CRUD/status/link operations |
 | 62 | Compact Read-File Gutter | `hakimi-tools/src/builtin_read_file.rs` | 1 | ✅ `read_file` matches Hermes latest compact `N|content` line-number format and no longer emits fixed-width padded gutters |
 | 63 | Credential Pool Dead-Entry Cleanup | `hakimi-core/src/credential_pool.rs`, `hakimi-config/src/config.rs` | 3 | ✅ Dead credentials carry status timestamps; stale dead manual entries prune after 24h while singleton-seeded OAuth entries stay quarantined for explicit re-auth sync |
+| 64 | TUI Slash Command Autocomplete | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/lib.rs`, `hakimi-tui/src/app.rs`, `hakimi-tui/src/ui.rs` | 14 | ✅ Shared slash command catalog, alias-aware parser, Tab completion for command prefixes, bounded ambiguous-match hints, and preserved Tab tools-panel toggling for normal input |
 
 ### Summary
-- **Total tests**: 1360 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1374 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

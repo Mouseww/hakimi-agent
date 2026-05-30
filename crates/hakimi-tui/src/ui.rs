@@ -273,10 +273,16 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect) {
         Color::DarkGray
     };
 
+    let input_title = app
+        .completion_hint
+        .as_ref()
+        .map(|hint| format!(" Input - {hint} "))
+        .unwrap_or_else(|| " Input ".to_string());
+
     let input_paragraph = Paragraph::new(input_text)
         .block(
             Block::default()
-                .title(Span::styled(" Input ", Style::default().fg(COLOR_SYSTEM)))
+                .title(Span::styled(input_title, Style::default().fg(COLOR_SYSTEM)))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
                 .style(Style::default().bg(COLOR_INPUT_BG)),
@@ -288,7 +294,15 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Render the status bar at the very bottom.
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let tools_hint = if app.show_tools_panel {
+    let slash_token_end = app
+        .input
+        .find(char::is_whitespace)
+        .unwrap_or(app.input.len());
+    let cursor_in_slash_token =
+        app.input.starts_with('/') && app.cursor_position <= slash_token_end;
+    let tab_hint = if cursor_in_slash_token {
+        "Tab:complete"
+    } else if app.show_tools_panel {
         "Tab:hide-tools"
     } else {
         "Tab:show-tools"
@@ -299,7 +313,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         &app.session_id[..8.min(app.session_id.len())],
         app.total_tokens,
         app.api_calls,
-        tools_hint,
+        tab_hint,
     );
 
     let status_bar = Paragraph::new(Span::styled(status_text, Style::default().fg(COLOR_SYSTEM)))
@@ -349,6 +363,17 @@ mod tests {
         app.is_thinking = true;
         app.input = "typing something...".to_string();
         let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_handles_completion_hint() {
+        let mut app = make_app();
+        app.input = "/hist".to_string();
+        app.completion_hint =
+            Some("Slash match: /history [N] - Review recent conversation messages".to_string());
+        let backend = TestBackend::new(100, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();
     }
