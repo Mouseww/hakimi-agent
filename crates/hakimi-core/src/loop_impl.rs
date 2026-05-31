@@ -108,6 +108,8 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
     let mut api_call_count: usize = 0;
     let mut continuation_parts: Vec<String> = Vec::new();
     let mut length_continuations: usize = 0;
+    let mut tool_guardrails = ToolGuardrails::new();
+    tool_guardrails.begin_turn();
 
     let tool_ctx = agent.build_tool_context();
     agent
@@ -208,7 +210,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
 
         // Check for tool calls.
         if response.has_tool_calls() {
-            process_tool_calls(agent, &response, &tool_ctx).await;
+            process_tool_calls(agent, &response, &tool_ctx, &mut tool_guardrails).await;
             budget.use_one();
             continue;
         }
@@ -538,6 +540,7 @@ async fn process_tool_calls(
     agent: &mut AIAgent,
     response: &NormalizedResponse,
     tool_ctx: &hakimi_common::ToolContext,
+    guardrails: &mut ToolGuardrails,
 ) {
     let tool_calls = response.tool_calls.as_ref().unwrap();
 
@@ -550,9 +553,6 @@ async fn process_tool_calls(
         response.reasoning.clone(),
     );
     agent.messages.push(assistant_msg);
-
-    // Initialize guardrails for this turn.
-    let mut guardrails = ToolGuardrails::new();
 
     // We will collect futures for tool dispatch and run them concurrently.
     let mut futures = Vec::new();
@@ -632,7 +632,35 @@ async fn process_tool_calls(
         Vec::new()
     };
 
-    for res in results {
+    for mut res in results {
+        let guardrail_decision =
+            if let (Some(tool_name), Some(content)) = (res.name.as_deref(), res.content.as_deref())
+            {
+                Some((
+                    tool_name.to_string(),
+                    guardrails.record_result(tool_name, content),
+                ))
+            } else {
+                None
+            };
+
+        if let Some((tool_name, decision)) = guardrail_decision {
+            match decision {
+                GuardrailDecision::Warn(msg) => {
+                    warn!(tool = %tool_name, reason = %msg, "Guardrail result warning");
+                    append_tool_guardrail_notice(&mut res, "Tool loop warning", &msg);
+                }
+                GuardrailDecision::SyntheticResult(msg) => {
+                    warn!(tool = %tool_name, "Guardrail result synthetic guidance");
+                    append_tool_guardrail_notice(&mut res, "Tool loop guardrail", &msg);
+                }
+                GuardrailDecision::Halt(msg) => {
+                    warn!(tool = %tool_name, reason = %msg, "Guardrail result halt guidance");
+                    append_tool_guardrail_notice(&mut res, "Tool loop hard stop", &msg);
+                }
+                GuardrailDecision::Allow => {}
+            }
+        }
         if let Some(store) = &mut agent.skill_store
             && let Some(content) = &res.content
         {
@@ -654,6 +682,18 @@ async fn process_tool_calls(
     if let Some(msg) = halt_message {
         agent.messages.push(msg);
     }
+}
+
+fn append_tool_guardrail_notice(message: &mut Message, label: &str, notice: &str) {
+    let Some(content) = message.content.as_mut() else {
+        return;
+    };
+
+    content.push_str("\n\n[");
+    content.push_str(label);
+    content.push_str(": ");
+    content.push_str(notice);
+    content.push(']');
 }
 
 /// Build the messages array to send to the API:

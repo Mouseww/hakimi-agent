@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/version-0.3.144-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1388-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1391-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -107,6 +107,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **Prompt 注入检测** — 扫描技能、定时任务、上下文文件
 - **SSRF 防护** — 阻断内网/元数据 URL 请求
 - **命令安全** — 阻断危险 Shell 模式
+- **工具循环防护** — 对重复无进展的只读工具调用给出提示，并拦截失控的完全重复调用
 - **写入保护** — 限定可写入的目录
 - **配置文件读取保护** — 保护 config.yaml 等敏感文件
 - **工具输出上限** — 可用 `tools.output.max_bytes` 配置工具结果进入上下文前的统一截断边界

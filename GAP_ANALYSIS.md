@@ -301,11 +301,10 @@ Generated: 2026-05-31
 - **Hermes location**: `agent/context_compressor.py`, `agent/auxiliary_client.py`
 - **Status**: ✅ Done in v0.3.108 — `compression.engine: llm` now selects `LlmCompressor`, uses `compression.model` or the active model for structured summarization, preserves local fallback, tracks resolved/pending questions, prunes large tool outputs, and is wired through both CLI and server construction.
 
-#### 27. Tool Guardrails
+#### 27. ~~Tool Guardrails~~ ✅ DONE
 - **What**: Pure tool-call loop detection, idempotency tracking, and turn-halt decisions
 - **Hermes location**: `agent/tool_guardrails.py`
-- **Details**: Tracks per-turn tool-call observations. Detects infinite loops, repeated identical calls. Returns decisions for warning/synthetic-result/halt.
-- **Priority**: **Medium** — Safety and cost control
+- **Status**: ✅ Done in v0.3.144 — `hakimi-core/src/guardrails.rs` now keeps Hermes-style tool-call loop state across the whole user turn, canonicalizes JSON arguments for repeated-call detection, treats known read-only/idempotent tools separately from mutating tools, appends warning guidance for repeated no-progress results, and injects synthetic guardrail guidance before runaway exact-call loops continue.
 
 #### 28. ~~File Safety / Path Security~~ ✅ DONE
 - **What**: Write-denied paths, optional write safe-root sandbox, path traversal protection, symlink resolution
@@ -671,9 +670,10 @@ Generated: 2026-05-31
 | 64 | TUI Slash Command Autocomplete | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/lib.rs`, `hakimi-tui/src/app.rs`, `hakimi-tui/src/ui.rs` | 14 | ✅ Shared slash command catalog, alias-aware parser, Tab completion for command prefixes, bounded ambiguous-match hints, and preserved Tab tools-panel toggling for normal input |
 | 65 | Credential Pool Reset-Window Sync | `hakimi-core/src/credential_pool.rs` | 6 | ✅ Provider reset timestamps and retry-after hints drive cooldown windows, diagnostics are redacted/capped, and source-aware singleton re-auth replacement clears stale dead entries |
 | 66 | Configurable Tool Output Limits | `hakimi-common/src/tool.rs`, `hakimi-tools/src/registry.rs`, `hakimi-config/src/config.rs`, CLI/server/TUI registration | 5 | ✅ Tool results are capped at dispatch with `tools.output.max_bytes`, per-tool overrides still work, and truncation is UTF-8 safe before results enter agent context |
+| 67 | Tool Guardrail No-Progress Tracking | `hakimi-core/src/{guardrails.rs,loop_impl.rs}` | 3 | ✅ Tool-call loop state persists across a full user turn, repeated JSON-equivalent calls are canonicalized, and read-only/idempotent tools append Hermes-style no-progress guidance while mutating tools avoid false positive result-loop warnings |
 
 ### Summary
-- **Total tests**: 1388 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1391 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

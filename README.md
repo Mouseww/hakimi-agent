@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/version-0.3.144-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1388-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1391-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -108,6 +108,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - **Prompt injection detection** — scans skills, cron prompts, context files
 - **SSRF protection** — blocks private/metadata URL fetches
 - **Command safety guard** — blocks malicious shell patterns
+- **Tool loop guardrails** — warns on repeated no-progress read-only calls and blocks runaway exact-call loops
 - **Write safe-root sandbox** — config-protected directories
 - **Read credential guard** — protects config files
 - **Tool output limits** — configurable `tools.output.max_bytes` boundary before tool results enter context

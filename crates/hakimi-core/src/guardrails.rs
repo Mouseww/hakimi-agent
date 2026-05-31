@@ -4,8 +4,43 @@
 //! and provides halt/warning decisions to protect against runaway agents.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use tracing::{debug, warn};
+
+const IDEMPOTENT_TOOL_NAMES: &[&str] = &[
+    "read_file",
+    "search_files",
+    "web_search",
+    "web_extract",
+    "session_search",
+    "browser_snapshot",
+    "browser_console",
+    "browser_get_images",
+    "knowledge_get_context",
+];
+
+const MUTATING_TOOL_NAMES: &[&str] = &[
+    "terminal",
+    "process",
+    "code_exec",
+    "write_file",
+    "patch",
+    "todo",
+    "memory",
+    "skill_manage",
+    "browser_click",
+    "browser_type",
+    "browser_press",
+    "browser_scroll",
+    "browser_navigate",
+    "send_message",
+    "cronjob",
+    "delegate_task",
+];
+
+const NO_PROGRESS_WARN_AFTER: usize = 2;
+const NO_PROGRESS_BLOCK_AFTER: usize = 5;
 
 /// Decision returned by the guardrails system.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,16 +123,17 @@ impl ToolGuardrails {
 
     /// Record a tool call and return a guardrail decision.
     pub fn record_call(&mut self, tool_name: &str, arguments: &str) -> GuardrailDecision {
+        let canonical_arguments = canonical_json(arguments);
         let observation = ToolCallObservation {
             tool_name: tool_name.to_string(),
-            arguments: arguments.to_string(),
+            arguments: canonical_arguments.clone(),
             result_hash: None,
             turn: self.current_turn,
         };
         self.observations.push(observation);
 
         // Check for identical calls
-        let identical_count = self.count_identical(tool_name, arguments);
+        let identical_count = self.count_identical(tool_name, &canonical_arguments);
         if identical_count >= self.max_identical_calls {
             let msg = format!(
                 "[Guardrail] Tool '{}' has been called with the same arguments {} times this turn. \
@@ -134,12 +170,11 @@ impl ToolGuardrails {
 
     /// Record the result of a tool call to detect stalled output loops.
     pub fn record_result(&mut self, tool_name: &str, result: &str) -> GuardrailDecision {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        if !is_idempotent_tool(tool_name) {
+            return GuardrailDecision::Allow;
+        }
 
-        let mut hasher = DefaultHasher::new();
-        result.hash(&mut hasher);
-        let hash = format!("{:x}", hasher.finish());
+        let hash = hash_text(&canonical_json(result));
 
         // Update the most recent observation with the result hash
         if let Some(obs) = self
@@ -161,7 +196,7 @@ impl ToolGuardrails {
             .filter(|o| o.tool_name == tool_name && o.result_hash.as_ref() == Some(&hash))
             .count();
 
-        if stall_count >= 3 {
+        if stall_count >= NO_PROGRESS_BLOCK_AFTER {
             let msg = format!(
                 "STALL DETECTED: Tool '{}' has returned the same output {} times. \
                  The agent is likely stuck in an error loop or making no progress.",
@@ -172,6 +207,16 @@ impl ToolGuardrails {
                 "[Guardrail] This tool is repeatedly returning the same output. \
                  Please stop trying this specific command or approach, as it is not producing new information.".to_string()
             );
+        }
+
+        if stall_count >= NO_PROGRESS_WARN_AFTER {
+            let msg = format!(
+                "[Guardrail] Tool '{}' returned the same result {} times. \
+                 Use the result already provided or change the query instead of repeating it unchanged.",
+                tool_name, stall_count
+            );
+            warn!("{}", msg);
+            return GuardrailDecision::Warn(msg);
         }
 
         GuardrailDecision::Allow
@@ -215,6 +260,34 @@ impl ToolGuardrails {
             .filter(|o| o.tool_name == tool_name && o.arguments == arguments)
             .count()
     }
+}
+
+fn canonical_json(value: &str) -> String {
+    serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|parsed| serde_json::to_string(&parsed).ok())
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn hash_text(value: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+fn is_idempotent_tool(tool_name: &str) -> bool {
+    if MUTATING_TOOL_NAMES.contains(&tool_name) {
+        return false;
+    }
+
+    IDEMPOTENT_TOOL_NAMES.contains(&tool_name)
+        || tool_name.starts_with("mcp_filesystem_read")
+        || tool_name.starts_with("mcp_filesystem_list")
+        || tool_name.starts_with("mcp_filesystem_get")
+        || tool_name.starts_with("mcp_filesystem_search")
 }
 
 impl Default for ToolGuardrails {
@@ -433,6 +506,47 @@ mod tests {
         g.record_call("b", "{}");
         assert_eq!(g.current_turn_calls(), 2);
     }
-}
 
-// Fix the test typo
+    #[test]
+    fn test_guardrails_canonicalizes_json_arguments() {
+        let mut g = ToolGuardrails::with_limits(2, 100, 200);
+        g.begin_turn();
+        assert_eq!(
+            g.record_call("read_file", r#"{"b":2,"a":1}"#),
+            GuardrailDecision::Allow
+        );
+        match g.record_call("read_file", r#"{"a":1,"b":2}"#) {
+            GuardrailDecision::SyntheticResult(_) => {}
+            other => panic!("Expected SyntheticResult, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_guardrails_warn_on_repeated_idempotent_result() {
+        let mut g = ToolGuardrails::new();
+        g.begin_turn();
+        g.record_call("read_file", r#"{"path":"/tmp/a"}"#);
+        assert_eq!(
+            g.record_result("read_file", "same output"),
+            GuardrailDecision::Allow
+        );
+        g.record_call("read_file", r#"{"path":"/tmp/b"}"#);
+        match g.record_result("read_file", "same output") {
+            GuardrailDecision::Warn(_) => {}
+            other => panic!("Expected Warn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_guardrails_ignore_mutating_repeated_results() {
+        let mut g = ToolGuardrails::new();
+        g.begin_turn();
+        for i in 0..NO_PROGRESS_BLOCK_AFTER {
+            g.record_call("write_file", &format!(r#"{{"path":"/tmp/{i}"}}"#));
+            assert_eq!(
+                g.record_result("write_file", "ok"),
+                GuardrailDecision::Allow
+            );
+        }
+    }
+}
