@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.144-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.145-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1391-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1395-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1388 |
+| Tests | ~500 | 1395 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -100,6 +100,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports
 - HTTP plugin system with YAML templates
 - Skills Hub — install community skills with `/skills install`
+- Isolated profiles — manage named workspaces with `hakimi profile` and gateway `/profile`
 - 9 bundled MCP servers: GitHub, filesystem, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking
 
 ### 🛡️ Production Safety
@@ -184,7 +185,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1388 |
+| Tests | ~500 | 1395 |
 
 ---
 

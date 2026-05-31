@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.144-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.145-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1391-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1395-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1388 |
+| 测试数量 | ~500 | 1395 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -99,6 +99,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - MCP 协议客户端 — stdio / HTTP / SSE 传输
 - HTTP 插件系统，YAML 模板
 - Skills Hub — 社区技能市场
+- 隔离 Profile — 通过 `hakimi profile` 和网关 `/profile` 管理命名工作区
 - 内置 9 个 MCP 服务器：GitHub、文件系统、Brave Search、PostgreSQL、Puppeteer、记忆、fetch、SQLite、思维链
 
 ### 🛡️ 生产级安全
@@ -191,7 +192,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1388 |
+| 测试数量 | ~500 | 1395 |
 
 ---
 

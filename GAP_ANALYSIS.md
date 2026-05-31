@@ -122,7 +122,7 @@ Generated: 2026-05-31
 
 ### Config
 - **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers, gateway ingress policy, gateway silence-narration filtering
-- **Profile support** — `--profile` CLI flag
+- **Profile support** — `hakimi profile` manager, gateway `/profile`, sticky `active_profile`, and `--profile` CLI flag surface
 - **Defaults** — Sensible defaults via `serde(default)`
 
 ### CLI
@@ -251,7 +251,7 @@ Generated: 2026-05-31
 #### 18. Profiles System
 - **What**: Multiple isolated Hermes instances with separate config, memory, sessions, skills
 - **Hermes location**: `hermes_cli/profiles.py`, `hermes_cli/profile_distribution.py`
-- **Details**: `hermes profile create/delete/use`. Each profile is a full HERMES_HOME. Clone support. Wrapper aliases. `-p` flag.
+- **Details**: `hermes profile create/delete/use`. Hakimi now has a guarded Rust-native profile manager, persistent `active_profile` selection, top-level `hakimi profile list/current/path/create/use/delete`, and gateway `/profile` parity for remote management. Remaining parity is clone/export/distribution installs, wrapper aliases, and deeper automatic per-profile runtime home binding.
 - **Priority**: **High** — Multi-context workflows
 
 #### 19. Setup Wizard
@@ -517,8 +517,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `plugins/` (entire directory)
 
 ### 8. CLI Commands
-- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/profile`、`/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher/board/swarm 管理面
+- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/profile`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`、`profile`
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher/board/swarm 管理面
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 10. Delegation
@@ -609,7 +609,7 @@ Generated: 2026-05-31
 | 7 | File Safety + Secret Redaction | `hakimi-common/src/file_safety.rs`, `hakimi-core/src/file_safety.rs`, `hakimi-common/src/redact.rs`, `hakimi-tools/src/{builtin_write_file,builtin_patch,builtin_terminal,builtin_process,builtin_code_exec,plugin}.rs` | 35 | ✅ WriteDeniedPaths, optional write safe-root sandbox, PathSecurity, shared SecretRedactor, PromptInjectionDetector, and forced redaction for shell/process/code/plugin output |
 | 8 | Tool Guardrails | `hakimi-core/src/guardrails.rs` | 12 | ✅ Loop detection, idempotency tracking, halt decisions |
 | 9 | LLM Context Compression | `hakimi-context/src/{compressor.rs,factory.rs}`, CLI/server construction | 25 | ✅ Config-selectable `llm` engine, summary model selection, Resolved/Pending tracking, tool output pruning, and local fallback |
-| 10 | Profiles | `hakimi-cli/src/profiles.rs` | 10 | ✅ ~/.hakimi/profiles/, create/delete/use, separate config/memory/sessions |
+| 10 | Profiles | `hakimi-cli/src/profiles.rs`, `hakimi-cli/src/entry.rs` | 14 | ✅ ~/.hakimi/profiles/, guarded create/delete/use/list/path/current, sticky `active_profile`, gateway `/profile`, separate config/memory/sessions |
 | 11 | Setup Wizard | `hakimi-cli/src/setup_wizard.rs` | 15 | ✅ Model/Provider selection, API key input, platform config |
 | 12 | Doctor | `hakimi-cli/src/doctor.rs`, `hakimi-cli/src/entry.rs` | 17 | ✅ Dependencies, config, env vars, API connectivity checks, `hakimi doctor`, gateway `/doctor` |
 
@@ -673,7 +673,7 @@ Generated: 2026-05-31
 | 67 | Tool Guardrail No-Progress Tracking | `hakimi-core/src/{guardrails.rs,loop_impl.rs}` | 3 | ✅ Tool-call loop state persists across a full user turn, repeated JSON-equivalent calls are canonicalized, and read-only/idempotent tools append Hermes-style no-progress guidance while mutating tools avoid false positive result-loop warnings |
 
 ### Summary
-- **Total tests**: 1391 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1395 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

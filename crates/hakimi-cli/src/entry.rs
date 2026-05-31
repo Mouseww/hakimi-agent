@@ -1847,6 +1847,13 @@ pub struct SkillCommandArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct ProfileCommandArgs {
+    /// Profile action and arguments, e.g. `list`, `create coder`, or `use coder`.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
 pub struct BackupCommandArgs {
     /// Optional output file or directory for the backup archive.
     pub output: Option<std::path::PathBuf>,
@@ -1873,6 +1880,8 @@ pub enum TopLevelCommand {
     Plugins(PluginCommandArgs),
     /// Browse, inspect, and install Skills Hub skills.
     Skills(SkillCommandArgs),
+    /// Manage isolated Hakimi profiles.
+    Profile(ProfileCommandArgs),
     /// Back up Hakimi user state.
     Backup(BackupCommandArgs),
     /// Import a Hakimi user-state backup.
@@ -3457,6 +3466,7 @@ async fn start_gateway(
 • `/model [name]` - Show or switch the active model\n\
 • `/tools` - List available tools\n\
 • `/skills` - List loaded skills and browse/install hub skills\n\
+• `/profile` - List, create, and select isolated profiles\n\
 • `/providers` - List supported LLM providers\n\
 • `/platforms` - List connected gateway platforms\n\n\
 **Operations**\n\
@@ -3610,6 +3620,10 @@ Just send a message to chat with me!"
                     }
                     Some(Command::Copy(_)) => "`/copy [N]` is available in the local Hakimi TUI for copying recent assistant responses. In gateway chats, use your chat client's native copy action.".to_string(),
                     Some(Command::History(_)) => "`/history [N]` is available in the local Hakimi TUI for reviewing recent user/assistant messages. Gateway chats keep history in the chat client and can use `/clear` to reset Hakimi state.".to_string(),
+                    Some(Command::Profile(cmd)) => crate::profiles::profile_response_from_raw(
+                        cmd.as_deref(),
+                        &hakimi_home_dir(),
+                    ),
                     Some(Command::Plugins(cmd)) => {
                         let args = plugin_args_from_raw(cmd.as_deref());
                         top_level_plugins_response(&args)
@@ -4747,6 +4761,13 @@ pub async fn run() -> Result<()> {
         println!("{}", crate::skills::skills_response(&skill_args.args));
         return Ok(());
     }
+    if let Some(TopLevelCommand::Profile(profile_args)) = &args.command {
+        println!(
+            "{}",
+            crate::profiles::profile_response(&profile_args.args, &hakimi_home_dir())
+        );
+        return Ok(());
+    }
     if let Some(TopLevelCommand::Backup(backup_args)) = &args.command {
         println!(
             "{}",
@@ -4825,14 +4846,14 @@ mod tests {
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
         GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamRenderSnapshot,
         GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, PluginCommandArgs,
-        TopLevelCommand, build_cron_delegation_goal, create_hakimi_state_backup,
-        cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
-        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
-        gateway_usage_response, is_top_level_cron_tick, plan_gateway_final_delivery,
-        queue_cron_delivery, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
-        restore_hakimi_state_backup, top_level_cron_response_for_path, update_shim_paths,
-        update_target_from_candidate,
+        ProfileCommandArgs, TopLevelCommand, build_cron_delegation_goal,
+        create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
+        cron_success_output_should_deliver, gateway_cron_response_for_path,
+        gateway_cron_response_for_path_with_delivery, gateway_mcp_response,
+        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
+        is_top_level_cron_tick, plan_gateway_final_delivery, queue_cron_delivery,
+        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
+        top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
@@ -5011,6 +5032,27 @@ mod tests {
                     "init".to_string(),
                     "weather".to_string(),
                     "local_weather".to_string()
+                ]
+            }))
+        );
+
+        let profile = <super::Args as clap::Parser>::try_parse_from([
+            "hakimi",
+            "profile",
+            "create",
+            "coder",
+            "Coding",
+            "workspace",
+        ])
+        .unwrap();
+        assert_eq!(
+            profile.command,
+            Some(TopLevelCommand::Profile(ProfileCommandArgs {
+                args: vec![
+                    "create".to_string(),
+                    "coder".to_string(),
+                    "Coding".to_string(),
+                    "workspace".to_string()
                 ]
             }))
         );
