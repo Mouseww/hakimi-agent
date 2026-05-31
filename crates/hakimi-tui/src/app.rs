@@ -145,8 +145,7 @@ fn voice_record_key_matches(key: &KeyEvent, raw: &str) -> bool {
     let KeyCode::Char(actual) = &key.code else {
         return false;
     };
-    key.modifiers.contains(KeyModifiers::CONTROL)
-        && actual.to_ascii_lowercase() == expected.to_ascii_lowercase()
+    key.modifiers.contains(KeyModifiers::CONTROL) && actual.eq_ignore_ascii_case(&expected)
 }
 
 #[derive(Debug, Clone, PartialEq)]
