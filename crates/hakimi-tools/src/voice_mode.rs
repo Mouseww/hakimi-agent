@@ -1,6 +1,9 @@
 //! Voice-mode helpers shared by CLI/TUI surfaces and audio tools.
 
-use std::path::{Path, PathBuf};
+use std::{
+    io::{self, Write},
+    path::{Path, PathBuf},
+};
 
 /// Whisper-native recording sample rate used by Hermes voice mode.
 pub const VOICE_SAMPLE_RATE: u32 = 16_000;
@@ -16,6 +19,21 @@ pub const DEFAULT_SILENCE_RMS_THRESHOLD: u32 = 200;
 
 /// Default continuous silence duration before recording auto-stops.
 pub const DEFAULT_SILENCE_DURATION_SECONDS: f32 = 3.0;
+
+/// Minimum speech recording duration before captured audio is worth transcribing.
+pub const MIN_SPEECH_RECORDING_SECONDS: f32 = 0.3;
+
+/// Hermes-style maximum wait for speech before an interactive recording auto-stops.
+pub const NO_SPEECH_TIMEOUT_SECONDS: f32 = 15.0;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VoiceRecordingSummary {
+    pub samples: usize,
+    pub duration_seconds: f32,
+    pub peak_rms: u32,
+    pub accepted: bool,
+    pub rejection_reason: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceEnvironmentReport {
@@ -193,6 +211,88 @@ pub fn render_voice_environment_report() -> String {
     detect_voice_environment().render()
 }
 
+/// Summarize PCM16 mono recording data using Hermes-compatible speech gates.
+pub fn summarize_pcm16_recording(samples: &[i16], silence_threshold: u32) -> VoiceRecordingSummary {
+    let peak_rms = peak_pcm16_rms(samples);
+    let duration_seconds = samples.len() as f32 / VOICE_SAMPLE_RATE as f32;
+    let rejection_reason = if samples.len() < minimum_voice_samples() {
+        Some(format!(
+            "recording shorter than {MIN_SPEECH_RECORDING_SECONDS:.1}s"
+        ))
+    } else if peak_rms < silence_threshold {
+        Some(format!(
+            "recording peak RMS {peak_rms} is below threshold {silence_threshold}"
+        ))
+    } else {
+        None
+    };
+
+    VoiceRecordingSummary {
+        samples: samples.len(),
+        duration_seconds,
+        peak_rms,
+        accepted: rejection_reason.is_none(),
+        rejection_reason,
+    }
+}
+
+/// Write PCM16 mono samples as a WAV file and return the transcription gate summary.
+pub fn write_pcm16_wav(
+    path: impl AsRef<Path>,
+    samples: &[i16],
+) -> io::Result<VoiceRecordingSummary> {
+    write_pcm16_wav_with_threshold(path, samples, DEFAULT_SILENCE_RMS_THRESHOLD)
+}
+
+/// Write PCM16 mono samples as a WAV file with a caller-provided silence gate.
+pub fn write_pcm16_wav_with_threshold(
+    path: impl AsRef<Path>,
+    samples: &[i16],
+    silence_threshold: u32,
+) -> io::Result<VoiceRecordingSummary> {
+    let path = path.as_ref();
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let data_len = samples
+        .len()
+        .checked_mul(VOICE_SAMPLE_WIDTH_BYTES as usize)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "WAV data is too large"))?;
+    let data_len = u32::try_from(data_len)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "WAV data is too large"))?;
+    let riff_len = 36u32
+        .checked_add(data_len)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "WAV data is too large"))?;
+    let byte_rate =
+        VOICE_SAMPLE_RATE * u32::from(VOICE_CHANNELS) * u32::from(VOICE_SAMPLE_WIDTH_BYTES);
+    let block_align = VOICE_CHANNELS * VOICE_SAMPLE_WIDTH_BYTES;
+
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(b"RIFF")?;
+    file.write_all(&riff_len.to_le_bytes())?;
+    file.write_all(b"WAVE")?;
+    file.write_all(b"fmt ")?;
+    file.write_all(&16u32.to_le_bytes())?;
+    file.write_all(&1u16.to_le_bytes())?;
+    file.write_all(&VOICE_CHANNELS.to_le_bytes())?;
+    file.write_all(&VOICE_SAMPLE_RATE.to_le_bytes())?;
+    file.write_all(&byte_rate.to_le_bytes())?;
+    file.write_all(&block_align.to_le_bytes())?;
+    file.write_all(&(VOICE_SAMPLE_WIDTH_BYTES * 8).to_le_bytes())?;
+    file.write_all(b"data")?;
+    file.write_all(&data_len.to_le_bytes())?;
+    for sample in samples {
+        file.write_all(&sample.to_le_bytes())?;
+    }
+    file.flush()?;
+
+    Ok(summarize_pcm16_recording(samples, silence_threshold))
+}
+
 /// Return true when a transcript looks like a common Whisper hallucination on silence.
 pub fn is_whisper_hallucination(transcript: &str) -> bool {
     let cleaned = normalize_transcript(transcript);
@@ -246,6 +346,34 @@ fn normalize_transcript(transcript: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn minimum_voice_samples() -> usize {
+    (VOICE_SAMPLE_RATE as f32 * MIN_SPEECH_RECORDING_SECONDS).round() as usize
+}
+
+fn peak_pcm16_rms(samples: &[i16]) -> u32 {
+    let frame_samples = (VOICE_SAMPLE_RATE as usize / 50).max(1);
+    samples
+        .chunks(frame_samples)
+        .map(chunk_rms)
+        .max()
+        .unwrap_or(0)
+}
+
+fn chunk_rms(samples: &[i16]) -> u32 {
+    if samples.is_empty() {
+        return 0;
+    }
+
+    let sum_squares: f64 = samples
+        .iter()
+        .map(|sample| {
+            let value = f64::from(*sample);
+            value * value
+        })
+        .sum();
+    (sum_squares / samples.len() as f64).sqrt().round() as u32
 }
 
 fn env_any_present(names: &[&str]) -> bool {
@@ -396,5 +524,59 @@ mod tests {
         assert!(report.capture_available);
         assert!(report.playback_available);
         assert!(report.render().contains("Recording format"));
+    }
+
+    #[test]
+    fn writes_pcm16_wav_with_hermes_recording_header() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("recording.wav");
+        let summary = write_pcm16_wav(&path, &[0, 1_000, -1_000]).expect("write wav");
+        let bytes = std::fs::read(path).expect("read wav");
+
+        assert_eq!(&bytes[0..4], b"RIFF");
+        assert_eq!(&bytes[8..12], b"WAVE");
+        assert_eq!(&bytes[22..24], &VOICE_CHANNELS.to_le_bytes());
+        assert_eq!(&bytes[24..28], &VOICE_SAMPLE_RATE.to_le_bytes());
+        assert_eq!(
+            &bytes[34..36],
+            &(VOICE_SAMPLE_WIDTH_BYTES * 8).to_le_bytes()
+        );
+        assert_eq!(&bytes[36..40], b"data");
+        assert_eq!(u32::from_le_bytes(bytes[40..44].try_into().unwrap()), 6);
+        assert_eq!(summary.samples, 3);
+    }
+
+    #[test]
+    fn recording_summary_rejects_short_input() {
+        let samples = vec![1_000; minimum_voice_samples() - 1];
+        let summary = summarize_pcm16_recording(&samples, DEFAULT_SILENCE_RMS_THRESHOLD);
+
+        assert!(!summary.accepted);
+        assert!(
+            summary
+                .rejection_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("shorter")
+        );
+    }
+
+    #[test]
+    fn recording_summary_rejects_quiet_input() {
+        let samples = vec![10; minimum_voice_samples()];
+        let summary = summarize_pcm16_recording(&samples, DEFAULT_SILENCE_RMS_THRESHOLD);
+
+        assert!(!summary.accepted);
+        assert!(summary.peak_rms < DEFAULT_SILENCE_RMS_THRESHOLD);
+    }
+
+    #[test]
+    fn recording_summary_accepts_loud_input() {
+        let samples = vec![1_000; minimum_voice_samples()];
+        let summary = summarize_pcm16_recording(&samples, DEFAULT_SILENCE_RMS_THRESHOLD);
+
+        assert!(summary.accepted);
+        assert!(summary.rejection_reason.is_none());
+        assert!(summary.duration_seconds >= MIN_SPEECH_RECORDING_SECONDS);
     }
 }

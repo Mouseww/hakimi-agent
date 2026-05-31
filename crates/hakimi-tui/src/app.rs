@@ -270,8 +270,9 @@ impl TuiVoiceStatus {
              STT tool: {stt_status} (model={transcription_model})\n\
              ffmpeg: {ffmpeg}; auto_play={auto_play}; beep={beep}\n\
              Capture settings: threshold={threshold}, silence={silence:.1}s\n\
+             Recording artifact: PCM16 WAV writer ready ({sample_rate} Hz mono, min speech {min_speech:.1}s, no-speech timeout {no_speech:.0}s)\n\
              {audio_environment}\n\
-             TUI push-to-talk capture is diagnostic-only for now; {record_key} shows this readiness report.",
+             TUI microphone capture is still pending; {record_key} shows this readiness report.",
             record_key = self.record_key_label,
             provider = self.provider,
             model = self.model,
@@ -279,6 +280,9 @@ impl TuiVoiceStatus {
             transcription_model = self.transcription_model,
             threshold = self.silence_threshold,
             silence = self.silence_duration_seconds,
+            sample_rate = hakimi_tools::VOICE_SAMPLE_RATE,
+            min_speech = hakimi_tools::MIN_SPEECH_RECORDING_SECONDS,
+            no_speech = hakimi_tools::NO_SPEECH_TIMEOUT_SECONDS,
         )
     }
 }
@@ -1322,9 +1326,25 @@ mod tests {
         assert!(
             message
                 .content
-                .contains("TUI push-to-talk capture is diagnostic-only")
+                .contains("Recording artifact: PCM16 WAV writer ready")
+        );
+        assert!(
+            message
+                .content
+                .contains("TUI microphone capture is still pending")
         );
         assert!(!app.is_thinking);
+    }
+
+    #[test]
+    fn slash_voice_status_reports_recording_artifact_thresholds() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_voice_command(Some("status"));
+
+        let message = app.messages.last().unwrap();
+        assert!(message.content.contains("16000 Hz mono"));
+        assert!(message.content.contains("min speech 0.3s"));
+        assert!(message.content.contains("no-speech timeout 15s"));
     }
 
     #[test]
