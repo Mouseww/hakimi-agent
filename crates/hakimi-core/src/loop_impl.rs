@@ -633,16 +633,16 @@ async fn process_tool_calls(
     };
 
     for mut res in results {
-        let guardrail_decision =
-            if let (Some(tool_name), Some(content)) = (res.name.as_deref(), res.content.as_deref())
-            {
-                Some((
-                    tool_name.to_string(),
-                    guardrails.record_result(tool_name, content),
-                ))
-            } else {
-                None
-            };
+        let guardrail_decision = if let (Some(tool_name), Some(content)) =
+            (res.name.as_deref(), res.content.as_deref())
+        {
+            Some((
+                tool_name.to_string(),
+                guardrails.record_result(tool_name, content),
+            ))
+        } else {
+            None
+        };
 
         if let Some((tool_name, decision)) = guardrail_decision {
             match decision {
