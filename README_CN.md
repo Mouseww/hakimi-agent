@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.147-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.148-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1402-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1404-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1402 |
+| 测试数量 | ~500 | 1404 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -80,14 +80,14 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 全自动，零手动配置
 - 模型上下文窗口感知：`model.context_length` 覆盖静态元数据，并统一驱动压缩与工具披露阈值
 
-**52+ 内置工具**
+**54+ 内置工具**
 - **文件操作**：读写搜索补丁，安全沙箱保护
 - **终端**：命令执行 + 后台进程管理
 - **Web**：搜索、内容提取、浏览器自动化（Chromium）
 - **代码执行**：Python/JS/Bash 沙箱运行
 - **媒体**：图片分析、视频分析、语音合成、语音转文字
 - **记忆**：持久化记忆 + FTS5 全文检索
-- **效率**：待办清单、带事件轨迹与诊断的 Kanban 看板、定时任务
+- **效率**：待办清单、支持 Profile 路由、工作日志、事件轨迹与诊断的 Kanban 看板、定时任务
 - **元能力**：子 Agent 委派、技能系统、插件机制
 
 **多平台网关**
@@ -138,7 +138,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 hakimi-agent/
 ├── hakimi-core/          # Agent 主循环 + 错误分类 + 凭证池
 ├── hakimi-transports/    # LLM 传输层 (OpenAI/Anthropic/Gemini)
-├── hakimi-tools/         # 52+ 内置工具 + 插件注册
+├── hakimi-tools/         # 54+ 内置工具 + 插件注册
 ├── hakimi-session/       # SQLite WAL + FTS5 + 决策树
 ├── hakimi-context/       # 上下文引擎 + 压缩 + 意图推理 + 角色
 ├── hakimi-knowledge/    # 知识图谱 (petgraph)
@@ -193,7 +193,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1402 |
+| 测试数量 | ~500 | 1404 |
 
 ---
 
@@ -219,7 +219,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 
 - [x] Agent 主循环 + 工具调度
 - [x] OpenAI / Anthropic / Gemini 传输层 + SSE 流式
-- [x] 52+ 内置工具
+- [x] 54+ 内置工具
 - [x] 8 平台适配器（Telegram、Discord、微信、Slack...）
 - [x] MCP 客户端 + 服务器目录
 - [x] 插件系统 + HTTP 模板
@@ -234,7 +234,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 角色自适应
 - [x] 元技能自动提取
 - [x] 浏览器自动化 (Chromium)
-- [x] Kanban 看板
+- [x] Kanban 看板 + Profile 路由 + 工作日志
 - [ ] WASM 插件运行时
 - [ ] Web 仪表盘
 - [ ] CLI 语音模式

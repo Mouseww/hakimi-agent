@@ -1,3 +1,4 @@
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,6 +14,8 @@ use crate::Tool;
 
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
+const DEFAULT_LOG_TAIL_BYTES: usize = 16 * 1024;
+const MAX_LOG_TAIL_BYTES: usize = 128 * 1024;
 const DEFAULT_BOARD: &str = "default";
 const VALID_STATUSES: &[&str] = &[
     "triage", "todo", "ready", "running", "blocked", "review", "done", "archived",
@@ -24,6 +27,7 @@ CREATE TABLE IF NOT EXISTS kanban_tasks (
     title TEXT NOT NULL,
     body TEXT,
     assignee TEXT,
+    profile TEXT,
     status TEXT NOT NULL,
     priority INTEGER NOT NULL DEFAULT 0,
     blocked_reason TEXT,
@@ -77,6 +81,7 @@ pub struct KanbanTask {
     pub title: String,
     pub body: Option<String>,
     pub assignee: Option<String>,
+    pub profile: Option<String>,
     pub status: String,
     pub priority: i64,
     pub blocked_reason: Option<String>,
@@ -125,6 +130,15 @@ pub struct KanbanDiagnostic {
     pub data: JsonValue,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct KanbanWorkerLog {
+    pub task_id: String,
+    pub profile: Option<String>,
+    pub body: String,
+    pub created_at: i64,
+    pub path: String,
+}
+
 #[derive(Debug, Clone)]
 struct CreateTask {
     title: String,
@@ -164,6 +178,7 @@ impl KanbanStore {
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(db_err)?;
         conn.execute_batch(SCHEMA).map_err(db_err)?;
+        migrate_schema(&conn)?;
         Ok(conn)
     }
 
@@ -174,7 +189,8 @@ impl KanbanStore {
             return Err(HakimiError::Tool("kanban task title is required".into()));
         }
         let body = normalize_optional(input.body);
-        let assignee = normalize_optional(input.assignee);
+        let assignee = normalize_profile_arg(input.assignee.as_deref())?;
+        let profile = assignee.clone();
         let status = input.status;
         let priority = input.priority;
         let raw_id = Uuid::new_v4().simple().to_string();
@@ -183,8 +199,8 @@ impl KanbanStore {
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO kanban_tasks
-             (id, title, body, assignee, status, priority, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+             (id, title, body, assignee, profile, status, priority, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7, ?7)",
             params![
                 id,
                 title,
@@ -204,6 +220,7 @@ impl KanbanStore {
             Some(json!({
                 "status": status,
                 "assignee": assignee,
+                "profile": profile,
                 "priority": priority,
             })),
         )?;
@@ -376,6 +393,123 @@ impl KanbanStore {
         }
         self.record_event(task_id, "heartbeat", Some("hakimi"), note, None)?;
         self.get_task_required(task_id)
+    }
+
+    fn assign_task(
+        &self,
+        task_id: &str,
+        profile: Option<&str>,
+        actor: Option<&str>,
+    ) -> Result<KanbanTask> {
+        let previous = self.get_task_required(task_id)?;
+        let profile = normalize_profile_arg(profile)?;
+        let now = now_epoch();
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE kanban_tasks
+                SET assignee = ?1,
+                    profile = ?1,
+                    updated_at = ?2
+              WHERE id = ?3",
+            params![profile.as_deref(), now, task_id],
+        )
+        .map_err(db_err)?;
+        self.record_event(
+            task_id,
+            "assigned",
+            actor.or(Some("hakimi")),
+            None,
+            Some(json!({
+                "previous_assignee": previous.assignee,
+                "previous_profile": previous.profile,
+                "assignee": profile,
+            })),
+        )?;
+        self.get_task_required(task_id)
+    }
+
+    fn append_worker_log(
+        &self,
+        task_id: &str,
+        body: &str,
+        profile: Option<&str>,
+    ) -> Result<KanbanWorkerLog> {
+        let task = self.get_task_required(task_id)?;
+        let body = non_empty_str(body)
+            .ok_or_else(|| HakimiError::Tool("kanban worker log body is required".into()))?;
+        let profile = normalize_profile_arg(profile)?
+            .or(task.profile.clone())
+            .or(task.assignee.clone());
+        let path = self.worker_log_path(task_id)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(HakimiError::Io)?;
+        }
+        let now = now_epoch();
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(HakimiError::Io)?;
+        writeln!(
+            file,
+            "--- ts={} profile={} ---",
+            now,
+            profile.as_deref().unwrap_or("-")
+        )
+        .map_err(HakimiError::Io)?;
+        writeln!(file, "{body}").map_err(HakimiError::Io)?;
+        self.record_event(
+            task_id,
+            "worker_log",
+            profile.as_deref().or(Some("hakimi")),
+            Some(first_line(body)),
+            Some(json!({"path": path.display().to_string()})),
+        )?;
+        Ok(KanbanWorkerLog {
+            task_id: task_id.to_string(),
+            profile,
+            body: body.to_string(),
+            created_at: now,
+            path: path.display().to_string(),
+        })
+    }
+
+    fn read_worker_log(&self, task_id: &str, tail_bytes: usize) -> Result<Option<KanbanWorkerLog>> {
+        let task = self.get_task_required(task_id)?;
+        let path = self.worker_log_path(task_id)?;
+        if !path.exists() {
+            return Ok(None);
+        }
+        let tail_bytes = tail_bytes.clamp(1, MAX_LOG_TAIL_BYTES);
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .open(&path)
+            .map_err(HakimiError::Io)?;
+        let len = file.metadata().map_err(HakimiError::Io)?.len();
+        let tail = u64::try_from(tail_bytes).unwrap_or(MAX_LOG_TAIL_BYTES as u64);
+        if len > tail {
+            file.seek(SeekFrom::Start(len - tail))
+                .map_err(HakimiError::Io)?;
+        }
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).map_err(HakimiError::Io)?;
+        Ok(Some(KanbanWorkerLog {
+            task_id: task_id.to_string(),
+            profile: task.profile.or(task.assignee),
+            body: String::from_utf8_lossy(&bytes).to_string(),
+            created_at: now_epoch(),
+            path: path.display().to_string(),
+        }))
+    }
+
+    fn worker_log_path(&self, task_id: &str) -> Result<PathBuf> {
+        validate_log_task_id(task_id)?;
+        let root = self
+            .path
+            .parent()
+            .map(|parent| parent.join("worker-logs"))
+            .unwrap_or_else(|| PathBuf::from("worker-logs"));
+        Ok(root.join(format!("{task_id}.log")))
     }
 
     fn link_tasks(
@@ -601,6 +735,39 @@ impl KanbanStore {
                 data: json!({"status": task.status}),
             });
         }
+        if matches!(task.status.as_str(), "todo" | "ready" | "running")
+            && task
+                .profile
+                .as_deref()
+                .or(task.assignee.as_deref())
+                .is_none()
+        {
+            diagnostics.push(KanbanDiagnostic {
+                kind: "unassigned_routable_task".to_string(),
+                severity: "warning".to_string(),
+                task_id: task.id.clone(),
+                title: "Task has no profile assignee".to_string(),
+                detail: "Dispatcher-style Kanban work needs an assignee/profile before a worker can pick it up.".to_string(),
+                actions: vec![format!("/kanban assign {} <profile>", task.id)],
+                data: json!({"status": task.status}),
+            });
+        }
+        if task.status == "running"
+            && !self
+                .worker_log_path(&task.id)
+                .map(|path| path.exists())
+                .unwrap_or(false)
+        {
+            diagnostics.push(KanbanDiagnostic {
+                kind: "missing_worker_log".to_string(),
+                severity: "info".to_string(),
+                task_id: task.id.clone(),
+                title: "Running task has no worker log yet".to_string(),
+                detail: "Worker logs make retries and operator review easier; append durable progress with kanban_worker_log or /kanban worker-log.".to_string(),
+                actions: vec![format!("/kanban worker-log {} <note>", task.id)],
+                data: json!({"status": task.status}),
+            });
+        }
         Ok(diagnostics)
     }
 
@@ -646,10 +813,41 @@ impl KanbanStore {
             .into_iter()
             .map(|(status, count)| (status, json!(count)))
             .collect::<serde_json::Map<_, _>>();
+        let by_assignee = self.assignee_counts(&conn)?;
         Ok(json!({
             "db_path": self.path.display().to_string(),
             "by_status": by_status,
+            "by_assignee": by_assignee,
         }))
+    }
+
+    fn assignee_counts(&self, conn: &Connection) -> Result<JsonValue> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT COALESCE(profile, assignee) AS profile, status, COUNT(*) AS n
+                 FROM kanban_tasks
+                 WHERE status != 'archived' AND COALESCE(profile, assignee) IS NOT NULL
+                 GROUP BY COALESCE(profile, assignee), status",
+            )
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(db_err)?;
+        let mut by_assignee = serde_json::Map::new();
+        for row in rows {
+            let (profile, status, count) = row.map_err(db_err)?;
+            let entry = by_assignee.entry(profile).or_insert_with(|| json!({}));
+            if let JsonValue::Object(counts) = entry {
+                counts.insert(status, json!(count));
+            }
+        }
+        Ok(JsonValue::Object(by_assignee))
     }
 }
 
@@ -682,6 +880,7 @@ impl KanbanTask {
             title: row.get("title")?,
             body: row.get("body")?,
             assignee: row.get("assignee")?,
+            profile: row.get("profile")?,
             status: row.get("status")?,
             priority: row.get("priority")?,
             blocked_reason: row.get("blocked_reason")?,
@@ -744,6 +943,8 @@ enum KanbanToolKind {
     Link,
     Events,
     Diagnostics,
+    Assign,
+    WorkerLog,
 }
 
 pub struct KanbanTool {
@@ -769,6 +970,8 @@ pub fn kanban_tools() -> Vec<Arc<dyn Tool>> {
         Arc::new(KanbanTool::new(KanbanToolKind::Link)),
         Arc::new(KanbanTool::new(KanbanToolKind::Events)),
         Arc::new(KanbanTool::new(KanbanToolKind::Diagnostics)),
+        Arc::new(KanbanTool::new(KanbanToolKind::Assign)),
+        Arc::new(KanbanTool::new(KanbanToolKind::WorkerLog)),
     ]
 }
 
@@ -787,6 +990,8 @@ impl Tool for KanbanTool {
             KanbanToolKind::Link => "kanban_link",
             KanbanToolKind::Events => "kanban_events",
             KanbanToolKind::Diagnostics => "kanban_diagnostics",
+            KanbanToolKind::Assign => "kanban_assign",
+            KanbanToolKind::WorkerLog => "kanban_worker_log",
         }
     }
 
@@ -811,6 +1016,8 @@ impl Tool for KanbanTool {
             KanbanToolKind::Diagnostics => {
                 "List active Hermes-style Kanban diagnostics for one task or the board."
             }
+            KanbanToolKind::Assign => "Assign or unassign a Kanban task to a profile.",
+            KanbanToolKind::WorkerLog => "Append or read a durable worker log for a Kanban task.",
         }
     }
 
@@ -824,6 +1031,8 @@ impl Tool for KanbanTool {
             KanbanToolKind::Link => "\u{1f517}",
             KanbanToolKind::Events => "\u{1f4dc}",
             KanbanToolKind::Diagnostics => "\u{26a0}",
+            KanbanToolKind::Assign => "\u{1f464}",
+            KanbanToolKind::WorkerLog => "\u{1f4dd}",
             _ => "\u{1f4cb}",
         }
     }
@@ -905,6 +1114,26 @@ impl Tool for KanbanTool {
                     "task_id": {"type": "string"},
                     "board": board_schema_prop()
                 }
+            }),
+            KanbanToolKind::Assign => json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "profile": {"type": "string", "description": "Profile name, or none/-/null to unassign."},
+                    "board": board_schema_prop()
+                },
+                "required": ["task_id"]
+            }),
+            KanbanToolKind::WorkerLog => json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "body": {"type": "string", "description": "When present, append this durable worker log entry. Omit to read the latest log tail."},
+                    "profile": {"type": "string"},
+                    "tail_bytes": {"type": "integer", "minimum": 1, "maximum": MAX_LOG_TAIL_BYTES},
+                    "board": board_schema_prop()
+                },
+                "required": ["task_id"]
             }),
         }
     }
@@ -1021,6 +1250,37 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
             Some(task_id) => json_result(store.events(task_id, DEFAULT_LIMIT)),
             None => Err(HakimiError::Tool("usage: /kanban events <task_id>".into())),
         },
+        "assign" => match parts.next() {
+            Some(task_id) => {
+                let profile = parts.next();
+                json_result(store.assign_task(task_id, profile, Some("gateway")))
+            }
+            None => Err(HakimiError::Tool(
+                "usage: /kanban assign <task_id> [profile|none]".into(),
+            )),
+        },
+        "worker-log" | "log" => match parts.next() {
+            Some(task_id) => {
+                let body = parts.collect::<Vec<_>>().join(" ");
+                if let Some(body) = non_empty_str(&body) {
+                    json_result(store.append_worker_log(task_id, body, Some("gateway")))
+                } else {
+                    match store.read_worker_log(task_id, DEFAULT_LOG_TAIL_BYTES) {
+                        Ok(Some(log)) => Ok(json!(log).to_string()),
+                        Ok(None) => Ok(json!({
+                            "task_id": task_id,
+                            "body": "",
+                            "missing": true,
+                        })
+                        .to_string()),
+                        Err(err) => Err(err),
+                    }
+                }
+            }
+            None => Err(HakimiError::Tool(
+                "usage: /kanban worker-log <task_id> [body]".into(),
+            )),
+        },
         "diagnostics" | "diag" => {
             let task_id = parts.next();
             json_result(store.diagnostics(task_id))
@@ -1135,6 +1395,33 @@ fn execute_kanban_tool(
             let task_id = args.get("task_id").and_then(JsonValue::as_str);
             json_result(store.diagnostics(task_id))
         }
+        KanbanToolKind::Assign => {
+            let task_id = require_str(args, "task_id")?;
+            let profile = args.get("profile").and_then(JsonValue::as_str);
+            json_result(store.assign_task(task_id, profile, Some("agent")))
+        }
+        KanbanToolKind::WorkerLog => {
+            let task_id = require_str(args, "task_id")?;
+            if let Some(body) = args.get("body").and_then(JsonValue::as_str) {
+                let profile = args.get("profile").and_then(JsonValue::as_str);
+                json_result(store.append_worker_log(task_id, body, profile))
+            } else {
+                let tail_bytes = args
+                    .get("tail_bytes")
+                    .and_then(JsonValue::as_u64)
+                    .and_then(|n| usize::try_from(n).ok())
+                    .unwrap_or(DEFAULT_LOG_TAIL_BYTES);
+                match store.read_worker_log(task_id, tail_bytes)? {
+                    Some(log) => Ok(json!(log).to_string()),
+                    None => Ok(json!({
+                        "task_id": task_id,
+                        "body": "",
+                        "missing": true,
+                    })
+                    .to_string()),
+                }
+            }
+        }
     }
 }
 
@@ -1239,7 +1526,9 @@ fn kanban_help() -> String {
         "  `complete <id> [summary]`",
         "  `block <id> <reason>`",
         "  `unblock <id>`",
+        "  `assign <id> [profile|none]`",
         "  `heartbeat <id> [note]`",
+        "  `worker-log <id> [body]`",
         "  `link <parent_id> <child_id> [relation]`",
         "  `events <id>`",
         "  `diagnostics [id]`",
@@ -1259,6 +1548,36 @@ fn validate_status(status: &str) -> Result<()> {
     }
 }
 
+fn migrate_schema(conn: &Connection) -> Result<()> {
+    let columns = kanban_task_columns(conn)?;
+    if !columns.iter().any(|column| column == "profile") {
+        conn.execute("ALTER TABLE kanban_tasks ADD COLUMN profile TEXT", [])
+            .map_err(db_err)?;
+        conn.execute(
+            "UPDATE kanban_tasks SET profile = assignee WHERE profile IS NULL AND assignee IS NOT NULL",
+            [],
+        )
+        .map_err(db_err)?;
+    }
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_kanban_tasks_profile ON kanban_tasks(profile)",
+        [],
+    )
+    .map_err(db_err)?;
+    Ok(())
+}
+
+fn kanban_task_columns(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(kanban_tasks)")
+        .map_err(db_err)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>("name"))
+        .map_err(db_err)?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(db_err)
+}
+
 fn normalize_optional(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
@@ -1266,9 +1585,54 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     })
 }
 
+fn normalize_profile_arg(value: Option<&str>) -> Result<Option<String>> {
+    let Some(value) = value.and_then(non_empty_str) else {
+        return Ok(None);
+    };
+    let normalized = value.trim();
+    if matches!(
+        normalized.to_ascii_lowercase().as_str(),
+        "none" | "null" | "-"
+    ) {
+        return Ok(None);
+    }
+    if normalized.len() > 64
+        || normalized.starts_with(['-', '_', '.'])
+        || normalized.contains("..")
+        || !normalized
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+    {
+        return Err(HakimiError::Tool(format!(
+            "invalid kanban profile: {normalized}; use 1-64 letters, digits, dash, underscore, or dot"
+        )));
+    }
+    Ok(Some(normalized.to_string()))
+}
+
 fn non_empty_str(value: &str) -> Option<&str> {
     let trimmed = value.trim();
     (!trimmed.is_empty()).then_some(trimmed)
+}
+
+fn first_line(value: &str) -> &str {
+    value.lines().next().unwrap_or(value).trim()
+}
+
+fn validate_log_task_id(task_id: &str) -> Result<()> {
+    if task_id.is_empty()
+        || task_id.len() > 128
+        || task_id.starts_with(['-', '_', '.'])
+        || task_id.contains("..")
+        || !task_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+    {
+        return Err(HakimiError::Tool(format!(
+            "invalid kanban task id for worker log path: {task_id}"
+        )));
+    }
+    Ok(())
 }
 
 fn severity_rank(severity: &str) -> usize {
@@ -1646,17 +2010,19 @@ mod tests {
     }
 
     #[test]
-    fn exposes_eleven_hermes_named_tools() {
+    fn exposes_thirteen_hermes_named_tools() {
         let names = kanban_tools()
             .iter()
             .map(|tool| tool.name().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(names.len(), 11);
+        assert_eq!(names.len(), 13);
         assert!(names.contains(&"kanban_create".to_string()));
         assert!(names.contains(&"kanban_heartbeat".to_string()));
         assert!(names.contains(&"kanban_link".to_string()));
         assert!(names.contains(&"kanban_events".to_string()));
         assert!(names.contains(&"kanban_diagnostics".to_string()));
+        assert!(names.contains(&"kanban_assign".to_string()));
+        assert!(names.contains(&"kanban_worker_log".to_string()));
     }
 
     #[test]
@@ -1683,6 +2049,77 @@ mod tests {
             execute_kanban_tool(KanbanToolKind::List, &json!({"assignee": "worker"}), &store)
                 .unwrap();
         assert!(listed.contains("Via tool"));
+    }
+
+    #[test]
+    fn assign_updates_profile_and_stats() {
+        let (_dir, store) = store();
+        let task = create(&store, "Route work");
+
+        let assigned = store
+            .assign_task(&task.id, Some("reviewer-1"), Some("test"))
+            .unwrap();
+        assert_eq!(assigned.assignee.as_deref(), Some("reviewer-1"));
+        assert_eq!(assigned.profile.as_deref(), Some("reviewer-1"));
+
+        let stats = store.stats().unwrap();
+        assert_eq!(stats["by_assignee"]["reviewer-1"]["todo"], 1);
+        let events = store.events(&task.id, DEFAULT_LIMIT).unwrap();
+        assert!(events.iter().any(|event| event.kind == "assigned"));
+
+        let unassigned = execute_kanban_tool(
+            KanbanToolKind::Assign,
+            &json!({"task_id": task.id, "profile": "none"}),
+            &store,
+        )
+        .unwrap();
+        let unassigned: JsonValue = serde_json::from_str(&unassigned).unwrap();
+        assert!(unassigned["profile"].is_null());
+    }
+
+    #[test]
+    fn worker_log_appends_reads_and_clears_diagnostics() {
+        let (_dir, store) = store();
+        let task = store
+            .create_task(CreateTask {
+                title: "Worker task".to_string(),
+                body: None,
+                assignee: Some("worker".to_string()),
+                status: "running".to_string(),
+                priority: 0,
+            })
+            .unwrap();
+
+        let diagnostics = store.diagnostics(Some(&task.id)).unwrap();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| diag.kind == "missing_worker_log")
+        );
+
+        let written = execute_kanban_tool(
+            KanbanToolKind::WorkerLog,
+            &json!({"task_id": task.id, "body": "started first pass"}),
+            &store,
+        )
+        .unwrap();
+        let written: JsonValue = serde_json::from_str(&written).unwrap();
+        assert_eq!(written["profile"], "worker");
+
+        let read = execute_kanban_tool(
+            KanbanToolKind::WorkerLog,
+            &json!({"task_id": task.id, "tail_bytes": 1024}),
+            &store,
+        )
+        .unwrap();
+        assert!(read.contains("started first pass"));
+
+        let diagnostics = store.diagnostics(Some(&task.id)).unwrap();
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|diag| diag.kind == "missing_worker_log")
+        );
     }
 
     #[test]
