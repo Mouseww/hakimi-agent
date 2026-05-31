@@ -1698,6 +1698,221 @@ fn resolve_clawbot_gateway_config(
     resolved
 }
 
+fn env_or_config_value(env_key: &str, config_value: &str) -> Option<String> {
+    std::env::var(env_key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| (!config_value.trim().is_empty()).then(|| config_value.to_string()))
+}
+
+fn optional_config_value(value: &str) -> Option<String> {
+    (!value.trim().is_empty()).then(|| value.to_string())
+}
+
+fn gateway_secret_option(value: &str) -> Option<String> {
+    optional_config_value(value)
+}
+
+fn register_configured_gateway_adapters(
+    gateway: &mut hakimi_gateway::Gateway,
+    config: &hakimi_config::HakimiConfig,
+) -> std::collections::HashMap<String, String> {
+    let mut bot_ids = std::collections::HashMap::new();
+    bot_ids.insert("telegram".to_string(), "telegram_bot".to_string());
+
+    let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
+        .ok()
+        .filter(|token| !token.trim().is_empty())
+        .or_else(|| {
+            config
+                .roles
+                .get("default")
+                .and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone()))
+                .filter(|token| !token.trim().is_empty())
+        })
+        .or_else(|| optional_config_value(&config.gateways.telegram.bot_token));
+
+    if let Some(token) = bot_token {
+        let telegram =
+            hakimi_gateway::TelegramAdapter::new(hakimi_gateway::TelegramAdapterConfig {
+                token,
+                bot_id: "telegram_bot".to_string(),
+                base_url: None,
+            });
+        gateway.add_adapter(Box::new(telegram));
+        info!("telegram gateway registered");
+    }
+
+    let clawbot_config = resolve_clawbot_gateway_config(config);
+    if clawbot_config.enabled {
+        let bot_id = clawbot_config.bot_id.clone();
+        let clawbot = hakimi_gateway::ClawBotAdapter::new(hakimi_gateway::ClawBotAdapterConfig {
+            mode: parse_clawbot_mode(&clawbot_config.mode),
+            bot_id: bot_id.clone(),
+            base_url: clawbot_config.base_url,
+            token: clawbot_config.token,
+            poll_path: clawbot_config.poll_path,
+            send_path: clawbot_config.send_path,
+            edit_path: clawbot_config.edit_path,
+            poll_interval_ms: clawbot_config.poll_interval_ms,
+            poll_limit: clawbot_config.poll_limit,
+            token_store: clawbot_config.token_store,
+            channel_version: clawbot_config.channel_version,
+            app_client_version: clawbot_config.app_client_version,
+            login_notify_platform: clawbot_config.login_notify_platform,
+            login_notify_bot_id: clawbot_config.login_notify_bot_id,
+            login_notify_chat_id: clawbot_config.login_notify_chat_id,
+            allowed_users: clawbot_config.allowed_users,
+        });
+        gateway.add_adapter(Box::new(clawbot));
+        bot_ids.insert("clawbot".to_string(), bot_id);
+        info!("clawbot gateway registered");
+    }
+
+    if config.gateways.slack.enabled {
+        if let Some(token) = env_or_config_value("SLACK_BOT_TOKEN", &config.gateways.slack.token) {
+            let bot_id = config.gateways.slack.bot_id.clone();
+            let slack = hakimi_gateway::SlackAdapter::new(hakimi_gateway::SlackAdapterConfig {
+                token,
+                bot_id: bot_id.clone(),
+                channel_id: env_or_config_value(
+                    "SLACK_CHANNEL_ID",
+                    &config.gateways.slack.channel_id,
+                ),
+                base_url: optional_config_value(&config.gateways.slack.base_url),
+            });
+            gateway.add_adapter(Box::new(slack));
+            bot_ids.insert("slack".to_string(), bot_id);
+            info!("slack gateway registered");
+        } else {
+            warn!("slack gateway enabled but no token configured");
+        }
+    }
+
+    if config.gateways.discord.enabled {
+        if let Some(token) =
+            env_or_config_value("DISCORD_BOT_TOKEN", &config.gateways.discord.token)
+        {
+            let bot_id = config.gateways.discord.bot_id.clone();
+            let discord =
+                hakimi_gateway::DiscordAdapter::new(hakimi_gateway::DiscordAdapterConfig {
+                    token,
+                    bot_id: bot_id.clone(),
+                    channel_id: env_or_config_value(
+                        "DISCORD_CHANNEL_ID",
+                        &config.gateways.discord.channel_id,
+                    ),
+                    base_url: optional_config_value(&config.gateways.discord.base_url),
+                });
+            gateway.add_adapter(Box::new(discord));
+            bot_ids.insert("discord".to_string(), bot_id);
+            info!("discord gateway registered");
+        } else {
+            warn!("discord gateway enabled but no token configured");
+        }
+    }
+
+    if config.gateways.webhook.enabled {
+        let bot_id = config.gateways.webhook.bot_id.clone();
+        let webhook = hakimi_gateway::WebhookAdapter::new(hakimi_gateway::WebhookAdapterConfig {
+            port: config.gateways.webhook.port,
+            bot_id: bot_id.clone(),
+            path: config.gateways.webhook.path.clone(),
+            secret: gateway_secret_option(&config.gateways.webhook.secret),
+        });
+        gateway.add_adapter(Box::new(webhook));
+        bot_ids.insert("webhook".to_string(), bot_id);
+        info!("webhook gateway registered");
+    }
+
+    if config.gateways.signal.enabled {
+        if !config.gateways.signal.phone_number.trim().is_empty() {
+            let bot_id = config.gateways.signal.bot_id.clone();
+            let signal = hakimi_gateway::SignalAdapter::new(hakimi_gateway::SignalAdapterConfig {
+                bot_id: bot_id.clone(),
+                phone_number: config.gateways.signal.phone_number.clone(),
+                signal_cli_path: config.gateways.signal.signal_cli_path.clone(),
+            });
+            gateway.add_adapter(Box::new(signal));
+            bot_ids.insert("signal".to_string(), bot_id);
+            info!("signal gateway registered");
+        } else {
+            warn!("signal gateway enabled but no phone_number configured");
+        }
+    }
+
+    if config.gateways.matrix.enabled {
+        if !config.gateways.matrix.homeserver_url.trim().is_empty()
+            && !config.gateways.matrix.access_token.trim().is_empty()
+            && !config.gateways.matrix.room_id.trim().is_empty()
+        {
+            let bot_id = config.gateways.matrix.bot_id.clone();
+            let matrix = hakimi_gateway::MatrixAdapter::new(hakimi_gateway::MatrixAdapterConfig {
+                bot_id: bot_id.clone(),
+                homeserver_url: config.gateways.matrix.homeserver_url.clone(),
+                access_token: config.gateways.matrix.access_token.clone(),
+                room_id: config.gateways.matrix.room_id.clone(),
+            });
+            gateway.add_adapter(Box::new(matrix));
+            bot_ids.insert("matrix".to_string(), bot_id);
+            info!("matrix gateway registered");
+        } else {
+            warn!(
+                "matrix gateway enabled but required homeserver_url/access_token/room_id is missing"
+            );
+        }
+    }
+
+    if config.gateways.dingtalk.enabled {
+        if !config.gateways.dingtalk.webhook_url.trim().is_empty() {
+            let bot_id = config.gateways.dingtalk.bot_id.clone();
+            let dingtalk =
+                hakimi_gateway::DingTalkAdapter::new(hakimi_gateway::DingTalkAdapterConfig {
+                    bot_id: bot_id.clone(),
+                    webhook_url: config.gateways.dingtalk.webhook_url.clone(),
+                    secret: gateway_secret_option(&config.gateways.dingtalk.secret),
+                });
+            gateway.add_adapter(Box::new(dingtalk));
+            bot_ids.insert("dingtalk".to_string(), bot_id);
+            info!("dingtalk gateway registered");
+        } else {
+            warn!("dingtalk gateway enabled but no webhook_url configured");
+        }
+    }
+
+    if config.gateways.wecom.enabled {
+        if !config.gateways.wecom.corp_id.trim().is_empty()
+            && !config.gateways.wecom.agent_id.trim().is_empty()
+            && !config.gateways.wecom.secret.trim().is_empty()
+        {
+            let bot_id = config.gateways.wecom.bot_id.clone();
+            let wecom = hakimi_gateway::WeComAdapter::new(hakimi_gateway::WeComAdapterConfig {
+                bot_id: bot_id.clone(),
+                corp_id: config.gateways.wecom.corp_id.clone(),
+                agent_id: config.gateways.wecom.agent_id.clone(),
+                secret: config.gateways.wecom.secret.clone(),
+            });
+            gateway.add_adapter(Box::new(wecom));
+            bot_ids.insert("wecom".to_string(), bot_id);
+            info!("wecom gateway registered");
+        } else {
+            warn!("wecom gateway enabled but required corp_id/agent_id/secret is missing");
+        }
+    }
+
+    bot_ids
+}
+
+fn gateway_bot_id_for_platform(
+    bot_ids: &std::collections::HashMap<String, String>,
+    platform: &str,
+) -> String {
+    bot_ids
+        .get(platform)
+        .cloned()
+        .unwrap_or_else(|| platform.to_string())
+}
+
 fn parse_clawbot_mode(mode: &str) -> hakimi_gateway::ClawBotMode {
     match mode.trim().to_ascii_lowercase().as_str() {
         "ilink_native" | "ilink" | "native" => hakimi_gateway::ClawBotMode::IlinkNative,
@@ -3145,65 +3360,7 @@ async fn start_gateway(
     let mut gateway = hakimi_gateway::Gateway::new();
     gateway.set_filter_silence_narration(config.gateways.filter_silence_narration);
 
-    // Configure Telegram gateway.
-    let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
-        .ok()
-        .filter(|token| !token.trim().is_empty())
-        .or_else(|| {
-            config
-                .roles
-                .get("default")
-                .and_then(|r| r.gateways.telegram.as_ref().map(|t| t.bot_token.clone()))
-                .filter(|token| !token.trim().is_empty())
-        })
-        .or_else(|| {
-            if config.gateways.telegram.bot_token.trim().is_empty() {
-                None
-            } else {
-                Some(config.gateways.telegram.bot_token.clone())
-            }
-        });
-
-    // Re-resolve API key for Gateway mode from default role
-    // Since Gateway mode shares the agent, we just rely on the transport that was already built
-    // with the default role's api_key and base_url.
-
-    if let Some(token) = bot_token.as_ref()
-        && !token.is_empty()
-    {
-        let telegram_config = hakimi_gateway::TelegramAdapterConfig {
-            token: token.clone(),
-            bot_id: "telegram_bot".to_string(),
-            base_url: None,
-        };
-        let telegram = hakimi_gateway::TelegramAdapter::new(telegram_config);
-        gateway.add_adapter(Box::new(telegram));
-        info!("telegram gateway registered");
-    }
-
-    let clawbot_config = resolve_clawbot_gateway_config(&config);
-    if clawbot_config.enabled {
-        let clawbot = hakimi_gateway::ClawBotAdapter::new(hakimi_gateway::ClawBotAdapterConfig {
-            mode: parse_clawbot_mode(&clawbot_config.mode),
-            bot_id: clawbot_config.bot_id,
-            base_url: clawbot_config.base_url,
-            token: clawbot_config.token,
-            poll_path: clawbot_config.poll_path,
-            send_path: clawbot_config.send_path,
-            edit_path: clawbot_config.edit_path,
-            poll_interval_ms: clawbot_config.poll_interval_ms,
-            poll_limit: clawbot_config.poll_limit,
-            token_store: clawbot_config.token_store,
-            channel_version: clawbot_config.channel_version,
-            app_client_version: clawbot_config.app_client_version,
-            login_notify_platform: clawbot_config.login_notify_platform,
-            login_notify_bot_id: clawbot_config.login_notify_bot_id,
-            login_notify_chat_id: clawbot_config.login_notify_chat_id,
-            allowed_users: clawbot_config.allowed_users,
-        });
-        gateway.add_adapter(Box::new(clawbot));
-        info!("clawbot gateway registered");
-    }
+    let gateway_bot_ids = register_configured_gateway_adapters(&mut gateway, &config);
 
     // Load roles context correctly when receiving messages from specific platforms
     // Agent and conversation history map.
@@ -3233,22 +3390,20 @@ async fn start_gateway(
 
     // Spawn a background task to process queued outbound messages
     let gateway_queue = gateway.clone();
+    let gateway_queue_bot_ids = gateway_bot_ids.clone();
     tokio::spawn(async move {
         loop {
             if let Some(queued) = hakimi_tools::builtin_send_message::pop_message() {
                 let mut target_platform = "telegram".to_string();
                 let mut target_chat = queued.session_id.clone();
-                let mut bot_id = "telegram_bot".to_string();
 
                 if queued.target != "origin"
                     && let Some((p, c)) = queued.target.split_once(':')
                 {
                     target_platform = p.to_string();
                     target_chat = c.to_string();
-                    if target_platform == "clawbot" {
-                        bot_id = "clawbot".to_string();
-                    }
                 }
+                let bot_id = gateway_bot_id_for_platform(&gateway_queue_bot_ids, &target_platform);
 
                 let msg = hakimi_gateway::GatewayMessage {
                     platform: target_platform,
@@ -4964,13 +5119,13 @@ mod tests {
         ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
         VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
         create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
-        cron_success_output_should_deliver, gateway_cron_response_for_path,
-        gateway_cron_response_for_path_with_delivery, gateway_mcp_response,
-        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
-        gateway_voice_response, is_top_level_cron_tick, plan_gateway_final_delivery,
-        queue_cron_delivery, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
-        restore_hakimi_state_backup, restore_voice_history_text, top_level_cron_response_for_path,
-        update_shim_paths, update_target_from_candidate,
+        cron_success_output_should_deliver, gateway_bot_id_for_platform,
+        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
+        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
+        gateway_usage_response, gateway_voice_response, is_top_level_cron_tick,
+        plan_gateway_final_delivery, queue_cron_delivery, resolve_clawbot_gateway_config,
+        resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
+        top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
@@ -5024,6 +5179,26 @@ mod tests {
 
         assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
         assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_1")));
+    }
+
+    #[test]
+    fn gateway_bot_id_routes_configured_platforms() {
+        let bot_ids = std::collections::HashMap::from([
+            ("telegram".to_string(), "telegram_bot".to_string()),
+            ("slack".to_string(), "ops-slack".to_string()),
+            ("matrix".to_string(), "matrix-main".to_string()),
+        ]);
+
+        assert_eq!(
+            gateway_bot_id_for_platform(&bot_ids, "telegram"),
+            "telegram_bot"
+        );
+        assert_eq!(gateway_bot_id_for_platform(&bot_ids, "slack"), "ops-slack");
+        assert_eq!(
+            gateway_bot_id_for_platform(&bot_ids, "matrix"),
+            "matrix-main"
+        );
+        assert_eq!(gateway_bot_id_for_platform(&bot_ids, "wecom"), "wecom");
     }
 
     #[test]

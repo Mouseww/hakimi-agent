@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.151-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.152-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1411-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1413-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1411 |
+| 测试数量 | ~500 | 1413 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -91,8 +91,8 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **元能力**：子 Agent 委派、技能系统、插件机制
 
 **多平台网关**
-- Telegram · Discord · Slack · 钉钉 · 企业微信 · WeChat
-- 同时运行多个平台：Telegram 和微信一起开工
+- Telegram · Discord · Slack · Webhook · Signal · Matrix · 钉钉 · 企业微信 · WeChat
+- 配置驱动多适配器接入：聊天平台和 Webhook 网关可同时运行
 - 实时流式输出
 - 聊天里直接创建定时任务 `/cron add`
 - 网关 `/voice on|off|tts|status` 可切换口语化回复，不污染 prompt cache 和聊天历史
@@ -145,7 +145,7 @@ hakimi-agent/
 ├── hakimi-knowledge/    # 知识图谱 (petgraph)
 ├── hakimi-skills/        # 技能系统 + 元技能提炼
 ├── hakimi-cron/          # 持久化定时任务调度器
-├── hakimi-gateway/       # 8 平台适配器
+├── hakimi-gateway/       # 9 个运行时可启用的平台适配器
 ├── hakimi-mcp/           # MCP 客户端 (stdio/HTTP/SSE)
 ├── hakimi-cli/           # REPL CLI + 安装向导 + 诊断
 └── hakimi-tui/           # ratatui 终端界面
@@ -194,7 +194,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1411 |
+| 测试数量 | ~500 | 1413 |
 
 ---
 
@@ -221,7 +221,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Agent 主循环 + 工具调度
 - [x] OpenAI / Anthropic / Gemini 传输层 + SSE 流式
 - [x] 58+ 内置工具
-- [x] 8 平台适配器（Telegram、Discord、微信、Slack...）
+- [x] 9 个运行时可启用的平台适配器
 - [x] MCP 客户端 + 服务器目录
 - [x] 插件系统 + HTTP 模板
 - [x] ratatui TUI 界面

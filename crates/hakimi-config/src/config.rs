@@ -554,6 +554,20 @@ pub struct GatewaysConfig {
     pub telegram: TelegramGatewayConfig,
     #[serde(default)]
     pub clawbot: ClawBotGatewayConfig,
+    #[serde(default)]
+    pub slack: SlackGatewayConfig,
+    #[serde(default)]
+    pub discord: DiscordGatewayConfig,
+    #[serde(default)]
+    pub webhook: WebhookGatewayConfig,
+    #[serde(default)]
+    pub signal: SignalGatewayConfig,
+    #[serde(default)]
+    pub matrix: MatrixGatewayConfig,
+    #[serde(default)]
+    pub dingtalk: DingTalkGatewayConfig,
+    #[serde(default)]
+    pub wecom: WeComGatewayConfig,
 }
 
 fn default_gateway_filter_silence_narration() -> bool {
@@ -569,6 +583,236 @@ impl Default for GatewaysConfig {
             streaming: GatewayStreamingConfig::default(),
             telegram: TelegramGatewayConfig::default(),
             clawbot: ClawBotGatewayConfig::default(),
+            slack: SlackGatewayConfig::default(),
+            discord: DiscordGatewayConfig::default(),
+            webhook: WebhookGatewayConfig::default(),
+            signal: SignalGatewayConfig::default(),
+            matrix: MatrixGatewayConfig::default(),
+            dingtalk: DingTalkGatewayConfig::default(),
+            wecom: WeComGatewayConfig::default(),
+        }
+    }
+}
+
+/// Slack gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlackGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_slack_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub channel_id: String,
+    #[serde(default)]
+    pub base_url: String,
+}
+
+fn default_slack_bot_id() -> String {
+    "slack".to_string()
+}
+
+impl Default for SlackGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_slack_bot_id(),
+            token: String::new(),
+            channel_id: String::new(),
+            base_url: String::new(),
+        }
+    }
+}
+
+/// Discord gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_discord_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub channel_id: String,
+    #[serde(default)]
+    pub base_url: String,
+}
+
+fn default_discord_bot_id() -> String {
+    "discord".to_string()
+}
+
+impl Default for DiscordGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_discord_bot_id(),
+            token: String::new(),
+            channel_id: String::new(),
+            base_url: String::new(),
+        }
+    }
+}
+
+/// Generic webhook gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_webhook_bot_id")]
+    pub bot_id: String,
+    #[serde(default = "default_webhook_port")]
+    pub port: u16,
+    #[serde(default = "default_webhook_path")]
+    pub path: String,
+    #[serde(default)]
+    pub secret: String,
+}
+
+fn default_webhook_bot_id() -> String {
+    "webhook".to_string()
+}
+
+fn default_webhook_port() -> u16 {
+    8080
+}
+
+fn default_webhook_path() -> String {
+    "/webhook".to_string()
+}
+
+impl Default for WebhookGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_webhook_bot_id(),
+            port: default_webhook_port(),
+            path: default_webhook_path(),
+            secret: String::new(),
+        }
+    }
+}
+
+/// Signal gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_signal_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub phone_number: String,
+    #[serde(default = "default_signal_cli_path")]
+    pub signal_cli_path: String,
+}
+
+fn default_signal_bot_id() -> String {
+    "signal".to_string()
+}
+
+fn default_signal_cli_path() -> String {
+    "http://127.0.0.1:8080".to_string()
+}
+
+impl Default for SignalGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_signal_bot_id(),
+            phone_number: String::new(),
+            signal_cli_path: default_signal_cli_path(),
+        }
+    }
+}
+
+/// Matrix gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatrixGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_matrix_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub homeserver_url: String,
+    #[serde(default)]
+    pub access_token: String,
+    #[serde(default)]
+    pub room_id: String,
+}
+
+fn default_matrix_bot_id() -> String {
+    "matrix".to_string()
+}
+
+impl Default for MatrixGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_matrix_bot_id(),
+            homeserver_url: String::new(),
+            access_token: String::new(),
+            room_id: String::new(),
+        }
+    }
+}
+
+/// DingTalk gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DingTalkGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_dingtalk_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub webhook_url: String,
+    #[serde(default)]
+    pub secret: String,
+}
+
+fn default_dingtalk_bot_id() -> String {
+    "dingtalk".to_string()
+}
+
+impl Default for DingTalkGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_dingtalk_bot_id(),
+            webhook_url: String::new(),
+            secret: String::new(),
+        }
+    }
+}
+
+/// WeCom gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeComGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_wecom_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub corp_id: String,
+    #[serde(default)]
+    pub agent_id: String,
+    #[serde(default)]
+    pub secret: String,
+}
+
+fn default_wecom_bot_id() -> String {
+    "wecom".to_string()
+}
+
+impl Default for WeComGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_wecom_bot_id(),
+            corp_id: String::new(),
+            agent_id: String::new(),
+            secret: String::new(),
         }
     }
 }
@@ -859,6 +1103,20 @@ mod tests {
         assert!(config.gateways.filter_silence_narration);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
+        assert!(!config.gateways.slack.enabled);
+        assert_eq!(config.gateways.slack.bot_id, "slack");
+        assert!(!config.gateways.discord.enabled);
+        assert_eq!(config.gateways.discord.bot_id, "discord");
+        assert!(!config.gateways.webhook.enabled);
+        assert_eq!(config.gateways.webhook.path, "/webhook");
+        assert!(!config.gateways.signal.enabled);
+        assert_eq!(
+            config.gateways.signal.signal_cli_path,
+            "http://127.0.0.1:8080"
+        );
+        assert!(!config.gateways.matrix.enabled);
+        assert!(!config.gateways.dingtalk.enabled);
+        assert!(!config.gateways.wecom.enabled);
         assert_eq!(
             config.tools.output.max_bytes,
             hakimi_common::DEFAULT_TOOL_OUTPUT_MAX_BYTES
@@ -936,6 +1194,64 @@ gateways:
         assert_eq!(config.gateways.clawbot.edit_path, "/wx/edit");
         assert_eq!(config.gateways.clawbot.poll_interval_ms, 300);
         assert_eq!(config.gateways.clawbot.poll_limit, 20);
+    }
+
+    #[test]
+    fn test_deserialize_with_additional_gateway_platforms() {
+        let yaml = r#"
+gateways:
+  slack:
+    enabled: true
+    bot_id: "ops-slack"
+    token: "xoxb-redacted"
+    channel_id: "C123"
+  discord:
+    enabled: true
+    token: "discord-redacted"
+    channel_id: "987"
+  webhook:
+    enabled: true
+    port: 9090
+    path: "/events"
+    secret: "whsec-redacted"
+  signal:
+    enabled: true
+    phone_number: "+15551234567"
+    signal_cli_path: "http://signal-cli:8080"
+  matrix:
+    enabled: true
+    homeserver_url: "https://matrix.example.com"
+    access_token: "syt_redacted"
+    room_id: "!room:example.com"
+  dingtalk:
+    enabled: true
+    webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=redacted"
+    secret: "SECredacted"
+  wecom:
+    enabled: true
+    corp_id: "ww123"
+    agent_id: "1000002"
+    secret: "wecom-redacted"
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+
+        assert!(config.gateways.slack.enabled);
+        assert_eq!(config.gateways.slack.bot_id, "ops-slack");
+        assert_eq!(config.gateways.slack.channel_id, "C123");
+        assert!(config.gateways.discord.enabled);
+        assert_eq!(config.gateways.discord.bot_id, "discord");
+        assert_eq!(config.gateways.discord.channel_id, "987");
+        assert!(config.gateways.webhook.enabled);
+        assert_eq!(config.gateways.webhook.port, 9090);
+        assert_eq!(config.gateways.webhook.path, "/events");
+        assert!(config.gateways.signal.enabled);
+        assert_eq!(config.gateways.signal.phone_number, "+15551234567");
+        assert!(config.gateways.matrix.enabled);
+        assert_eq!(config.gateways.matrix.room_id, "!room:example.com");
+        assert!(config.gateways.dingtalk.enabled);
+        assert_eq!(config.gateways.dingtalk.bot_id, "dingtalk");
+        assert!(config.gateways.wecom.enabled);
+        assert_eq!(config.gateways.wecom.agent_id, "1000002");
     }
 
     #[test]

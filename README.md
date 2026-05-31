@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.151-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.152-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1411-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1413-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1411 |
+| Tests | ~500 | 1413 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -92,8 +92,8 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - **Meta**: sub-agent delegation, skills system, MCP plugins
 
 **Multi-Platform Gateway**
-- Telegram · Discord · Slack · DingTalk · WeChat (via iLink/ClawBot)
-- Multi-adapter fan-in: run Telegram and WeChat simultaneously
+- Telegram · Discord · Slack · Webhook · Signal · Matrix · DingTalk · WeCom · WeChat (via iLink/ClawBot)
+- Config-driven multi-adapter fan-in: run chat and webhook gateways simultaneously
 - Real-time streaming with progressive edits
 - Cron jobs scheduled from chat with `/cron add`
 - Gateway `/voice on|off|tts|status` toggles spoken-response guidance without polluting prompt cache or chat history
@@ -132,7 +132,7 @@ hakimi-agent/
 ├── hakimi-knowledge/    # Knowledge graph (petgraph)
 ├── hakimi-skills/        # Skill system + meta-skill extraction
 ├── hakimi-cron/          # Persistent cron scheduler
-├── hakimi-gateway/       # 8 platform adapters (Telegram, Discord, WeChat...)
+├── hakimi-gateway/       # 9 runtime-exposed platform adapters
 ├── hakimi-mcp/           # MCP client (stdio/HTTP/SSE)
 ├── hakimi-cli/           # REPL CLI + setup wizard + doctor
 └── hakimi-tui/           # ratatui terminal UI
@@ -187,7 +187,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1411 |
+| Tests | ~500 | 1413 |
 
 ---
 
@@ -214,7 +214,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Core agent loop + tool dispatch
 - [x] OpenAI / Anthropic / Gemini transports + SSE streaming
 - [x] 52 built-in tools
-- [x] 8 platform adapters (Telegram, Discord, WeChat, Slack...)
+- [x] 9 runtime-exposed platform adapters
 - [x] MCP client + server catalog
 - [x] Plugin system + HTTP templates
 - [x] ratatui TUI with slash commands

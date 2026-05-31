@@ -103,6 +103,11 @@ Generated: 2026-05-31
 - **Telegram adapter** — Telegram Bot API integration
 - **Discord adapter** — Discord bot with embeds
 - **Slack adapter** — Slack bot with blocks
+- **Webhook adapter** — Generic inbound webhook gateway with configurable path, port, and optional secret
+- **Signal adapter** — signal-cli REST gateway with configured phone number and endpoint
+- **Matrix adapter** — Matrix room send gateway with homeserver, access token, and room configuration
+- **DingTalk adapter** — DingTalk custom robot webhook gateway
+- **WeCom adapter** — WeCom application message gateway
 
 ### Plugin System
 - **Plugin trait** — name, version, description, tools, init
@@ -121,7 +126,7 @@ Generated: 2026-05-31
 - **Think scrubber** — Stateful Hermes-style removal of reasoning/thinking blocks from streaming and non-streaming assistant content
 
 ### Config
-- **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers, gateway ingress policy, gateway silence-narration filtering
+- **YAML config** — model, terminal, agent, compression, display, delegation, mcp_servers, gateway ingress policy, gateway silence-narration filtering, and per-platform gateway adapter settings
 - **Profile support** — `hakimi profile` manager with clone/export flows, gateway `/profile`, sticky `active_profile`, and `--profile` CLI flag surface
 - **Defaults** — Sensible defaults via `serde(default)`
 
@@ -217,10 +222,10 @@ Generated: 2026-05-31
 - **Details**: Hakimi now covers 17 Hermes-aligned structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat/events/diagnostics/assign/worker-log/notify operations, explicit board routing, profile/assignee routing, durable worker logs, notification subscriptions with unread claim cursors, and `/kanban boards list|show|create|switch` on isolated SQLite boards. Remaining parity is dispatcher-spawned workers, swarm creation, and dashboard-level management.
 - **Priority**: **High** — Multi-agent orchestration
 
-#### 13. Gateway Platform Adapters (17+ missing)
-- **What**: All gateway platforms beyond Telegram/Discord/Slack
+#### 13. Gateway Platform Adapters (12+ missing)
+- **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/Signal/Matrix/DingTalk/WeCom/ClawBot
 - **Hermes location**: `gateway/platforms/`
-- **Missing**: whatsapp, signal, matrix, mattermost, email, sms, dingtalk, wecom, weixin, feishu, qqbot, bluebubbles, yuanbao, webhook, api_server, homeassistant, msgraph_webhook
+- **Missing**: whatsapp, mattermost, email, sms, weixin, feishu, qqbot, bluebubbles, yuanbao, api_server, homeassistant, msgraph_webhook
 - **Priority**: **High** — Platform reach
 
 #### 14. Bedrock Transport
@@ -507,7 +512,7 @@ Generated: 2026-05-31
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 6. Gateway
-- **Status**: 8 platforms plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, and outbound silence-narration filtering. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
+- **Status**: 9 runtime-exposed platform entries (Telegram, Discord, Slack, Webhook, Signal, Matrix, DingTalk, WeCom, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, and outbound silence-narration filtering. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
 - **What's missing**: 12+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
@@ -563,7 +568,7 @@ Generated: 2026-05-31
 |----------|----------------|-----------------|----------------|----------------|
 | Core Tools | 40+ | 29 | 1 | 11+ |
 | Transports | 4 | 4 | 0 | 0 |
-| Gateway Platforms | 20+ | 8 | 1 | 12+ |
+| Gateway Platforms | 20+ | 9 | 1 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
 | Agent Internals | 25+ | 18 | 4 | 2+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
@@ -573,13 +578,13 @@ Generated: 2026-05-31
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~74** (up from ~30)
+**Fully present in Hakimi: ~75** (up from ~30)
 **Partially implemented: ~10**
 **Missing entirely: ~71+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (vision, CDP attach, cloud backends)
-2. Gateway platform breadth (12 missing platforms — webhook/signal/matrix/wecom/dingtalk added)
+2. Gateway platform breadth (12 missing platforms after runtime exposure for webhook/signal/matrix/wecom/dingtalk)
 3. Plugin ecosystem (memory providers, model providers, context engines)
 4. CLI command completeness (33+ missing commands)
 5. Bedrock transport
@@ -616,7 +621,7 @@ Generated: 2026-05-31
 ### Phase 3: Medium Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
-| 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,matrix,wecom,dingtalk}.rs` | 19 | ✅ 5 new PlatformAdapter implementations |
+| 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,matrix,wecom,dingtalk}.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 21 | ✅ 5 adapter implementations now have YAML config and gateway startup registration, with queued outbound delivery mapped through configured bot IDs |
 | 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 36 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron status/add/edit`, standalone `hakimi cron status/tick` management, strict/assembled cron prompt scanner, skill-loaded scheduled runs, explicit gateway delivery targets |
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs` | 20 | ✅ Shadow git snapshots, rollback, diff, transparent to LLM |
 | 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
@@ -673,9 +678,10 @@ Generated: 2026-05-31
 | 67 | Tool Guardrail No-Progress Tracking | `hakimi-core/src/{guardrails.rs,loop_impl.rs}` | 3 | ✅ Tool-call loop state persists across a full user turn, repeated JSON-equivalent calls are canonicalized, and read-only/idempotent tools append Hermes-style no-progress guidance while mutating tools avoid false positive result-loop warnings |
 | 68 | Model Context Metadata | `hakimi-common/src/model_metadata.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ `model.context_length` explicit overrides, static model-family metadata, provider-prefix normalization, minimum-window diagnostics, and shared compression/tool-search context sizing |
 | 69 | Gateway Voice Mode | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/voice on|off|tts|status` tracks per-chat voice state, adds Hermes-style concise spoken-response guidance to the current model message, and restores the clean original user text before chat history persistence |
+| 70 | Gateway Adapter Runtime Exposure | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 2 | ✅ Slack, Discord, Webhook, Signal, Matrix, DingTalk, WeCom, Telegram, and ClawBot can be enabled from config/env and registered at gateway startup; queued send_message/cron delivery resolves configured bot IDs by platform |
 
 ### Summary
-- **Total tests**: 1411 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1413 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
