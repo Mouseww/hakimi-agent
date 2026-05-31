@@ -35,6 +35,7 @@ pub mod shell_env;
 pub mod tool_search;
 mod trait_def;
 mod url_safety;
+pub mod voice_mode;
 
 #[cfg(feature = "browser")]
 pub use builtin_browser::*;
@@ -68,3 +69,4 @@ pub use fts_search::*;
 pub use plugin::*;
 pub use registry::*;
 pub use trait_def::*;
+pub use voice_mode::*;

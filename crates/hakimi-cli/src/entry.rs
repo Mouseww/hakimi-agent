@@ -73,6 +73,19 @@ fn gateway_voice_response(
             _ => "🔇 Voice mode is off for this chat. Use `/voice on` for speech-friendly replies."
                 .to_string(),
         },
+        "doctor" | "diagnostics" => {
+            let state = match states.get(key) {
+                Some(state) if state.is_active() => format!(
+                    "🎙️ Voice mode: on\n🔊 TTS guidance: {}",
+                    if state.tts { "on" } else { "off" }
+                ),
+                _ => "🔇 Voice mode is off for this chat.".to_string(),
+            };
+            format!(
+                "{state}\n\n{}",
+                hakimi_tools::render_voice_environment_report()
+            )
+        }
         "on" | "enable" => {
             let state = states.entry(key.to_string()).or_default();
             state.spoken_response = true;
@@ -96,7 +109,7 @@ fn gateway_voice_response(
                 "🔈 TTS guidance disabled. Voice mode remains speech-friendly.".to_string()
             }
         }
-        _ => "Usage: `/voice <on|off|tts|status>`".to_string(),
+        _ => "Usage: `/voice <on|off|tts|status|doctor>`".to_string(),
     }
 }
 
@@ -6164,6 +6177,10 @@ roles:
         let status = gateway_voice_response(&mut states, chat_key, Some("status"));
         assert!(status.contains("Voice mode: on"));
         assert!(status.contains("TTS guidance: on"));
+
+        let doctor = gateway_voice_response(&mut states, chat_key, Some("doctor"));
+        assert!(doctor.contains("Voice audio environment"));
+        assert!(doctor.contains("Recording format"));
 
         let disabled = gateway_voice_response(&mut states, chat_key, Some("off"));
         assert!(disabled.contains("disabled"));

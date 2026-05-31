@@ -5,7 +5,7 @@ use serde_json::{Value as JsonValue, json};
 use std::path::Path;
 use tracing::debug;
 
-use crate::Tool;
+use crate::{Tool, is_whisper_hallucination};
 
 /// Built-in speech-to-text tool using OpenAI-compatible transcription APIs.
 pub struct TranscribeAudioTool;
@@ -110,7 +110,13 @@ impl Tool for TranscribeAudioTool {
         );
 
         let source = load_audio_source(audio_path).await?;
-        request_openai_transcription(&source, &model, response_format, prompt, language, ctx).await
+        let transcript =
+            request_openai_transcription(&source, &model, response_format, prompt, language, ctx)
+                .await?;
+        Ok(filter_text_transcription_response(
+            response_format,
+            transcript,
+        ))
     }
 }
 
@@ -296,6 +302,14 @@ fn guess_audio_mime_type(path: &str) -> String {
     }
 }
 
+fn filter_text_transcription_response(response_format: &str, transcript: String) -> String {
+    if response_format == "text" && is_whisper_hallucination(&transcript) {
+        String::new()
+    } else {
+        transcript
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +345,22 @@ mod tests {
         assert_eq!(guess_audio_mime_type("voice.WAV"), "audio/wav");
         assert_eq!(guess_audio_mime_type("voice.ogg"), "audio/ogg");
         assert_eq!(guess_audio_mime_type("voice.webm"), "audio/webm");
+    }
+
+    #[test]
+    fn test_filters_text_response_whisper_hallucination() {
+        assert_eq!(
+            filter_text_transcription_response("text", "Thank you.".to_string()),
+            ""
+        );
+        assert_eq!(
+            filter_text_transcription_response("json", "Thank you.".to_string()),
+            "Thank you."
+        );
+        assert_eq!(
+            filter_text_transcription_response("text", "open the dashboard".to_string()),
+            "open the dashboard"
+        );
     }
 
     #[test]

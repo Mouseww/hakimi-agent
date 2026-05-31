@@ -165,6 +165,7 @@ pub struct TuiVoiceStatus {
     pub tts_ready: bool,
     pub transcription_ready: bool,
     pub ffmpeg_available: bool,
+    pub audio_environment: hakimi_tools::VoiceEnvironmentReport,
 }
 
 impl Default for TuiVoiceStatus {
@@ -230,6 +231,7 @@ impl TuiVoiceStatus {
             tts_ready: provider.eq_ignore_ascii_case("edge") || tts_api_configured,
             transcription_ready: transcription_api_configured,
             ffmpeg_available,
+            audio_environment: hakimi_tools::detect_voice_environment(),
         }
     }
 
@@ -259,6 +261,8 @@ impl TuiVoiceStatus {
         let beep = if self.beep_enabled { "on" } else { "off" };
         let auto_play = if self.auto_play { "on" } else { "off" };
 
+        let audio_environment = self.audio_environment.render();
+
         format!(
             "Voice mode: {mode}\n\
              Record key: {record_key}\n\
@@ -266,6 +270,7 @@ impl TuiVoiceStatus {
              STT tool: {stt_status} (model={transcription_model})\n\
              ffmpeg: {ffmpeg}; auto_play={auto_play}; beep={beep}\n\
              Capture settings: threshold={threshold}, silence={silence:.1}s\n\
+             {audio_environment}\n\
              TUI push-to-talk capture is diagnostic-only for now; {record_key} shows this readiness report.",
             record_key = self.record_key_label,
             provider = self.provider,
@@ -663,8 +668,9 @@ impl App {
                 )));
             }
             _ => {
-                self.messages
-                    .push(ChatMessage::error("usage: /voice [on|off|tts|status]"));
+                self.messages.push(ChatMessage::error(
+                    "usage: /voice [on|off|tts|status|doctor]",
+                ));
             }
         }
     }

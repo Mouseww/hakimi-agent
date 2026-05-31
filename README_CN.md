@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.154-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.155-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1418-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1422-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1418 |
+| 测试数量 | ~500 | 1422 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -85,7 +85,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **终端**：命令执行 + 后台进程管理
 - **Web**：搜索、内容提取、浏览器自动化（Chromium）
 - **代码执行**：Python/JS/Bash 沙箱运行
-- **媒体**：图片分析、视频分析、语音合成、语音转文字
+- **媒体**：图片分析、视频分析、语音合成、带静音幻觉过滤的语音转文字
 - **记忆**：持久化记忆 + FTS5 全文检索
 - **效率**：待办清单、支持 Profile 路由、工作日志、事件轨迹、诊断与通知订阅的 Kanban 看板、定时任务
 - **元能力**：子 Agent 委派、技能系统、插件机制
@@ -95,8 +95,8 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 配置驱动多适配器接入：聊天平台和 Webhook 网关可同时运行
 - 实时流式输出
 - 聊天里直接创建定时任务 `/cron add`
-- 网关 `/voice on|off|tts|status` 可切换口语化回复，不污染 prompt cache 和聊天历史
-- TUI `/voice status` 与可配置 Ctrl+B/Ctrl+字母诊断共用 `voice.*` 配置，和 TTS/转写工具保持一致
+- 网关 `/voice on|off|tts|status|doctor` 可切换口语化回复并报告语音 I/O 就绪状态，不污染 prompt cache 和聊天历史
+- TUI `/voice status` 与可配置 Ctrl+B/Ctrl+字母诊断共用 `voice.*` 配置、TTS/转写工具和音频环境检查
 
 **可扩展**
 - MCP 协议客户端 — stdio / HTTP / SSE 传输
@@ -195,7 +195,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1418 |
+| 测试数量 | ~500 | 1422 |
 
 ---
 
@@ -239,6 +239,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Kanban 看板 + Profile 路由 + 工作日志 + 通知游标
 - [x] 网关语音回复模式
 - [x] TUI 语音就绪诊断与媒体工具配置对齐
+- [x] 语音环境诊断与 STT 静音幻觉过滤
 - [ ] WASM 插件运行时
 - [ ] Web 仪表盘
 - [ ] CLI 按键录音语音输入

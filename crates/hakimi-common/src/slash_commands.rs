@@ -306,7 +306,7 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
         name: "voice",
         aliases: &["v"],
-        args_hint: "[on|off]",
+        args_hint: "[on|off|tts|status|doctor]",
         summary: "Control voice mode",
         category: "integrations",
     },
