@@ -309,11 +309,12 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let status_text = format!(
-        " Session: {} │ Tokens: {} │ API calls: {} │ {} │ ↑↓:scroll │ Ctrl+C:quit",
+        " Session: {} │ Tokens: {} │ API calls: {} │ {} │ {} │ ↑↓:scroll │ Ctrl+C:quit",
         &app.session_id[..8.min(app.session_id.len())],
         app.total_tokens,
         app.api_calls,
         tab_hint,
+        app.voice.status_bar_hint(),
     );
 
     let status_bar = Paragraph::new(Span::styled(status_text, Style::default().fg(COLOR_SYSTEM)))
@@ -373,6 +374,16 @@ mod tests {
         app.input = "/hist".to_string();
         app.completion_hint =
             Some("Slash match: /history [N] - Review recent conversation messages".to_string());
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_handles_voice_status_bar_hint() {
+        let mut app = make_app();
+        app.voice.enabled = true;
+        app.voice.record_key_label = "Ctrl+O".to_string();
         let backend = TestBackend::new(100, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();

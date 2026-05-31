@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.153-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.154-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1413-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1418-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1413 |
+| Tests | ~500 | 1418 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -97,6 +97,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Real-time streaming with progressive edits
 - Cron jobs scheduled from chat with `/cron add`
 - Gateway `/voice on|off|tts|status` toggles spoken-response guidance without polluting prompt cache or chat history
+- TUI `/voice status` and configurable Ctrl+B/Ctrl+letter readiness diagnostics share the same `voice.*` config as TTS and transcription tools
 
 **Extensibility**
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports
@@ -187,7 +188,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1413 |
+| Tests | ~500 | 1418 |
 
 ---
 
@@ -230,6 +231,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Browser automation (Chromium)
 - [x] Kanban task boards + notification cursors
 - [x] Gateway voice-response mode
+- [x] TUI voice readiness and media-tool config parity
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
 - [ ] CLI push-to-talk microphone capture

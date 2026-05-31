@@ -443,10 +443,42 @@ pub struct VoiceConfig {
     /// Whether to auto-play generated audio.
     #[serde(default)]
     pub auto_play: bool,
+
+    /// TUI push-to-talk diagnostic record key (Hermes default: Ctrl+B).
+    #[serde(default = "default_voice_record_key")]
+    pub record_key: String,
+
+    /// RMS level below which input is treated as silence.
+    #[serde(default = "default_voice_silence_threshold")]
+    pub silence_threshold: u32,
+
+    /// Seconds of silence before recording stops.
+    #[serde(default = "default_voice_silence_duration_seconds")]
+    pub silence_duration_seconds: f32,
+
+    /// Whether start/stop voice cues are enabled.
+    #[serde(default = "default_voice_beep_enabled")]
+    pub beep_enabled: bool,
 }
 
 fn default_voice_provider() -> String {
     "openai".to_string()
+}
+
+fn default_voice_record_key() -> String {
+    "ctrl+b".to_string()
+}
+
+fn default_voice_silence_threshold() -> u32 {
+    200
+}
+
+fn default_voice_silence_duration_seconds() -> f32 {
+    3.0
+}
+
+fn default_voice_beep_enabled() -> bool {
+    true
 }
 
 impl Default for VoiceConfig {
@@ -459,6 +491,10 @@ impl Default for VoiceConfig {
             base_url: String::new(),
             api_key: String::new(),
             auto_play: false,
+            record_key: default_voice_record_key(),
+            silence_threshold: default_voice_silence_threshold(),
+            silence_duration_seconds: default_voice_silence_duration_seconds(),
+            beep_enabled: default_voice_beep_enabled(),
         }
     }
 }
@@ -1140,6 +1176,10 @@ mod tests {
         assert!(config.gateways.filter_silence_narration);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
+        assert_eq!(config.voice.record_key, "ctrl+b");
+        assert_eq!(config.voice.silence_threshold, 200);
+        assert_eq!(config.voice.silence_duration_seconds, 3.0);
+        assert!(config.voice.beep_enabled);
         assert!(!config.gateways.slack.enabled);
         assert_eq!(config.gateways.slack.bot_id, "slack");
         assert!(!config.gateways.discord.enabled);
@@ -1314,6 +1354,32 @@ gateways:
         assert_eq!(config.gateways.streaming.edit_interval_ms, 800);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 24);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
+    }
+
+    #[test]
+    fn test_voice_config_accepts_interactive_capture_settings() {
+        let yaml = r#"
+voice:
+  provider: edge
+  model: tts-1
+  voice: en-US-AriaNeural
+  transcription_model: whisper-1
+  record_key: ctrl+o
+  silence_threshold: 120
+  silence_duration_seconds: 1.5
+  beep_enabled: false
+  auto_play: true
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.voice.provider, "edge");
+        assert_eq!(config.voice.model, "tts-1");
+        assert_eq!(config.voice.voice, "en-US-AriaNeural");
+        assert_eq!(config.voice.transcription_model, "whisper-1");
+        assert_eq!(config.voice.record_key, "ctrl+o");
+        assert_eq!(config.voice.silence_threshold, 120);
+        assert_eq!(config.voice.silence_duration_seconds, 1.5);
+        assert!(!config.voice.beep_enabled);
+        assert!(config.voice.auto_play);
     }
 
     #[test]

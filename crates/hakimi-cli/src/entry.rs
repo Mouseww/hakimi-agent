@@ -2381,6 +2381,20 @@ gateways:
     channel_version: "1.0.2"
     app_client_version: "2.4.3"
 
+voice:
+  # Shared TTS/STT and interactive voice settings.
+  provider: "openai"
+  model: ""
+  voice: ""
+  transcription_model: ""
+  base_url: ""
+  api_key: ""
+  auto_play: false
+  record_key: "ctrl+b"
+  silence_threshold: 200
+  silence_duration_seconds: 3.0
+  beep_enabled: true
+
 # Context compression: smart (3-tier), simple (truncation), or llm (LLM summary with local fallback)
 compression:
   engine: smart  # smart | simple | llm

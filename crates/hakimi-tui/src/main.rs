@@ -54,6 +54,19 @@ compression:
   enabled: true
   threshold: 0.50
   target_ratio: 0.20
+
+voice:
+  provider: "openai"
+  model: ""
+  voice: ""
+  transcription_model: ""
+  base_url: ""
+  api_key: ""
+  auto_play: false
+  record_key: "ctrl+b"
+  silence_threshold: 200
+  silence_duration_seconds: 3.0
+  beep_enabled: true
 "#;
 
 // ---------------------------------------------------------------------------
@@ -193,6 +206,8 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         Arc::new(hakimi_tools::SendMessageTool),
         Arc::new(hakimi_tools::SkillManageTool),
         Arc::new(hakimi_tools::ImageGenerateTool),
+        Arc::new(hakimi_tools::TextToSpeechTool),
+        Arc::new(hakimi_tools::TranscribeAudioTool),
     ];
     builtin_tools.extend(hakimi_tools::kanban_tools());
     // Browser tools (shared browser instance)
@@ -245,7 +260,18 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         .max_iterations(config.agent.max_turns)
         .workdir(&config.terminal.cwd)
         .streaming(false)
-        .build()?;
+        .build()?
+        .with_voice_settings(
+            Some(config.voice.provider.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.model.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.voice.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.provider.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.transcription_model.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
+            Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
+        );
 
     info!(model = %model, "agent built successfully");
     Ok(agent)
@@ -373,7 +399,7 @@ async fn main() -> Result<()> {
     terminal.clear()?;
 
     // Create the app state.
-    let mut app = App::new(cmd_tx, event_rx, model, session_id);
+    let mut app = App::new(cmd_tx, event_rx, model, session_id).with_voice_config(&config.voice);
 
     // Event loop.
     let tick_rate = Duration::from_millis(100);

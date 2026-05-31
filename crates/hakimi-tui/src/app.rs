@@ -7,6 +7,7 @@ use crate::{
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hakimi_common::{SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix};
+use hakimi_config::VoiceConfig;
 use tokio::sync::mpsc;
 
 const TOOL_CHAT_PREVIEW_CHARS: usize = 120;
@@ -106,12 +107,185 @@ fn render_completion_hint(matches: &[&SlashCommandSpec]) -> Option<String> {
     Some(compact_one_line(&hint, COMPLETION_HINT_CHARS))
 }
 
+fn env_any_present(names: &[&str]) -> bool {
+    names
+        .iter()
+        .any(|name| std::env::var(name).is_ok_and(|value| !value.trim().is_empty()))
+}
+
+fn ffmpeg_available() -> bool {
+    std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
+fn parse_ctrl_record_key(raw: &str) -> Option<char> {
+    let normalized = raw.trim().to_ascii_lowercase().replace(' ', "");
+    let suffix = normalized
+        .strip_prefix("ctrl+")
+        .or_else(|| normalized.strip_prefix("control+"))?;
+    let mut chars = suffix.chars();
+    let ch = chars.next()?;
+    if chars.next().is_none() && ch.is_ascii_alphabetic() {
+        Some(ch)
+    } else {
+        None
+    }
+}
+
+fn format_voice_record_key(raw: &str) -> String {
+    parse_ctrl_record_key(raw)
+        .map(|ch| format!("Ctrl+{}", ch.to_ascii_uppercase()))
+        .unwrap_or_else(|| "Ctrl+B".to_string())
+}
+
+fn voice_record_key_matches(key: &KeyEvent, raw: &str) -> bool {
+    let expected = parse_ctrl_record_key(raw).unwrap_or('b');
+    let KeyCode::Char(actual) = &key.code else {
+        return false;
+    };
+    key.modifiers.contains(KeyModifiers::CONTROL)
+        && actual.to_ascii_lowercase() == expected.to_ascii_lowercase()
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TuiVoiceStatus {
+    pub enabled: bool,
+    pub tts: bool,
+    pub record_key: String,
+    pub record_key_label: String,
+    pub provider: String,
+    pub model: String,
+    pub voice: String,
+    pub transcription_model: String,
+    pub silence_threshold: u32,
+    pub silence_duration_seconds: f32,
+    pub beep_enabled: bool,
+    pub auto_play: bool,
+    pub tts_ready: bool,
+    pub transcription_ready: bool,
+    pub ffmpeg_available: bool,
+}
+
+impl Default for TuiVoiceStatus {
+    fn default() -> Self {
+        Self::from_config_with_ffmpeg(&VoiceConfig::default(), false)
+    }
+}
+
+impl TuiVoiceStatus {
+    pub fn from_config(config: &VoiceConfig) -> Self {
+        Self::from_config_with_ffmpeg(config, ffmpeg_available())
+    }
+
+    fn from_config_with_ffmpeg(config: &VoiceConfig, ffmpeg_available: bool) -> Self {
+        let provider = if config.provider.trim().is_empty() {
+            "openai".to_string()
+        } else {
+            config.provider.trim().to_string()
+        };
+        let tts_api_configured = !config.api_key.trim().is_empty()
+            || env_any_present(&[
+                "HAKIMI_TTS_API_KEY",
+                "VOICE_TOOLS_OPENAI_KEY",
+                "OPENAI_API_KEY",
+            ]);
+        let transcription_api_configured = !config.api_key.trim().is_empty()
+            || env_any_present(&[
+                "HAKIMI_TRANSCRIPTION_API_KEY",
+                "VOICE_TOOLS_OPENAI_KEY",
+                "OPENAI_API_KEY",
+            ]);
+        let record_key = if config.record_key.trim().is_empty() {
+            "ctrl+b".to_string()
+        } else {
+            config.record_key.trim().to_string()
+        };
+
+        Self {
+            enabled: false,
+            tts: false,
+            record_key_label: format_voice_record_key(&record_key),
+            record_key,
+            provider: provider.clone(),
+            model: if config.model.trim().is_empty() {
+                "tts-1".to_string()
+            } else {
+                config.model.trim().to_string()
+            },
+            voice: if config.voice.trim().is_empty() {
+                "alloy".to_string()
+            } else {
+                config.voice.trim().to_string()
+            },
+            transcription_model: if config.transcription_model.trim().is_empty() {
+                "whisper-1".to_string()
+            } else {
+                config.transcription_model.trim().to_string()
+            },
+            silence_threshold: config.silence_threshold,
+            silence_duration_seconds: config.silence_duration_seconds,
+            beep_enabled: config.beep_enabled,
+            auto_play: config.auto_play,
+            tts_ready: provider.eq_ignore_ascii_case("edge") || tts_api_configured,
+            transcription_ready: transcription_api_configured,
+            ffmpeg_available,
+        }
+    }
+
+    pub(crate) fn status_bar_hint(&self) -> String {
+        let state = if self.enabled { "on" } else { "off" };
+        format!("Voice:{state} {}", self.record_key_label)
+    }
+
+    fn render_status(&self) -> String {
+        let mode = if self.enabled { "on" } else { "off" };
+        let tts = if self.tts { "on" } else { "off" };
+        let tts_status = if self.tts_ready {
+            "ready"
+        } else {
+            "needs API key"
+        };
+        let stt_status = if self.transcription_ready {
+            "ready"
+        } else {
+            "needs API key"
+        };
+        let ffmpeg = if self.ffmpeg_available {
+            "available"
+        } else {
+            "not found"
+        };
+        let beep = if self.beep_enabled { "on" } else { "off" };
+        let auto_play = if self.auto_play { "on" } else { "off" };
+
+        format!(
+            "Voice mode: {mode}\n\
+             Record key: {record_key}\n\
+             TTS guidance: {tts}; tool {tts_status} (provider={provider}, model={model}, voice={voice})\n\
+             STT tool: {stt_status} (model={transcription_model})\n\
+             ffmpeg: {ffmpeg}; auto_play={auto_play}; beep={beep}\n\
+             Capture settings: threshold={threshold}, silence={silence:.1}s\n\
+             TUI push-to-talk capture is diagnostic-only for now; {record_key} shows this readiness report.",
+            record_key = self.record_key_label,
+            provider = self.provider,
+            model = self.model,
+            voice = self.voice,
+            transcription_model = self.transcription_model,
+            threshold = self.silence_threshold,
+            silence = self.silence_duration_seconds,
+        )
+    }
+}
+
 enum TuiCommand {
     Help,
     History(Option<String>),
     Copy(Option<String>),
     Clear,
     Tools,
+    Voice(Option<String>),
     Quit,
 }
 
@@ -128,6 +302,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "copy" => Some(TuiCommand::Copy(arg)),
         "clear" => Some(TuiCommand::Clear),
         "tools" => Some(TuiCommand::Tools),
+        "voice" => Some(TuiCommand::Voice(arg)),
         "quit" => Some(TuiCommand::Quit),
         _ => None,
     }
@@ -167,6 +342,8 @@ pub struct App {
     pub total_tokens: u32,
     /// Number of API calls made.
     pub api_calls: usize,
+    /// Local voice-mode readiness and command state.
+    pub voice: TuiVoiceStatus,
 }
 
 impl App {
@@ -196,7 +373,13 @@ impl App {
             session_id,
             total_tokens: 0,
             api_calls: 0,
+            voice: TuiVoiceStatus::default(),
         }
+    }
+
+    pub fn with_voice_config(mut self, config: &VoiceConfig) -> Self {
+        self.voice = TuiVoiceStatus::from_config(config);
+        self
     }
 
     /// Handle a single key event.
@@ -211,6 +394,11 @@ impl App {
         // Ctrl+L clears screen / resets scroll
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('l') {
             self.scroll_offset = 0;
+            return;
+        }
+
+        if voice_record_key_matches(&key, &self.voice.record_key) {
+            self.handle_voice_record_key();
             return;
         }
 
@@ -395,7 +583,7 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /quit          — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /voice [cmd]   — Show or toggle voice readiness\n  /quit          — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
             }
             Some(TuiCommand::History(arg)) => {
@@ -429,6 +617,9 @@ impl App {
                 self.messages
                     .push(ChatMessage::system(format!("Tools panel: {state}")));
             }
+            Some(TuiCommand::Voice(arg)) => {
+                self.handle_voice_command(arg.as_deref());
+            }
             Some(TuiCommand::Quit) => {
                 let _ = self.cmd_tx.send(AgentCommand::Shutdown);
                 self.should_quit = true;
@@ -438,6 +629,56 @@ impl App {
                     "Unknown command: {cmd}. Type /help for available commands."
                 )));
             }
+        }
+    }
+
+    fn handle_voice_command(&mut self, arg: Option<&str>) {
+        match arg.unwrap_or("status").trim().to_ascii_lowercase().as_str() {
+            "" | "status" | "doctor" => {
+                self.messages
+                    .push(ChatMessage::system(self.voice.render_status()));
+            }
+            "on" | "enable" => {
+                self.voice.enabled = true;
+                self.messages.push(ChatMessage::system(format!(
+                    "Voice mode enabled. Press {} for the current push-to-talk readiness report.",
+                    self.voice.record_key_label
+                )));
+            }
+            "off" | "disable" => {
+                self.voice.enabled = false;
+                self.voice.tts = false;
+                self.messages
+                    .push(ChatMessage::system("Voice mode disabled."));
+            }
+            "tts" => {
+                self.voice.enabled = true;
+                self.voice.tts = !self.voice.tts;
+                let state = if self.voice.tts {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                self.messages.push(ChatMessage::system(format!(
+                    "TTS guidance {state}. Use text_to_speech for explicit audio output."
+                )));
+            }
+            _ => {
+                self.messages
+                    .push(ChatMessage::error("usage: /voice [on|off|tts|status]"));
+            }
+        }
+    }
+
+    fn handle_voice_record_key(&mut self) {
+        if self.voice.enabled {
+            self.messages
+                .push(ChatMessage::system(self.voice.render_status()));
+        } else {
+            self.messages.push(ChatMessage::system(format!(
+                "Voice mode is off. Use /voice on before using {}.",
+                self.voice.record_key_label
+            )));
         }
     }
 
@@ -659,6 +900,8 @@ mod tests {
         assert_eq!(app.session_id, "test-session-123");
         assert_eq!(app.total_tokens, 0);
         assert_eq!(app.api_calls, 0);
+        assert!(!app.voice.enabled);
+        assert_eq!(app.voice.record_key_label, "Ctrl+B");
     }
 
     // ---------------------------------------------------------------
@@ -946,6 +1189,7 @@ mod tests {
         assert!(app.messages[1].content.contains("/help"));
         assert!(app.messages[1].content.contains("/history"));
         assert!(app.messages[1].content.contains("/copy"));
+        assert!(app.messages[1].content.contains("/voice"));
     }
 
     #[test]
@@ -1056,6 +1300,72 @@ mod tests {
         }
         app.handle_key_event(key(KeyCode::Enter));
         assert!(!app.show_tools_panel);
+    }
+
+    #[test]
+    fn slash_voice_status_reports_readiness_without_model_call() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/voice status".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("Voice mode: off"));
+        assert!(message.content.contains("Record key: Ctrl+B"));
+        assert!(
+            message
+                .content
+                .contains("TUI push-to-talk capture is diagnostic-only")
+        );
+        assert!(!app.is_thinking);
+    }
+
+    #[test]
+    fn slash_voice_tts_enables_voice_guidance() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/voice tts".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(app.voice.enabled);
+        assert!(app.voice.tts);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("TTS guidance enabled")
+        );
+    }
+
+    #[test]
+    fn configured_voice_record_key_shows_readiness_report() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+        let voice = VoiceConfig {
+            record_key: "ctrl+o".to_string(),
+            provider: "edge".to_string(),
+            ..VoiceConfig::default()
+        };
+        let mut app = App::new(
+            cmd_tx,
+            event_rx,
+            "test-model".to_string(),
+            "test-session-123".to_string(),
+        )
+        .with_voice_config(&voice);
+
+        app.handle_voice_command(Some("on"));
+        app.handle_key_event(key_with_mod(KeyCode::Char('O'), KeyModifiers::CONTROL));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(app.voice.record_key_label, "Ctrl+O");
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("Record key: Ctrl+O"));
+        assert!(message.content.contains("provider=edge"));
     }
 
     #[test]
