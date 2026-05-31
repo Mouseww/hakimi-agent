@@ -258,7 +258,7 @@ Generated: 2026-05-31
 #### 18. Profiles System
 - **What**: Multiple isolated Hermes instances with separate config, memory, sessions, skills
 - **Hermes location**: `hermes_cli/profiles.py`, `hermes_cli/profile_distribution.py`
-- **Details**: `hermes profile create/delete/use/export`. Hakimi now has a guarded Rust-native profile manager, persistent `active_profile` selection, top-level `hakimi profile list/current/path/create/use/delete/export`, Hermes-style `profile create --clone[=source]` and `--clone-all[=source]` seeding, and gateway `/profile` parity for remote management. Remaining parity is distribution installs, wrapper aliases, and deeper automatic per-profile runtime home binding.
+- **Details**: `hermes profile create/delete/use/export`. Hakimi now has a guarded Rust-native profile manager, persistent `active_profile` selection, top-level `hakimi profile list/current/path/create/alias/use/delete/export`, Hermes-style `profile create --clone[=source]` and `--clone-all[=source]` seeding, optional `profile create --alias` plus `profile alias create/remove/path` wrapper commands under `~/.hakimi/bin`, and gateway `/profile` parity for remote management. Remaining parity is distribution installs and deeper automatic per-profile runtime home binding.
 - **Priority**: **High** — Multi-context workflows
 
 #### 19. Setup Wizard
@@ -616,7 +616,7 @@ Generated: 2026-05-31
 | 7 | File Safety + Secret Redaction | `hakimi-common/src/file_safety.rs`, `hakimi-core/src/file_safety.rs`, `hakimi-common/src/redact.rs`, `hakimi-tools/src/{builtin_write_file,builtin_patch,builtin_terminal,builtin_process,builtin_code_exec,plugin}.rs` | 35 | ✅ WriteDeniedPaths, optional write safe-root sandbox, PathSecurity, shared SecretRedactor, PromptInjectionDetector, and forced redaction for shell/process/code/plugin output |
 | 8 | Tool Guardrails | `hakimi-core/src/guardrails.rs` | 12 | ✅ Loop detection, idempotency tracking, halt decisions |
 | 9 | LLM Context Compression | `hakimi-context/src/{compressor.rs,factory.rs}`, CLI/server construction | 25 | ✅ Config-selectable `llm` engine, summary model selection, Resolved/Pending tracking, tool output pruning, and local fallback |
-| 10 | Profiles | `hakimi-cli/src/profiles.rs`, `hakimi-cli/src/entry.rs` | 19 | ✅ ~/.hakimi/profiles/, guarded create/delete/use/list/path/current/export, clone/clone-all seeding from default or named profiles, sticky `active_profile`, gateway `/profile`, separate config/memory/sessions |
+| 10 | Profiles | `hakimi-cli/src/profiles.rs`, `hakimi-cli/src/entry.rs` | 23 | ✅ ~/.hakimi/profiles/, guarded create/delete/use/list/path/current/export, clone/clone-all seeding from default or named profiles, managed wrapper aliases under `~/.hakimi/bin`, sticky `active_profile`, gateway `/profile`, separate config/memory/sessions |
 | 11 | Setup Wizard | `hakimi-cli/src/setup_wizard.rs` | 15 | ✅ Model/Provider selection, API key input, platform config |
 | 12 | Doctor | `hakimi-cli/src/doctor.rs`, `hakimi-cli/src/entry.rs` | 17 | ✅ Dependencies, config, env vars, API connectivity checks, `hakimi doctor`, gateway `/doctor` |
 
@@ -687,7 +687,7 @@ Generated: 2026-05-31
 | 74 | HTTP API Discovery | `hakimi-server/src/api.rs` | 2 | ✅ `/v1/models` returns an OpenAI-compatible model list for the active server agent, and `/v1/capabilities` advertises implemented vs pending API features and endpoint paths for external UI feature detection |
 
 ### Summary
-- **Total tests**: 1429 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1433 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

@@ -17,6 +17,7 @@ const ACTIVE_PROFILE_FILE: &str = "active_profile";
 const PROFILE_CONFIG_FILES: &[&str] = &["config.yaml", ".env", "SOUL.md"];
 const PROFILE_MEMORY_FILES: &[&str] = &["memory/memory.md", "memory/user.md"];
 const PROFILE_DIRS: &[&str] = &["memory", "sessions", "skills"];
+const RESERVED_ALIAS_NAMES: &[&str] = &["hakimi", "hakimi-agent"];
 const CLONE_ROOT_EXCLUDES: &[&str] = &["profiles", "bin", "node_modules", "target", ".git"];
 const EXPORT_ROOT_EXCLUDES: &[&str] = &["profiles", "bin", "node_modules", "target", ".git"];
 const RUNTIME_NAMES: &[&str] = &[
@@ -68,6 +69,8 @@ pub struct ProfileCreateOptions {
     pub clone_from: Option<String>,
     /// Clone mode.
     pub clone_mode: ProfileCloneMode,
+    /// Create a wrapper command in ~/.hakimi/bin for this profile.
+    pub create_alias: bool,
 }
 
 /// Summary for a profile export archive.
@@ -178,6 +181,7 @@ impl ProfileManager {
         if !profile_dir.exists() {
             bail!("Profile '{}' does not exist", name);
         }
+        let _ = self.remove_alias(name);
         fs::remove_dir_all(&profile_dir)?;
         if self.active.as_deref() == Some(name) {
             let _ = fs::remove_file(active_profile_path_from_profiles_dir(&self.profiles_dir));
@@ -240,6 +244,61 @@ impl ProfileManager {
     /// Get the profile directory for a given name.
     pub fn profile_dir(&self, name: &str) -> PathBuf {
         self.profiles_dir.join(name)
+    }
+
+    /// Return the wrapper alias path for a profile.
+    pub fn alias_path(&self, name: &str) -> Result<PathBuf> {
+        validate_profile_name(name)?;
+        Ok(profile_alias_path(
+            parent_hakimi_home(&self.profiles_dir),
+            name,
+        ))
+    }
+
+    /// Create or refresh a managed wrapper alias for a profile.
+    pub fn create_alias(&self, name: &str) -> Result<PathBuf> {
+        validate_profile_name(name)?;
+        if RESERVED_ALIAS_NAMES.contains(&name) {
+            bail!("Profile alias `{name}` would shadow a Hakimi command");
+        }
+        if !self.exists(name) {
+            bail!("Profile '{}' does not exist", name);
+        }
+
+        let path = self.alias_path(name)?;
+        let content = profile_alias_content(name);
+        if path.exists() && !managed_profile_alias_matches(&path, name) {
+            bail!(
+                "Alias path already exists and is not managed by Hakimi: {}",
+                path.display()
+            );
+        }
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::write(&path, content).with_context(|| format!("failed to write {}", path.display()))?;
+        make_profile_alias_executable(&path)?;
+        Ok(path)
+    }
+
+    /// Remove a managed wrapper alias for a profile.
+    pub fn remove_alias(&self, name: &str) -> Result<bool> {
+        validate_profile_name(name)?;
+        let path = self.alias_path(name)?;
+        if !path.exists() {
+            return Ok(false);
+        }
+        if !managed_profile_alias_matches(&path, name) {
+            bail!(
+                "Alias path exists but is not managed by Hakimi: {}",
+                path.display()
+            );
+        }
+        fs::remove_file(&path)
+            .with_context(|| format!("failed to remove alias {}", path.display()))?;
+        Ok(true)
     }
 
     /// Get the default Hakimi home directory that owns this profile store.
@@ -364,11 +423,25 @@ pub fn profile_response(args: &[String], hakimi_home: &Path) -> String {
                 Ok(parsed) => parsed,
                 Err(err) => return err.to_string(),
             };
+            let create_alias = options.create_alias;
             match manager.create_with_options(&name, options) {
-                Ok(path) => format!("Profile `{name}` created at {}", path.display()),
+                Ok(path) => {
+                    let mut response = format!("Profile `{name}` created at {}", path.display());
+                    if create_alias {
+                        match manager.create_alias(&name) {
+                            Ok(alias_path) => response
+                                .push_str(&format!("\nAlias created at {}", alias_path.display())),
+                            Err(err) => {
+                                response.push_str(&format!("\nAlias creation failed: {err}"))
+                            }
+                        }
+                    }
+                    response
+                }
                 Err(err) => format!("Failed to create profile `{name}`: {err}"),
             }
         }
+        "alias" => profile_alias_response(&manager, &args[1..]),
         "export" => {
             let (name, output) = match parse_profile_export_args(&args[1..]) {
                 Ok(parsed) => parsed,
@@ -485,13 +558,50 @@ fn profile_path_response(manager: &ProfileManager, name: Option<&str>) -> String
     }
 }
 
+fn profile_alias_response(manager: &ProfileManager, args: &[String]) -> String {
+    match args.first().map(String::as_str).unwrap_or("help") {
+        "create" | "add" => {
+            let Some(name) = args.get(1) else {
+                return "Usage: profile alias create <name>".to_string();
+            };
+            match manager.create_alias(name) {
+                Ok(path) => format!("Alias for profile `{name}` created at {}", path.display()),
+                Err(err) => format!("Failed to create alias for profile `{name}`: {err}"),
+            }
+        }
+        "remove" | "delete" | "rm" => {
+            let Some(name) = args.get(1) else {
+                return "Usage: profile alias remove <name>".to_string();
+            };
+            match manager.remove_alias(name) {
+                Ok(true) => format!("Alias for profile `{name}` removed."),
+                Ok(false) => format!("No alias found for profile `{name}`."),
+                Err(err) => format!("Failed to remove alias for profile `{name}`: {err}"),
+            }
+        }
+        "path" => {
+            let Some(name) = args.get(1) else {
+                return "Usage: profile alias path <name>".to_string();
+            };
+            match manager.alias_path(name) {
+                Ok(path) => path.display().to_string(),
+                Err(err) => format!("Failed to resolve alias path for profile `{name}`: {err}"),
+            }
+        }
+        "help" | "-h" | "--help" => "Usage: profile alias <create|remove|path> <name>".to_string(),
+        command => format!("Unknown profile alias command: `{command}`"),
+    }
+}
+
 fn profile_usage() -> String {
-    "Usage: profile <list|current|path|create|export|use|delete>\n\
+    "Usage: profile <list|current|path|create|alias|export|use|delete>\n\
      Examples:\n\
      - profile list\n\
      - profile create coder Coding workspace\n\
      - profile create review --clone=default Review workspace\n\
      - profile create fullcopy --clone-all --from coder\n\
+     - profile create research --alias Research workspace\n\
+     - profile alias create coder\n\
      - profile export coder ./coder.tar.gz\n\
      - profile use coder\n\
      - profile use default\n\
@@ -521,6 +631,12 @@ fn parse_profile_create_args(args: &[String]) -> Result<(String, ProfileCreateOp
             }
             "--clone-all" => {
                 set_clone_mode(&mut options, ProfileCloneMode::Full)?;
+            }
+            "--alias" => {
+                options.create_alias = true;
+            }
+            "--no-alias" => {
+                options.create_alias = false;
             }
             "--from" | "--clone-from" => {
                 index += 1;
@@ -833,6 +949,50 @@ fn active_profile_path_from_profiles_dir(profiles_dir: &Path) -> PathBuf {
     parent_hakimi_home(profiles_dir).join(ACTIVE_PROFILE_FILE)
 }
 
+fn profile_alias_path(hakimi_home: &Path, name: &str) -> PathBuf {
+    hakimi_home.join("bin").join(profile_alias_file_name(name))
+}
+
+fn profile_alias_file_name(name: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.cmd")
+    } else {
+        name.to_string()
+    }
+}
+
+fn profile_alias_content(name: &str) -> String {
+    if cfg!(windows) {
+        format!("@echo off\r\nREM hakimi-profile-alias: {name}\r\nhakimi --profile {name} %*\r\n")
+    } else {
+        format!(
+            "#!/usr/bin/env sh\n# hakimi-profile-alias: {name}\nexec hakimi --profile {name} \"$@\"\n"
+        )
+    }
+}
+
+fn managed_profile_alias_matches(path: &Path, name: &str) -> bool {
+    fs::read_to_string(path)
+        .map(|content| content.contains(&format!("hakimi-profile-alias: {name}")))
+        .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn make_profile_alias_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .with_context(|| format!("failed to chmod {}", path.display()))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn make_profile_alias_executable(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 fn parent_hakimi_home(profiles_dir: &Path) -> &Path {
     profiles_dir.parent().unwrap_or(profiles_dir)
 }
@@ -956,6 +1116,52 @@ mod tests {
 
         let path = profile_response_from_raw(Some("path coder"), tmp.path());
         assert!(path.ends_with("profiles\\coder") || path.ends_with("profiles/coder"));
+    }
+
+    #[test]
+    fn test_profile_alias_create_path_and_remove() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = ProfileManager::new(tmp.path());
+        manager.create("coder", Some("Coding")).unwrap();
+
+        let alias_path = manager.create_alias("coder").unwrap();
+        assert!(alias_path.exists());
+        assert!(alias_path.starts_with(tmp.path().join("bin")));
+
+        let alias = fs::read_to_string(&alias_path).unwrap();
+        assert!(alias.contains("hakimi-profile-alias: coder"));
+        assert!(alias.contains("--profile coder"));
+
+        assert_eq!(manager.alias_path("coder").unwrap(), alias_path);
+        assert!(manager.remove_alias("coder").unwrap());
+        assert!(!alias_path.exists());
+        assert!(!manager.remove_alias("coder").unwrap());
+    }
+
+    #[test]
+    fn test_profile_alias_does_not_overwrite_unmanaged_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = ProfileManager::new(tmp.path());
+        manager.create("coder", None).unwrap();
+
+        let alias_path = manager.alias_path("coder").unwrap();
+        fs::create_dir_all(alias_path.parent().unwrap()).unwrap();
+        fs::write(&alias_path, "user command\n").unwrap();
+
+        let result = manager.create_alias("coder");
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(alias_path).unwrap(), "user command\n");
+    }
+
+    #[test]
+    fn test_profile_alias_rejects_reserved_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = ProfileManager::new(tmp.path());
+        manager.create("hakimi", None).unwrap();
+
+        let result = manager.create_alias("hakimi");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("shadow"));
     }
 
     #[test]
@@ -1226,6 +1432,39 @@ mod tests {
         );
         assert!(export.contains("Profile `coder` exported"));
         assert!(out.exists());
+    }
+
+    #[test]
+    fn test_profile_response_create_with_alias() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let create = profile_response(
+            &[
+                "create".to_string(),
+                "coder".to_string(),
+                "--alias".to_string(),
+                "Coding".to_string(),
+            ],
+            tmp.path(),
+        );
+        assert!(create.contains("Profile `coder` created"));
+        assert!(create.contains("Alias created"));
+        assert!(
+            ProfileManager::new(tmp.path())
+                .alias_path("coder")
+                .unwrap()
+                .exists()
+        );
+
+        let remove = profile_response(
+            &[
+                "alias".to_string(),
+                "remove".to_string(),
+                "coder".to_string(),
+            ],
+            tmp.path(),
+        );
+        assert!(remove.contains("removed"));
     }
 
     fn names_in_archive(path: &Path) -> Vec<String> {
