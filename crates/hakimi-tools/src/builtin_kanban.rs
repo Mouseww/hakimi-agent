@@ -17,6 +17,8 @@ const MAX_LIMIT: usize = 200;
 const DEFAULT_LOG_TAIL_BYTES: usize = 16 * 1024;
 const MAX_LOG_TAIL_BYTES: usize = 128 * 1024;
 const DEFAULT_BOARD: &str = "default";
+const DEFAULT_NOTIFY_EVENT_KINDS: &[&str] =
+    &["completed", "blocked", "gave_up", "crashed", "timed_out"];
 const VALID_STATUSES: &[&str] = &[
     "triage", "todo", "ready", "running", "blocked", "review", "done", "archived",
 ];
@@ -67,12 +69,27 @@ CREATE TABLE IF NOT EXISTS kanban_events (
     FOREIGN KEY(task_id) REFERENCES kanban_tasks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS kanban_notify_subs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
+    thread_id TEXT,
+    notifier_profile TEXT,
+    last_event_id INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY(task_id) REFERENCES kanban_tasks(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_kanban_tasks_status ON kanban_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_kanban_tasks_assignee ON kanban_tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_kanban_comments_task ON kanban_comments(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_kanban_links_child ON kanban_links(child_id);
 CREATE INDEX IF NOT EXISTS idx_kanban_events_task ON kanban_events(task_id, id);
 CREATE INDEX IF NOT EXISTS idx_kanban_events_kind ON kanban_events(kind, created_at);
+CREATE INDEX IF NOT EXISTS idx_kanban_notify_task ON kanban_notify_subs(task_id);
+CREATE INDEX IF NOT EXISTS idx_kanban_notify_profile ON kanban_notify_subs(notifier_profile, last_event_id);
 "#;
 
 #[derive(Debug, Clone, Serialize)]
@@ -120,6 +137,26 @@ pub struct KanbanEvent {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct KanbanNotifySub {
+    pub id: i64,
+    pub task_id: String,
+    pub platform: String,
+    pub chat_id: String,
+    pub thread_id: Option<String>,
+    pub notifier_profile: Option<String>,
+    pub last_event_id: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KanbanNotification {
+    pub subscription: KanbanNotifySub,
+    pub event: KanbanEvent,
+    pub terminal: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct KanbanDiagnostic {
     pub kind: String,
     pub severity: String,
@@ -146,6 +183,15 @@ struct CreateTask {
     assignee: Option<String>,
     status: String,
     priority: i64,
+}
+
+#[derive(Debug, Clone)]
+struct NotifyTarget {
+    task_id: String,
+    platform: String,
+    chat_id: String,
+    thread_id: Option<String>,
+    notifier_profile: Option<String>,
 }
 
 pub struct KanbanStore {
@@ -665,6 +711,220 @@ impl KanbanStore {
         Ok(events)
     }
 
+    fn add_notify_sub(&self, target: NotifyTarget) -> Result<KanbanNotifySub> {
+        self.get_task_required(&target.task_id)?;
+        let platform = require_notify_text(&target.platform, "platform")?;
+        let chat_id = require_notify_text(&target.chat_id, "chat_id")?;
+        let thread_id = normalize_notify_text(target.thread_id.as_deref())?;
+        let notifier_profile = normalize_profile_arg(target.notifier_profile.as_deref())?;
+        let now = now_epoch();
+        let conn = self.connect()?;
+        if let Some(existing) =
+            self.get_notify_sub(&target.task_id, platform, chat_id, thread_id.as_deref())?
+        {
+            conn.execute(
+                "UPDATE kanban_notify_subs
+                    SET notifier_profile = COALESCE(?1, notifier_profile),
+                        updated_at = ?2
+                  WHERE id = ?3",
+                params![notifier_profile.as_deref(), now, existing.id],
+            )
+            .map_err(db_err)?;
+        } else {
+            conn.execute(
+                "INSERT INTO kanban_notify_subs
+                    (task_id, platform, chat_id, thread_id, notifier_profile, last_event_id, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?6)",
+                params![
+                    target.task_id.as_str(),
+                    platform,
+                    chat_id,
+                    thread_id.as_deref(),
+                    notifier_profile.as_deref(),
+                    now
+                ],
+            )
+            .map_err(db_err)?;
+        }
+        self.get_notify_sub(&target.task_id, platform, chat_id, thread_id.as_deref())?
+            .ok_or_else(|| {
+                HakimiError::Tool("kanban notification subscription was not saved".into())
+            })
+    }
+
+    fn list_notify_subs(&self, task_id: Option<&str>) -> Result<Vec<KanbanNotifySub>> {
+        let conn = self.connect()?;
+        if let Some(task_id) = task_id.and_then(non_empty_str) {
+            self.get_task_required(task_id)?;
+            let mut stmt = conn
+                .prepare(
+                    "SELECT * FROM kanban_notify_subs
+                     WHERE task_id = ?1
+                     ORDER BY created_at ASC, id ASC",
+                )
+                .map_err(db_err)?;
+            let rows = stmt
+                .query_map(params![task_id], KanbanNotifySub::from_row)
+                .map_err(db_err)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(db_err)
+        } else {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT * FROM kanban_notify_subs
+                     ORDER BY task_id ASC, created_at ASC, id ASC",
+                )
+                .map_err(db_err)?;
+            let rows = stmt
+                .query_map([], KanbanNotifySub::from_row)
+                .map_err(db_err)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(db_err)
+        }
+    }
+
+    fn remove_notify_sub(&self, target: NotifyTarget) -> Result<JsonValue> {
+        let platform = require_notify_text(&target.platform, "platform")?;
+        let chat_id = require_notify_text(&target.chat_id, "chat_id")?;
+        let thread_id = normalize_notify_text(target.thread_id.as_deref())?;
+        let conn = self.connect()?;
+        let removed = conn
+            .execute(
+                "DELETE FROM kanban_notify_subs
+                 WHERE task_id = ?1
+                   AND platform = ?2
+                   AND chat_id = ?3
+                   AND COALESCE(thread_id, '') = ?4",
+                params![
+                    target.task_id.as_str(),
+                    platform,
+                    chat_id,
+                    thread_id.as_deref().unwrap_or("")
+                ],
+            )
+            .map_err(db_err)?;
+        Ok(json!({"removed": removed > 0}))
+    }
+
+    fn claim_notify_events(
+        &self,
+        notifier_profile: Option<&str>,
+        kinds: &[String],
+        limit: usize,
+    ) -> Result<Vec<KanbanNotification>> {
+        let profile = normalize_profile_arg(notifier_profile)?;
+        let kinds = normalize_event_kinds(kinds)?;
+        let limit = limit.clamp(1, MAX_LIMIT);
+        let mut notifications = Vec::new();
+        for sub in self.list_notify_subs(None)? {
+            if let Some(profile) = profile.as_deref() {
+                if sub.notifier_profile.as_deref() != Some(profile) {
+                    continue;
+                }
+            }
+            let claimed = self.claim_for_sub(&sub, &kinds, limit - notifications.len())?;
+            notifications.extend(claimed);
+            if notifications.len() >= limit {
+                break;
+            }
+        }
+        Ok(notifications)
+    }
+
+    fn claim_for_sub(
+        &self,
+        sub: &KanbanNotifySub,
+        kinds: &[String],
+        remaining: usize,
+    ) -> Result<Vec<KanbanNotification>> {
+        if remaining == 0 {
+            return Ok(Vec::new());
+        }
+        let conn = self.connect()?;
+        let placeholders = vec!["?"; kinds.len()].join(",");
+        let clauses = [
+            "task_id = ?".to_string(),
+            "id > ?".to_string(),
+            format!("kind IN ({placeholders})"),
+        ];
+        let mut values = vec![sub.task_id.clone(), sub.last_event_id.to_string()];
+        values.extend(kinds.iter().cloned());
+        let sql = format!(
+            "SELECT * FROM kanban_events WHERE {} ORDER BY id ASC LIMIT {}",
+            clauses.join(" AND "),
+            remaining
+        );
+        let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+        let rows = stmt
+            .query_map(
+                params_from_iter(values.iter().map(String::as_str)),
+                KanbanEvent::from_row,
+            )
+            .map_err(db_err)?;
+        let events = rows
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        drop(stmt);
+        if events.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let new_cursor = events
+            .last()
+            .map(|event| event.id)
+            .unwrap_or(sub.last_event_id);
+        let updated = conn
+            .execute(
+                "UPDATE kanban_notify_subs
+                SET last_event_id = ?1,
+                    updated_at = ?2
+              WHERE id = ?3 AND last_event_id = ?4",
+                params![new_cursor, now_epoch(), sub.id, sub.last_event_id],
+            )
+            .map_err(db_err)?;
+        if updated == 0 {
+            return Ok(Vec::new());
+        }
+        let task = self.get_task_required(&sub.task_id)?;
+        let task_terminal = matches!(task.status.as_str(), "done" | "archived");
+        if task_terminal {
+            conn.execute(
+                "DELETE FROM kanban_notify_subs WHERE id = ?1",
+                params![sub.id],
+            )
+            .map_err(db_err)?;
+        }
+        Ok(events
+            .into_iter()
+            .map(|event| KanbanNotification {
+                subscription: sub.clone(),
+                event,
+                terminal: task_terminal,
+            })
+            .collect())
+    }
+
+    fn get_notify_sub(
+        &self,
+        task_id: &str,
+        platform: &str,
+        chat_id: &str,
+        thread_id: Option<&str>,
+    ) -> Result<Option<KanbanNotifySub>> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT * FROM kanban_notify_subs
+             WHERE task_id = ?1
+               AND platform = ?2
+               AND chat_id = ?3
+               AND COALESCE(thread_id, '') = ?4",
+            params![task_id, platform, chat_id, thread_id.unwrap_or("")],
+            KanbanNotifySub::from_row,
+        )
+        .optional()
+        .map_err(db_err)
+    }
+
     fn diagnostics(&self, task_id: Option<&str>) -> Result<Vec<KanbanDiagnostic>> {
         let tasks = if let Some(task_id) = task_id.and_then(non_empty_str) {
             vec![self.get_task_required(task_id)?]
@@ -930,6 +1190,22 @@ impl KanbanEvent {
     }
 }
 
+impl KanbanNotifySub {
+    fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            task_id: row.get("task_id")?,
+            platform: row.get("platform")?,
+            chat_id: row.get("chat_id")?,
+            thread_id: row.get("thread_id")?,
+            notifier_profile: row.get("notifier_profile")?,
+            last_event_id: row.get("last_event_id")?,
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
+        })
+    }
+}
+
 #[derive(Clone, Copy)]
 enum KanbanToolKind {
     Show,
@@ -945,6 +1221,10 @@ enum KanbanToolKind {
     Diagnostics,
     Assign,
     WorkerLog,
+    NotifySubscribe,
+    NotifyList,
+    NotifyUnsubscribe,
+    NotifyClaim,
 }
 
 pub struct KanbanTool {
@@ -972,6 +1252,10 @@ pub fn kanban_tools() -> Vec<Arc<dyn Tool>> {
         Arc::new(KanbanTool::new(KanbanToolKind::Diagnostics)),
         Arc::new(KanbanTool::new(KanbanToolKind::Assign)),
         Arc::new(KanbanTool::new(KanbanToolKind::WorkerLog)),
+        Arc::new(KanbanTool::new(KanbanToolKind::NotifySubscribe)),
+        Arc::new(KanbanTool::new(KanbanToolKind::NotifyList)),
+        Arc::new(KanbanTool::new(KanbanToolKind::NotifyUnsubscribe)),
+        Arc::new(KanbanTool::new(KanbanToolKind::NotifyClaim)),
     ]
 }
 
@@ -992,6 +1276,10 @@ impl Tool for KanbanTool {
             KanbanToolKind::Diagnostics => "kanban_diagnostics",
             KanbanToolKind::Assign => "kanban_assign",
             KanbanToolKind::WorkerLog => "kanban_worker_log",
+            KanbanToolKind::NotifySubscribe => "kanban_notify_subscribe",
+            KanbanToolKind::NotifyList => "kanban_notify_list",
+            KanbanToolKind::NotifyUnsubscribe => "kanban_notify_unsubscribe",
+            KanbanToolKind::NotifyClaim => "kanban_notify_claim",
         }
     }
 
@@ -1018,6 +1306,16 @@ impl Tool for KanbanTool {
             }
             KanbanToolKind::Assign => "Assign or unassign a Kanban task to a profile.",
             KanbanToolKind::WorkerLog => "Append or read a durable worker log for a Kanban task.",
+            KanbanToolKind::NotifySubscribe => {
+                "Subscribe a gateway/chat target to Kanban task notification events."
+            }
+            KanbanToolKind::NotifyList => {
+                "List Kanban notification subscriptions for one task or the whole board."
+            }
+            KanbanToolKind::NotifyUnsubscribe => "Remove a Kanban task notification subscription.",
+            KanbanToolKind::NotifyClaim => {
+                "Claim unread Kanban notification events and advance subscription cursors."
+            }
         }
     }
 
@@ -1033,6 +1331,10 @@ impl Tool for KanbanTool {
             KanbanToolKind::Diagnostics => "\u{26a0}",
             KanbanToolKind::Assign => "\u{1f464}",
             KanbanToolKind::WorkerLog => "\u{1f4dd}",
+            KanbanToolKind::NotifySubscribe
+            | KanbanToolKind::NotifyList
+            | KanbanToolKind::NotifyUnsubscribe
+            | KanbanToolKind::NotifyClaim => "\u{1f514}",
             _ => "\u{1f4cb}",
         }
     }
@@ -1134,6 +1436,28 @@ impl Tool for KanbanTool {
                     "board": board_schema_prop()
                 },
                 "required": ["task_id"]
+            }),
+            KanbanToolKind::NotifySubscribe => notify_target_schema(true),
+            KanbanToolKind::NotifyList => json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "board": board_schema_prop()
+                }
+            }),
+            KanbanToolKind::NotifyUnsubscribe => notify_target_schema(false),
+            KanbanToolKind::NotifyClaim => json!({
+                "type": "object",
+                "properties": {
+                    "notifier_profile": {"type": "string"},
+                    "kinds": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Event kinds to claim. Defaults to completed, blocked, gave_up, crashed, timed_out."
+                    },
+                    "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+                    "board": board_schema_prop()
+                }
             }),
         }
     }
@@ -1250,6 +1574,45 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
             Some(task_id) => json_result(store.events(task_id, DEFAULT_LIMIT)),
             None => Err(HakimiError::Tool("usage: /kanban events <task_id>".into())),
         },
+        "notify-subscribe" | "subscribe" => match (parts.next(), parts.next(), parts.next()) {
+            (Some(task_id), Some(platform), Some(chat_id)) => {
+                let thread_id = parts.next().map(str::to_string);
+                let notifier_profile = parts.next().map(str::to_string);
+                json_result(store.add_notify_sub(NotifyTarget {
+                    task_id: task_id.to_string(),
+                    platform: platform.to_string(),
+                    chat_id: chat_id.to_string(),
+                    thread_id,
+                    notifier_profile,
+                }))
+            }
+            _ => Err(HakimiError::Tool(
+                "usage: /kanban notify-subscribe <task_id> <platform> <chat_id> [thread_id] [notifier_profile]".into(),
+            )),
+        },
+        "notify-list" | "subscriptions" => {
+            let task_id = parts.next();
+            json_result(store.list_notify_subs(task_id))
+        }
+        "notify-unsubscribe" | "unsubscribe" => match (parts.next(), parts.next(), parts.next()) {
+            (Some(task_id), Some(platform), Some(chat_id)) => {
+                let thread_id = parts.next().map(str::to_string);
+                json_result(store.remove_notify_sub(NotifyTarget {
+                    task_id: task_id.to_string(),
+                    platform: platform.to_string(),
+                    chat_id: chat_id.to_string(),
+                    thread_id,
+                    notifier_profile: None,
+                }))
+            }
+            _ => Err(HakimiError::Tool(
+                "usage: /kanban notify-unsubscribe <task_id> <platform> <chat_id> [thread_id]".into(),
+            )),
+        },
+        "notify-claim" => {
+            let notifier_profile = parts.next();
+            json_result(store.claim_notify_events(notifier_profile, &[], DEFAULT_LIMIT))
+        }
         "assign" => match parts.next() {
             Some(task_id) => {
                 let profile = parts.next();
@@ -1422,6 +1785,36 @@ fn execute_kanban_tool(
                 }
             }
         }
+        KanbanToolKind::NotifySubscribe => {
+            json_result(store.add_notify_sub(notify_target_from_args(args, true)?))
+        }
+        KanbanToolKind::NotifyList => {
+            let task_id = args.get("task_id").and_then(JsonValue::as_str);
+            json_result(store.list_notify_subs(task_id))
+        }
+        KanbanToolKind::NotifyUnsubscribe => {
+            json_result(store.remove_notify_sub(notify_target_from_args(args, false)?))
+        }
+        KanbanToolKind::NotifyClaim => {
+            let profile = args.get("notifier_profile").and_then(JsonValue::as_str);
+            let kinds = args
+                .get("kinds")
+                .and_then(JsonValue::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(JsonValue::as_str)
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let limit = args
+                .get("limit")
+                .and_then(JsonValue::as_u64)
+                .and_then(|n| usize::try_from(n).ok())
+                .unwrap_or(DEFAULT_LIMIT);
+            json_result(store.claim_notify_events(profile, &kinds, limit))
+        }
     }
 }
 
@@ -1458,6 +1851,42 @@ fn task_id_note_schema(note_name: &str) -> JsonValue {
         "type": "object",
         "properties": properties,
         "required": ["task_id"]
+    })
+}
+
+fn notify_target_schema(include_profile: bool) -> JsonValue {
+    let mut properties = serde_json::Map::new();
+    properties.insert("task_id".to_string(), json!({"type": "string"}));
+    properties.insert("platform".to_string(), json!({"type": "string"}));
+    properties.insert("chat_id".to_string(), json!({"type": "string"}));
+    properties.insert("thread_id".to_string(), json!({"type": "string"}));
+    if include_profile {
+        properties.insert("notifier_profile".to_string(), json!({"type": "string"}));
+    }
+    properties.insert("board".to_string(), board_schema_prop());
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["task_id", "platform", "chat_id"]
+    })
+}
+
+fn notify_target_from_args(args: &JsonValue, include_profile: bool) -> Result<NotifyTarget> {
+    Ok(NotifyTarget {
+        task_id: require_str(args, "task_id")?.to_string(),
+        platform: require_str(args, "platform")?.to_string(),
+        chat_id: require_str(args, "chat_id")?.to_string(),
+        thread_id: args
+            .get("thread_id")
+            .and_then(JsonValue::as_str)
+            .map(str::to_string),
+        notifier_profile: include_profile
+            .then(|| {
+                args.get("notifier_profile")
+                    .and_then(JsonValue::as_str)
+                    .map(str::to_string)
+            })
+            .flatten(),
     })
 }
 
@@ -1531,6 +1960,10 @@ fn kanban_help() -> String {
         "  `worker-log <id> [body]`",
         "  `link <parent_id> <child_id> [relation]`",
         "  `events <id>`",
+        "  `notify-subscribe <id> <platform> <chat_id> [thread_id] [profile]`",
+        "  `notify-list [id]`",
+        "  `notify-unsubscribe <id> <platform> <chat_id> [thread_id]`",
+        "  `notify-claim [profile]`",
         "  `diagnostics [id]`",
         "  `stats`",
     ]
@@ -1608,6 +2041,57 @@ fn normalize_profile_arg(value: Option<&str>) -> Result<Option<String>> {
         )));
     }
     Ok(Some(normalized.to_string()))
+}
+
+fn require_notify_text<'a>(value: &'a str, name: &str) -> Result<&'a str> {
+    let trimmed = non_empty_str(value)
+        .ok_or_else(|| HakimiError::Tool(format!("kanban notification {name} is required")))?;
+    if trimmed.len() > 256 || trimmed.chars().any(char::is_control) {
+        return Err(HakimiError::Tool(format!(
+            "invalid kanban notification {name}: use 1-256 non-control characters"
+        )));
+    }
+    Ok(trimmed)
+}
+
+fn normalize_notify_text(value: Option<&str>) -> Result<Option<String>> {
+    let Some(value) = value.and_then(non_empty_str) else {
+        return Ok(None);
+    };
+    if value.len() > 256 || value.chars().any(char::is_control) {
+        return Err(HakimiError::Tool(
+            "invalid kanban notification thread_id: use 1-256 non-control characters".into(),
+        ));
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn normalize_event_kinds(kinds: &[String]) -> Result<Vec<String>> {
+    if kinds.is_empty() {
+        return Ok(DEFAULT_NOTIFY_EVENT_KINDS
+            .iter()
+            .map(|kind| (*kind).to_string())
+            .collect());
+    }
+    let mut normalized = Vec::new();
+    for kind in kinds {
+        let kind = non_empty_str(kind).ok_or_else(|| {
+            HakimiError::Tool("kanban notification event kind is required".into())
+        })?;
+        if kind.len() > 64
+            || !kind
+                .chars()
+                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+        {
+            return Err(HakimiError::Tool(format!(
+                "invalid kanban notification event kind: {kind}; use lowercase letters, digits, or underscore"
+            )));
+        }
+        if !normalized.iter().any(|existing| existing == kind) {
+            normalized.push(kind.to_string());
+        }
+    }
+    Ok(normalized)
 }
 
 fn non_empty_str(value: &str) -> Option<&str> {
@@ -2010,12 +2494,12 @@ mod tests {
     }
 
     #[test]
-    fn exposes_thirteen_hermes_named_tools() {
+    fn exposes_kanban_tools_with_notifications() {
         let names = kanban_tools()
             .iter()
             .map(|tool| tool.name().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(names.len(), 13);
+        assert_eq!(names.len(), 17);
         assert!(names.contains(&"kanban_create".to_string()));
         assert!(names.contains(&"kanban_heartbeat".to_string()));
         assert!(names.contains(&"kanban_link".to_string()));
@@ -2023,6 +2507,10 @@ mod tests {
         assert!(names.contains(&"kanban_diagnostics".to_string()));
         assert!(names.contains(&"kanban_assign".to_string()));
         assert!(names.contains(&"kanban_worker_log".to_string()));
+        assert!(names.contains(&"kanban_notify_subscribe".to_string()));
+        assert!(names.contains(&"kanban_notify_list".to_string()));
+        assert!(names.contains(&"kanban_notify_unsubscribe".to_string()));
+        assert!(names.contains(&"kanban_notify_claim".to_string()));
     }
 
     #[test]
@@ -2119,6 +2607,145 @@ mod tests {
             !diagnostics
                 .iter()
                 .any(|diag| diag.kind == "missing_worker_log")
+        );
+    }
+
+    #[test]
+    fn notify_subscribe_list_and_unsubscribe_are_durable() {
+        let (_dir, store) = store();
+        let task = create(&store, "Notify me");
+
+        let sub = store
+            .add_notify_sub(NotifyTarget {
+                task_id: task.id.clone(),
+                platform: "telegram".to_string(),
+                chat_id: "chat-1".to_string(),
+                thread_id: Some("thread-1".to_string()),
+                notifier_profile: Some("default".to_string()),
+            })
+            .unwrap();
+
+        assert_eq!(sub.task_id, task.id);
+        assert_eq!(sub.platform, "telegram");
+        assert_eq!(sub.chat_id, "chat-1");
+        assert_eq!(sub.thread_id.as_deref(), Some("thread-1"));
+        assert_eq!(store.list_notify_subs(Some(&task.id)).unwrap().len(), 1);
+
+        let removed = store
+            .remove_notify_sub(NotifyTarget {
+                task_id: task.id.clone(),
+                platform: "telegram".to_string(),
+                chat_id: "chat-1".to_string(),
+                thread_id: Some("thread-1".to_string()),
+                notifier_profile: None,
+            })
+            .unwrap();
+        assert!(removed["removed"].as_bool().unwrap());
+        assert!(store.list_notify_subs(Some(&task.id)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn notify_claim_advances_cursor_and_keeps_blocked_subscription() {
+        let (_dir, store) = store();
+        let task = create(&store, "Blocked notification");
+        store
+            .add_notify_sub(NotifyTarget {
+                task_id: task.id.clone(),
+                platform: "telegram".to_string(),
+                chat_id: "chat-1".to_string(),
+                thread_id: None,
+                notifier_profile: Some("default".to_string()),
+            })
+            .unwrap();
+
+        store.block_task(&task.id, "Need input").unwrap();
+        let claimed = store
+            .claim_notify_events(Some("default"), &[], DEFAULT_LIMIT)
+            .unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].event.kind, "blocked");
+        assert!(!claimed[0].terminal);
+
+        let subs = store.list_notify_subs(Some(&task.id)).unwrap();
+        assert_eq!(subs.len(), 1);
+        assert!(subs[0].last_event_id >= claimed[0].event.id);
+
+        let claimed_again = store
+            .claim_notify_events(Some("default"), &[], DEFAULT_LIMIT)
+            .unwrap();
+        assert!(claimed_again.is_empty());
+    }
+
+    #[test]
+    fn notify_claim_final_status_removes_subscription() {
+        let (_dir, store) = store();
+        let task = create(&store, "Done notification");
+        execute_kanban_tool(
+            KanbanToolKind::NotifySubscribe,
+            &json!({
+                "task_id": task.id,
+                "platform": "telegram",
+                "chat_id": "chat-1",
+                "notifier_profile": "default"
+            }),
+            &store,
+        )
+        .unwrap();
+
+        store.complete_task(&task.id, Some("Finished")).unwrap();
+        let claimed = execute_kanban_tool(
+            KanbanToolKind::NotifyClaim,
+            &json!({"notifier_profile": "default"}),
+            &store,
+        )
+        .unwrap();
+        let claimed: JsonValue = serde_json::from_str(&claimed).unwrap();
+        assert_eq!(claimed.as_array().unwrap().len(), 1);
+        assert_eq!(claimed[0]["event"]["kind"], "completed");
+        assert!(claimed[0]["terminal"].as_bool().unwrap());
+        assert!(store.list_notify_subs(Some(&task.id)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn notify_claim_filters_by_notifier_profile() {
+        let (_dir, store) = store();
+        let default_task = create(&store, "Default owned");
+        let other_task = create(&store, "Other owned");
+
+        for (task_id, profile) in [(&default_task.id, "default"), (&other_task.id, "other")] {
+            store
+                .add_notify_sub(NotifyTarget {
+                    task_id: task_id.to_string(),
+                    platform: "telegram".to_string(),
+                    chat_id: format!("chat-{profile}"),
+                    thread_id: None,
+                    notifier_profile: Some(profile.to_string()),
+                })
+                .unwrap();
+        }
+
+        store
+            .block_task(&default_task.id, "Default blocker")
+            .unwrap();
+        store.block_task(&other_task.id, "Other blocker").unwrap();
+        let claimed = store
+            .claim_notify_events(Some("default"), &[], DEFAULT_LIMIT)
+            .unwrap();
+
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(
+            claimed[0].subscription.notifier_profile.as_deref(),
+            Some("default")
+        );
+        assert_eq!(claimed[0].event.task_id, default_task.id);
+        assert_eq!(
+            store
+                .list_notify_subs(Some(&other_task.id))
+                .unwrap()
+                .first()
+                .unwrap()
+                .last_event_id,
+            0
         );
     }
 

@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.148-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.149-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1404-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -81,14 +81,14 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Model-aware context windows: `model.context_length` overrides static metadata before compression and tool disclosure thresholds
 - Intent classification into 10 categories with next-tool prediction
 
-**Built-in Tools (54+)**
+**Built-in Tools (58+)**
 - **Files**: read, write, search, patch with safe-root sandbox
 - **Shell**: terminal, background processes
 - **Web**: search, extract, browser automation (Chromium)
 - **Code**: Python/JS/Bash execution with sandbox
 - **Media**: vision analysis, video analysis, TTS, transcription
 - **Memory**: persistent memory + FTS5 full-text search
-- **Productivity**: todo, Kanban boards with profile routing, worker logs, event trails, diagnostics, cron scheduler
+- **Productivity**: todo, Kanban boards with profile routing, worker logs, event trails, diagnostics, notification subscriptions, cron scheduler
 - **Meta**: sub-agent delegation, skills system, MCP plugins
 
 **Multi-Platform Gateway**
@@ -227,7 +227,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Role adaptation
 - [x] Meta-skill auto-extraction
 - [x] Browser automation (Chromium)
-- [x] Kanban task boards
+- [x] Kanban task boards + notification cursors
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
 - [ ] CLI voice mode
