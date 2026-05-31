@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use hakimi_common::{HakimiError, Result, ToolDefinition, ToolSearchConfig};
+use hakimi_common::{HakimiError, Result, ToolDefinition, ToolOutputConfig, ToolSearchConfig};
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::RwLock;
 
@@ -17,6 +17,7 @@ struct ToolRegistryInner {
     tools: HashMap<String, Arc<dyn Tool>>,
     generation: u64,
     tool_search: ToolSearchRuntimeConfig,
+    tool_output: ToolOutputConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -60,6 +61,12 @@ impl ToolRegistry {
             config: config.normalized(),
             context_length,
         };
+    }
+
+    /// Configure framework-level tool result truncation.
+    pub async fn configure_tool_output(&self, config: ToolOutputConfig) {
+        let mut inner = self.inner.write().await;
+        inner.tool_output = config.normalized();
     }
 
     /// Get a tool by name.
@@ -121,7 +128,13 @@ impl ToolRegistry {
         };
 
         if let Some(tool) = tool {
-            tool.execute(args, ctx).await
+            let max_bytes = {
+                let inner = self.inner.read().await;
+                tool.max_result_size()
+                    .unwrap_or(inner.tool_output.max_bytes)
+            };
+            let result = tool.execute(args, ctx).await?;
+            Ok(truncate_tool_output(result, max_bytes))
         } else if is_bridge_tool(name) {
             self.dispatch_tool_search_bridge(name, args, ctx).await
         } else {
@@ -255,13 +268,36 @@ impl ToolRegistry {
                     .to_string(),
             );
         };
-        tool.execute(&deferred_args, ctx).await
+        let max_bytes = {
+            let inner = self.inner.read().await;
+            tool.max_result_size()
+                .unwrap_or(inner.tool_output.max_bytes)
+        };
+        let result = tool.execute(&deferred_args, ctx).await?;
+        Ok(truncate_tool_output(result, max_bytes))
     }
 
     /// Get the current registry generation (incremented on each registration).
     pub async fn generation(&self) -> u64 {
         self.inner.read().await.generation
     }
+}
+
+fn truncate_tool_output(output: String, max_bytes: usize) -> String {
+    if output.len() <= max_bytes {
+        return output;
+    }
+
+    let mut end = max_bytes.min(output.len());
+    while !output.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    let omitted = output.len().saturating_sub(end);
+    format!(
+        "{}\n\n[Tool output truncated: omitted {omitted} bytes; increase tools.output.max_bytes or the tool-specific max_result_size to see more.]",
+        &output[..end]
+    )
 }
 
 fn parse_deferred_arguments(raw: Option<&JsonValue>) -> std::result::Result<JsonValue, ()> {
@@ -286,6 +322,8 @@ mod tests {
         name: String,
         toolset: String,
         description: String,
+        output: Option<String>,
+        max_result_size: Option<usize>,
     }
 
     impl NamedTool {
@@ -294,7 +332,19 @@ mod tests {
                 name: name.to_string(),
                 toolset: toolset.to_string(),
                 description: description.to_string(),
+                output: None,
+                max_result_size: None,
             }
+        }
+
+        fn with_output(mut self, output: impl Into<String>) -> Self {
+            self.output = Some(output.into());
+            self
+        }
+
+        fn with_max_result_size(mut self, max_result_size: usize) -> Self {
+            self.max_result_size = Some(max_result_size);
+            self
         }
     }
 
@@ -322,12 +372,18 @@ mod tests {
             })
         }
 
+        fn max_result_size(&self) -> Option<usize> {
+            self.max_result_size
+        }
+
         async fn execute(
             &self,
             args: &JsonValue,
             ctx: &hakimi_common::ToolContext,
         ) -> Result<String> {
-            Ok(json!({"tool": self.name, "args": args, "workdir": ctx.workdir}).to_string())
+            Ok(self.output.clone().unwrap_or_else(|| {
+                json!({"tool": self.name, "args": args, "workdir": ctx.workdir}).to_string()
+            }))
         }
     }
 
@@ -433,6 +489,67 @@ mod tests {
         );
         assert!(parse_deferred_arguments(Some(&json!("not-json"))).is_err());
         assert!(parse_deferred_arguments(Some(&json!("[]"))).is_err());
+    }
+
+    #[test]
+    fn truncate_tool_output_keeps_short_output() {
+        assert_eq!(truncate_tool_output("short".to_string(), 50), "short");
+    }
+
+    #[test]
+    fn truncate_tool_output_is_utf8_safe() {
+        let output = "甲乙丙丁戊".to_string();
+        let truncated = truncate_tool_output(output, 7);
+
+        assert!(truncated.starts_with("甲乙"));
+        assert!(truncated.contains("[Tool output truncated: omitted"));
+        assert!(truncated.is_char_boundary(truncated.len()));
+    }
+
+    #[tokio::test]
+    async fn dispatch_truncates_by_configured_default_limit() {
+        let registry = ToolRegistry::new();
+        registry
+            .configure_tool_output(ToolOutputConfig { max_bytes: 8 })
+            .await;
+        registry
+            .register(Arc::new(
+                NamedTool::new("verbose_tool", "plugin", "Verbose tool")
+                    .with_output("abcdefghijklmnopqrstuvwxyz"),
+            ))
+            .await;
+
+        let result = registry
+            .dispatch("verbose_tool", &json!({}), &Default::default())
+            .await
+            .unwrap();
+
+        assert!(result.starts_with("abcdefgh"));
+        assert!(result.contains("omitted 18 bytes"));
+        assert!(result.contains("tools.output.max_bytes"));
+    }
+
+    #[tokio::test]
+    async fn dispatch_uses_tool_specific_result_limit() {
+        let registry = ToolRegistry::new();
+        registry
+            .configure_tool_output(ToolOutputConfig { max_bytes: 20 })
+            .await;
+        registry
+            .register(Arc::new(
+                NamedTool::new("small_tool", "plugin", "Small tool")
+                    .with_output("abcdefghij")
+                    .with_max_result_size(4),
+            ))
+            .await;
+
+        let result = registry
+            .dispatch("small_tool", &json!({}), &Default::default())
+            .await
+            .unwrap();
+
+        assert!(result.starts_with("abcd"));
+        assert!(result.contains("omitted 6 bytes"));
     }
 
     #[tokio::test]

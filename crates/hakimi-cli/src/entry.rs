@@ -2750,6 +2750,9 @@ async fn build_agent(
 
     // Build tool registry.
     let tool_registry = hakimi_tools::ToolRegistry::new();
+    tool_registry
+        .configure_tool_output(config.tools.output.clone())
+        .await;
     // Register built-in tools.
     tool_registry
         .register(std::sync::Arc::new(

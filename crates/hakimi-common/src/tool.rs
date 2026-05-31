@@ -83,6 +83,53 @@ fn default_tool_search_max_limit() -> usize {
     20
 }
 
+pub const DEFAULT_TOOL_OUTPUT_MAX_BYTES: usize = 50_000;
+const MAX_TOOL_OUTPUT_MAX_BYTES: usize = 10 * 1024 * 1024;
+
+/// Configuration for framework-level tool-result size limits.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ToolOutputConfig {
+    /// Default maximum size for a tool result when the tool does not provide
+    /// its own per-tool limit.
+    pub max_bytes: usize,
+}
+
+impl<'de> Deserialize<'de> for ToolOutputConfig {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = JsonValue::deserialize(deserializer)?;
+        Ok(Self::from_json_value(&raw).normalized())
+    }
+}
+
+impl Default for ToolOutputConfig {
+    fn default() -> Self {
+        Self {
+            max_bytes: DEFAULT_TOOL_OUTPUT_MAX_BYTES,
+        }
+    }
+}
+
+impl ToolOutputConfig {
+    fn from_json_value(raw: &JsonValue) -> Self {
+        match raw {
+            JsonValue::Object(map) => Self {
+                max_bytes: parse_usize(map.get("max_bytes"), DEFAULT_TOOL_OUTPUT_MAX_BYTES).max(1),
+            },
+            _ => Self::default(),
+        }
+    }
+
+    /// Return a copy with numeric fields clamped to safe runtime bounds.
+    pub fn normalized(&self) -> Self {
+        Self {
+            max_bytes: self.max_bytes.clamp(1, MAX_TOOL_OUTPUT_MAX_BYTES),
+        }
+    }
+}
+
 /// Configuration for Hermes-style progressive tool disclosure.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ToolSearchConfig {

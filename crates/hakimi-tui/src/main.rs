@@ -167,6 +167,9 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
     )));
 
     let tool_registry = hakimi_tools::ToolRegistry::new();
+    tool_registry
+        .configure_tool_output(config.tools.output.clone())
+        .await;
     #[cfg_attr(not(feature = "browser"), allow(unused_mut))]
     let mut builtin_tools: Vec<Arc<dyn hakimi_tools::Tool>> = vec![
         Arc::new(hakimi_tools::ReadFileTool),

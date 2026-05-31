@@ -35,6 +35,7 @@ Generated: 2026-05-31
 - **Linux install/gateway path hygiene** — The real binary stays under `~/.hakimi/bin/hakimi`, `/usr/local/bin/hakimi` is maintained as a symlink/launcher, and managed systemd gateway units prefer the canonical binary path with a stable service PATH (`~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin`).
 - **Terminal PATH diagnostics** — Terminal/process commands prefix the current PATH with Hakimi's managed bins, and foreground terminal failures distinguish missing explicit paths, PATH misses, non-executable binaries, and systemd/Hakimi vs interactive shell PATH drift.
 - **Terminal/process command content guard** — `terminal` and `process start` block Hermes Tirith-style high-confidence command payloads before shell spawn: remote script pipes/substitutions, encoded shell payloads, terminal control characters, invisible/bidirectional Unicode, Unicode URL hostnames, `sudo -S` password flows, and catastrophic host commands.
+- **Configurable tool output limits** — `tools.output.max_bytes` caps tool results before they enter the conversation context, with per-tool `max_result_size()` overrides and UTF-8-safe truncation notices.
 
 ### Agent Loop
 - **Core conversation loop** — Message → LLM → tool dispatch → loop until done
@@ -561,7 +562,7 @@ Generated: 2026-05-31
 
 | Category | Hermes Features | Hakimi Complete | Hakimi Partial | Hakimi Missing |
 |----------|----------------|-----------------|----------------|----------------|
-| Core Tools | 40+ | 28 | 1 | 12+ |
+| Core Tools | 40+ | 29 | 1 | 11+ |
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 8 | 1 | 12+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
@@ -669,9 +670,10 @@ Generated: 2026-05-31
 | 63 | Credential Pool Dead-Entry Cleanup | `hakimi-core/src/credential_pool.rs`, `hakimi-config/src/config.rs` | 3 | ✅ Dead credentials carry status timestamps; stale dead manual entries prune after 24h while singleton-seeded OAuth entries stay quarantined for explicit re-auth sync |
 | 64 | TUI Slash Command Autocomplete | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/lib.rs`, `hakimi-tui/src/app.rs`, `hakimi-tui/src/ui.rs` | 14 | ✅ Shared slash command catalog, alias-aware parser, Tab completion for command prefixes, bounded ambiguous-match hints, and preserved Tab tools-panel toggling for normal input |
 | 65 | Credential Pool Reset-Window Sync | `hakimi-core/src/credential_pool.rs` | 6 | ✅ Provider reset timestamps and retry-after hints drive cooldown windows, diagnostics are redacted/capped, and source-aware singleton re-auth replacement clears stale dead entries |
+| 66 | Configurable Tool Output Limits | `hakimi-common/src/tool.rs`, `hakimi-tools/src/registry.rs`, `hakimi-config/src/config.rs`, CLI/server/TUI registration | 5 | ✅ Tool results are capped at dispatch with `tools.output.max_bytes`, per-tool overrides still work, and truncation is UTF-8 safe before results enter agent context |
 
 ### Summary
-- **Total tests**: 1383 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1388 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

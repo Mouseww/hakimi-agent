@@ -61,6 +61,9 @@ pub fn default_config_value() -> serde_json::Value {
                 "threshold_pct": 10.0,
                 "search_default_limit": 5,
                 "max_search_limit": 20
+            },
+            "output": {
+                "max_bytes": 50000
             }
         }
     })

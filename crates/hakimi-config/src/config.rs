@@ -464,6 +464,10 @@ pub struct ToolsConfig {
     /// Progressive disclosure for MCP/plugin tools.
     #[serde(default)]
     pub tool_search: hakimi_common::ToolSearchConfig,
+
+    /// Framework-level tool result truncation.
+    #[serde(default)]
+    pub output: hakimi_common::ToolOutputConfig,
 }
 
 /// Top-level Hakimi configuration.
@@ -846,6 +850,10 @@ mod tests {
         assert!(config.gateways.filter_silence_narration);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
+        assert_eq!(
+            config.tools.output.max_bytes,
+            hakimi_common::DEFAULT_TOOL_OUTPUT_MAX_BYTES
+        );
     }
 
     #[test]
@@ -1005,6 +1013,8 @@ compression:
   target_ratio: 0.30
 
 tools:
+  output:
+    max_bytes: 123456
   tool_search:
     enabled: "on"
     threshold_pct: 15
@@ -1042,6 +1052,7 @@ gateways:
         assert_eq!(config.tools.tool_search.threshold_pct, 15.0);
         assert_eq!(config.tools.tool_search.search_default_limit, 7);
         assert_eq!(config.tools.tool_search.max_search_limit, 30);
+        assert_eq!(config.tools.output.max_bytes, 123_456);
         assert!(!config.gateways.filter_silence_narration);
         assert_eq!(config.gateways.streaming.edit_interval_ms, 1200);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 40);
@@ -1080,5 +1091,30 @@ tools:
         assert_eq!(clamped.tools.tool_search.threshold_pct, 100.0);
         assert_eq!(clamped.tools.tool_search.max_search_limit, 50);
         assert_eq!(clamped.tools.tool_search.search_default_limit, 50);
+    }
+
+    #[test]
+    fn test_tool_output_config_defaults_and_clamps() {
+        let defaulted: HakimiConfig = serde_yaml::from_str(
+            r#"
+tools:
+  output: {}
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            defaulted.tools.output.max_bytes,
+            hakimi_common::DEFAULT_TOOL_OUTPUT_MAX_BYTES
+        );
+
+        let clamped: HakimiConfig = serde_yaml::from_str(
+            r#"
+tools:
+  output:
+    max_bytes: 0
+"#,
+        )
+        .unwrap();
+        assert_eq!(clamped.tools.output.max_bytes, 1);
     }
 }
