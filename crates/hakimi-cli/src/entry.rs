@@ -1812,6 +1812,32 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.mattermost.enabled {
+        let server_url =
+            env_or_config_value("MATTERMOST_URL", &config.gateways.mattermost.server_url);
+        let token = env_or_config_value("MATTERMOST_TOKEN", &config.gateways.mattermost.token);
+
+        if let (Some(server_url), Some(token)) = (server_url, token) {
+            let bot_id = config.gateways.mattermost.bot_id.clone();
+            let mattermost =
+                hakimi_gateway::MattermostAdapter::new(hakimi_gateway::MattermostAdapterConfig {
+                    token,
+                    bot_id: bot_id.clone(),
+                    server_url,
+                    channel_id: env_or_config_value(
+                        "MATTERMOST_CHANNEL_ID",
+                        &config.gateways.mattermost.channel_id,
+                    ),
+                    base_url: optional_config_value(&config.gateways.mattermost.base_url),
+                });
+            gateway.add_adapter(Box::new(mattermost));
+            bot_ids.insert("mattermost".to_string(), bot_id);
+            info!("mattermost gateway registered");
+        } else {
+            warn!("mattermost gateway enabled but required server_url/token is missing");
+        }
+    }
+
     if config.gateways.webhook.enabled {
         let bot_id = config.gateways.webhook.bot_id.clone();
         let webhook = hakimi_gateway::WebhookAdapter::new(hakimi_gateway::WebhookAdapterConfig {

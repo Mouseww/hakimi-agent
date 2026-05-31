@@ -559,6 +559,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub discord: DiscordGatewayConfig,
     #[serde(default)]
+    pub mattermost: MattermostGatewayConfig,
+    #[serde(default)]
     pub webhook: WebhookGatewayConfig,
     #[serde(default)]
     pub signal: SignalGatewayConfig,
@@ -585,6 +587,7 @@ impl Default for GatewaysConfig {
             clawbot: ClawBotGatewayConfig::default(),
             slack: SlackGatewayConfig::default(),
             discord: DiscordGatewayConfig::default(),
+            mattermost: MattermostGatewayConfig::default(),
             webhook: WebhookGatewayConfig::default(),
             signal: SignalGatewayConfig::default(),
             matrix: MatrixGatewayConfig::default(),
@@ -649,6 +652,40 @@ impl Default for DiscordGatewayConfig {
         Self {
             enabled: false,
             bot_id: default_discord_bot_id(),
+            token: String::new(),
+            channel_id: String::new(),
+            base_url: String::new(),
+        }
+    }
+}
+
+/// Mattermost gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MattermostGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_mattermost_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub server_url: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub channel_id: String,
+    #[serde(default)]
+    pub base_url: String,
+}
+
+fn default_mattermost_bot_id() -> String {
+    "mattermost".to_string()
+}
+
+impl Default for MattermostGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_mattermost_bot_id(),
+            server_url: String::new(),
             token: String::new(),
             channel_id: String::new(),
             base_url: String::new(),
@@ -1209,6 +1246,12 @@ gateways:
     enabled: true
     token: "discord-redacted"
     channel_id: "987"
+  mattermost:
+    enabled: true
+    bot_id: "ops-mm"
+    server_url: "https://mattermost.example.com"
+    token: "mm-redacted"
+    channel_id: "mm-channel"
   webhook:
     enabled: true
     port: 9090
@@ -1241,6 +1284,13 @@ gateways:
         assert!(config.gateways.discord.enabled);
         assert_eq!(config.gateways.discord.bot_id, "discord");
         assert_eq!(config.gateways.discord.channel_id, "987");
+        assert!(config.gateways.mattermost.enabled);
+        assert_eq!(config.gateways.mattermost.bot_id, "ops-mm");
+        assert_eq!(
+            config.gateways.mattermost.server_url,
+            "https://mattermost.example.com"
+        );
+        assert_eq!(config.gateways.mattermost.channel_id, "mm-channel");
         assert!(config.gateways.webhook.enabled);
         assert_eq!(config.gateways.webhook.port, 9090);
         assert_eq!(config.gateways.webhook.path, "/events");
