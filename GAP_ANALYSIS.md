@@ -223,11 +223,11 @@ Generated: 2026-05-31
 - **Details**: Hakimi now covers 17 Hermes-aligned structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat/events/diagnostics/assign/worker-log/notify operations, explicit board routing, profile/assignee routing, durable worker logs, notification subscriptions with unread claim cursors, and `/kanban boards list|show|create|switch` on isolated SQLite boards. Remaining parity is dispatcher-spawned workers, swarm creation, and dashboard-level management.
 - **Priority**: **High** — Multi-agent orchestration
 
-#### 13. Gateway Platform Adapters (11+ missing)
-- **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/Signal/Matrix/DingTalk/WeCom/ClawBot
+#### 13. Gateway Platform Adapters (10+ missing)
+- **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/Signal/Matrix/DingTalk/WeCom/Feishu/ClawBot
 - **Hermes location**: `gateway/platforms/`
-- **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling.
-- **Missing**: whatsapp, email, sms, weixin, feishu, qqbot, bluebubbles, yuanbao, api_server, homeassistant, msgraph_webhook
+- **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, Feishu/Lark outbound text, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling; Feishu uses Hermes-compatible app credentials and `FEISHU_HOME_CHANNEL` routing for tenant-token IM sends.
+- **Missing**: whatsapp, email, sms, weixin, qqbot, bluebubbles, yuanbao, api_server, homeassistant, msgraph_webhook
 - **Priority**: **High** — Platform reach
 
 #### 14. Bedrock Transport
@@ -514,8 +514,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 6. Gateway
-- **Status**: 10 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, and outbound silence-narration filtering. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
-- **What's missing**: 11+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
+- **Status**: 11 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, Feishu/Lark, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, and outbound silence-narration filtering. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
+- **What's missing**: 10+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -680,7 +680,7 @@ Generated: 2026-05-31
 | 67 | Tool Guardrail No-Progress Tracking | `hakimi-core/src/{guardrails.rs,loop_impl.rs}` | 3 | ✅ Tool-call loop state persists across a full user turn, repeated JSON-equivalent calls are canonicalized, and read-only/idempotent tools append Hermes-style no-progress guidance while mutating tools avoid false positive result-loop warnings |
 | 68 | Model Context Metadata | `hakimi-common/src/model_metadata.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ `model.context_length` explicit overrides, static model-family metadata, provider-prefix normalization, minimum-window diagnostics, and shared compression/tool-search context sizing |
 | 69 | Gateway Voice Mode | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/voice on|off|tts|status` tracks per-chat voice state, adds Hermes-style concise spoken-response guidance to the current model message, and restores the clean original user text before chat history persistence |
-| 70 | Gateway Adapter Runtime Exposure | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 2 | ✅ Slack, Discord, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, Telegram, and ClawBot can be enabled from config/env and registered at gateway startup; queued send_message/cron delivery resolves configured bot IDs by platform |
+| 70 | Gateway Adapter Runtime Exposure | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/feishu.rs` | 9 | ✅ Slack, Discord, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, Feishu/Lark, Telegram, and ClawBot can be enabled from config/env and registered at gateway startup; queued send_message/cron delivery resolves configured bot IDs by platform |
 | 71 | TUI Voice Readiness | `hakimi-config/src/config.rs`, `hakimi-tui/src/{app.rs,main.rs,ui.rs}` | 5 | ✅ TUI now registers `text_to_speech` and `transcribe_audio`, passes shared `voice.*` config into the agent, exposes `/voice on|off|tts|status|doctor`, and shows configurable Ctrl+B/Ctrl+letter readiness diagnostics without pretending microphone capture is complete |
 | 72 | Voice Diagnostics + STT Silence Filtering | `hakimi-tools/src/voice_mode.rs`, `hakimi-tools/src/builtin_transcribe_audio.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/app.rs` | 4 | ✅ Hermes-style audio environment diagnostics cover SSH/container/WSL/Termux/forwarded-audio cases, `/voice doctor` exposes readiness in gateway, TUI status includes capture/playback readiness, and `transcribe_audio` filters common Whisper silence hallucinations for text responses |
 | 73 | Voice Recording Artifact Validation | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ PCM16 mono WAV writer matches Hermes voice recording parameters, summarizes captured audio duration/peak RMS, rejects too-short or too-quiet recordings before STT, and surfaces artifact readiness in TUI `/voice status` while keeping microphone capture explicitly pending |

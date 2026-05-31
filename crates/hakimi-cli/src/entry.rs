@@ -1939,6 +1939,40 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.feishu.enabled {
+        let app_id = env_or_config_value("FEISHU_APP_ID", &config.gateways.feishu.app_id);
+        let app_secret =
+            env_or_config_value("FEISHU_APP_SECRET", &config.gateways.feishu.app_secret);
+
+        if let (Some(app_id), Some(app_secret)) = (app_id, app_secret) {
+            let bot_id = config.gateways.feishu.bot_id.clone();
+            let feishu = hakimi_gateway::FeishuAdapter::new(hakimi_gateway::FeishuAdapterConfig {
+                bot_id: bot_id.clone(),
+                app_id,
+                app_secret,
+                default_chat_id: env_or_config_value(
+                    "FEISHU_HOME_CHANNEL",
+                    &config.gateways.feishu.default_chat_id,
+                )
+                .unwrap_or_default(),
+                receive_id_type: env_or_config_value(
+                    "FEISHU_RECEIVE_ID_TYPE",
+                    &config.gateways.feishu.receive_id_type,
+                )
+                .unwrap_or_else(|| "chat_id".to_string()),
+                domain: env_or_config_value("FEISHU_DOMAIN", &config.gateways.feishu.domain)
+                    .unwrap_or_else(|| "feishu".to_string()),
+                base_url: env_or_config_value("FEISHU_BASE_URL", &config.gateways.feishu.base_url)
+                    .unwrap_or_default(),
+            });
+            gateway.add_adapter(Box::new(feishu));
+            bot_ids.insert("feishu".to_string(), bot_id);
+            info!("feishu gateway registered");
+        } else {
+            warn!("feishu gateway enabled but required app_id/app_secret is missing");
+        }
+    }
+
     bot_ids
 }
 
@@ -4013,7 +4047,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Pairing(_)) => "🔗 Gateway pairing mode activated. Scan QR code to connect device.".to_string(),
-                    Some(Command::Platforms(_)) => "🌐 **Connected Platforms:**\n- Telegram\n- Discord\n- Signal\n- DingTalk\n- WeCom\n- Matrix\n- Slack\n- Webhook".to_string(),
+                    Some(Command::Platforms(_)) => "🌐 **Connected Platforms:**\n- Telegram\n- Discord\n- Signal\n- DingTalk\n- WeCom\n- Feishu/Lark\n- Matrix\n- Slack\n- Webhook".to_string(),
                     Some(Command::Providers(_)) => "🔌 **Supported LLM Providers:**\n- `openrouter` (Default)\n- `anthropic`\n- `openai`\n- `xai`\n- `google`\n- `deepseek`\n- `ollama`\n- `llama-cpp`".to_string(),
                     Some(Command::Skin(cmd)) => format!("🎨 Skin theme set to {}.", cmd.as_deref().unwrap_or("default")),
                     Some(Command::Tips(_)) => "💡 **Tip:** Use `/tools` to see all available capabilities, and `/skills` to use powerful multi-step workflows.".to_string(),

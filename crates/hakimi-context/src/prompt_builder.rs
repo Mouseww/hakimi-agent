@@ -32,6 +32,12 @@ fn build_platform_hints() -> HashMap<&'static str, &'static str> {
          *bold*, _italic_, ~strikethrough~, `inline code`, ```code blocks```, \
          <url|text> links. Use <!here>, <!channel>, <@user_id> for mentions.",
     );
+    m.insert(
+        "feishu",
+        "You are communicating via Feishu/Lark. Feishu renders Markdown in \
+         messages: **bold**, *italic*, `inline code`, ```code blocks```, \
+         bullet lists, and links. Keep replies concise for chat delivery.",
+    );
     m
 }
 

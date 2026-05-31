@@ -7,6 +7,7 @@
 mod clawbot;
 mod dingtalk;
 mod discord;
+mod feishu;
 mod matrix;
 mod mattermost;
 mod signal;
@@ -18,6 +19,7 @@ mod wecom;
 pub use clawbot::{ClawBotAdapter, ClawBotAdapterConfig, ClawBotMode};
 pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 pub use discord::{DiscordAdapter, DiscordAdapterConfig, DiscordEmbed};
+pub use feishu::{FeishuAdapter, FeishuAdapterConfig};
 pub use matrix::{MatrixAdapter, MatrixAdapterConfig};
 pub use mattermost::{MattermostAdapter, MattermostAdapterConfig};
 pub use signal::{SignalAdapter, SignalAdapterConfig};

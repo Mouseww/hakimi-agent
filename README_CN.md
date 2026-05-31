@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.158-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.159-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1433-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -91,7 +91,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **元能力**：子 Agent 委派、技能系统、插件机制
 
 **多平台网关**
-- Telegram · Discord · Slack · Mattermost · Webhook · Signal · Matrix · 钉钉 · 企业微信 · WeChat
+- Telegram · Discord · Slack · Mattermost · Webhook · Signal · Matrix · 钉钉 · 企业微信 · 飞书/Lark · WeChat
 - 配置驱动多适配器接入：聊天平台和 Webhook 网关可同时运行
 - 实时流式输出
 - 聊天里直接创建定时任务 `/cron add`
@@ -147,7 +147,7 @@ hakimi-agent/
 ├── hakimi-knowledge/    # 知识图谱 (petgraph)
 ├── hakimi-skills/        # 技能系统 + 元技能提炼
 ├── hakimi-cron/          # 持久化定时任务调度器
-├── hakimi-gateway/       # 10 个运行时可启用的平台适配器
+├── hakimi-gateway/       # 11 个运行时可启用的平台适配器
 ├── hakimi-mcp/           # MCP 客户端 (stdio/HTTP/SSE)
 ├── hakimi-cli/           # REPL CLI + 安装向导 + 诊断
 └── hakimi-tui/           # ratatui 终端界面
@@ -223,7 +223,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Agent 主循环 + 工具调度
 - [x] OpenAI / Anthropic / Gemini 传输层 + SSE 流式
 - [x] 58+ 内置工具
-- [x] 10 个运行时可启用的平台适配器
+- [x] 11 个运行时可启用的平台适配器
 - [x] MCP 客户端 + 服务器目录
 - [x] HTTP API 模型与能力发现端点
 - [x] 插件系统 + HTTP 模板

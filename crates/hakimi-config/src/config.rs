@@ -606,6 +606,8 @@ pub struct GatewaysConfig {
     pub dingtalk: DingTalkGatewayConfig,
     #[serde(default)]
     pub wecom: WeComGatewayConfig,
+    #[serde(default)]
+    pub feishu: FeishuGatewayConfig,
 }
 
 fn default_gateway_filter_silence_narration() -> bool {
@@ -629,6 +631,7 @@ impl Default for GatewaysConfig {
             matrix: MatrixGatewayConfig::default(),
             dingtalk: DingTalkGatewayConfig::default(),
             wecom: WeComGatewayConfig::default(),
+            feishu: FeishuGatewayConfig::default(),
         }
     }
 }
@@ -886,6 +889,54 @@ impl Default for WeComGatewayConfig {
             corp_id: String::new(),
             agent_id: String::new(),
             secret: String::new(),
+        }
+    }
+}
+
+/// Feishu / Lark gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeishuGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_feishu_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub app_id: String,
+    #[serde(default)]
+    pub app_secret: String,
+    #[serde(default)]
+    pub default_chat_id: String,
+    #[serde(default = "default_feishu_receive_id_type")]
+    pub receive_id_type: String,
+    #[serde(default = "default_feishu_domain")]
+    pub domain: String,
+    #[serde(default)]
+    pub base_url: String,
+}
+
+fn default_feishu_bot_id() -> String {
+    "feishu".to_string()
+}
+
+fn default_feishu_receive_id_type() -> String {
+    "chat_id".to_string()
+}
+
+fn default_feishu_domain() -> String {
+    "feishu".to_string()
+}
+
+impl Default for FeishuGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_feishu_bot_id(),
+            app_id: String::new(),
+            app_secret: String::new(),
+            default_chat_id: String::new(),
+            receive_id_type: default_feishu_receive_id_type(),
+            domain: default_feishu_domain(),
+            base_url: String::new(),
         }
     }
 }
@@ -1194,6 +1245,9 @@ mod tests {
         assert!(!config.gateways.matrix.enabled);
         assert!(!config.gateways.dingtalk.enabled);
         assert!(!config.gateways.wecom.enabled);
+        assert!(!config.gateways.feishu.enabled);
+        assert_eq!(config.gateways.feishu.domain, "feishu");
+        assert_eq!(config.gateways.feishu.receive_id_type, "chat_id");
         assert_eq!(
             config.tools.output.max_bytes,
             hakimi_common::DEFAULT_TOOL_OUTPUT_MAX_BYTES
@@ -1315,6 +1369,15 @@ gateways:
     corp_id: "ww123"
     agent_id: "1000002"
     secret: "wecom-redacted"
+  feishu:
+    enabled: true
+    bot_id: "ops-feishu"
+    app_id: "cli_test"
+    app_secret: "feishu-redacted"
+    default_chat_id: "oc_chat"
+    receive_id_type: "chat_id"
+    domain: "lark"
+    base_url: "https://open.larksuite.com"
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
 
@@ -1342,6 +1405,15 @@ gateways:
         assert_eq!(config.gateways.dingtalk.bot_id, "dingtalk");
         assert!(config.gateways.wecom.enabled);
         assert_eq!(config.gateways.wecom.agent_id, "1000002");
+        assert!(config.gateways.feishu.enabled);
+        assert_eq!(config.gateways.feishu.bot_id, "ops-feishu");
+        assert_eq!(config.gateways.feishu.app_id, "cli_test");
+        assert_eq!(config.gateways.feishu.default_chat_id, "oc_chat");
+        assert_eq!(config.gateways.feishu.domain, "lark");
+        assert_eq!(
+            config.gateways.feishu.base_url,
+            "https://open.larksuite.com"
+        );
     }
 
     #[test]
