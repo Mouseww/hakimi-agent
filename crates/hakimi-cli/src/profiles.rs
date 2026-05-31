@@ -756,7 +756,7 @@ fn expand_profile_export_output(output: Option<&Path>, profile: &str) -> PathBuf
     let raw = output.map(expand_home).unwrap_or_else(|| {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(default_name)
+            .join(&default_name)
     });
 
     if raw.is_dir() {
