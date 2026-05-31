@@ -817,10 +817,10 @@ impl KanbanStore {
         let limit = limit.clamp(1, MAX_LIMIT);
         let mut notifications = Vec::new();
         for sub in self.list_notify_subs(None)? {
-            if let Some(profile) = profile.as_deref() {
-                if sub.notifier_profile.as_deref() != Some(profile) {
-                    continue;
-                }
+            if let Some(profile) = profile.as_deref()
+                && sub.notifier_profile.as_deref() != Some(profile)
+            {
+                continue;
             }
             let claimed = self.claim_for_sub(&sub, &kinds, limit - notifications.len())?;
             notifications.extend(claimed);
