@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.150-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.151-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1409-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1411-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1409 |
+| Tests | ~500 | 1411 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -96,6 +96,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Multi-adapter fan-in: run Telegram and WeChat simultaneously
 - Real-time streaming with progressive edits
 - Cron jobs scheduled from chat with `/cron add`
+- Gateway `/voice on|off|tts|status` toggles spoken-response guidance without polluting prompt cache or chat history
 
 **Extensibility**
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports
@@ -186,7 +187,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1409 |
+| Tests | ~500 | 1411 |
 
 ---
 
@@ -228,9 +229,10 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Meta-skill auto-extraction
 - [x] Browser automation (Chromium)
 - [x] Kanban task boards + notification cursors
+- [x] Gateway voice-response mode
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
-- [ ] CLI voice mode
+- [ ] CLI push-to-talk microphone capture
 
 ---
 

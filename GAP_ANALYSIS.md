@@ -416,7 +416,7 @@ Generated: 2026-05-31
 #### 47. Voice Mode (Push-to-Talk)
 - **What**: Audio recording and playback for CLI with STT dispatch
 - **Hermes location**: `tools/voice_mode.py`
-- **Details**: sounddevice capture, WAV encoding, STT via transcription_tools, TTS playback. Hakimi now has `text_to_speech` + `transcribe_audio`, but still lacks interactive CLI capture/playback.
+- **Details**: Hakimi now has `text_to_speech`, `transcribe_audio`, and gateway `/voice on|off|tts|status` state that adds spoken-response guidance only to the current model turn while preserving clean chat history. Remaining parity is interactive CLI microphone capture, WAV encoding, STT dispatch, and local playback.
 - **Priority**: **Low** — Niche CLI feature
 
 #### 49. Curator
@@ -587,11 +587,11 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. Voice mode (push-to-talk capture + playback)
+10. Voice mode (remaining CLI push-to-talk capture + playback)
 
 ---
 
-## IMPLEMENTATION STATUS (Updated: 2026-05-31)
+## IMPLEMENTATION STATUS (Updated: 2026-06-01)
 
 ### Phase 1: Critical Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
@@ -672,9 +672,10 @@ Generated: 2026-05-31
 | 66 | Configurable Tool Output Limits | `hakimi-common/src/tool.rs`, `hakimi-tools/src/registry.rs`, `hakimi-config/src/config.rs`, CLI/server/TUI registration | 5 | ✅ Tool results are capped at dispatch with `tools.output.max_bytes`, per-tool overrides still work, and truncation is UTF-8 safe before results enter agent context |
 | 67 | Tool Guardrail No-Progress Tracking | `hakimi-core/src/{guardrails.rs,loop_impl.rs}` | 3 | ✅ Tool-call loop state persists across a full user turn, repeated JSON-equivalent calls are canonicalized, and read-only/idempotent tools append Hermes-style no-progress guidance while mutating tools avoid false positive result-loop warnings |
 | 68 | Model Context Metadata | `hakimi-common/src/model_metadata.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ `model.context_length` explicit overrides, static model-family metadata, provider-prefix normalization, minimum-window diagnostics, and shared compression/tool-search context sizing |
+| 69 | Gateway Voice Mode | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/voice on|off|tts|status` tracks per-chat voice state, adds Hermes-style concise spoken-response guidance to the current model message, and restores the clean original user text before chat history persistence |
 
 ### Summary
-- **Total tests**: 1409 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1411 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

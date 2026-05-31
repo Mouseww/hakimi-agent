@@ -29,6 +29,94 @@ fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
     format!("{platform}:{bot_id}:{chat_id}")
 }
 
+const VOICE_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice mode: respond in a concise, natural spoken style for a spoken interface. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
+const VOICE_TTS_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice+TTS mode: respond in a concise, natural spoken style suitable for text-to-speech playback. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct VoiceRuntimeState {
+    spoken_response: bool,
+    tts: bool,
+}
+
+impl VoiceRuntimeState {
+    fn prefix(&self) -> Option<&'static str> {
+        if self.tts {
+            Some(VOICE_TTS_USER_MESSAGE_PREFIX)
+        } else if self.spoken_response {
+            Some(VOICE_USER_MESSAGE_PREFIX)
+        } else {
+            None
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.spoken_response || self.tts
+    }
+}
+
+fn gateway_voice_response(
+    states: &mut std::collections::HashMap<String, VoiceRuntimeState>,
+    key: &str,
+    command: Option<&str>,
+) -> String {
+    match command
+        .unwrap_or("status")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "" | "status" => match states.get(key) {
+            Some(state) if state.is_active() => format!(
+                "🎙️ Voice mode: on\n🔊 TTS guidance: {}\nHistory: clean runtime guidance is not persisted.",
+                if state.tts { "on" } else { "off" }
+            ),
+            _ => "🔇 Voice mode is off for this chat. Use `/voice on` for speech-friendly replies."
+                .to_string(),
+        },
+        "on" | "enable" => {
+            let state = states.entry(key.to_string()).or_default();
+            state.spoken_response = true;
+            "🎙️ Voice mode enabled for this chat. Replies will stay concise and speech-friendly."
+                .to_string()
+        }
+        "off" | "disable" => {
+            states.remove(key);
+            "🔇 Voice mode disabled for this chat.".to_string()
+        }
+        "tts" => {
+            let state = states.entry(key.to_string()).or_default();
+            state.tts = !state.tts;
+            if state.tts {
+                state.spoken_response = true;
+                "🔊 TTS guidance enabled. Voice mode is on for this chat.".to_string()
+            } else {
+                if !state.spoken_response {
+                    states.remove(key);
+                }
+                "🔈 TTS guidance disabled. Voice mode remains speech-friendly.".to_string()
+            }
+        }
+        _ => "Usage: `/voice <on|off|tts|status>`".to_string(),
+    }
+}
+
+fn restore_voice_history_text(messages: &mut [hakimi_common::Message]) {
+    for message in messages {
+        if message.role != hakimi_common::MessageRole::User {
+            continue;
+        }
+        let Some(content) = message.content.as_mut() else {
+            continue;
+        };
+        if let Some(restored) = content
+            .strip_prefix(VOICE_TTS_USER_MESSAGE_PREFIX)
+            .or_else(|| content.strip_prefix(VOICE_USER_MESSAGE_PREFIX))
+        {
+            *content = restored.to_string();
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct GatewayIngressPolicy {
     allow_all: bool,
@@ -3128,6 +3216,8 @@ async fn start_gateway(
         Arc::new(Mutex::new(HashMap::new()));
     let active_tasks: Arc<Mutex<HashMap<String, GatewayTaskControl>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let voice_states: Arc<Mutex<HashMap<String, VoiceRuntimeState>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let last_usage: Arc<Mutex<HashMap<String, GatewayUsageSnapshot>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let gateway_access = Arc::new(GatewayIngressPolicy::from_config(&config));
@@ -3380,6 +3470,7 @@ async fn start_gateway(
         let histories_clone = histories_clone.clone();
         let turn_trackers = turn_trackers.clone();
         let active_tasks = active_tasks.clone();
+        let voice_states = voice_states.clone();
         let last_usage = last_usage.clone();
 
         let config_clone = config.clone();
@@ -3479,6 +3570,7 @@ async fn start_gateway(
 • `/status` - Show gateway, platform, and model status\n\
 • `/usage` - Show last-turn tokens, cost, and rate limits\n\n\
 **Agent capability**\n\
+• `/voice <on|off|tts|status>` - Toggle speech-friendly gateway replies\n\
 • `/model [name]` - Show or switch the active model\n\
 • `/tools` - List available tools\n\
 • `/skills` - List loaded skills and browse/install hub skills\n\
@@ -3720,11 +3812,9 @@ Just send a message to chat with me!"
                     Some(Command::ToolsConfig(_)) => "⚙️ Tools configuration interface opened.".to_string(),
                     Some(Command::Uninstall(_)) => "🗑️ Uninstall sequence initiated. Run `curl -sL <script> | bash` to completely remove Hakimi.".to_string(),
                     Some(Command::Voice(cmd)) => {
-                        match cmd.as_deref() {
-                            Some("on") => "🎙️ Voice output enabled.".to_string(),
-                            Some("off") => "🔇 Voice output disabled.".to_string(),
-                            _ => "Usage: /voice <on|off>".to_string(),
-                        }
+                        let key = gateway_task_key(&platform, &bot_id, &chat_id);
+                        let mut states = voice_states.lock().await;
+                        gateway_voice_response(&mut states, &key, cmd.as_deref())
                     }
                     Some(Command::Webhook(_)) => "🪝 Webhook endpoints are live at `/api/webhook/`.".to_string(),
                     Some(Command::Quit) => "`/quit` exits local CLI/TUI sessions. Gateway chats remain open; close the chat client or stop the gateway service if needed.".to_string(),
@@ -4076,13 +4166,20 @@ Just send a message to chat with me!"
                     .unwrap_or_else(|| text.clone());
 
                 let user_text = {
+                    let voice_prefix = {
+                        let states = voice_states.lock().await;
+                        states.get(&task_key).and_then(VoiceRuntimeState::prefix)
+                    };
                     let trackers = turn_trackers.lock().await;
-                    trackers
+                    let decorated = trackers
                         .get(&chat_id)
                         .map(|tracker| {
                             tracker.decorate_user_text(&raw_user_text, is_concurrent_turn)
                         })
-                        .unwrap_or_else(|| raw_user_text.clone())
+                        .unwrap_or_else(|| raw_user_text.clone());
+                    voice_prefix
+                        .map(|prefix| format!("{prefix}{decorated}"))
+                        .unwrap_or(decorated)
                 };
 
                 let mut msg = hakimi_common::Message::user(&user_text);
@@ -4120,6 +4217,8 @@ Just send a message to chat with me!"
                             .get(base_history_len..)
                             .map(|msgs| msgs.to_vec())
                             .unwrap_or_else(Vec::new);
+                        let mut new_msgs = new_msgs;
+                        restore_voice_history_text(&mut new_msgs);
                         {
                             let mut histories = histories_clone.lock().await;
                             let chat_history = histories.entry(chat_id.clone()).or_default();
@@ -4862,14 +4961,16 @@ mod tests {
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
         GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamRenderSnapshot,
         GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, PluginCommandArgs,
-        ProfileCommandArgs, TopLevelCommand, build_cron_delegation_goal,
+        ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
+        VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
         create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
         cron_success_output_should_deliver, gateway_cron_response_for_path,
         gateway_cron_response_for_path_with_delivery, gateway_mcp_response,
         gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
-        is_top_level_cron_tick, plan_gateway_final_delivery, queue_cron_delivery,
-        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
-        top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
+        gateway_voice_response, is_top_level_cron_tick, plan_gateway_final_delivery,
+        queue_cron_delivery, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
+        restore_hakimi_state_backup, restore_voice_history_text, top_level_cron_response_for_path,
+        update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
@@ -5819,6 +5920,65 @@ roles:
         assert_eq!(tracker.active_turns, 1);
         tracker.finish_turn();
         assert_eq!(tracker.active_turns, 0);
+    }
+
+    #[test]
+    fn gateway_voice_response_tracks_chat_local_state() {
+        let mut states = std::collections::HashMap::new();
+        let chat_key = "telegram:telegram_bot:chat-1";
+        let other_chat_key = "telegram:telegram_bot:chat-2";
+
+        let off = gateway_voice_response(&mut states, chat_key, Some("status"));
+        assert!(off.contains("Voice mode is off"));
+
+        let enabled = gateway_voice_response(&mut states, chat_key, Some("on"));
+        assert!(enabled.contains("enabled"));
+        assert_eq!(
+            states.get(chat_key).and_then(VoiceRuntimeState::prefix),
+            Some(VOICE_USER_MESSAGE_PREFIX)
+        );
+        assert!(!states.contains_key(other_chat_key));
+
+        let tts = gateway_voice_response(&mut states, chat_key, Some("tts"));
+        assert!(tts.contains("TTS guidance enabled"));
+        assert_eq!(
+            states.get(chat_key).and_then(VoiceRuntimeState::prefix),
+            Some(VOICE_TTS_USER_MESSAGE_PREFIX)
+        );
+
+        let status = gateway_voice_response(&mut states, chat_key, Some("status"));
+        assert!(status.contains("Voice mode: on"));
+        assert!(status.contains("TTS guidance: on"));
+
+        let disabled = gateway_voice_response(&mut states, chat_key, Some("off"));
+        assert!(disabled.contains("disabled"));
+        assert!(!states.contains_key(chat_key));
+    }
+
+    #[test]
+    fn restore_voice_history_text_removes_runtime_prefix_from_user_messages() {
+        let mut messages = vec![
+            hakimi_common::Message::user(format!(
+                "{VOICE_TTS_USER_MESSAGE_PREFIX}summarize this for me"
+            )),
+            hakimi_common::Message::assistant(format!(
+                "{VOICE_USER_MESSAGE_PREFIX}assistant text is not changed"
+            )),
+            hakimi_common::Message::user("plain user text"),
+        ];
+
+        restore_voice_history_text(&mut messages);
+
+        let assistant_text = format!("{VOICE_USER_MESSAGE_PREFIX}assistant text is not changed");
+        assert_eq!(
+            messages[0].content.as_deref(),
+            Some("summarize this for me")
+        );
+        assert_eq!(
+            messages[1].content.as_deref(),
+            Some(assistant_text.as_str())
+        );
+        assert_eq!(messages[2].content.as_deref(), Some("plain user text"));
     }
 
     #[test]
