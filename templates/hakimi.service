@@ -1,0 +1,32 @@
+[Unit]
+Description=Hakimi Agent Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root
+# 注入 API Key — ExecStart uses {{BINARY_PATH}} which is replaced at install time
+ExecStart={{BINARY_PATH}} --gateway
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/.hakimi/gateway.log
+StandardError=append:/root/.hakimi/gateway.log
+
+# --- 资源隔离 (防止死机) ---
+# 限制 CPU 使用率，防止主线程饿死
+CPUAccounting=true
+CPUQuota=80%%
+# 限制内存使用，防止 OOM 导致系统崩溃
+MemoryAccounting=true
+MemoryMax=1.5G
+MemoryHigh=1.2G
+
+# --- 自动清理 (防止浏览器进程泄露) ---
+# 停止服务时，确保清理所有子进程（包括浏览器）
+KillMode=control-group
+# 每次停止或重启后，额外强杀残留的 chromium 进程以防万一
+ExecStopPost=/usr/bin/bash -c 'pkill -9 -f "chromium" || true'
+
+[Install]
+WantedBy=multi-user.target
