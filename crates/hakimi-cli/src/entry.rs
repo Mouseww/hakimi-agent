@@ -1977,6 +1977,8 @@ const DEFAULT_CONFIG_YAML: &str = r#"# Hakimi Agent Configuration
 model:
   # Default model identifier (e.g. "gpt-4o", "claude-sonnet-4-20250514")
   default: ""
+  # Explicit context window override in tokens; 0 = auto-resolve from model metadata
+  context_length: 0
   # Provider: "auto", "openrouter", "anthropic", "openai"
   provider: "auto"
   # Base URL for API endpoint (leave empty for provider default)
@@ -2054,7 +2056,7 @@ gateways:
 compression:
   engine: smart  # smart | simple | llm
   model: ""      # optional; llm engine uses the active model when empty
-  context_length: 128000
+  context_length: 256000
 
 # MCP servers to connect to at startup.
 # Each server is spawned as a child process and communicates via JSON-RPC over stdio.
@@ -2910,6 +2912,20 @@ async fn build_agent(
         .register(std::sync::Arc::new(hakimi_tools::SkillManageTool))
         .await;
 
+    let resolved_context = hakimi_common::resolve_model_context_length(
+        &model,
+        Some(config.model.context_length).filter(|length| *length > 0),
+        config.compression.context_length,
+    );
+    if resolved_context.is_below_minimum() {
+        warn!(
+            model = %model,
+            context_length = resolved_context.context_length,
+            minimum = resolved_context.minimum_context_length,
+            "configured model context window is below the recommended minimum"
+        );
+    }
+
     let compression_model = if config.compression.model.trim().is_empty() {
         model.as_str()
     } else {
@@ -2917,7 +2933,7 @@ async fn build_agent(
     };
     let context_engine = hakimi_context::build_context_engine(
         &config.compression.engine,
-        config.compression.context_length,
+        resolved_context.context_length,
         Some(compression_model),
         Some(transport.clone()),
     );
@@ -2977,7 +2993,7 @@ async fn build_agent(
         .with_knowledge_searcher(Some(knowledge_searcher))
         .with_tool_search_settings(
             config.tools.tool_search.clone(),
-            config.compression.context_length,
+            resolved_context.context_length,
         )
         .with_voice_settings(
             Some(config.voice.provider.clone()).filter(|s| !s.is_empty()),

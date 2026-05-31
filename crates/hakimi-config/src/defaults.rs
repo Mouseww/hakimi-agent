@@ -6,6 +6,7 @@ pub fn default_config_value() -> serde_json::Value {
     serde_json::json!({
         "model": {
             "default": "",
+            "context_length": 0,
             "provider": "auto",
             "base_url": ""
         },
@@ -31,7 +32,7 @@ pub fn default_config_value() -> serde_json::Value {
             "target_ratio": 0.20,
             "engine": "smart",
             "model": "",
-            "context_length": 128000
+            "context_length": 256000
         },
         "display": {
             "compact": false,

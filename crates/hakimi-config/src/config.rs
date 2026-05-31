@@ -37,6 +37,10 @@ pub struct ModelConfig {
     #[serde(default)]
     pub default: String,
 
+    /// Explicit context window override in tokens. Zero means auto-resolve.
+    #[serde(default)]
+    pub context_length: usize,
+
     /// Provider name (e.g. "openrouter", "anthropic", "auto").
     #[serde(default = "default_provider")]
     pub provider: String,
@@ -63,6 +67,7 @@ impl Default for ModelConfig {
     fn default() -> Self {
         Self {
             default: String::new(),
+            context_length: 0,
             provider: "auto".to_string(),
             base_url: String::new(),
             api_mode: String::new(),
@@ -219,7 +224,7 @@ fn default_compression_engine() -> String {
 }
 
 fn default_context_length() -> usize {
-    128_000
+    hakimi_common::DEFAULT_FALLBACK_CONTEXT_LENGTH
 }
 
 impl Default for CompressionConfig {
@@ -827,6 +832,7 @@ mod tests {
     fn test_default_config() {
         let config = HakimiConfig::default();
         assert_eq!(config.model.provider, "auto");
+        assert_eq!(config.model.context_length, 0);
         assert_eq!(config.agent.max_turns, 90);
         assert_eq!(config.terminal.env_type, "local");
         assert_eq!(config.terminal.cwd, ".");
@@ -834,7 +840,10 @@ mod tests {
         assert_eq!(config.compression.threshold, 0.50);
         assert_eq!(config.compression.engine, "smart");
         assert_eq!(config.compression.model, "");
-        assert_eq!(config.compression.context_length, 128_000);
+        assert_eq!(
+            config.compression.context_length,
+            hakimi_common::DEFAULT_FALLBACK_CONTEXT_LENGTH
+        );
         assert!(config.display.streaming);
         assert_eq!(config.display.skin, "default");
         assert_eq!(config.delegation.max_iterations, 45);
@@ -868,6 +877,7 @@ mod tests {
         let yaml = r#"
 model:
   default: "gpt-4o"
+  context_length: 400000
   provider: "openai"
 
 agent:
@@ -875,6 +885,7 @@ agent:
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.model.default, "gpt-4o");
+        assert_eq!(config.model.context_length, 400_000);
         assert_eq!(config.model.provider, "openai");
         assert_eq!(config.agent.max_turns, 50);
         // Defaults for unset fields
@@ -978,6 +989,7 @@ gateways:
         let yaml = r#"
 model:
   default: "claude-sonnet-4-20250514"
+  context_length: 200000
   provider: "anthropic"
   base_url: "https://api.anthropic.com"
 
@@ -1030,6 +1042,7 @@ gateways:
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.model.default, "claude-sonnet-4-20250514");
+        assert_eq!(config.model.context_length, 200_000);
         assert_eq!(config.model.provider, "anthropic");
         assert_eq!(config.agent.max_turns, 100);
         assert!(config.agent.verbose);

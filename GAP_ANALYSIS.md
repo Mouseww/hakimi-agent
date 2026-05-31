@@ -383,7 +383,7 @@ Generated: 2026-05-31
 #### 41. Model Metadata / Auto-Discovery
 - **What**: Model context length metadata, auto-discovery from providers
 - **Hermes location**: `agent/model_metadata.py`, `agent/models_dev.py`
-- **Details**: `get_model_context_length()`, `MINIMUM_CONTEXT_LENGTH`. Provider-specific model catalogs.
+- **Details**: Hakimi now has a Rust-native offline resolver for `model.context_length` overrides, provider-prefixed model normalization, longest static context metadata matches, and a `MINIMUM_CONTEXT_LENGTH` warning path. The resolved window drives both compression engines and progressive tool-disclosure thresholds. Remaining parity is live provider/model registry discovery, persistent endpoint caches, and provider-specific account probes.
 - **Priority**: **Medium** — Correct context window sizing
 
 ### Low Priority
@@ -671,9 +671,10 @@ Generated: 2026-05-31
 | 65 | Credential Pool Reset-Window Sync | `hakimi-core/src/credential_pool.rs` | 6 | ✅ Provider reset timestamps and retry-after hints drive cooldown windows, diagnostics are redacted/capped, and source-aware singleton re-auth replacement clears stale dead entries |
 | 66 | Configurable Tool Output Limits | `hakimi-common/src/tool.rs`, `hakimi-tools/src/registry.rs`, `hakimi-config/src/config.rs`, CLI/server/TUI registration | 5 | ✅ Tool results are capped at dispatch with `tools.output.max_bytes`, per-tool overrides still work, and truncation is UTF-8 safe before results enter agent context |
 | 67 | Tool Guardrail No-Progress Tracking | `hakimi-core/src/{guardrails.rs,loop_impl.rs}` | 3 | ✅ Tool-call loop state persists across a full user turn, repeated JSON-equivalent calls are canonicalized, and read-only/idempotent tools append Hermes-style no-progress guidance while mutating tools avoid false positive result-loop warnings |
+| 68 | Model Context Metadata | `hakimi-common/src/model_metadata.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ `model.context_length` explicit overrides, static model-family metadata, provider-prefix normalization, minimum-window diagnostics, and shared compression/tool-search context sizing |
 
 ### Summary
-- **Total tests**: 1395 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1399 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
