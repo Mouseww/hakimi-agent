@@ -29,7 +29,7 @@ Generated: 2026-05-31
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 - **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
 - **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, `browser_get_images`, `browser_console`, `browser_dialog`, and `browser_screenshot`
-- **Kanban tools (basic)** — `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, and `kanban_link` persist tasks, comments, status transitions, liveness, dependency links, and isolated board routing in SQLite
+- **Kanban tools (basic)** — `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, and `kanban_diagnostics` persist tasks, comments, status transitions, liveness, dependency links, event trails, diagnostics, and isolated board routing in SQLite
 
 ### Runtime Environment
 - **Linux install/gateway path hygiene** — The real binary stays under `~/.hakimi/bin/hakimi`, `/usr/local/bin/hakimi` is maintained as a symlink/launcher, and managed systemd gateway units prefer the canonical binary path with a stable service PATH (`~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin`).
@@ -214,7 +214,7 @@ Generated: 2026-05-31
 #### 12. Kanban Multi-Agent Coordination
 - **What**: Durable SQLite-backed board for multi-agent task collaboration
 - **Hermes location**: `tools/kanban_tools.py`, `hermes_cli/kanban.py`, `hermes_cli/kanban_db.py`
-- **Details**: Hakimi now covers the 9 Hermes-named structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat operations, explicit board routing, and `/kanban boards list|show|create|switch` on isolated SQLite boards. Remaining parity is dispatcher-spawned workers, assignee/profile routing, worker logs, notification subscriptions, swarm creation, and dashboard-level management.
+- **Details**: Hakimi now covers 11 Hermes-aligned structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat/events/diagnostics operations, explicit board routing, and `/kanban boards list|show|create|switch` on isolated SQLite boards. Remaining parity is dispatcher-spawned workers, assignee/profile routing, worker logs, notification subscriptions, swarm creation, and dashboard-level management.
 - **Priority**: **High** — Multi-agent orchestration
 
 #### 13. Gateway Platform Adapters (17+ missing)
@@ -492,7 +492,7 @@ Generated: 2026-05-31
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. Kanban Multi-Agent Coordination
-- **Status**: SQLite-backed tasks/comments/dependency links exist, and the agent tool surface exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, and `kanban_link`; gateway `/kanban` now performs real board operations, supports explicit `--board <slug>` routing, and exposes `/kanban boards list|show|create|switch` for isolated board selection.
+- **Status**: SQLite-backed tasks/comments/dependency links/events exist, and the agent tool surface exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, and `kanban_diagnostics`; gateway `/kanban` now performs real board operations, supports explicit `--board <slug>` routing, exposes event trails/diagnostics, and provides `/kanban boards list|show|create|switch` for isolated board selection.
 - **What's missing**: dispatcher-spawned workers, profile/assignee routing, worker logs, notification subscriptions, swarm creation, and dashboard-level management.
 - **Hermes reference**: `tools/kanban_tools.py`, `hermes_cli/kanban.py`, `hermes_cli/kanban_db.py`
 
@@ -664,7 +664,7 @@ Generated: 2026-05-31
 | 58 | Skills Hub Live Source Adapters | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 3 | ✅ Source refresh accepts `github:owner/repo/path`, GitHub tree URLs, and `well-known:domain`, discovers GitHub `SKILL.md` directories through safe Contents API calls, extracts frontmatter metadata, and caches them through the existing hub index path |
 | 59 | URL Safety for Web/Media Fetches | `hakimi-tools/src/url_safety.rs`, `hakimi-tools/src/{builtin_web_extract,builtin_vision_analyze,builtin_video_analyze}.rs` | 10 | ✅ Web/media tools reject localhost/private/link-local/CGNAT/metadata targets before fetch and stop unsafe redirects; trusted local deployments can opt into private targets while metadata endpoints stay blocked, including bracketed IPv6 literals and IPv4-mapped metadata addresses |
 | 60 | Tirith-Style Command Content Guard | `hakimi-tools/src/command_safety.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process}.rs` | 13 | ✅ Terminal/process shell boundaries block remote script pipe/substitution, encoded shell payload, terminal control-character, invisible/bidirectional Unicode, Unicode URL-host, sudo-stdin, and catastrophic host-command payloads before spawning |
-| 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 15 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, 9 Hermes-named `kanban_*` tools, gateway `/kanban` CRUD/status/link operations, and isolated board routing |
+| 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 18 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, event trails, diagnostics, 11 Hermes-aligned `kanban_*` tools, gateway `/kanban` CRUD/status/link/events/diagnostics operations, and isolated board routing |
 | 62 | Compact Read-File Gutter | `hakimi-tools/src/builtin_read_file.rs` | 1 | ✅ `read_file` matches Hermes latest compact `N|content` line-number format and no longer emits fixed-width padded gutters |
 | 63 | Credential Pool Dead-Entry Cleanup | `hakimi-core/src/credential_pool.rs`, `hakimi-config/src/config.rs` | 3 | ✅ Dead credentials carry status timestamps; stale dead manual entries prune after 24h while singleton-seeded OAuth entries stay quarantined for explicit re-auth sync |
 | 64 | TUI Slash Command Autocomplete | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/lib.rs`, `hakimi-tui/src/app.rs`, `hakimi-tui/src/ui.rs` | 14 | ✅ Shared slash command catalog, alias-aware parser, Tab completion for command prefixes, bounded ambiguous-match hints, and preserved Tab tools-panel toggling for normal input |
@@ -674,7 +674,7 @@ Generated: 2026-05-31
 | 68 | Model Context Metadata | `hakimi-common/src/model_metadata.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ `model.context_length` explicit overrides, static model-family metadata, provider-prefix normalization, minimum-window diagnostics, and shared compression/tool-search context sizing |
 
 ### Summary
-- **Total tests**: 1399 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1402 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

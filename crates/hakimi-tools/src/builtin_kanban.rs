@@ -52,10 +52,23 @@ CREATE TABLE IF NOT EXISTS kanban_links (
     FOREIGN KEY(child_id) REFERENCES kanban_tasks(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS kanban_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    actor TEXT,
+    note TEXT,
+    payload TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(task_id) REFERENCES kanban_tasks(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_kanban_tasks_status ON kanban_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_kanban_tasks_assignee ON kanban_tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_kanban_comments_task ON kanban_comments(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_kanban_links_child ON kanban_links(child_id);
+CREATE INDEX IF NOT EXISTS idx_kanban_events_task ON kanban_events(task_id, id);
+CREATE INDEX IF NOT EXISTS idx_kanban_events_kind ON kanban_events(kind, created_at);
 "#;
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,6 +101,28 @@ pub struct KanbanLink {
     pub child_id: String,
     pub relation: String,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KanbanEvent {
+    pub id: i64,
+    pub task_id: String,
+    pub kind: String,
+    pub actor: Option<String>,
+    pub note: Option<String>,
+    pub payload: Option<JsonValue>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KanbanDiagnostic {
+    pub kind: String,
+    pub severity: String,
+    pub task_id: String,
+    pub title: String,
+    pub detail: String,
+    pub actions: Vec<String>,
+    pub data: JsonValue,
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +173,10 @@ impl KanbanStore {
         if title.is_empty() {
             return Err(HakimiError::Tool("kanban task title is required".into()));
         }
+        let body = normalize_optional(input.body);
+        let assignee = normalize_optional(input.assignee);
+        let status = input.status;
+        let priority = input.priority;
         let raw_id = Uuid::new_v4().simple().to_string();
         let id = format!("kb-{}", &raw_id[..10]);
         let now = now_epoch();
@@ -149,14 +188,25 @@ impl KanbanStore {
             params![
                 id,
                 title,
-                normalize_optional(input.body),
-                normalize_optional(input.assignee),
-                input.status,
-                input.priority,
+                body.as_deref(),
+                assignee.as_deref(),
+                status.as_str(),
+                priority,
                 now
             ],
         )
         .map_err(db_err)?;
+        self.record_event(
+            &id,
+            "created",
+            Some("hakimi"),
+            None,
+            Some(json!({
+                "status": status,
+                "assignee": assignee,
+                "priority": priority,
+            })),
+        )?;
         self.get_task_required(&id)
     }
 
@@ -273,6 +323,16 @@ impl KanbanStore {
             KanbanComment::from_row,
         )
         .map_err(db_err)
+        .and_then(|comment| {
+            self.record_event(
+                task_id,
+                "commented",
+                author,
+                Some(body),
+                Some(json!({"comment_id": comment.id})),
+            )?;
+            Ok(comment)
+        })
     }
 
     fn complete_task(&self, task_id: &str, summary: Option<&str>) -> Result<KanbanTask> {
@@ -314,6 +374,7 @@ impl KanbanStore {
         if let Some(note) = note.and_then(non_empty_str) {
             self.add_comment(task_id, note, Some("heartbeat"))?;
         }
+        self.record_event(task_id, "heartbeat", Some("hakimi"), note, None)?;
         self.get_task_required(task_id)
     }
 
@@ -344,12 +405,33 @@ impl KanbanStore {
             params![parent_id, child_id, relation, now],
         )
         .map_err(db_err)?;
-        Ok(KanbanLink {
+        let link = KanbanLink {
             parent_id: parent_id.to_string(),
             child_id: child_id.to_string(),
             relation: relation.to_string(),
             created_at: now,
-        })
+        };
+        self.record_event(
+            parent_id,
+            "linked_child",
+            Some("hakimi"),
+            None,
+            Some(json!({
+                "child_id": child_id,
+                "relation": link.relation.as_str(),
+            })),
+        )?;
+        self.record_event(
+            child_id,
+            "linked_parent",
+            Some("hakimi"),
+            None,
+            Some(json!({
+                "parent_id": parent_id,
+                "relation": link.relation.as_str(),
+            })),
+        )?;
+        Ok(link)
     }
 
     fn update_status(
@@ -373,7 +455,153 @@ impl KanbanStore {
             params![status, blocked_reason, completed_at, now, task_id],
         )
         .map_err(db_err)?;
+        let kind = match status {
+            "blocked" => "blocked",
+            "done" => "completed",
+            "ready" => "unblocked",
+            _ => "status_changed",
+        };
+        self.record_event(
+            task_id,
+            kind,
+            Some("hakimi"),
+            blocked_reason,
+            Some(json!({"status": status})),
+        )?;
         Ok(())
+    }
+
+    fn record_event(
+        &self,
+        task_id: &str,
+        kind: &str,
+        actor: Option<&str>,
+        note: Option<&str>,
+        payload: Option<JsonValue>,
+    ) -> Result<KanbanEvent> {
+        let kind = non_empty_str(kind)
+            .ok_or_else(|| HakimiError::Tool("kanban event kind is required".into()))?;
+        let now = now_epoch();
+        let payload = payload
+            .map(|value| serde_json::to_string(&value))
+            .transpose()
+            .map_err(|err| HakimiError::Tool(format!("kanban event payload error: {err}")))?;
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO kanban_events (task_id, kind, actor, note, payload, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                task_id,
+                kind,
+                actor.and_then(non_empty_str),
+                note.and_then(non_empty_str),
+                payload,
+                now
+            ],
+        )
+        .map_err(db_err)?;
+        let id = conn.last_insert_rowid();
+        conn.query_row(
+            "SELECT * FROM kanban_events WHERE id = ?1",
+            params![id],
+            KanbanEvent::from_row,
+        )
+        .map_err(db_err)
+    }
+
+    fn events(&self, task_id: &str, limit: usize) -> Result<Vec<KanbanEvent>> {
+        self.get_task_required(task_id)?;
+        let limit = limit.clamp(1, MAX_LIMIT) as i64;
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT * FROM kanban_events
+                 WHERE task_id = ?1
+                 ORDER BY id DESC
+                 LIMIT ?2",
+            )
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map(params![task_id, limit], KanbanEvent::from_row)
+            .map_err(db_err)?;
+        let mut events = rows
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        events.reverse();
+        Ok(events)
+    }
+
+    fn diagnostics(&self, task_id: Option<&str>) -> Result<Vec<KanbanDiagnostic>> {
+        let tasks = if let Some(task_id) = task_id.and_then(non_empty_str) {
+            vec![self.get_task_required(task_id)?]
+        } else {
+            self.list_tasks(None, None, MAX_LIMIT)?
+        };
+        let mut diagnostics = Vec::new();
+        for task in tasks {
+            diagnostics.extend(self.task_diagnostics(&task)?);
+        }
+        diagnostics.sort_by_key(|diag| severity_rank(&diag.severity));
+        Ok(diagnostics)
+    }
+
+    fn task_diagnostics(&self, task: &KanbanTask) -> Result<Vec<KanbanDiagnostic>> {
+        let events = self.events(&task.id, MAX_LIMIT)?;
+        let mut diagnostics = Vec::new();
+        if task.status == "blocked"
+            && no_event_after(&events, "commented", task.updated_at)
+            && no_event_after(&events, "unblocked", task.updated_at)
+        {
+            diagnostics.push(KanbanDiagnostic {
+                kind: "stuck_blocked".to_string(),
+                severity: "warning".to_string(),
+                task_id: task.id.clone(),
+                title: "Task is blocked without follow-up".to_string(),
+                detail: task
+                    .blocked_reason
+                    .clone()
+                    .unwrap_or_else(|| "No block reason recorded.".to_string()),
+                actions: vec![
+                    format!("/kanban comment {} <update>", task.id),
+                    format!("/kanban unblock {}", task.id),
+                ],
+                data: json!({"blocked_at": task.updated_at}),
+            });
+        }
+        let recent_blocked = events
+            .iter()
+            .filter(|event| event.kind == "blocked")
+            .count();
+        let recent_unblocked = events
+            .iter()
+            .filter(|event| event.kind == "unblocked")
+            .count();
+        if recent_blocked >= 2 && recent_unblocked >= 1 && task.status != "done" {
+            diagnostics.push(KanbanDiagnostic {
+                kind: "block_cycle".to_string(),
+                severity: "error".to_string(),
+                task_id: task.id.clone(),
+                title: "Task repeatedly cycles through blocked".to_string(),
+                detail: "Repeated block/unblock transitions suggest the recovery action is not addressing the underlying blocker.".to_string(),
+                actions: vec![format!("/kanban events {}", task.id)],
+                data: json!({
+                    "blocked_events": recent_blocked,
+                    "unblocked_events": recent_unblocked,
+                }),
+            });
+        }
+        if task.status == "running" && task.heartbeat_at.is_none() {
+            diagnostics.push(KanbanDiagnostic {
+                kind: "missing_heartbeat".to_string(),
+                severity: "warning".to_string(),
+                task_id: task.id.clone(),
+                title: "Running task has no heartbeat".to_string(),
+                detail: "Workers should emit heartbeats so dispatchers and operators can distinguish live work from stalled claims.".to_string(),
+                actions: vec![format!("/kanban heartbeat {} <note>", task.id)],
+                data: json!({"status": task.status}),
+            });
+        }
+        Ok(diagnostics)
     }
 
     fn reaches(&self, from: &str, target: &str) -> Result<bool> {
@@ -488,6 +716,21 @@ impl KanbanLink {
     }
 }
 
+impl KanbanEvent {
+    fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
+        let payload: Option<String> = row.get("payload")?;
+        Ok(Self {
+            id: row.get("id")?,
+            task_id: row.get("task_id")?,
+            kind: row.get("kind")?,
+            actor: row.get("actor")?,
+            note: row.get("note")?,
+            payload: payload.and_then(|raw| serde_json::from_str(&raw).ok()),
+            created_at: row.get("created_at")?,
+        })
+    }
+}
+
 #[derive(Clone, Copy)]
 enum KanbanToolKind {
     Show,
@@ -499,6 +742,8 @@ enum KanbanToolKind {
     Comment,
     Heartbeat,
     Link,
+    Events,
+    Diagnostics,
 }
 
 pub struct KanbanTool {
@@ -522,6 +767,8 @@ pub fn kanban_tools() -> Vec<Arc<dyn Tool>> {
         Arc::new(KanbanTool::new(KanbanToolKind::Comment)),
         Arc::new(KanbanTool::new(KanbanToolKind::Heartbeat)),
         Arc::new(KanbanTool::new(KanbanToolKind::Link)),
+        Arc::new(KanbanTool::new(KanbanToolKind::Events)),
+        Arc::new(KanbanTool::new(KanbanToolKind::Diagnostics)),
     ]
 }
 
@@ -538,6 +785,8 @@ impl Tool for KanbanTool {
             KanbanToolKind::Comment => "kanban_comment",
             KanbanToolKind::Heartbeat => "kanban_heartbeat",
             KanbanToolKind::Link => "kanban_link",
+            KanbanToolKind::Events => "kanban_events",
+            KanbanToolKind::Diagnostics => "kanban_diagnostics",
         }
     }
 
@@ -558,6 +807,10 @@ impl Tool for KanbanTool {
             KanbanToolKind::Comment => "Append a durable comment to a Kanban task.",
             KanbanToolKind::Heartbeat => "Record worker liveness for a long-running Kanban task.",
             KanbanToolKind::Link => "Create a parent-child dependency link between Kanban tasks.",
+            KanbanToolKind::Events => "List the durable event trail for a Kanban task.",
+            KanbanToolKind::Diagnostics => {
+                "List active Hermes-style Kanban diagnostics for one task or the board."
+            }
         }
     }
 
@@ -569,6 +822,8 @@ impl Tool for KanbanTool {
             KanbanToolKind::Comment => "\u{1f4ac}",
             KanbanToolKind::Heartbeat => "\u{1f493}",
             KanbanToolKind::Link => "\u{1f517}",
+            KanbanToolKind::Events => "\u{1f4dc}",
+            KanbanToolKind::Diagnostics => "\u{26a0}",
             _ => "\u{1f4cb}",
         }
     }
@@ -634,6 +889,22 @@ impl Tool for KanbanTool {
                     "board": board_schema_prop()
                 },
                 "required": ["parent_id", "child_id"]
+            }),
+            KanbanToolKind::Events => json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+                    "board": board_schema_prop()
+                },
+                "required": ["task_id"]
+            }),
+            KanbanToolKind::Diagnostics => json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "board": board_schema_prop()
+                }
             }),
         }
     }
@@ -746,6 +1017,14 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                 "usage: /kanban link <parent_id> <child_id> [relation]".into(),
             )),
         },
+        "events" => match parts.next() {
+            Some(task_id) => json_result(store.events(task_id, DEFAULT_LIMIT)),
+            None => Err(HakimiError::Tool("usage: /kanban events <task_id>".into())),
+        },
+        "diagnostics" | "diag" => {
+            let task_id = parts.next();
+            json_result(store.diagnostics(task_id))
+        }
         "stats" => store.stats().map(|v| v.to_string()),
         _ => Err(HakimiError::Tool(format!(
             "unknown /kanban command: {command}; run /kanban help"
@@ -843,6 +1122,19 @@ fn execute_kanban_tool(
             let relation = args.get("relation").and_then(JsonValue::as_str);
             json_result(store.link_tasks(parent_id, child_id, relation))
         }
+        KanbanToolKind::Events => {
+            let task_id = require_str(args, "task_id")?;
+            let limit = args
+                .get("limit")
+                .and_then(JsonValue::as_u64)
+                .and_then(|n| usize::try_from(n).ok())
+                .unwrap_or(DEFAULT_LIMIT);
+            json_result(store.events(task_id, limit))
+        }
+        KanbanToolKind::Diagnostics => {
+            let task_id = args.get("task_id").and_then(JsonValue::as_str);
+            json_result(store.diagnostics(task_id))
+        }
     }
 }
 
@@ -853,6 +1145,8 @@ fn show_task_json(store: &KanbanStore, task_id: &str) -> Result<String> {
         "comments": store.comments(task_id)?,
         "parents": store.parents(task_id)?,
         "children": store.children(task_id)?,
+        "events": store.events(task_id, DEFAULT_LIMIT)?,
+        "diagnostics": store.diagnostics(Some(task_id))?,
     })
     .to_string())
 }
@@ -947,6 +1241,8 @@ fn kanban_help() -> String {
         "  `unblock <id>`",
         "  `heartbeat <id> [note]`",
         "  `link <parent_id> <child_id> [relation]`",
+        "  `events <id>`",
+        "  `diagnostics [id]`",
         "  `stats`",
     ]
     .join("\n")
@@ -973,6 +1269,21 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
 fn non_empty_str(value: &str) -> Option<&str> {
     let trimmed = value.trim();
     (!trimmed.is_empty()).then_some(trimmed)
+}
+
+fn severity_rank(severity: &str) -> usize {
+    match severity {
+        "critical" => 0,
+        "error" => 1,
+        "warning" => 2,
+        _ => 3,
+    }
+}
+
+fn no_event_after(events: &[KanbanEvent], kind: &str, timestamp: i64) -> bool {
+    !events
+        .iter()
+        .any(|event| event.kind == kind && event.created_at > timestamp)
 }
 
 fn extract_leading_board(rest: &str) -> Result<(Option<String>, String)> {
@@ -1335,15 +1646,17 @@ mod tests {
     }
 
     #[test]
-    fn exposes_nine_hermes_named_tools() {
+    fn exposes_eleven_hermes_named_tools() {
         let names = kanban_tools()
             .iter()
             .map(|tool| tool.name().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(names.len(), 9);
+        assert_eq!(names.len(), 11);
         assert!(names.contains(&"kanban_create".to_string()));
         assert!(names.contains(&"kanban_heartbeat".to_string()));
         assert!(names.contains(&"kanban_link".to_string()));
+        assert!(names.contains(&"kanban_events".to_string()));
+        assert!(names.contains(&"kanban_diagnostics".to_string()));
     }
 
     #[test]
@@ -1380,6 +1693,74 @@ mod tests {
         let created = kanban_response_with_store(Some("create Review release"), &store);
         let value: JsonValue = serde_json::from_str(&created).unwrap();
         assert_eq!(value["title"], "Review release");
+    }
+
+    #[test]
+    fn records_events_for_task_lifecycle() {
+        let (_dir, store) = store();
+        let task = create(&store, "Trace task");
+
+        store
+            .add_comment(&task.id, "Investigating", Some("agent"))
+            .unwrap();
+        store.block_task(&task.id, "Need logs").unwrap();
+        store.unblock_task(&task.id, None).unwrap();
+        store.complete_task(&task.id, Some("Finished")).unwrap();
+
+        let events = store.events(&task.id, 50).unwrap();
+        let kinds = events
+            .iter()
+            .map(|event| event.kind.as_str())
+            .collect::<Vec<_>>();
+        assert!(kinds.contains(&"created"));
+        assert!(kinds.contains(&"commented"));
+        assert!(kinds.contains(&"blocked"));
+        assert!(kinds.contains(&"unblocked"));
+        assert!(kinds.contains(&"completed"));
+    }
+
+    #[test]
+    fn diagnostics_surface_block_cycles_and_missing_heartbeat() {
+        let (_dir, store) = store();
+        let task = create(&store, "Cycle task");
+
+        store.block_task(&task.id, "First blocker").unwrap();
+        store.unblock_task(&task.id, None).unwrap();
+        store.block_task(&task.id, "Second blocker").unwrap();
+
+        let diagnostics = store.diagnostics(Some(&task.id)).unwrap();
+        assert!(diagnostics.iter().any(|diag| diag.kind == "block_cycle"));
+
+        let running = store
+            .create_task(CreateTask {
+                title: "Worker task".to_string(),
+                body: None,
+                assignee: Some("worker".to_string()),
+                status: "running".to_string(),
+                priority: 0,
+            })
+            .unwrap();
+        let diagnostics = store.diagnostics(Some(&running.id)).unwrap();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| diag.kind == "missing_heartbeat")
+        );
+    }
+
+    #[test]
+    fn slash_events_and_diagnostics_return_json() {
+        let (_dir, store) = store();
+        let task = create(&store, "Inspect trail");
+
+        let events = kanban_response_with_store(Some(&format!("events {}", task.id)), &store);
+        let events: JsonValue = serde_json::from_str(&events).unwrap();
+        assert_eq!(events.as_array().unwrap()[0]["kind"], "created");
+
+        let diagnostics =
+            kanban_response_with_store(Some(&format!("diagnostics {}", task.id)), &store);
+        let diagnostics: JsonValue = serde_json::from_str(&diagnostics).unwrap();
+        assert!(diagnostics.as_array().unwrap().is_empty());
     }
 
     #[test]
