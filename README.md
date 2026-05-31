@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.156-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.157-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1427-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1429-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1427 |
+| Tests | ~500 | 1429 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -102,6 +102,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 **Extensibility**
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports
 - HTTP plugin system with YAML templates
+- HTTP API discovery — OpenAI-compatible `/v1/models` plus `/v1/capabilities` for external UI feature detection
 - Skills Hub — install community skills with `/skills install`
 - Isolated profiles — manage named workspaces, clone/export profile archives, and use gateway `/profile`
 - 9 bundled MCP servers: GitHub, filesystem, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking
@@ -188,7 +189,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1427 |
+| Tests | ~500 | 1429 |
 
 ---
 
@@ -217,6 +218,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 52 built-in tools
 - [x] 10 runtime-exposed platform adapters
 - [x] MCP client + server catalog
+- [x] HTTP API model and capability discovery
 - [x] Plugin system + HTTP templates
 - [x] ratatui TUI with slash commands
 - [x] Smart context compression (3-tier)

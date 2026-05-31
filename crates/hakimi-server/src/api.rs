@@ -8,6 +8,8 @@
 //! - `GET  /tools`           — List available tools
 //! - `GET  /config`          — Get current config (sanitized)
 //! - `POST /config`          — Update config
+//! - `GET  /v1/models`       — OpenAI-compatible model discovery
+//! - `GET  /v1/capabilities` — Machine-readable API capability discovery
 
 use axum::{
     Json, Router,
@@ -18,6 +20,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tracing::info;
 
 use crate::server::AppState;
@@ -44,6 +47,25 @@ pub struct ChatResponse {
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
+}
+
+/// Response body for GET /v1/models.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelsResponse {
+    pub object: String,
+    pub data: Vec<ModelInfo>,
+}
+
+/// OpenAI-compatible model descriptor.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub object: String,
+    pub created: u64,
+    pub owned_by: String,
+    pub permission: Vec<serde_json::Value>,
+    pub root: String,
+    pub parent: Option<String>,
 }
 
 /// Describes a single tool in GET /tools.
@@ -188,8 +210,17 @@ pub fn build_router(state: AppState) -> Router {
     // Health check can be unauthenticated
     let api_routes = api_routes.route("/health", get(health));
 
+    let mut v1_routes = Router::new()
+        .route("/models", get(models))
+        .route("/capabilities", get(capabilities));
+    let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
+    if !password.is_empty() {
+        v1_routes = v1_routes.route_layer(middleware::from_fn(auth_middleware));
+    }
+
     Router::new()
         .nest("/api", api_routes)
+        .nest("/v1", v1_routes)
         .fallback_service(tower_http::services::ServeDir::new("../hakimi-webui/dist"))
         .with_state(state)
 }
@@ -204,6 +235,89 @@ async fn health() -> Json<HealthResponse> {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     })
+}
+
+/// GET /v1/models — OpenAI-compatible model discovery.
+async fn models(State(state): State<AppState>) -> Json<ModelsResponse> {
+    let agent = state.agent.lock().await;
+    let model = agent.model().trim();
+    let model = if model.is_empty() {
+        "hakimi-agent"
+    } else {
+        model
+    };
+
+    Json(ModelsResponse {
+        object: "list".to_string(),
+        data: vec![ModelInfo {
+            id: model.to_string(),
+            object: "model".to_string(),
+            created: 0,
+            owned_by: "hakimi".to_string(),
+            permission: Vec::new(),
+            root: model.to_string(),
+            parent: None,
+        }],
+    })
+}
+
+/// GET /v1/capabilities — advertise the stable HTTP API surface.
+async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let agent = state.agent.lock().await;
+    let model = agent.model().trim();
+    let model = if model.is_empty() {
+        "hakimi-agent"
+    } else {
+        model
+    };
+
+    let auth_required = !std::env::var("HAKIMI_WEBUI_PASSWORD")
+        .unwrap_or_default()
+        .is_empty();
+
+    Json(json!({
+        "object": "hakimi.api_server.capabilities",
+        "platform": "hakimi-agent",
+        "model": model,
+        "auth": {
+            "type": "bearer",
+            "required": auth_required
+        },
+        "runtime": {
+            "mode": "server_agent",
+            "tool_execution": "server",
+            "split_runtime": false,
+            "description": "The HTTP API server runs a server-side Hakimi AIAgent; tools execute on the API-server host."
+        },
+        "features": {
+            "chat": true,
+            "chat_completions": false,
+            "chat_completions_streaming": false,
+            "responses_api": false,
+            "responses_streaming": false,
+            "session_resources": true,
+            "tools_api": true,
+            "config_read": true,
+            "config_write": true,
+            "run_submission": false,
+            "run_status": false,
+            "run_events_sse": false,
+            "run_stop": false,
+            "websocket_streaming": false,
+            "media_api": false
+        },
+        "endpoints": {
+            "health": {"method": "GET", "path": "/api/health"},
+            "models": {"method": "GET", "path": "/v1/models"},
+            "capabilities": {"method": "GET", "path": "/v1/capabilities"},
+            "chat": {"method": "POST", "path": "/api/chat"},
+            "sessions": {"method": "GET", "path": "/api/sessions"},
+            "session": {"method": "GET", "path": "/api/sessions/{id}"},
+            "tools": {"method": "GET", "path": "/api/tools"},
+            "config": {"method": "GET", "path": "/api/config"},
+            "config_update": {"method": "POST", "path": "/api/config"}
+        }
+    }))
 }
 
 /// POST /chat — send a message to the agent and get a response.
@@ -523,6 +637,71 @@ mod tests {
             .unwrap();
         let json: HealthResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.status, "ok");
+    }
+
+    #[tokio::test]
+    async fn test_v1_models_endpoint() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/v1/models")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let models: ModelsResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(models.object, "list");
+        assert_eq!(models.data.len(), 1);
+        assert_eq!(models.data[0].id, "test-model");
+        assert_eq!(models.data[0].object, "model");
+        assert_eq!(models.data[0].owned_by, "hakimi");
+        assert_eq!(models.data[0].root, "test-model");
+        assert!(models.data[0].parent.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_v1_capabilities_endpoint() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/v1/capabilities")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let capabilities: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(capabilities["object"], "hakimi.api_server.capabilities");
+        assert_eq!(capabilities["platform"], "hakimi-agent");
+        assert_eq!(capabilities["model"], "test-model");
+        assert_eq!(capabilities["auth"]["type"], "bearer");
+        assert_eq!(capabilities["runtime"]["mode"], "server_agent");
+        assert_eq!(capabilities["runtime"]["tool_execution"], "server");
+        assert_eq!(capabilities["runtime"]["split_runtime"], false);
+        assert_eq!(capabilities["features"]["chat"], true);
+        assert_eq!(capabilities["features"]["session_resources"], true);
+        assert_eq!(capabilities["features"]["tools_api"], true);
+        assert_eq!(capabilities["features"]["chat_completions"], false);
+        assert_eq!(capabilities["features"]["run_events_sse"], false);
+        assert_eq!(
+            capabilities["endpoints"]["models"],
+            json!({"method": "GET", "path": "/v1/models"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["chat"],
+            json!({"method": "POST", "path": "/api/chat"})
+        );
     }
 
     #[tokio::test]

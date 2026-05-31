@@ -544,8 +544,8 @@ Generated: 2026-05-31
 - **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original feature that needs completion
 
 ### 13. REST API Server
-- **Status**: Basic endpoints (health, chat, sessions, tools, config)
-- **What's missing**: WebSocket streaming, authentication/authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks
+- **Status**: Basic endpoints (health, chat, sessions, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, and OpenAI-compatible `/v1/models` plus machine-readable `/v1/capabilities` discovery for external UI feature detection
+- **What's missing**: OpenAI Chat Completions/Responses compatibility, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
@@ -684,9 +684,10 @@ Generated: 2026-05-31
 | 71 | TUI Voice Readiness | `hakimi-config/src/config.rs`, `hakimi-tui/src/{app.rs,main.rs,ui.rs}` | 5 | ✅ TUI now registers `text_to_speech` and `transcribe_audio`, passes shared `voice.*` config into the agent, exposes `/voice on|off|tts|status|doctor`, and shows configurable Ctrl+B/Ctrl+letter readiness diagnostics without pretending microphone capture is complete |
 | 72 | Voice Diagnostics + STT Silence Filtering | `hakimi-tools/src/voice_mode.rs`, `hakimi-tools/src/builtin_transcribe_audio.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/app.rs` | 4 | ✅ Hermes-style audio environment diagnostics cover SSH/container/WSL/Termux/forwarded-audio cases, `/voice doctor` exposes readiness in gateway, TUI status includes capture/playback readiness, and `transcribe_audio` filters common Whisper silence hallucinations for text responses |
 | 73 | Voice Recording Artifact Validation | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ PCM16 mono WAV writer matches Hermes voice recording parameters, summarizes captured audio duration/peak RMS, rejects too-short or too-quiet recordings before STT, and surfaces artifact readiness in TUI `/voice status` while keeping microphone capture explicitly pending |
+| 74 | HTTP API Discovery | `hakimi-server/src/api.rs` | 2 | ✅ `/v1/models` returns an OpenAI-compatible model list for the active server agent, and `/v1/capabilities` advertises implemented vs pending API features and endpoint paths for external UI feature detection |
 
 ### Summary
-- **Total tests**: 1427 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1429 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
