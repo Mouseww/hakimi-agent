@@ -146,13 +146,13 @@ impl ProfileManager {
                 let Some(source_dir) = clone_source.as_deref() else {
                     bail!("clone source was not resolved");
                 };
-                clone_config_files(&source_dir, &profile_dir)?;
+                clone_config_files(source_dir, &profile_dir)?;
             }
             ProfileCloneMode::Full => {
                 let Some(source_dir) = clone_source.as_deref() else {
                     bail!("clone source was not resolved");
                 };
-                copy_dir_filtered(&source_dir, &profile_dir, CopyMode::CloneAll, true)?;
+                copy_dir_filtered(source_dir, &profile_dir, CopyMode::CloneAll, true)?;
                 strip_runtime_files(&profile_dir)?;
             }
         }
@@ -773,10 +773,10 @@ fn expand_home(path: &Path) -> PathBuf {
     if raw == "~" {
         return dirs::home_dir().unwrap_or_else(|| path.to_path_buf());
     }
-    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
+    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\"))
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
     }
     path.to_path_buf()
 }
