@@ -434,9 +434,15 @@ impl Tool for SendMessageTool {
 mod tests {
     use super::*;
     use hakimi_common::ToolContext;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, MutexGuard};
 
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn test_guard() -> MutexGuard<'static, ()> {
+        TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     fn test_ctx() -> ToolContext {
         ToolContext {
@@ -490,7 +496,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_queue_message() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         clear_test_channel_directory();
         drain_queue();
 
@@ -517,7 +523,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_list_action_formats_cached_targets() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         let _dir = set_test_channel_directory(&[
             ChannelDirectoryEntry::home("slack", "C123456789", "home", "home", "slack"),
             ChannelDirectoryEntry {
@@ -545,7 +551,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_bare_platform_uses_cached_home_target() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         drain_queue();
         let _dir = set_test_channel_directory(&[ChannelDirectoryEntry::home(
             "slack",
@@ -577,7 +583,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_named_target_resolves_from_directory() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         drain_queue();
         let _dir = set_test_channel_directory(&[ChannelDirectoryEntry {
             platform: "discord".into(),
@@ -609,7 +615,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_unresolved_named_target_errors_with_list_hint() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         drain_queue();
         let _dir = set_test_channel_directory(&[ChannelDirectoryEntry::home(
             "slack",
@@ -639,7 +645,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_explicit_thread_target_remains_compatible() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         clear_test_channel_directory();
         drain_queue();
 
@@ -664,7 +670,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_pop_message() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         clear_test_channel_directory();
         drain_queue();
 
@@ -687,7 +693,7 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_queue_multiple_messages() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = test_guard();
         clear_test_channel_directory();
         drain_queue();
 
@@ -713,7 +719,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_invalid_target_format_error() {
+        let _guard = test_guard();
         clear_test_channel_directory();
         let ctx = test_ctx();
         let args = json!({
@@ -725,7 +733,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_missing_target_error() {
+        let _guard = test_guard();
         clear_test_channel_directory();
         let ctx = test_ctx();
         let args = json!({"message": "hello"});
@@ -734,7 +744,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_missing_message_error() {
+        let _guard = test_guard();
         clear_test_channel_directory();
         let ctx = test_ctx();
         let args = json!({"target": "telegram:123"});
