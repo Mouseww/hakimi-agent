@@ -8,8 +8,14 @@
 //! - `GET  /tools`           — List available tools
 //! - `GET  /config`          — Get current config (sanitized)
 //! - `POST /config`          — Update config
+//! - `GET  /status`          — Dashboard runtime status
+//! - `GET  /mcp/servers`     — Dashboard MCP server summaries
+//! - `GET  /credentials/pool`— Dashboard credential pool summaries
+//! - `GET  /webhooks`        — Dashboard webhook gateway summary
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
+
+use std::collections::BTreeMap;
 
 use axum::{
     Json, Router,
@@ -200,7 +206,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sessions/{id}", get(get_session))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
-        .route("/config", post(update_config));
+        .route("/config", post(update_config))
+        .route("/status", get(dashboard_status))
+        .route("/mcp/servers", get(list_mcp_servers))
+        .route("/credentials/pool", get(list_credential_pools))
+        .route("/webhooks", get(list_webhooks));
 
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
@@ -271,17 +281,13 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
         model
     };
 
-    let auth_required = !std::env::var("HAKIMI_WEBUI_PASSWORD")
-        .unwrap_or_default()
-        .is_empty();
-
     Json(json!({
         "object": "hakimi.api_server.capabilities",
         "platform": "hakimi-agent",
         "model": model,
         "auth": {
             "type": "bearer",
-            "required": auth_required
+            "required": auth_required()
         },
         "runtime": {
             "mode": "server_agent",
@@ -306,6 +312,13 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "websocket_streaming": false,
             "media_api": false
         },
+        "dashboard_admin": {
+            "status": true,
+            "mcp_servers_read": true,
+            "credential_pools_read": true,
+            "webhooks_read": true,
+            "write_operations": false
+        },
         "endpoints": {
             "health": {"method": "GET", "path": "/api/health"},
             "models": {"method": "GET", "path": "/v1/models"},
@@ -315,8 +328,189 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "session": {"method": "GET", "path": "/api/sessions/{id}"},
             "tools": {"method": "GET", "path": "/api/tools"},
             "config": {"method": "GET", "path": "/api/config"},
-            "config_update": {"method": "POST", "path": "/api/config"}
+            "config_update": {"method": "POST", "path": "/api/config"},
+            "dashboard_status": {"method": "GET", "path": "/api/status"},
+            "mcp_servers": {"method": "GET", "path": "/api/mcp/servers"},
+            "credential_pool": {"method": "GET", "path": "/api/credentials/pool"},
+            "webhooks": {"method": "GET", "path": "/api/webhooks"}
         }
+    }))
+}
+
+fn auth_required() -> bool {
+    !std::env::var("HAKIMI_WEBUI_PASSWORD")
+        .unwrap_or_default()
+        .is_empty()
+}
+
+fn redacted_env(env: &std::collections::HashMap<String, String>) -> BTreeMap<String, String> {
+    env.iter()
+        .map(|(key, value)| {
+            let rendered = if value.trim().is_empty() {
+                String::new()
+            } else {
+                "<redacted>".to_string()
+            };
+            (key.clone(), rendered)
+        })
+        .collect()
+}
+
+fn configured(value: &str) -> bool {
+    !value.trim().is_empty()
+}
+
+/// GET /status — dashboard runtime status without secrets.
+async fn dashboard_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let agent = state.agent.lock().await;
+    let model = agent.model().trim().to_string();
+    let model = if model.is_empty() {
+        "hakimi-agent".to_string()
+    } else {
+        model
+    };
+    let tool_count = agent.tool_registry().get_definitions().await.len();
+    drop(agent);
+
+    let session_count = {
+        use hakimi_session::SessionOps;
+        let db = state.session_db.lock().await;
+        db.get_recent_sessions(None, 50)
+            .map(|sessions| sessions.len())
+            .unwrap_or_default()
+    };
+
+    let config = state.config.lock().await;
+    Json(json!({
+        "object": "hakimi.dashboard.status",
+        "status": "ok",
+        "version": env!("CARGO_PKG_VERSION"),
+        "model": model,
+        "auth": {
+            "type": "bearer",
+            "required": auth_required()
+        },
+        "runtime": {
+            "mode": "server_agent",
+            "tool_execution": "server"
+        },
+        "resources": {
+            "sessions_sampled": session_count,
+            "tools": tool_count,
+            "mcp_servers": config.mcp_servers.len(),
+            "credential_providers": config.credential_pools.len(),
+            "webhook_enabled": config.gateways.webhook.enabled
+        },
+        "dashboard_admin": {
+            "readonly": true,
+            "mcp_servers": "/api/mcp/servers",
+            "credential_pool": "/api/credentials/pool",
+            "webhooks": "/api/webhooks"
+        }
+    }))
+}
+
+/// GET /mcp/servers — dashboard-safe MCP server summaries.
+async fn list_mcp_servers(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.lock().await;
+    let mut servers: Vec<_> = config
+        .mcp_servers
+        .iter()
+        .map(|(name, server)| {
+            json!({
+                "name": name,
+                "transport": "stdio",
+                "command": server.command.clone(),
+                "args_count": server.args.len(),
+                "env_count": server.env.len(),
+                "env": redacted_env(&server.env)
+            })
+        })
+        .collect();
+    servers.sort_by(|a, b| {
+        a["name"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["name"].as_str().unwrap_or_default())
+    });
+    let count = servers.len();
+
+    Json(json!({
+        "object": "hakimi.dashboard.mcp_servers",
+        "servers": servers,
+        "count": count,
+        "secrets_redacted": true,
+        "write_operations": false
+    }))
+}
+
+/// GET /credentials/pool — dashboard-safe credential pool summaries.
+async fn list_credential_pools(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.lock().await;
+    let mut providers: Vec<_> = config
+        .credential_pools
+        .iter()
+        .map(|(provider, pool)| {
+            let entries: Vec<_> = pool
+                .credentials
+                .iter()
+                .enumerate()
+                .map(|(idx, cred)| {
+                    json!({
+                        "index": idx + 1,
+                        "id": cred
+                            .id
+                            .clone()
+                            .unwrap_or_else(|| format!("{provider}-cred-{idx}")),
+                        "has_api_key": configured(&cred.api_key),
+                        "base_url_configured": cred.base_url.as_deref().map(configured).unwrap_or(false),
+                        "org_id_configured": cred.org_id.as_deref().map(configured).unwrap_or(false),
+                        "source": cred.source.clone(),
+                        "priority": cred.priority.unwrap_or(0),
+                        "max_concurrent": cred.max_concurrent.unwrap_or(10)
+                    })
+                })
+                .collect();
+
+            json!({
+                "provider": provider,
+                "strategy": pool.strategy.as_deref().unwrap_or("round_robin"),
+                "count": entries.len(),
+                "entries": entries
+            })
+        })
+        .collect();
+    providers.sort_by(|a, b| {
+        a["provider"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["provider"].as_str().unwrap_or_default())
+    });
+    let count = providers.len();
+
+    Json(json!({
+        "object": "hakimi.dashboard.credential_pool",
+        "providers": providers,
+        "count": count,
+        "secrets_redacted": true,
+        "write_operations": false
+    }))
+}
+
+/// GET /webhooks — dashboard-safe webhook gateway summary.
+async fn list_webhooks(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.lock().await;
+    let webhook = &config.gateways.webhook;
+
+    Json(json!({
+        "object": "hakimi.dashboard.webhooks",
+        "enabled": webhook.enabled,
+        "bot_id": webhook.bot_id.clone(),
+        "port": webhook.port,
+        "path": webhook.path.clone(),
+        "secret_configured": configured(&webhook.secret),
+        "routes": [],
+        "write_operations": false
     }))
 }
 
@@ -702,6 +896,164 @@ mod tests {
             capabilities["endpoints"]["chat"],
             json!({"method": "POST", "path": "/api/chat"})
         );
+        assert_eq!(capabilities["dashboard_admin"]["status"], true);
+        assert_eq!(capabilities["dashboard_admin"]["mcp_servers_read"], true);
+        assert_eq!(
+            capabilities["endpoints"]["dashboard_status"],
+            json!({"method": "GET", "path": "/api/status"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["mcp_servers"],
+            json!({"method": "GET", "path": "/api/mcp/servers"})
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_status_endpoint() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/api/status")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(status["object"], "hakimi.dashboard.status");
+        assert_eq!(status["status"], "ok");
+        assert_eq!(status["model"], "test-model");
+        assert_eq!(status["dashboard_admin"]["readonly"], true);
+        assert_eq!(status["resources"]["mcp_servers"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_mcp_servers_redacts_env_values() {
+        let state = test_state();
+        {
+            let mut config = state.config.lock().await;
+            config.mcp_servers.insert(
+                "demo".to_string(),
+                hakimi_config::McpServerConfig {
+                    command: "npx".to_string(),
+                    args: vec!["-y".to_string(), "demo-mcp".to_string()],
+                    env: std::collections::HashMap::from([(
+                        "API_KEY".to_string(),
+                        "test-mcp-secret-value".to_string(),
+                    )]),
+                },
+            );
+        }
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/api/mcp/servers")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_text.contains("test-mcp-secret-value"));
+        let mcp: serde_json::Value = serde_json::from_str(&body_text).unwrap();
+        assert_eq!(mcp["object"], "hakimi.dashboard.mcp_servers");
+        assert_eq!(mcp["count"], 1);
+        assert_eq!(mcp["servers"][0]["name"], "demo");
+        assert_eq!(mcp["servers"][0]["transport"], "stdio");
+        assert_eq!(mcp["servers"][0]["args_count"], 2);
+        assert_eq!(mcp["servers"][0]["env"]["API_KEY"], "<redacted>");
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_credential_pool_redacts_api_keys() {
+        let state = test_state();
+        {
+            let mut config = state.config.lock().await;
+            config.credential_pools.insert(
+                "openrouter".to_string(),
+                hakimi_core::credential_pool::CredentialPoolConfig {
+                    strategy: Some("fill_first".to_string()),
+                    credentials: vec![hakimi_core::credential_pool::CredentialConfig {
+                        id: Some("primary".to_string()),
+                        api_key: "test-openrouter-secret-value".to_string(),
+                        base_url: Some("https://openrouter.ai/api/v1".to_string()),
+                        org_id: None,
+                        source: Some("manual:test".to_string()),
+                        priority: Some(10),
+                        max_concurrent: Some(3),
+                    }],
+                },
+            );
+        }
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/api/credentials/pool")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_text.contains("test-openrouter-secret-value"));
+        let pool: serde_json::Value = serde_json::from_str(&body_text).unwrap();
+        assert_eq!(pool["object"], "hakimi.dashboard.credential_pool");
+        assert_eq!(pool["providers"][0]["provider"], "openrouter");
+        assert_eq!(pool["providers"][0]["strategy"], "fill_first");
+        assert_eq!(pool["providers"][0]["entries"][0]["id"], "primary");
+        assert_eq!(pool["providers"][0]["entries"][0]["has_api_key"], true);
+        assert_eq!(
+            pool["providers"][0]["entries"][0]["base_url_configured"],
+            true
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_webhooks_redacts_secret() {
+        let state = test_state();
+        {
+            let mut config = state.config.lock().await;
+            config.gateways.webhook.enabled = true;
+            config.gateways.webhook.bot_id = "webhook-main".to_string();
+            config.gateways.webhook.port = 9100;
+            config.gateways.webhook.path = "/hooks".to_string();
+            config.gateways.webhook.secret = "test-webhook-secret-value".to_string();
+        }
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/api/webhooks")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_text.contains("test-webhook-secret-value"));
+        let webhooks: serde_json::Value = serde_json::from_str(&body_text).unwrap();
+        assert_eq!(webhooks["object"], "hakimi.dashboard.webhooks");
+        assert_eq!(webhooks["enabled"], true);
+        assert_eq!(webhooks["bot_id"], "webhook-main");
+        assert_eq!(webhooks["port"], 9100);
+        assert_eq!(webhooks["path"], "/hooks");
+        assert_eq!(webhooks["secret_configured"], true);
     }
 
     #[tokio::test]

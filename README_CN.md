@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.180-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.181-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1524-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1528-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1524 |
+| 测试数量 | ~500 | 1528 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -105,6 +105,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - MCP 协议客户端 — stdio / HTTP / SSE 传输，并支持 CLI/网关目录搜索与配置片段生成
 - HTTP 插件系统，YAML 模板
 - HTTP API 发现端点 — OpenAI 兼容 `/v1/models` 与 `/v1/capabilities`，方便外部 UI 探测能力
+- WebUI 管理 API — 只读 `/api/status`、`/api/mcp/servers`、`/api/credentials/pool` 和 `/api/webhooks`，为仪表盘提供脱敏运行状态
 - Skills Hub — 社区技能市场
 - 隔离 Profile — 管理命名工作区、克隆/导出 Profile 归档、创建 `~/.hakimi/bin/<profile>` 包装别名，并通过网关 `/profile` 操作
 - 10 个精选 MCP 目录项：GitHub、文件系统、Brave Search、PostgreSQL、Puppeteer、记忆、fetch、SQLite、思维链，以及 Hermes 审核过的 n8n bridge
@@ -200,7 +201,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1524 |
+| 测试数量 | ~500 | 1528 |
 
 ---
 
@@ -231,6 +232,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 网关目标目录 + send_message 频道解析
 - [x] MCP 客户端 + CLI/网关服务器目录
 - [x] HTTP API 模型与能力发现端点
+- [x] WebUI 管理 API 摘要
 - [x] 插件系统 + HTTP 模板
 - [x] ratatui TUI 界面
 - [x] 智能上下文压缩（3 层）
