@@ -2038,6 +2038,33 @@ fn env_or_config_value(env_key: &str, config_value: &str) -> Option<String> {
         .or_else(|| (!config_value.trim().is_empty()).then(|| config_value.to_string()))
 }
 
+fn env_flag_enabled(env_key: &str) -> bool {
+    std::env::var(env_key)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn env_or_config_list(env_key: &str, config_values: &[String]) -> Vec<String> {
+    std::env::var(env_key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_else(|| config_values.to_vec())
+}
+
 fn optional_config_value(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_string())
 }
@@ -2209,6 +2236,77 @@ fn register_configured_gateway_adapters(
         gateway.add_adapter(Box::new(webhook));
         bot_ids.insert("webhook".to_string(), bot_id);
         info!("webhook gateway registered");
+    }
+
+    let msgraph_client_state = env_or_config_value(
+        "MSGRAPH_WEBHOOK_CLIENT_STATE",
+        &config.gateways.msgraph_webhook.client_state,
+    );
+    if config.gateways.msgraph_webhook.enabled
+        || env_flag_enabled("MSGRAPH_WEBHOOK_ENABLED")
+        || msgraph_client_state.is_some()
+    {
+        let bot_id = env_or_config_value(
+            "MSGRAPH_WEBHOOK_BOT_ID",
+            &config.gateways.msgraph_webhook.bot_id,
+        )
+        .unwrap_or_else(|| "msgraph_webhook".to_string());
+        let host = env_or_config_value(
+            "MSGRAPH_WEBHOOK_HOST",
+            &config.gateways.msgraph_webhook.host,
+        )
+        .unwrap_or_else(|| "0.0.0.0".to_string());
+        let port = env_or_config_value(
+            "MSGRAPH_WEBHOOK_PORT",
+            &config.gateways.msgraph_webhook.port.to_string(),
+        )
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(config.gateways.msgraph_webhook.port);
+        let max_seen_receipts = env_or_config_value(
+            "MSGRAPH_WEBHOOK_MAX_SEEN_RECEIPTS",
+            &config
+                .gateways
+                .msgraph_webhook
+                .max_seen_receipts
+                .to_string(),
+        )
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(config.gateways.msgraph_webhook.max_seen_receipts);
+        let webhook = hakimi_gateway::MSGraphWebhookAdapter::new(
+            hakimi_gateway::MSGraphWebhookAdapterConfig {
+                bot_id: bot_id.clone(),
+                host,
+                port,
+                webhook_path: env_or_config_value(
+                    "MSGRAPH_WEBHOOK_PATH",
+                    &config.gateways.msgraph_webhook.webhook_path,
+                )
+                .unwrap_or_else(|| "/msgraph/webhook".to_string()),
+                health_path: env_or_config_value(
+                    "MSGRAPH_WEBHOOK_HEALTH_PATH",
+                    &config.gateways.msgraph_webhook.health_path,
+                )
+                .unwrap_or_else(|| "/health".to_string()),
+                client_state: msgraph_client_state.unwrap_or_default(),
+                accepted_resources: env_or_config_list(
+                    "MSGRAPH_WEBHOOK_ACCEPTED_RESOURCES",
+                    &config.gateways.msgraph_webhook.accepted_resources,
+                ),
+                allowed_source_cidrs: env_or_config_list(
+                    "MSGRAPH_WEBHOOK_ALLOWED_SOURCE_CIDRS",
+                    &config.gateways.msgraph_webhook.allowed_source_cidrs,
+                ),
+                max_seen_receipts,
+                prompt: env_or_config_value(
+                    "MSGRAPH_WEBHOOK_PROMPT",
+                    &config.gateways.msgraph_webhook.prompt,
+                )
+                .unwrap_or_default(),
+            },
+        );
+        gateway.add_adapter(Box::new(webhook));
+        bot_ids.insert("msgraph_webhook".to_string(), bot_id);
+        info!("msgraph_webhook gateway registered");
     }
 
     if config.gateways.signal.enabled {

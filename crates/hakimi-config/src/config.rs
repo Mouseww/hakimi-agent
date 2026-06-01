@@ -611,6 +611,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub webhook: WebhookGatewayConfig,
     #[serde(default)]
+    pub msgraph_webhook: MSGraphWebhookGatewayConfig,
+    #[serde(default)]
     pub signal: SignalGatewayConfig,
     #[serde(default)]
     pub sms: SmsGatewayConfig,
@@ -648,6 +650,7 @@ impl Default for GatewaysConfig {
             discord: DiscordGatewayConfig::default(),
             mattermost: MattermostGatewayConfig::default(),
             webhook: WebhookGatewayConfig::default(),
+            msgraph_webhook: MSGraphWebhookGatewayConfig::default(),
             signal: SignalGatewayConfig::default(),
             sms: SmsGatewayConfig::default(),
             email: EmailGatewayConfig::default(),
@@ -826,6 +829,75 @@ impl Default for WebhookGatewayConfig {
             port: default_webhook_port(),
             path: default_webhook_path(),
             secret: String::new(),
+        }
+    }
+}
+
+/// Microsoft Graph webhook gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MSGraphWebhookGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_msgraph_webhook_bot_id")]
+    pub bot_id: String,
+    #[serde(default = "default_msgraph_webhook_host")]
+    pub host: String,
+    #[serde(default = "default_msgraph_webhook_port")]
+    pub port: u16,
+    #[serde(default = "default_msgraph_webhook_path")]
+    pub webhook_path: String,
+    #[serde(default = "default_msgraph_webhook_health_path")]
+    pub health_path: String,
+    #[serde(default)]
+    pub client_state: String,
+    #[serde(default)]
+    pub accepted_resources: Vec<String>,
+    #[serde(default)]
+    pub allowed_source_cidrs: Vec<String>,
+    #[serde(default = "default_msgraph_webhook_max_seen_receipts")]
+    pub max_seen_receipts: usize,
+    #[serde(default)]
+    pub prompt: String,
+}
+
+fn default_msgraph_webhook_bot_id() -> String {
+    "msgraph_webhook".to_string()
+}
+
+fn default_msgraph_webhook_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_msgraph_webhook_port() -> u16 {
+    8646
+}
+
+fn default_msgraph_webhook_path() -> String {
+    "/msgraph/webhook".to_string()
+}
+
+fn default_msgraph_webhook_health_path() -> String {
+    "/health".to_string()
+}
+
+fn default_msgraph_webhook_max_seen_receipts() -> usize {
+    5_000
+}
+
+impl Default for MSGraphWebhookGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_msgraph_webhook_bot_id(),
+            host: default_msgraph_webhook_host(),
+            port: default_msgraph_webhook_port(),
+            webhook_path: default_msgraph_webhook_path(),
+            health_path: default_msgraph_webhook_health_path(),
+            client_state: String::new(),
+            accepted_resources: Vec::new(),
+            allowed_source_cidrs: Vec::new(),
+            max_seen_receipts: default_msgraph_webhook_max_seen_receipts(),
+            prompt: String::new(),
         }
     }
 }
@@ -1469,6 +1541,14 @@ mod tests {
         assert_eq!(config.gateways.discord.bot_id, "discord");
         assert!(!config.gateways.webhook.enabled);
         assert_eq!(config.gateways.webhook.path, "/webhook");
+        assert!(!config.gateways.msgraph_webhook.enabled);
+        assert_eq!(config.gateways.msgraph_webhook.bot_id, "msgraph_webhook");
+        assert_eq!(config.gateways.msgraph_webhook.host, "0.0.0.0");
+        assert_eq!(config.gateways.msgraph_webhook.port, 8646);
+        assert_eq!(
+            config.gateways.msgraph_webhook.webhook_path,
+            "/msgraph/webhook"
+        );
         assert!(!config.gateways.signal.enabled);
         assert_eq!(
             config.gateways.signal.signal_cli_path,
@@ -1599,6 +1679,18 @@ gateways:
     port: 9090
     path: "/events"
     secret: "whsec-redacted"
+  msgraph_webhook:
+    enabled: true
+    bot_id: "ops-msgraph"
+    host: "127.0.0.1"
+    port: 8647
+    webhook_path: "/graph/notify"
+    health_path: "/graph/health"
+    client_state: "graph-redacted"
+    accepted_resources: ["users/123/messages", "me/events/*"]
+    allowed_source_cidrs: ["127.0.0.1/32"]
+    max_seen_receipts: 42
+    prompt: "Graph {change_type} {resource}"
   signal:
     enabled: true
     phone_number: "+15551234567"
@@ -1674,6 +1766,23 @@ gateways:
         assert!(config.gateways.webhook.enabled);
         assert_eq!(config.gateways.webhook.port, 9090);
         assert_eq!(config.gateways.webhook.path, "/events");
+        assert!(config.gateways.msgraph_webhook.enabled);
+        assert_eq!(config.gateways.msgraph_webhook.bot_id, "ops-msgraph");
+        assert_eq!(config.gateways.msgraph_webhook.host, "127.0.0.1");
+        assert_eq!(config.gateways.msgraph_webhook.port, 8647);
+        assert_eq!(
+            config.gateways.msgraph_webhook.webhook_path,
+            "/graph/notify"
+        );
+        assert_eq!(
+            config.gateways.msgraph_webhook.allowed_source_cidrs,
+            vec!["127.0.0.1/32"]
+        );
+        assert_eq!(config.gateways.msgraph_webhook.max_seen_receipts, 42);
+        assert_eq!(
+            config.gateways.msgraph_webhook.prompt,
+            "Graph {change_type} {resource}"
+        );
         assert!(config.gateways.signal.enabled);
         assert_eq!(config.gateways.signal.phone_number, "+15551234567");
         assert!(config.gateways.bluebubbles.enabled);
