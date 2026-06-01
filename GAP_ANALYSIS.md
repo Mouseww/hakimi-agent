@@ -153,6 +153,7 @@ Generated: 2026-05-31
 - **TUI `/history [N]` command** — Reviews recent user/assistant turns locally without sending the command to the model
 - **Gateway/TUI `/undo [N]` command** — Rewinds recent in-memory user turns, clamps over-large counts to the oldest prompt, and returns the target text for edit/resend without entering the model loop
 - **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers plus OSC 52 terminal fallback
+- **TUI `/checkpoints [cmd]` command** — Reuses the shared shadow-git checkpoint renderer for list/status/create/diff/restore from the TUI without entering the model loop
 - **Voice diagnostics, capture artifacts, chunked STT dispatch, local TTS playback, and STT filtering** — `/voice on|off|tts|status|doctor`, configurable Ctrl+B/Ctrl+letter diagnostics, shared TTS/transcription config/tool registration, audio I/O environment reporting, Markdown-cleaned TTS playback cache planning, local system-player launch/interrupt support, PCM16 WAV recording artifact validation, oversized WAV chunking, `voice_capture` recorder-backed capture with optional `transcribe_audio` dispatch, second-press TUI capture cancellation, and Whisper silence-hallucination filtering
 - **Spinner animation** — Thinking indicator
 - **Key handling** — Ctrl+C quit, input editing, scrolling
@@ -556,7 +557,7 @@ Generated: 2026-05-31
 
 ### 14. TUI
 - **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
-- **What's missing**: Session picker, skill browser, config editor, theme/skin support, checkpoint viewer, cron job management, gateway status panel
+- **What's missing**: Session picker, skill browser, config editor, theme/skin support, cron job management, gateway status panel
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
 ### 15. Error Handling
@@ -586,7 +587,7 @@ Generated: 2026-05-31
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~79** (up from ~30)
+**Fully present in Hakimi: ~80** (up from ~30)
 **Partially implemented: ~10**
 **Missing entirely: ~68+**
 
@@ -600,7 +601,7 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. TUI session/config/checkpoint management surfaces
+10. TUI session/config/cron/gateway management surfaces
 
 ---
 
@@ -711,9 +712,10 @@ Generated: 2026-05-31
 | 92 | Gateway Stream Overflow Chunking | `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs`, platform gateway adapters | 6 | ✅ Gateway route/send/edit paths expose platform text limits and split long outbound or streamed replies into UTF-8-safe chunks; final delivery skips duplicate long replies after overflow stream chunks |
 | 93 | Dashboard Admin Runtime API | `hakimi-server/src/api.rs` | 9 | ✅ `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose WebUI/admin summaries with secret values omitted or redacted; runtime-scoped POST/DELETE handlers add/remove stdio MCP servers, credential-pool entries, and webhook settings without persisting secrets to disk; `/v1/capabilities` advertises the writable admin surface |
 | 94 | Trajectory Saving | `hakimi-core/src/trajectory.rs`, `hakimi-core/src/agent.rs`, CLI/server/TUI config wiring | 6 | ✅ Hermes-compatible ShareGPT JSONL trajectory saving for completed and failed turns, with system-prompt snapshots, reasoning scratchpad conversion, tool-call/tool-response XML payloads, image omission markers, config/env controls, and default output under `~/.hakimi/trajectories` |
+| 95 | TUI Checkpoint Viewer | `hakimi-tui/src/app.rs`, `hakimi-tools/src/builtin_checkpoint.rs` | 2 | ✅ `/checkpoints` and `/ckpt` now run locally in the TUI, reuse the same shadow-git response renderer as gateway `/checkpoints`, support list/status/create/diff/restore command text, and keep checkpoint inspection out of the agent/model loop |
 
 ### Summary
-- **Total tests**: 1539 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1541 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

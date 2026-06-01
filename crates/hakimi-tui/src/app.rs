@@ -8,6 +8,7 @@ use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hakimi_common::{SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix};
 use hakimi_config::VoiceConfig;
+use std::path::Path;
 use tokio::sync::mpsc;
 
 const TOOL_CHAT_PREVIEW_CHARS: usize = 120;
@@ -50,6 +51,10 @@ fn parse_undo_turns(arg: Option<&str>) -> Result<usize, &'static str> {
         Ok(turns) if turns > 0 => Ok(turns),
         _ => Err("usage: /undo [turns]"),
     }
+}
+
+fn render_tui_checkpoint_command(arg: Option<&str>, workdir: &Path) -> String {
+    hakimi_tools::checkpoint_response(arg, workdir)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -366,11 +371,13 @@ impl TuiVoiceStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum TuiCommand {
     Help,
     History(Option<String>),
     Undo(Option<String>),
     Copy(Option<String>),
+    Checkpoints(Option<String>),
     Clear,
     Tools,
     Voice(Option<String>),
@@ -389,6 +396,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "history" => Some(TuiCommand::History(arg)),
         "undo" => Some(TuiCommand::Undo(arg)),
         "copy" => Some(TuiCommand::Copy(arg)),
+        "checkpoints" => Some(TuiCommand::Checkpoints(arg)),
         "clear" => Some(TuiCommand::Clear),
         "tools" => Some(TuiCommand::Tools),
         "voice" => Some(TuiCommand::Voice(arg)),
@@ -674,7 +682,7 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /undo [N]      — Rewind recent user turns into the composer\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /voice [cmd]   — Show or toggle voice readiness\n  /quit          — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help               — Show this help\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
             }
             Some(TuiCommand::History(arg)) => {
@@ -722,6 +730,13 @@ impl App {
                     }
                     other => self.messages.push(ChatMessage::system(other.message())),
                 }
+            }
+            Some(TuiCommand::Checkpoints(arg)) => {
+                let output = match std::env::current_dir() {
+                    Ok(workdir) => render_tui_checkpoint_command(arg.as_deref(), &workdir),
+                    Err(err) => format!("Checkpoint command failed: {err}"),
+                };
+                self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::Clear) => {
                 self.messages.clear();
@@ -1448,6 +1463,24 @@ mod tests {
         assert!(content.contains("[Hakimi #2] answer"));
     }
 
+    #[test]
+    fn parse_tui_command_accepts_checkpoint_alias() {
+        assert_eq!(
+            parse_tui_command("/ckpt status"),
+            Some(TuiCommand::Checkpoints(Some("status".to_string())))
+        );
+    }
+
+    #[test]
+    fn parse_tui_command_keeps_checkpoint_arguments() {
+        assert_eq!(
+            parse_tui_command("/checkpoints diff deadbeef crates/hakimi-tui/src/app.rs"),
+            Some(TuiCommand::Checkpoints(Some(
+                "diff deadbeef crates/hakimi-tui/src/app.rs".to_string()
+            )))
+        );
+    }
+
     // ---------------------------------------------------------------
     // Slash commands
     // ---------------------------------------------------------------
@@ -1504,6 +1537,7 @@ mod tests {
         assert!(app.messages[1].content.contains("/history"));
         assert!(app.messages[1].content.contains("/undo"));
         assert!(app.messages[1].content.contains("/copy"));
+        assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/voice"));
     }
 
