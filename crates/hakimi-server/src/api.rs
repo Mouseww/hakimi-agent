@@ -5,6 +5,8 @@
 //! - `POST /chat`            — Send a message, get a response
 //! - `GET  /sessions`        — List recent sessions
 //! - `GET  /sessions/:id`    — Get session details
+//! - `GET  /sessions/search` — Search saved session messages
+//! - `GET  /sessions/:id/messages` — Get sanitized session messages
 //! - `GET  /tools`           — List available tools
 //! - `GET  /config`          — Get current config (sanitized)
 //! - `POST /config`          — Update config
@@ -31,7 +33,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
     Json, Router,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::{StatusCode, header},
     middleware::{self, Next},
     response::Response,
@@ -189,6 +191,64 @@ pub struct SessionInfo {
     pub title: Option<String>,
 }
 
+/// Query parameters for GET /sessions/search.
+#[derive(Debug, Deserialize)]
+pub struct SessionSearchQuery {
+    pub q: Option<String>,
+    pub limit: Option<usize>,
+}
+
+/// Response body for GET /sessions/search.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionSearchResponse {
+    pub object: String,
+    pub query: String,
+    pub count: usize,
+    pub data: Vec<SessionSearchResultInfo>,
+}
+
+/// A dashboard-safe session search hit.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionSearchResultInfo {
+    pub session_id: String,
+    pub message_id: i64,
+    pub content: Option<String>,
+    pub rank: f64,
+    pub title: Option<String>,
+    pub source: Option<String>,
+    pub model: Option<String>,
+    pub started_at: Option<String>,
+}
+
+/// Query parameters for GET /sessions/:id/messages.
+#[derive(Debug, Deserialize)]
+pub struct SessionMessagesQuery {
+    pub limit: Option<usize>,
+}
+
+/// Response body for GET /sessions/:id/messages.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionMessagesResponse {
+    pub object: String,
+    pub session: SessionInfo,
+    pub count: usize,
+    pub messages: Vec<SessionMessageInfo>,
+}
+
+/// A sanitized message row for dashboard/session inspection.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionMessageInfo {
+    pub role: String,
+    pub content: Option<String>,
+    pub timestamp: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub name: Option<String>,
+    pub tool_call_count: usize,
+    pub has_reasoning: bool,
+    pub token_count: Option<u32>,
+    pub finish_reason: Option<String>,
+}
+
 impl From<hakimi_session::SessionMeta> for SessionInfo {
     fn from(meta: hakimi_session::SessionMeta) -> Self {
         Self {
@@ -203,6 +263,23 @@ impl From<hakimi_session::SessionMeta> for SessionInfo {
             input_tokens: meta.input_tokens,
             output_tokens: meta.output_tokens,
             title: meta.title,
+        }
+    }
+}
+
+impl From<hakimi_common::Message> for SessionMessageInfo {
+    fn from(message: hakimi_common::Message) -> Self {
+        let tool_call_count = message.tool_calls.as_ref().map_or(0, Vec::len);
+        Self {
+            role: message.role.to_string(),
+            content: message.content,
+            timestamp: message.timestamp.map(|timestamp| timestamp.to_rfc3339()),
+            tool_call_id: message.tool_call_id,
+            name: message.name,
+            tool_call_count,
+            has_reasoning: message.reasoning.is_some() || message.reasoning_content.is_some(),
+            token_count: message.token_count,
+            finish_reason: message.finish_reason,
         }
     }
 }
@@ -406,7 +483,9 @@ pub fn build_router(state: AppState) -> Router {
     let mut api_routes = Router::new()
         .route("/chat", post(chat))
         .route("/sessions", get(list_sessions))
+        .route("/sessions/search", get(search_sessions))
         .route("/sessions/{id}", get(get_session))
+        .route("/sessions/{id}/messages", get(get_session_messages))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
         .route("/config", post(update_config))
@@ -521,6 +600,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "skills_api": true,
             "toolsets_api": true,
             "session_resources": true,
+            "session_messages": true,
+            "session_search": true,
             "tools_api": true,
             "config_read": true,
             "config_write": true,
@@ -555,6 +636,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "chat": {"method": "POST", "path": "/api/chat"},
             "sessions": {"method": "GET", "path": "/api/sessions"},
             "session": {"method": "GET", "path": "/api/sessions/{id}"},
+            "session_messages": {"method": "GET", "path": "/api/sessions/{id}/messages"},
+            "session_search": {"method": "GET", "path": "/api/sessions/search?q=<query>"},
             "tools": {"method": "GET", "path": "/api/tools"},
             "config": {"method": "GET", "path": "/api/config"},
             "config_update": {"method": "POST", "path": "/api/config"},
@@ -575,6 +658,10 @@ fn auth_required() -> bool {
     !std::env::var("HAKIMI_WEBUI_PASSWORD")
         .unwrap_or_default()
         .is_empty()
+}
+
+fn bounded_limit(limit: Option<usize>, default: usize, max: usize) -> usize {
+    limit.unwrap_or(default).clamp(1, max)
 }
 
 fn request_bool(value: Option<&JsonValue>, default: bool) -> bool {
@@ -1551,6 +1638,91 @@ async fn get_session(
     }
 }
 
+/// GET /sessions/search — search saved message content across sessions.
+async fn search_sessions(
+    State(state): State<AppState>,
+    Query(params): Query<SessionSearchQuery>,
+) -> Result<Json<SessionSearchResponse>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::{MessageOps, SessionOps};
+
+    let query = params.q.unwrap_or_default().trim().to_string();
+    let limit = bounded_limit(params.limit, 20, 100);
+    if query.is_empty() {
+        return Ok(Json(SessionSearchResponse {
+            object: "list".to_string(),
+            query,
+            count: 0,
+            data: Vec::new(),
+        }));
+    }
+
+    let db = state.session_db.lock().await;
+    let results = db.search_messages(&query, limit as i64).map_err(|e| {
+        api_error(
+            StatusCode::BAD_REQUEST,
+            format!("Failed to search sessions: {e}"),
+        )
+    })?;
+
+    let data = results
+        .into_iter()
+        .map(|result| {
+            let meta = db.get_session(&result.session_id).ok().flatten();
+            SessionSearchResultInfo {
+                session_id: result.session_id,
+                message_id: result.message_id,
+                content: result.content,
+                rank: result.rank,
+                title: meta.as_ref().and_then(|session| session.title.clone()),
+                source: meta.as_ref().and_then(|session| session.source.clone()),
+                model: meta.as_ref().and_then(|session| session.model.clone()),
+                started_at: meta.and_then(|session| session.started_at),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(SessionSearchResponse {
+        object: "list".to_string(),
+        query,
+        count: data.len(),
+        data,
+    }))
+}
+
+/// GET /sessions/:id/messages — get sanitized messages for a specific session.
+async fn get_session_messages(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(params): Query<SessionMessagesQuery>,
+) -> Result<Json<SessionMessagesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+
+    let max_messages = params.limit.map(|limit| limit.clamp(1, 500));
+    let db = state.session_db.lock().await;
+    match db.get_session_with_messages(&id, max_messages) {
+        Ok(Some((meta, messages))) => {
+            let messages = messages
+                .into_iter()
+                .map(SessionMessageInfo::from)
+                .collect::<Vec<_>>();
+            Ok(Json(SessionMessagesResponse {
+                object: "hakimi.session.messages".to_string(),
+                session: SessionInfo::from(meta),
+                count: messages.len(),
+                messages,
+            }))
+        }
+        Ok(None) => Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("Session not found: {id}"),
+        )),
+        Err(e) => Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session messages: {e}"),
+        )),
+    }
+}
+
 /// GET /tools — list all available tools registered in the agent.
 async fn list_tools(State(state): State<AppState>) -> Json<Vec<ToolInfo>> {
     let agent = state.agent.lock().await;
@@ -1822,7 +1994,7 @@ mod tests {
     use axum::body::Body;
     use axum::http::{self, Request};
     use hakimi_common::ToolContext;
-    use hakimi_session::{SessionDB, SessionOps};
+    use hakimi_session::{MessageOps, SessionDB, SessionOps};
     use serde_json::json;
     use std::pin::Pin;
     use std::sync::Arc;
@@ -2019,6 +2191,8 @@ mod tests {
         assert_eq!(capabilities["runtime"]["split_runtime"], false);
         assert_eq!(capabilities["features"]["chat"], true);
         assert_eq!(capabilities["features"]["session_resources"], true);
+        assert_eq!(capabilities["features"]["session_messages"], true);
+        assert_eq!(capabilities["features"]["session_search"], true);
         assert_eq!(capabilities["features"]["tools_api"], true);
         assert_eq!(capabilities["features"]["chat_completions"], true);
         assert_eq!(capabilities["features"]["responses_api"], true);
@@ -2048,6 +2222,14 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["chat"],
             json!({"method": "POST", "path": "/api/chat"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["session_messages"],
+            json!({"method": "GET", "path": "/api/sessions/{id}/messages"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["session_search"],
+            json!({"method": "GET", "path": "/api/sessions/search?q=<query>"})
         );
         assert_eq!(capabilities["dashboard_admin"]["status"], true);
         assert_eq!(capabilities["dashboard_admin"]["mcp_servers_read"], true);
@@ -2879,5 +3061,94 @@ mod tests {
         let sessions: Vec<SessionInfo> = serde_json::from_slice(&body).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].source.as_deref(), Some("api-test"));
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_endpoint_returns_sanitized_messages() {
+        let state = test_state();
+        let session_id = {
+            let db = state.session_db.lock().await;
+            let session_id = db
+                .create_session("api-test", Some("user1"), Some("test-model"), None)
+                .unwrap();
+            db.save_message(
+                &session_id,
+                &hakimi_common::Message::user("Find release notes"),
+            )
+            .unwrap();
+            let mut assistant = hakimi_common::Message::assistant("Use the release checklist");
+            assistant.reasoning = Some("internal reasoning should not be serialized".to_string());
+            db.save_message(&session_id, &assistant).unwrap();
+            session_id
+        };
+
+        let app = build_router(state);
+        let req = Request::builder()
+            .uri(format!("/api/sessions/{session_id}/messages?limit=1"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_text.contains("internal reasoning should not be serialized"));
+        let messages: SessionMessagesResponse = serde_json::from_str(&body_text).unwrap();
+        assert_eq!(messages.object, "hakimi.session.messages");
+        assert_eq!(messages.session.id, session_id);
+        assert_eq!(messages.count, 1);
+        assert_eq!(
+            messages.messages[0].content.as_deref(),
+            Some("Use the release checklist")
+        );
+        assert!(messages.messages[0].has_reasoning);
+    }
+
+    #[tokio::test]
+    async fn test_search_sessions_endpoint_uses_fts_results() {
+        let state = test_state();
+        let session_id = {
+            let db = state.session_db.lock().await;
+            let session_id = db
+                .create_session("api-test", Some("user1"), Some("test-model"), None)
+                .unwrap();
+            db.save_message(
+                &session_id,
+                &hakimi_common::Message::user("Hermes dashboard session search"),
+            )
+            .unwrap();
+            db.save_message(
+                &session_id,
+                &hakimi_common::Message::assistant("Other text"),
+            )
+            .unwrap();
+            session_id
+        };
+
+        let app = build_router(state);
+        let req = Request::builder()
+            .uri("/api/sessions/search?q=dashboard&limit=5")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let search: SessionSearchResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(search.object, "list");
+        assert_eq!(search.query, "dashboard");
+        assert_eq!(search.count, 1);
+        assert_eq!(search.data[0].session_id, session_id);
+        assert_eq!(
+            search.data[0].content.as_deref(),
+            Some("Hermes dashboard session search")
+        );
+        assert_eq!(search.data[0].source.as_deref(), Some("api-test"));
     }
 }

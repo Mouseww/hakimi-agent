@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.192-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.193-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1574-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1576-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1574 |
+| Tests | ~500 | 1576 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -106,8 +106,8 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 **Extensibility**
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports plus CLI/gateway catalog search and config snippets
 - HTTP plugin system with YAML templates
-- HTTP API discovery — OpenAI-compatible `/v1/models`, `/v1/capabilities`, `/v1/skills`, `/v1/toolsets`, non-streaming text `/v1/chat/completions`, and non-streaming `/v1/responses` with `previous_response_id` chaining for external UI feature detection
-- Dashboard admin API — `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose redacted operational state plus runtime-scoped admin writes for WebUI/admin panels
+- HTTP API discovery — OpenAI-compatible `/v1/models`, `/v1/capabilities`, `/v1/skills`, `/v1/toolsets`, non-streaming text `/v1/chat/completions`, non-streaming `/v1/responses` with `previous_response_id` chaining, and session messages/search discovery for external UI feature detection
+- Dashboard admin API — `/api/status`, `/api/sessions/{id}/messages`, `/api/sessions/search`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose redacted operational state plus runtime-scoped admin writes for WebUI/admin panels
 - Skills Hub — install community skills with `/skills install`
 - Isolated profiles — manage named workspaces, clone/export profile archives, create `~/.hakimi/bin/<profile>` wrapper aliases, and use gateway `/profile`
 - 10 curated MCP catalog entries: GitHub, filesystem, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking, and the Hermes-reviewed n8n bridge
@@ -195,7 +195,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1574 |
+| Tests | ~500 | 1576 |
 
 ---
 
