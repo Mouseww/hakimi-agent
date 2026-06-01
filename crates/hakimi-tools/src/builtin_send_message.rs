@@ -78,8 +78,21 @@ struct ChannelDirectory {
     platforms: BTreeMap<String, Vec<ChannelDirectoryEntry>>,
 }
 
+#[cfg(test)]
+static TEST_CHANNEL_DIRECTORY_PATH: LazyLock<Mutex<Option<PathBuf>>> =
+    LazyLock::new(|| Mutex::new(None));
+
 /// Location compatible with Hermes' cached channel directory.
 pub fn channel_directory_path() -> PathBuf {
+    #[cfg(test)]
+    if let Some(path) = TEST_CHANNEL_DIRECTORY_PATH
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+    {
+        return path;
+    }
+
     std::env::var("HAKIMI_CHANNEL_DIRECTORY")
         .ok()
         .or_else(|| std::env::var("HERMES_CHANNEL_DIRECTORY").ok())
@@ -445,13 +458,13 @@ mod tests {
     fn set_test_channel_directory(entries: &[ChannelDirectoryEntry]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("channel_directory.json");
-        std::env::set_var("HAKIMI_CHANNEL_DIRECTORY", &path);
+        *TEST_CHANNEL_DIRECTORY_PATH.lock().unwrap() = Some(path);
         write_channel_directory(entries).unwrap();
         dir
     }
 
     fn clear_test_channel_directory() {
-        std::env::remove_var("HAKIMI_CHANNEL_DIRECTORY");
+        *TEST_CHANNEL_DIRECTORY_PATH.lock().unwrap() = None;
     }
 
     #[test]
