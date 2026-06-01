@@ -2104,7 +2104,7 @@ mod tests {
         assert_eq!(skills.data[0].name, "release-check");
         assert_eq!(skills.data[0].description, "Checks release readiness");
         assert_eq!(skills.data[0].phases, vec!["validate"]);
-        assert_eq!(skills.data[0].provenance, "local");
+        assert_eq!(skills.data[0].provenance, "local/local");
         assert!(skills.data[0].active);
 
         let raw = String::from_utf8(body.to_vec()).unwrap();
