@@ -168,7 +168,7 @@ impl PlatformAdapter for MSGraphWebhookAdapter {
                 get(handle_validation).post(handle_notification),
             )
             .with_state(state.clone());
-        let bind_addr = format!("{}:{}", &state.config.host, state.config.port);
+        let bind_addr = format!("{}:{}", state.config.host, state.config.port);
         let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
         let local_addr = listener.local_addr()?;
         let handle = tokio::spawn(async move {
