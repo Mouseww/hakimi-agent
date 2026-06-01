@@ -27,6 +27,8 @@
 //! - `POST /v1/responses`    — OpenAI Responses-compatible non-streaming chat
 //! - `GET  /v1/responses/:id` — Retrieve a stored Responses API result
 //! - `DELETE /v1/responses/:id` — Delete a stored Responses API result
+//! - `POST /v1/runs`         — Submit an asynchronous text run
+//! - `GET  /v1/runs/:id`     — Poll an asynchronous run status/result
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -81,6 +83,20 @@ pub struct ResponsesRequest {
     pub input: JsonValue,
     pub instructions: Option<String>,
     pub previous_response_id: Option<String>,
+    #[serde(default)]
+    pub stream: Option<JsonValue>,
+}
+
+/// Request body for POST /v1/runs.
+#[derive(Debug, Deserialize)]
+pub struct RunCreateRequest {
+    pub model: Option<String>,
+    #[serde(default)]
+    pub input: Option<JsonValue>,
+    pub instructions: Option<String>,
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub messages: Vec<ChatCompletionsMessage>,
     #[serde(default)]
     pub stream: Option<JsonValue>,
 }
@@ -393,6 +409,50 @@ struct StoredResponse {
     messages: Vec<ChatCompletionsMessage>,
 }
 
+#[derive(Debug, Clone)]
+struct StoredRun {
+    id: String,
+    status: String,
+    created_at: u64,
+    updated_at: u64,
+    session_id: String,
+    model: String,
+    output_text: Option<String>,
+    usage: Option<JsonValue>,
+    error: Option<String>,
+}
+
+impl StoredRun {
+    fn new(id: String, session_id: String, model: String, created_at: u64) -> Self {
+        Self {
+            id,
+            status: "queued".to_string(),
+            created_at,
+            updated_at: created_at,
+            session_id,
+            model,
+            output_text: None,
+            usage: None,
+            error: None,
+        }
+    }
+
+    fn to_json(&self) -> JsonValue {
+        json!({
+            "id": self.id,
+            "object": "hakimi.run",
+            "status": self.status,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "session_id": self.session_id,
+            "model": self.model,
+            "output_text": self.output_text,
+            "usage": self.usage,
+            "error": self.error
+        })
+    }
+}
+
 /// In-memory store for OpenAI Responses-compatible chaining.
 #[derive(Debug)]
 pub struct ResponsesStore {
@@ -457,6 +517,73 @@ impl ResponsesStore {
     }
 }
 
+/// In-memory store for asynchronous API runs.
+#[derive(Debug)]
+pub struct RunsStore {
+    max_entries: usize,
+    entries: HashMap<String, StoredRun>,
+    order: VecDeque<String>,
+}
+
+impl Default for RunsStore {
+    fn default() -> Self {
+        Self::new(100)
+    }
+}
+
+impl RunsStore {
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            max_entries: max_entries.max(1),
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+
+    fn insert(&mut self, run: StoredRun) {
+        if !self.entries.contains_key(&run.id) {
+            self.order.push_back(run.id.clone());
+        }
+        self.entries.insert(run.id.clone(), run);
+
+        while self.entries.len() > self.max_entries {
+            let Some(evicted) = self.order.pop_front() else {
+                break;
+            };
+            self.entries.remove(&evicted);
+        }
+    }
+
+    fn get(&self, run_id: &str) -> Option<JsonValue> {
+        self.entries.get(run_id).map(StoredRun::to_json)
+    }
+
+    fn set_status(&mut self, run_id: &str, status: &str) {
+        if let Some(run) = self.entries.get_mut(run_id) {
+            run.status = status.to_string();
+            run.updated_at = unix_timestamp_secs();
+        }
+    }
+
+    fn complete(&mut self, run_id: &str, output_text: String, usage: JsonValue) {
+        if let Some(run) = self.entries.get_mut(run_id) {
+            run.status = "completed".to_string();
+            run.updated_at = unix_timestamp_secs();
+            run.output_text = Some(output_text);
+            run.usage = Some(usage);
+            run.error = None;
+        }
+    }
+
+    fn fail(&mut self, run_id: &str, error: String) {
+        if let Some(run) = self.entries.get_mut(run_id) {
+            run.status = "failed".to_string();
+            run.updated_at = unix_timestamp_secs();
+            run.error = Some(error);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Route builder
 // ---------------------------------------------------------------------------
@@ -518,7 +645,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/chat/completions", post(chat_completions))
         .route("/responses", post(responses))
         .route("/responses/{id}", get(get_response))
-        .route("/responses/{id}", delete(delete_response));
+        .route("/responses/{id}", delete(delete_response))
+        .route("/runs", post(create_run))
+        .route("/runs/{id}", get(get_run));
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
         v1_routes = v1_routes.route_layer(middleware::from_fn(auth_middleware));
@@ -605,8 +734,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "tools_api": true,
             "config_read": true,
             "config_write": true,
-            "run_submission": false,
-            "run_status": false,
+            "run_submission": true,
+            "run_status": true,
             "run_events_sse": false,
             "run_stop": false,
             "websocket_streaming": false,
@@ -633,6 +762,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "responses": {"method": "POST", "path": "/v1/responses"},
             "response": {"method": "GET", "path": "/v1/responses/{id}"},
             "response_delete": {"method": "DELETE", "path": "/v1/responses/{id}"},
+            "run": {"method": "POST", "path": "/v1/runs"},
+            "run_status": {"method": "GET", "path": "/v1/runs/{id}"},
             "chat": {"method": "POST", "path": "/api/chat"},
             "sessions": {"method": "GET", "path": "/api/sessions"},
             "session": {"method": "GET", "path": "/api/sessions/{id}"},
@@ -688,6 +819,12 @@ fn responses_prompt(
     messages: &[ChatCompletionsMessage],
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     conversation_prompt(messages, "OpenAI Responses API")
+}
+
+fn run_prompt(
+    messages: &[ChatCompletionsMessage],
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    conversation_prompt(messages, "Hakimi Runs API")
 }
 
 fn conversation_prompt(
@@ -781,6 +918,47 @@ fn responses_input_messages(
     Ok(messages)
 }
 
+fn run_input_messages(
+    req: &RunCreateRequest,
+) -> Result<Vec<ChatCompletionsMessage>, (StatusCode, Json<ErrorResponse>)> {
+    let mut messages = Vec::new();
+    if let Some(instructions) = req
+        .instructions
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        messages.push(ChatCompletionsMessage {
+            role: "system".to_string(),
+            content: JsonValue::String(instructions.to_string()),
+        });
+    }
+
+    messages.extend(req.messages.clone());
+    if let Some(input) = &req.input {
+        messages.extend(responses_input_messages(input)?);
+    }
+
+    if messages.is_empty() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "runs require input or messages",
+        ));
+    }
+
+    if !messages
+        .iter()
+        .any(|message| normalized_chat_role(&message.role).is_ok_and(|role| role == "user"))
+    {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "runs require at least one user message",
+        ));
+    }
+
+    Ok(messages)
+}
+
 fn response_input_item_message(
     item: &JsonValue,
 ) -> Result<ChatCompletionsMessage, (StatusCode, Json<ErrorResponse>)> {
@@ -824,6 +1002,14 @@ fn response_message_id() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or_default();
     format!("msg_{nanos}")
+}
+
+fn run_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!("run_{nanos}")
 }
 
 fn normalized_chat_role(role: &str) -> Result<&'static str, (StatusCode, Json<ErrorResponse>)> {
@@ -1595,6 +1781,98 @@ async fn delete_response(
     }
 }
 
+/// POST /v1/runs — submit a text-only agent run and return a pollable run id.
+async fn create_run(
+    State(state): State<AppState>,
+    Json(req): Json<RunCreateRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    if request_bool(req.stream.as_ref(), false) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "stream=true is not yet supported on /v1/runs; poll /v1/runs/{id} for status",
+        ));
+    }
+
+    let messages = run_input_messages(&req)?;
+    let prompt = run_prompt(&messages)?;
+    let id = run_id();
+    let session_id = req
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&id)
+        .to_string();
+
+    let mut agent = {
+        let agent = state.agent.lock().await;
+        agent.clone()
+    };
+    agent.clear_messages();
+    agent.set_streaming(false);
+    agent.set_streaming_callback(None);
+
+    if let Some(model) = req
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+    {
+        agent.set_model(model.to_string());
+    }
+    let model = agent.model().to_string();
+    let created_at = unix_timestamp_secs();
+
+    let initial = {
+        let mut store = state.run_store.lock().await;
+        store.insert(StoredRun::new(id.clone(), session_id, model, created_at));
+        store
+            .get(&id)
+            .expect("newly inserted run should be present")
+    };
+
+    let run_store = state.run_store.clone();
+    let run_id = id.clone();
+    tokio::spawn(async move {
+        run_store.lock().await.set_status(&run_id, "running");
+        match agent.run_conversation(&prompt).await {
+            Ok(result) => {
+                let usage = json!({
+                    "prompt_tokens": result.usage.prompt_tokens,
+                    "completion_tokens": result.usage.completion_tokens,
+                    "total_tokens": result.usage.total_tokens
+                });
+                run_store
+                    .lock()
+                    .await
+                    .complete(&run_id, result.final_response, usage);
+            }
+            Err(e) => {
+                let msg = format!("Agent error: {e}");
+                tracing::error!("{msg}");
+                run_store.lock().await.fail(&run_id, msg);
+            }
+        }
+    });
+
+    Ok((StatusCode::ACCEPTED, Json(initial)))
+}
+
+/// GET /v1/runs/:id — retrieve the latest status for a submitted run.
+async fn get_run(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.run_store.lock().await;
+    match store.get(id.trim()) {
+        Some(run) => Ok(Json(run)),
+        None => Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("run not found: {id}"),
+        )),
+    }
+}
+
 /// GET /sessions — list recent sessions from the database.
 async fn list_sessions(
     State(state): State<AppState>,
@@ -2114,6 +2392,7 @@ mod tests {
             config: Arc::new(Mutex::new(hakimi_config::HakimiConfig::default())),
             session_db: Arc::new(Mutex::new(db)),
             response_store: Arc::new(Mutex::new(ResponsesStore::default())),
+            run_store: Arc::new(Mutex::new(RunsStore::default())),
         }
     }
 
@@ -2198,6 +2477,8 @@ mod tests {
         assert_eq!(capabilities["features"]["responses_api"], true);
         assert_eq!(capabilities["features"]["skills_api"], true);
         assert_eq!(capabilities["features"]["toolsets_api"], true);
+        assert_eq!(capabilities["features"]["run_submission"], true);
+        assert_eq!(capabilities["features"]["run_status"], true);
         assert_eq!(capabilities["features"]["run_events_sse"], false);
         assert_eq!(
             capabilities["endpoints"]["models"],
@@ -2218,6 +2499,14 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["responses"],
             json!({"method": "POST", "path": "/v1/responses"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["run"],
+            json!({"method": "POST", "path": "/v1/runs"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["run_status"],
+            json!({"method": "GET", "path": "/v1/runs/{id}"})
         );
         assert_eq!(
             capabilities["endpoints"]["chat"],
@@ -2572,6 +2861,106 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_runs_submit_and_poll_status() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "model": "runs-test-model",
+                    "session_id": "external-session-1",
+                    "instructions": "Answer as a background worker.",
+                    "input": "Summarize the run API"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::ACCEPTED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let submitted: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let run_id = submitted["id"].as_str().unwrap().to_string();
+        assert_eq!(submitted["object"], "hakimi.run");
+        assert_eq!(submitted["session_id"], "external-session-1");
+        assert_eq!(submitted["model"], "runs-test-model");
+        assert!(matches!(
+            submitted["status"].as_str().unwrap(),
+            "queued" | "running" | "completed"
+        ));
+
+        let mut polled = submitted;
+        for _ in 0..20 {
+            let req = Request::builder()
+                .uri(format!("/v1/runs/{run_id}"))
+                .body(Body::empty())
+                .unwrap();
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(resp.status(), http::StatusCode::OK);
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            polled = serde_json::from_slice(&body).unwrap();
+            if polled["status"] == "completed" {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        assert_eq!(polled["status"], "completed");
+        let output_text = polled["output_text"].as_str().unwrap();
+        assert!(output_text.contains("Conversation supplied through Hakimi Runs API"));
+        assert!(output_text.contains("Summarize the run API"));
+        assert_eq!(polled["usage"]["total_tokens"], 10);
+
+        let agent = state.agent.lock().await;
+        assert!(
+            agent.messages().is_empty(),
+            "Runs API should not mutate the shared /api/chat history"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_v1_runs_rejects_streaming_for_now() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "input": "hello",
+                    "stream": true
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_runs_missing_run_returns_404() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/v1/runs/run_missing")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
     }
 
     #[test]
