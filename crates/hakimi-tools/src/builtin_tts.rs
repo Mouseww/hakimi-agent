@@ -67,6 +67,10 @@ impl Tool for TextToSpeechTool {
                 "voice_playback": {
                     "type": "boolean",
                     "description": "Sanitize assistant Markdown into spoken text and use the voice playback cache path. Default: false."
+                },
+                "auto_play": {
+                    "type": "boolean",
+                    "description": "Start local audio playback after generating the file. Defaults to voice.auto_play from config."
                 }
             },
             "required": ["text"]
@@ -91,6 +95,10 @@ impl Tool for TextToSpeechTool {
             .get("voice_playback")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let auto_play = args
+            .get("auto_play")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(ctx.tts_auto_play);
 
         // Determine provider
         let config_provider = ctx.tts_provider.clone().filter(|s| !s.is_empty());
@@ -116,7 +124,7 @@ impl Tool for TextToSpeechTool {
             .map(PathBuf::from);
 
         let text = if voice_playback {
-            let plan = crate::plan_voice_tts_playback(text, output_path.clone(), false)
+            let plan = crate::plan_voice_tts_playback(text, output_path.clone(), auto_play)
                 .ok_or_else(|| {
                     HakimiError::Tool("voice playback text is empty after cleanup".into())
                 })?;
@@ -125,6 +133,7 @@ impl Tool for TextToSpeechTool {
                 provider = %provider,
                 text_len = plan.text.len(),
                 cleanup_paths = plan.cleanup_paths.len(),
+                playback_backend = ?plan.playback_backend,
                 "voice playback TTS request"
             );
             plan.text
@@ -132,7 +141,7 @@ impl Tool for TextToSpeechTool {
             text.to_string()
         };
 
-        debug!(provider = %provider, text_len = text.len(), voice_playback, "TTS request");
+        debug!(provider = %provider, text_len = text.len(), voice_playback, auto_play, "TTS request");
 
         let result_path = match provider.as_str() {
             "openai" => generate_openai_tts(&text, voice.as_deref(), output_path, ctx).await?,
@@ -145,6 +154,21 @@ impl Tool for TextToSpeechTool {
         };
 
         info!(path = %result_path.display(), provider = %provider, "TTS audio generated");
+        if auto_play {
+            match crate::start_voice_playback(&result_path) {
+                Ok(started) => info!(
+                    path = %result_path.display(),
+                    player = %started.command.program,
+                    process_id = started.process_id,
+                    "TTS audio playback started"
+                ),
+                Err(err) => warn!(
+                    path = %result_path.display(),
+                    error = %err,
+                    "TTS audio playback was requested but could not start"
+                ),
+            }
+        }
         Ok(format!("MEDIA:{}", result_path.display()))
     }
 }
@@ -413,6 +437,7 @@ mod tests {
         assert!(schema["properties"]["provider"].is_object());
         assert!(schema["properties"]["output_path"].is_object());
         assert_eq!(schema["properties"]["voice_playback"]["type"], "boolean");
+        assert_eq!(schema["properties"]["auto_play"]["type"], "boolean");
 
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&JsonValue::String("text".to_string())));

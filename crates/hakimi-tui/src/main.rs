@@ -268,6 +268,7 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
             Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.voice.clone()).filter(|s| !s.is_empty()),
+            config.voice.auto_play,
             Some(config.voice.provider.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.transcription_model.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),

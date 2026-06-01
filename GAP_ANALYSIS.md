@@ -146,7 +146,7 @@ Generated: 2026-05-31
 - **TUI slash command autocomplete** — Tab completion for slash command prefixes, aliases, and bounded ambiguous-candidate hints while preserving normal Tab tools-panel toggling outside slash command entry
 - **TUI `/history [N]` command** — Reviews recent user/assistant turns locally without sending the command to the model
 - **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers plus OSC 52 terminal fallback
-- **Voice diagnostics, WAV artifacts, TTS playback prep, and STT silence filtering** — `/voice on|off|tts|status|doctor`, configurable Ctrl+B/Ctrl+letter diagnostics, shared TTS/transcription config/tool registration, audio I/O environment reporting, Markdown-cleaned TTS playback cache planning, PCM16 WAV recording artifact validation, and Whisper silence-hallucination filtering without claiming microphone capture is complete
+- **Voice diagnostics, WAV artifacts, local TTS playback, and STT silence filtering** — `/voice on|off|tts|status|doctor`, configurable Ctrl+B/Ctrl+letter diagnostics, shared TTS/transcription config/tool registration, audio I/O environment reporting, Markdown-cleaned TTS playback cache planning, local system-player launch/interrupt support, PCM16 WAV recording artifact validation, and Whisper silence-hallucination filtering without claiming microphone capture is complete
 - **Spinner animation** — Thinking indicator
 - **Key handling** — Ctrl+C quit, input editing, scrolling
 
@@ -423,7 +423,7 @@ Generated: 2026-05-31
 #### 47. Voice Mode (Push-to-Talk)
 - **What**: Audio recording and playback for CLI with STT dispatch
 - **Hermes location**: `tools/voice_mode.py`
-- **Details**: Hakimi now has `text_to_speech`, `transcribe_audio` with Whisper silence-hallucination filtering, gateway `/voice on|off|tts|status|doctor` state that adds spoken-response guidance only to the current model turn while preserving clean chat history, shared voice I/O diagnostics for TUI/gateway surfaces, Markdown-cleaned TTS playback cache planning, and PCM16 WAV recording artifact validation for captured audio. Remaining parity is interactive CLI microphone capture, STT dispatch from captured recordings, and actual local playback.
+- **Details**: Hakimi now has `text_to_speech`, `transcribe_audio` with Whisper silence-hallucination filtering, gateway `/voice on|off|tts|status|doctor` state that adds spoken-response guidance only to the current model turn while preserving clean chat history, shared voice I/O diagnostics for TUI/gateway surfaces, Markdown-cleaned TTS playback cache planning, local playback launch/interrupt support for generated audio, and PCM16 WAV recording artifact validation for captured audio. Remaining parity is interactive CLI microphone capture and STT dispatch from captured recordings.
 - **Priority**: **Low** — Niche CLI feature
 
 #### 49. Curator
@@ -594,7 +594,7 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. Voice mode (remaining CLI push-to-talk capture + playback)
+10. Voice mode (remaining CLI push-to-talk capture + captured-recording STT dispatch)
 
 ---
 
@@ -686,10 +686,11 @@ Generated: 2026-05-31
 | 73 | Voice Recording Artifact Validation | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ PCM16 mono WAV writer matches Hermes voice recording parameters, summarizes captured audio duration/peak RMS, rejects too-short or too-quiet recordings before STT, and surfaces artifact readiness in TUI `/voice status` while keeping microphone capture explicitly pending |
 | 74 | HTTP API Discovery | `hakimi-server/src/api.rs` | 2 | ✅ `/v1/models` returns an OpenAI-compatible model list for the active server agent, and `/v1/capabilities` advertises implemented vs pending API features and endpoint paths for external UI feature detection |
 | 75 | Mixture-of-Agents Tool | `hakimi-tools/src/builtin_mixture_of_agents.rs`, CLI/server/TUI registration | 9 | ✅ OpenRouter-backed `mixture_of_agents` runs parallel reference models, aggregates successful responses, reports failed references without leaking credentials, and exposes the tool across runtime surfaces |
-| 76 | Voice TTS Playback Prep | `hakimi-tools/src/{voice_mode.rs,builtin_tts.rs}`, `hakimi-tui/src/app.rs` | 5 | ✅ `text_to_speech` can opt into Hermes-style voice playback preparation with Markdown/URL/code cleanup, 4000-character spoken-text cap, MP3 cache path planning, MP3/OGG cleanup metadata, and TUI `/voice status` reports playback readiness while actual speaker playback remains pending |
+| 76 | Voice TTS Playback Prep | `hakimi-tools/src/{voice_mode.rs,builtin_tts.rs}`, `hakimi-tui/src/app.rs` | 5 | ✅ `text_to_speech` can opt into Hermes-style voice playback preparation with Markdown/URL/code cleanup, 4000-character spoken-text cap, MP3 cache path planning, MP3/OGG cleanup metadata, and TUI `/voice status` reports playback readiness |
+| 77 | Voice Local Playback Launch | `hakimi-tools/src/{voice_mode.rs,builtin_tts.rs}`, `hakimi-core/src/agent.rs`, `hakimi-common/src/tool.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 4 | ✅ `voice.auto_play` flows into tool execution, `text_to_speech` accepts `auto_play`, generated audio can launch local system players (`afplay`, `ffplay`, `mpg123`, Linux WAV players, Windows SoundPlayer), and active playback can be interrupted before starting a new file |
 
 ### Summary
-- **Total tests**: 1438 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1442 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

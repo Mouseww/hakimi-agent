@@ -325,6 +325,10 @@ pub struct ToolContext {
     #[serde(skip)]
     pub tts_voice: Option<String>,
 
+    /// Whether voice-mode TTS output should auto-start local playback.
+    #[serde(skip)]
+    pub tts_auto_play: bool,
+
     /// Transcription provider setting.
     #[serde(skip)]
     pub transcription_provider: Option<String>,
@@ -362,6 +366,7 @@ impl std::fmt::Debug for ToolContext {
             .field("delegate_executor", &self.delegate_executor.is_some())
             .field("knowledge_searcher", &self.knowledge_searcher.is_some())
             .field("progress_callback", &self.progress_callback.is_some())
+            .field("tts_auto_play", &self.tts_auto_play)
             .finish()
     }
 }

@@ -3,7 +3,10 @@
 use std::{
     io::{self, Write},
     path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
     sync::LazyLock,
+    sync::Mutex,
+    time::{Duration, Instant},
 };
 
 use regex::Regex;
@@ -52,6 +55,8 @@ static HORIZONTAL_RULE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("-{3,}").expect("valid horizontal-rule regex"));
 static EXCESS_NEWLINES_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("\n{3,}").expect("valid newline regex"));
+static ACTIVE_PLAYBACK: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));
+const PLAYBACK_MAX_SECONDS: u64 = 300;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoiceRecordingSummary {
@@ -68,6 +73,18 @@ pub struct VoiceTtsPlaybackPlan {
     pub output_path: PathBuf,
     pub playback_backend: Option<String>,
     pub cleanup_paths: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoicePlaybackCommand {
+    pub program: String,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoicePlaybackStart {
+    pub command: VoicePlaybackCommand,
+    pub process_id: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,15 +166,8 @@ impl VoiceEnvironmentProbe {
             has_termux_microphone: command_exists("termux-microphone-record"),
             has_arecord: command_exists("arecord") || command_exists("rec"),
             has_ffmpeg: command_exists("ffmpeg"),
-            playback_command: first_existing_command(&[
-                "ffplay",
-                "afplay",
-                "aplay",
-                "paplay",
-                "pw-play",
-                "mpg123",
-                "powershell.exe",
-            ]),
+            playback_command: find_voice_playback_command(Path::new("hakimi_voice_probe.mp3"))
+                .map(|command| command.program),
         }
     }
 
@@ -317,6 +327,173 @@ pub fn plan_voice_tts_playback(
         playback_backend,
         cleanup_paths,
     })
+}
+
+/// Return Hermes-style local playback command candidates for an audio file.
+pub fn voice_playback_command_candidates(path: &Path) -> Vec<VoicePlaybackCommand> {
+    voice_playback_command_candidates_for_platform(path, std::env::consts::OS)
+}
+
+/// Return local playback command candidates for a specific platform string.
+pub fn voice_playback_command_candidates_for_platform(
+    path: &Path,
+    platform: &str,
+) -> Vec<VoicePlaybackCommand> {
+    let path = path.to_string_lossy().to_string();
+    let extension = Path::new(&path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let is_wav = extension == "wav";
+    let is_mp3 = extension == "mp3";
+
+    let mut commands = Vec::new();
+
+    if platform == "macos" {
+        commands.push(VoicePlaybackCommand {
+            program: "afplay".to_string(),
+            args: vec![path.clone()],
+        });
+    }
+
+    commands.push(VoicePlaybackCommand {
+        program: "ffplay".to_string(),
+        args: vec![
+            "-nodisp".to_string(),
+            "-autoexit".to_string(),
+            "-loglevel".to_string(),
+            "quiet".to_string(),
+            path.clone(),
+        ],
+    });
+
+    if is_mp3 {
+        commands.push(VoicePlaybackCommand {
+            program: "mpg123".to_string(),
+            args: vec!["-q".to_string(), path.clone()],
+        });
+    }
+
+    if platform == "linux" && is_wav {
+        commands.push(VoicePlaybackCommand {
+            program: "aplay".to_string(),
+            args: vec!["-q".to_string(), path.clone()],
+        });
+        commands.push(VoicePlaybackCommand {
+            program: "paplay".to_string(),
+            args: vec![path.clone()],
+        });
+        commands.push(VoicePlaybackCommand {
+            program: "pw-play".to_string(),
+            args: vec![path.clone()],
+        });
+    }
+
+    if platform == "windows" && is_wav {
+        commands.push(VoicePlaybackCommand {
+            program: "powershell.exe".to_string(),
+            args: vec![
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "$p=$args[0]; $player=New-Object System.Media.SoundPlayer $p; $player.PlaySync()"
+                    .to_string(),
+                path,
+            ],
+        });
+    }
+
+    commands
+}
+
+/// Return the first installed playback command for an audio file.
+pub fn find_voice_playback_command(path: &Path) -> Option<VoicePlaybackCommand> {
+    voice_playback_command_candidates(path)
+        .into_iter()
+        .find(|command| command_exists(&command.program))
+}
+
+/// Start local audio playback through the first available system player.
+pub fn start_voice_playback(path: impl AsRef<Path>) -> io::Result<VoicePlaybackStart> {
+    let path = path.as_ref();
+    if !path.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("audio file not found: {}", path.display()),
+        ));
+    }
+
+    let command = find_voice_playback_command(path).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "no local audio playback command found",
+        )
+    })?;
+
+    stop_voice_playback();
+
+    let child = Command::new(&command.program)
+        .args(&command.args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let process_id = child.id();
+
+    {
+        let mut active = ACTIVE_PLAYBACK
+            .lock()
+            .map_err(|_| io::Error::other("voice playback lock poisoned"))?;
+        *active = Some(child);
+    }
+    reap_voice_playback_when_done(process_id);
+
+    Ok(VoicePlaybackStart {
+        command,
+        process_id,
+    })
+}
+
+/// Stop the currently active local audio playback process, if any.
+pub fn stop_voice_playback() -> bool {
+    let Ok(mut active) = ACTIVE_PLAYBACK.lock() else {
+        return false;
+    };
+    let Some(mut child) = active.take() else {
+        return false;
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    true
+}
+
+fn reap_voice_playback_when_done(process_id: u32) {
+    let _ = std::thread::spawn(move || {
+        let started = Instant::now();
+        loop {
+            std::thread::sleep(Duration::from_millis(250));
+            let Ok(mut active) = ACTIVE_PLAYBACK.lock() else {
+                return;
+            };
+            let Some(child) = active.as_mut() else {
+                return;
+            };
+            if child.id() != process_id {
+                return;
+            }
+            if child.try_wait().ok().flatten().is_some() {
+                active.take();
+                return;
+            }
+            if started.elapsed() > Duration::from_secs(PLAYBACK_MAX_SECONDS) {
+                if let Some(mut child) = active.take() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                return;
+            }
+        }
+    });
 }
 
 /// Summarize PCM16 mono recording data using Hermes-compatible speech gates.
@@ -555,13 +732,6 @@ fn unix_socket_candidate_exists(paths: &[PathBuf]) -> bool {
     false
 }
 
-fn first_existing_command(names: &[&str]) -> Option<String> {
-    names
-        .iter()
-        .find(|name| command_exists(name))
-        .map(|name| (*name).to_string())
-}
-
 fn command_exists(name: &str) -> bool {
     if name.contains(std::path::MAIN_SEPARATOR) && Path::new(name).is_file() {
         return true;
@@ -661,6 +831,60 @@ mod tests {
             ]
         );
         assert_eq!(plan.playback_backend, None);
+    }
+
+    #[test]
+    fn playback_candidates_prefer_afplay_on_macos_mp3() {
+        let commands =
+            voice_playback_command_candidates_for_platform(Path::new("/tmp/reply.mp3"), "macos");
+
+        assert_eq!(commands[0].program, "afplay");
+        assert_eq!(commands[0].args, vec!["/tmp/reply.mp3"]);
+        assert!(commands.iter().any(|command| command.program == "ffplay"));
+        assert!(commands.iter().any(|command| command.program == "mpg123"));
+    }
+
+    #[test]
+    fn playback_candidates_include_linux_wav_players() {
+        let commands =
+            voice_playback_command_candidates_for_platform(Path::new("/tmp/reply.wav"), "linux");
+        let programs: Vec<&str> = commands
+            .iter()
+            .map(|command| command.program.as_str())
+            .collect();
+
+        assert!(programs.contains(&"ffplay"));
+        assert!(programs.contains(&"aplay"));
+        assert!(programs.contains(&"paplay"));
+        assert!(programs.contains(&"pw-play"));
+        assert!(!programs.contains(&"mpg123"));
+    }
+
+    #[test]
+    fn playback_candidates_include_windows_wav_soundplayer() {
+        let commands = voice_playback_command_candidates_for_platform(
+            Path::new("C:/tmp/reply.wav"),
+            "windows",
+        );
+        let powershell = commands
+            .iter()
+            .find(|command| command.program == "powershell.exe")
+            .expect("powershell candidate");
+
+        assert!(
+            powershell
+                .args
+                .iter()
+                .any(|arg| arg.contains("SoundPlayer"))
+        );
+    }
+
+    #[test]
+    fn start_voice_playback_rejects_missing_file() {
+        let err = start_voice_playback(Path::new("/tmp/hakimi-missing-audio.mp3"))
+            .expect_err("missing file should be rejected");
+
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]

@@ -40,6 +40,7 @@ pub struct AIAgent {
     pub(crate) tts_base_url: Option<String>,
     pub(crate) tts_api_key: Option<String>,
     pub(crate) tts_voice: Option<String>,
+    pub(crate) tts_auto_play: bool,
     pub(crate) transcription_provider: Option<String>,
     pub(crate) transcription_model: Option<String>,
     pub(crate) transcription_base_url: Option<String>,
@@ -74,6 +75,7 @@ impl Clone for AIAgent {
             tts_base_url: self.tts_base_url.clone(),
             tts_api_key: self.tts_api_key.clone(),
             tts_voice: self.tts_voice.clone(),
+            tts_auto_play: self.tts_auto_play,
             transcription_provider: self.transcription_provider.clone(),
             transcription_model: self.transcription_model.clone(),
             transcription_base_url: self.transcription_base_url.clone(),
@@ -149,6 +151,7 @@ impl AIAgent {
         tts_base_url: Option<String>,
         tts_api_key: Option<String>,
         tts_voice: Option<String>,
+        tts_auto_play: bool,
         transcription_provider: Option<String>,
         transcription_model: Option<String>,
         transcription_base_url: Option<String>,
@@ -159,6 +162,7 @@ impl AIAgent {
         self.tts_base_url = tts_base_url;
         self.tts_api_key = tts_api_key;
         self.tts_voice = tts_voice;
+        self.tts_auto_play = tts_auto_play;
         self.transcription_provider = transcription_provider;
         self.transcription_model = transcription_model;
         self.transcription_base_url = transcription_base_url;
@@ -195,6 +199,7 @@ pub struct AIAgentBuilder {
     tts_base_url: Option<String>,
     tts_api_key: Option<String>,
     tts_voice: Option<String>,
+    tts_auto_play: bool,
     transcription_provider: Option<String>,
     transcription_model: Option<String>,
     transcription_base_url: Option<String>,
@@ -229,6 +234,7 @@ impl AIAgentBuilder {
             tts_base_url: None,
             tts_api_key: None,
             tts_voice: None,
+            tts_auto_play: false,
             transcription_provider: None,
             transcription_model: None,
             transcription_base_url: None,
@@ -414,6 +420,7 @@ impl AIAgentBuilder {
             tts_base_url: self.tts_base_url,
             tts_api_key: self.tts_api_key,
             tts_voice: self.tts_voice,
+            tts_auto_play: self.tts_auto_play,
             transcription_provider: self.transcription_provider,
             transcription_model: self.transcription_model,
             transcription_base_url: self.transcription_base_url,
@@ -568,6 +575,7 @@ impl AIAgent {
             tts_base_url: self.tts_base_url.clone(),
             tts_api_key: self.tts_api_key.clone(),
             tts_voice: self.tts_voice.clone(),
+            tts_auto_play: self.tts_auto_play,
             transcription_provider: self.transcription_provider.clone(),
             transcription_model: self.transcription_model.clone(),
             transcription_base_url: self.transcription_base_url.clone(),

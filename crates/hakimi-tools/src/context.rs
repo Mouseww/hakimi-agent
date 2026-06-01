@@ -16,6 +16,7 @@ pub struct ToolContextBuilder {
     tts_base_url: Option<String>,
     tts_api_key: Option<String>,
     tts_voice: Option<String>,
+    tts_auto_play: bool,
     transcription_provider: Option<String>,
     transcription_model: Option<String>,
     transcription_base_url: Option<String>,
@@ -111,6 +112,12 @@ impl ToolContextBuilder {
         self
     }
 
+    /// Set whether voice-mode TTS output should start local playback.
+    pub fn tts_auto_play(mut self, auto_play: bool) -> Self {
+        self.tts_auto_play = auto_play;
+        self
+    }
+
     /// Set the transcription provider.
     pub fn transcription_provider(mut self, provider: impl Into<String>) -> Self {
         self.transcription_provider = Some(provider.into());
@@ -168,6 +175,7 @@ impl ToolContextBuilder {
             tts_base_url: self.tts_base_url,
             tts_api_key: self.tts_api_key,
             tts_voice: self.tts_voice,
+            tts_auto_play: self.tts_auto_play,
             transcription_provider: self.transcription_provider,
             transcription_model: self.transcription_model,
             transcription_base_url: self.transcription_base_url,
@@ -198,6 +206,7 @@ impl ToolContextBuilder {
             tts_base_url: self.tts_base_url,
             tts_api_key: self.tts_api_key,
             tts_voice: self.tts_voice,
+            tts_auto_play: self.tts_auto_play,
             transcription_provider: self.transcription_provider,
             transcription_model: self.transcription_model,
             transcription_base_url: self.transcription_base_url,

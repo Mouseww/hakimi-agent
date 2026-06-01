@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.161-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.162-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1438-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1442-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1438 |
+| Tests | ~500 | 1442 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -97,7 +97,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Real-time streaming with progressive edits
 - Cron jobs scheduled from chat with `/cron add`
 - Gateway `/voice on|off|tts|status|doctor` toggles spoken-response guidance and reports voice I/O readiness without polluting prompt cache or chat history
-- TUI `/voice status` and configurable Ctrl+B/Ctrl+letter diagnostics share the same `voice.*` config, TTS/transcription tools, audio environment checks, PCM16 WAV recording artifact validation, and Markdown-cleaned TTS playback cache planning
+- TUI `/voice status` and configurable Ctrl+B/Ctrl+letter diagnostics share the same `voice.*` config, TTS/transcription tools, audio environment checks, PCM16 WAV recording artifact validation, and local TTS playback launch through installed system players
 
 **Extensibility**
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports
@@ -189,7 +189,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1438 |
+| Tests | ~500 | 1442 |
 
 ---
 
@@ -236,7 +236,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] TUI voice readiness and media-tool config parity
 - [x] Voice environment diagnostics and STT silence-hallucination filtering
 - [x] PCM16 WAV recording artifact validation for voice capture
-- [x] Voice TTS playback text cleanup and MP3 cache planning
+- [x] Voice TTS playback text cleanup, MP3 cache planning, and local player launch
 - [x] Mixture-of-Agents reasoning via OpenRouter
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
