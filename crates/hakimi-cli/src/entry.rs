@@ -2213,6 +2213,46 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.homeassistant.enabled {
+        let token = env_or_config_value("HASS_TOKEN", &config.gateways.homeassistant.token);
+        if let Some(token) = token {
+            let bot_id = config.gateways.homeassistant.bot_id.clone();
+            let base_url = env_or_config_value("HASS_URL", &config.gateways.homeassistant.base_url)
+                .unwrap_or_else(|| "http://homeassistant.local:8123".to_string());
+            let default_title = if config
+                .gateways
+                .homeassistant
+                .default_title
+                .trim()
+                .is_empty()
+            {
+                "Hakimi".to_string()
+            } else {
+                config.gateways.homeassistant.default_title.clone()
+            };
+            let homeassistant = hakimi_gateway::HomeAssistantAdapter::new(
+                hakimi_gateway::HomeAssistantAdapterConfig {
+                    bot_id: bot_id.clone(),
+                    base_url,
+                    token,
+                    default_title: default_title.clone(),
+                },
+            );
+            gateway.add_adapter(Box::new(homeassistant));
+            bot_ids.insert("homeassistant".to_string(), bot_id);
+            channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                "homeassistant",
+                &default_title,
+                "home",
+                "notification",
+                "homeassistant",
+            ));
+            info!("homeassistant gateway registered");
+        } else {
+            warn!("homeassistant gateway enabled but no HASS_TOKEN/token configured");
+        }
+    }
+
     if config.gateways.matrix.enabled {
         if !config.gateways.matrix.homeserver_url.trim().is_empty()
             && !config.gateways.matrix.access_token.trim().is_empty()

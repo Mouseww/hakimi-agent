@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.175-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.176-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1494-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1500-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1494 |
+| Tests | ~500 | 1500 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -93,7 +93,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - **Meta**: sub-agent delegation, Mixture-of-Agents reasoning, skills system, MCP plugins
 
 **Multi-Platform Gateway**
-- Telegram · Discord · Slack · Mattermost · Webhook · Signal · SMS/Twilio · Matrix · DingTalk · WeCom · Feishu/Lark · WeChat (via iLink/ClawBot)
+- Telegram · Discord · Slack · Mattermost · Webhook · Signal · SMS/Twilio · Home Assistant · Matrix · DingTalk · WeCom · Feishu/Lark · WeChat (via iLink/ClawBot)
 - Config-driven multi-adapter fan-in: run chat and webhook gateways simultaneously
 - Real-time streaming with progressive edits
 - Persistent lifecycle diagnostics record adapter, connect, route, filter, and edit events to `~/.hakimi/logs/gateway-events.log`; `/logs`, `/logs events`, and `/logs gateway` read recent logs without shelling out to `tail`
@@ -191,7 +191,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1494 |
+| Tests | ~500 | 1500 |
 
 ---
 

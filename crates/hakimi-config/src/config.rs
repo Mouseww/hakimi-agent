@@ -603,6 +603,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub sms: SmsGatewayConfig,
     #[serde(default)]
+    pub homeassistant: HomeAssistantGatewayConfig,
+    #[serde(default)]
     pub matrix: MatrixGatewayConfig,
     #[serde(default)]
     pub dingtalk: DingTalkGatewayConfig,
@@ -631,6 +633,7 @@ impl Default for GatewaysConfig {
             webhook: WebhookGatewayConfig::default(),
             signal: SignalGatewayConfig::default(),
             sms: SmsGatewayConfig::default(),
+            homeassistant: HomeAssistantGatewayConfig::default(),
             matrix: MatrixGatewayConfig::default(),
             dingtalk: DingTalkGatewayConfig::default(),
             wecom: WeComGatewayConfig::default(),
@@ -839,6 +842,45 @@ impl Default for SmsGatewayConfig {
             from_number: String::new(),
             home_channel: String::new(),
             base_url: String::new(),
+        }
+    }
+}
+
+/// Home Assistant gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HomeAssistantGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_homeassistant_bot_id")]
+    pub bot_id: String,
+    #[serde(default = "default_homeassistant_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default = "default_homeassistant_default_title")]
+    pub default_title: String,
+}
+
+fn default_homeassistant_bot_id() -> String {
+    "homeassistant".to_string()
+}
+
+fn default_homeassistant_base_url() -> String {
+    "http://homeassistant.local:8123".to_string()
+}
+
+fn default_homeassistant_default_title() -> String {
+    "Hakimi".to_string()
+}
+
+impl Default for HomeAssistantGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_homeassistant_bot_id(),
+            base_url: default_homeassistant_base_url(),
+            token: String::new(),
+            default_title: default_homeassistant_default_title(),
         }
     }
 }
@@ -1284,6 +1326,13 @@ mod tests {
         );
         assert!(!config.gateways.sms.enabled);
         assert_eq!(config.gateways.sms.bot_id, "sms");
+        assert!(!config.gateways.homeassistant.enabled);
+        assert_eq!(config.gateways.homeassistant.bot_id, "homeassistant");
+        assert_eq!(
+            config.gateways.homeassistant.base_url,
+            "http://homeassistant.local:8123"
+        );
+        assert_eq!(config.gateways.homeassistant.default_title, "Hakimi");
         assert!(!config.gateways.matrix.enabled);
         assert!(!config.gateways.dingtalk.enabled);
         assert!(!config.gateways.wecom.enabled);
@@ -1405,6 +1454,12 @@ gateways:
     from_number: "+15550001111"
     home_channel: "+15552223333"
     base_url: "https://api.twilio.test/2010-04-01/Accounts"
+  homeassistant:
+    enabled: true
+    bot_id: "ops-ha"
+    base_url: "http://ha.example.local:8123"
+    token: "ha-redacted"
+    default_title: "Hakimi Ops"
   matrix:
     enabled: true
     homeserver_url: "https://matrix.example.com"
@@ -1458,6 +1513,13 @@ gateways:
             config.gateways.sms.base_url,
             "https://api.twilio.test/2010-04-01/Accounts"
         );
+        assert!(config.gateways.homeassistant.enabled);
+        assert_eq!(config.gateways.homeassistant.bot_id, "ops-ha");
+        assert_eq!(
+            config.gateways.homeassistant.base_url,
+            "http://ha.example.local:8123"
+        );
+        assert_eq!(config.gateways.homeassistant.default_title, "Hakimi Ops");
         assert!(config.gateways.matrix.enabled);
         assert_eq!(config.gateways.matrix.room_id, "!room:example.com");
         assert!(config.gateways.dingtalk.enabled);
