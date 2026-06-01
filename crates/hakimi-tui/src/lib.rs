@@ -99,6 +99,10 @@ pub struct ToolActivity {
 #[derive(Debug)]
 pub enum AgentCommand {
     Chat(String),
+    VoiceCapture {
+        duration_seconds: f32,
+        silence_threshold: u32,
+    },
     Shutdown,
 }
 
@@ -117,6 +121,16 @@ pub enum AgentEvent {
     },
     /// Final text response from the assistant.
     Response(String),
+    /// Voice capture produced a transcript that is being submitted as input.
+    VoiceTranscript {
+        transcript: String,
+        audio_path: Option<String>,
+    },
+    /// Voice capture finished without a transcript worth submitting.
+    VoiceNoSpeech {
+        reason: String,
+        audio_path: Option<String>,
+    },
     /// An error occurred.
     Error(String),
     /// Agent finished processing this turn.

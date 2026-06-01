@@ -13,6 +13,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
+use serde_json::{Value as JsonValue, json};
 use tokio::sync::{RwLock, mpsc};
 use tracing::{error, info, warn};
 
@@ -295,46 +296,25 @@ async fn run_agent_task(
             AgentCommand::Chat(message) => {
                 event_tx.send(AgentEvent::Thinking).ok();
 
-                match agent.run_conversation(&message).await {
-                    Ok(result) => {
-                        // Send tool call events for any tool messages in the result
-                        for msg in &result.messages {
-                            if msg.role == hakimi_common::MessageRole::Tool {
-                                let name = msg.name.as_deref().unwrap_or("unknown");
-                                let content = msg.content.as_deref().unwrap_or("").to_string();
-                                event_tx
-                                    .send(AgentEvent::ToolResult {
-                                        name: name.to_string(),
-                                        content,
-                                        is_error: false,
-                                    })
-                                    .ok();
-                            }
-                            if let Some(ref tool_calls) = msg.tool_calls {
-                                for tc in tool_calls {
-                                    event_tx
-                                        .send(AgentEvent::ToolCall {
-                                            name: tc.name.clone(),
-                                            arguments: tc.arguments.clone(),
-                                        })
-                                        .ok();
-                                }
-                            }
-                        }
+                run_chat_turn(&mut agent, &message, &event_tx).await;
 
-                        // Send the final response
-                        event_tx
-                            .send(AgentEvent::Response(result.final_response))
-                            .ok();
-                    }
-                    Err(e) => {
-                        error!("Agent error: {e}");
-                        event_tx
-                            .send(AgentEvent::Error(format!("Agent error: {e}")))
-                            .ok();
-                    }
+                event_tx.send(AgentEvent::Done).ok();
+            }
+            AgentCommand::VoiceCapture {
+                duration_seconds,
+                silence_threshold,
+            } => {
+                event_tx.send(AgentEvent::Thinking).ok();
+                if let Some(transcript) = run_voice_capture_turn(
+                    &mut agent,
+                    duration_seconds,
+                    silence_threshold,
+                    &event_tx,
+                )
+                .await
+                {
+                    run_chat_turn(&mut agent, &transcript, &event_tx).await;
                 }
-
                 event_tx.send(AgentEvent::Done).ok();
             }
             AgentCommand::Shutdown => {
@@ -343,6 +323,159 @@ async fn run_agent_task(
             }
         }
     }
+}
+
+async fn run_chat_turn(
+    agent: &mut hakimi_core::AIAgent,
+    message: &str,
+    event_tx: &mpsc::UnboundedSender<AgentEvent>,
+) {
+    match agent.run_conversation(message).await {
+        Ok(result) => {
+            send_conversation_events(result, event_tx);
+        }
+        Err(e) => {
+            error!("Agent error: {e}");
+            event_tx
+                .send(AgentEvent::Error(format!("Agent error: {e}")))
+                .ok();
+        }
+    }
+}
+
+fn send_conversation_events(
+    result: hakimi_core::ConversationResult,
+    event_tx: &mpsc::UnboundedSender<AgentEvent>,
+) {
+    for msg in &result.messages {
+        if msg.role == hakimi_common::MessageRole::Tool {
+            let name = msg.name.as_deref().unwrap_or("unknown");
+            let content = msg.content.as_deref().unwrap_or("").to_string();
+            event_tx
+                .send(AgentEvent::ToolResult {
+                    name: name.to_string(),
+                    content,
+                    is_error: false,
+                })
+                .ok();
+        }
+        if let Some(ref tool_calls) = msg.tool_calls {
+            for tc in tool_calls {
+                event_tx
+                    .send(AgentEvent::ToolCall {
+                        name: tc.name.clone(),
+                        arguments: tc.arguments.clone(),
+                    })
+                    .ok();
+            }
+        }
+    }
+
+    event_tx
+        .send(AgentEvent::Response(result.final_response))
+        .ok();
+}
+
+async fn run_voice_capture_turn(
+    agent: &mut hakimi_core::AIAgent,
+    duration_seconds: f32,
+    silence_threshold: u32,
+    event_tx: &mpsc::UnboundedSender<AgentEvent>,
+) -> Option<String> {
+    let args = json!({
+        "duration_seconds": duration_seconds,
+        "silence_threshold": silence_threshold,
+        "transcribe": true,
+        "response_format": "text",
+    });
+    event_tx
+        .send(AgentEvent::ToolCall {
+            name: "voice_capture".to_string(),
+            arguments: args.to_string(),
+        })
+        .ok();
+
+    let ctx = agent.build_tool_context();
+    let result = agent
+        .tool_registry()
+        .dispatch("voice_capture", &args, &ctx)
+        .await;
+
+    match result {
+        Ok(content) => {
+            event_tx
+                .send(AgentEvent::ToolResult {
+                    name: "voice_capture".to_string(),
+                    content: content.clone(),
+                    is_error: false,
+                })
+                .ok();
+            handle_voice_capture_result(&content, event_tx)
+        }
+        Err(e) => {
+            let error = format!("Voice capture error: {e}");
+            event_tx
+                .send(AgentEvent::ToolResult {
+                    name: "voice_capture".to_string(),
+                    content: error.clone(),
+                    is_error: true,
+                })
+                .ok();
+            event_tx.send(AgentEvent::Error(error)).ok();
+            None
+        }
+    }
+}
+
+fn handle_voice_capture_result(
+    content: &str,
+    event_tx: &mpsc::UnboundedSender<AgentEvent>,
+) -> Option<String> {
+    let parsed: JsonValue = match serde_json::from_str(content) {
+        Ok(value) => value,
+        Err(_) => {
+            event_tx
+                .send(AgentEvent::VoiceNoSpeech {
+                    reason: "Voice capture returned an unreadable response.".to_string(),
+                    audio_path: None,
+                })
+                .ok();
+            return None;
+        }
+    };
+
+    let audio_path = parsed
+        .get("audio_path")
+        .and_then(JsonValue::as_str)
+        .map(str::to_string);
+    let transcript = parsed
+        .get("transcript")
+        .and_then(JsonValue::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    if let Some(transcript) = transcript {
+        event_tx
+            .send(AgentEvent::VoiceTranscript {
+                transcript: transcript.clone(),
+                audio_path,
+            })
+            .ok();
+        return Some(transcript);
+    }
+
+    let reason = parsed
+        .get("recording")
+        .and_then(|recording| recording.get("rejection_reason"))
+        .and_then(JsonValue::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("No speech transcript detected.")
+        .to_string();
+    event_tx
+        .send(AgentEvent::VoiceNoSpeech { reason, audio_path })
+        .ok();
+    None
 }
 
 // ---------------------------------------------------------------------------

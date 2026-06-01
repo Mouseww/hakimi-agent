@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.164-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.165-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1452-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1455-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1452 |
+| Tests | ~500 | 1455 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -97,7 +97,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Real-time streaming with progressive edits
 - Cron jobs scheduled from chat with `/cron add`
 - Gateway `/voice on|off|tts|status|doctor` toggles spoken-response guidance and reports voice I/O readiness without polluting prompt cache or chat history
-- TUI `/voice status` and configurable Ctrl+B/Ctrl+letter diagnostics share the same `voice.*` config, TTS/transcription tools, audio environment checks, PCM16 WAV recording artifact validation, oversized WAV chunked STT dispatch, local TTS playback launch, and the `voice_capture` tool for recorder-backed capture plus optional STT dispatch
+- TUI `/voice status` and configurable Ctrl+B/Ctrl+letter push-to-talk share the same `voice.*` config, TTS/transcription tools, audio environment checks, PCM16 WAV recording artifact validation, oversized WAV chunked STT dispatch, local TTS playback launch, and the `voice_capture` tool for recorder-backed capture plus automatic transcript submission
 
 **Extensibility**
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports
@@ -189,7 +189,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1452 |
+| Tests | ~500 | 1455 |
 
 ---
 
@@ -239,10 +239,11 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Voice TTS playback text cleanup, MP3 cache planning, and local player launch
 - [x] Voice capture tool with system recorder backends and STT dispatch
 - [x] Oversized WAV chunking for captured-recording STT dispatch
+- [x] TUI Ctrl+B one-shot push-to-talk capture loop
 - [x] Mixture-of-Agents reasoning via OpenRouter
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
-- [ ] Interactive Ctrl+B push-to-talk capture loop
+- [ ] Voice capture interrupt key, continuous mode, and audio cues
 
 ---
 

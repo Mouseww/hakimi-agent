@@ -152,6 +152,8 @@ fn voice_record_key_matches(key: &KeyEvent, raw: &str) -> bool {
 pub struct TuiVoiceStatus {
     pub enabled: bool,
     pub tts: bool,
+    pub recording: bool,
+    pub processing: bool,
     pub record_key: String,
     pub record_key_label: String,
     pub provider: String,
@@ -206,6 +208,8 @@ impl TuiVoiceStatus {
         Self {
             enabled: false,
             tts: false,
+            recording: false,
+            processing: false,
             record_key_label: format_voice_record_key(&record_key),
             record_key,
             provider: provider.clone(),
@@ -236,7 +240,15 @@ impl TuiVoiceStatus {
     }
 
     pub(crate) fn status_bar_hint(&self) -> String {
-        let state = if self.enabled { "on" } else { "off" };
+        let state = if self.recording {
+            "rec"
+        } else if self.processing {
+            "stt"
+        } else if self.enabled {
+            "on"
+        } else {
+            "off"
+        };
         format!("Voice:{state} {}", self.record_key_label)
     }
 
@@ -273,7 +285,7 @@ impl TuiVoiceStatus {
              TTS playback: Markdown cleanup and MP3 cache planning ready (max {tts_max_chars} chars)\n\
              Recording artifact: PCM16 WAV writer ready ({sample_rate} Hz mono, min speech {min_speech:.1}s, no-speech timeout {no_speech:.0}s)\n\
              {audio_environment}\n\
-             TUI microphone capture is still pending; {record_key} shows this readiness report.",
+             TUI one-shot capture is ready through voice_capture; {record_key} records, transcribes, and submits the transcript.",
             record_key = self.record_key_label,
             provider = self.provider,
             model = self.model,
@@ -651,13 +663,15 @@ impl App {
             "on" | "enable" => {
                 self.voice.enabled = true;
                 self.messages.push(ChatMessage::system(format!(
-                    "Voice mode enabled. Press {} for the current push-to-talk readiness report.",
+                    "Voice mode enabled. Press {} to record, transcribe, and submit speech.",
                     self.voice.record_key_label
                 )));
             }
             "off" | "disable" => {
                 self.voice.enabled = false;
                 self.voice.tts = false;
+                self.voice.recording = false;
+                self.voice.processing = false;
                 self.messages
                     .push(ChatMessage::system("Voice mode disabled."));
             }
@@ -682,15 +696,56 @@ impl App {
     }
 
     fn handle_voice_record_key(&mut self) {
-        if self.voice.enabled {
-            self.messages
-                .push(ChatMessage::system(self.voice.render_status()));
-        } else {
+        if !self.voice.enabled {
             self.messages.push(ChatMessage::system(format!(
                 "Voice mode is off. Use /voice on before using {}.",
                 self.voice.record_key_label
             )));
+            return;
         }
+
+        if self.voice.recording || self.voice.processing || self.is_thinking {
+            self.messages.push(ChatMessage::system(format!(
+                "Voice capture is already active. Wait for recording or transcription to finish before pressing {} again.",
+                self.voice.record_key_label
+            )));
+            return;
+        }
+
+        if !self.voice.audio_environment.capture_available {
+            self.messages.push(ChatMessage::error(format!(
+                "Voice capture is not ready: {}",
+                self.voice.audio_environment.capture_backend
+            )));
+            return;
+        }
+
+        if !self.voice.transcription_ready {
+            self.messages.push(ChatMessage::error(
+                "Voice transcription is not configured. Set voice.api_key, HAKIMI_TRANSCRIPTION_API_KEY, VOICE_TOOLS_OPENAI_KEY, or OPENAI_API_KEY.",
+            ));
+            return;
+        }
+
+        let command = AgentCommand::VoiceCapture {
+            duration_seconds: hakimi_tools::NO_SPEECH_TIMEOUT_SECONDS,
+            silence_threshold: self.voice.silence_threshold,
+        };
+
+        if self.cmd_tx.send(command).is_err() {
+            self.messages
+                .push(ChatMessage::error("Failed to start voice capture."));
+            return;
+        }
+
+        self.voice.recording = true;
+        self.voice.processing = false;
+        self.is_thinking = true;
+        self.scroll_offset = 0;
+        self.messages.push(ChatMessage::system(format!(
+            "Recording with {}. Hakimi will transcribe and submit detected speech automatically.",
+            self.voice.record_key_label
+        )));
     }
 
     /// Process incoming agent events (non-blocking).
@@ -723,6 +778,11 @@ impl App {
                     content,
                     is_error,
                 } => {
+                    if name == "voice_capture" {
+                        self.voice.recording = false;
+                        self.voice.processing = !is_error;
+                    }
+
                     // Update last matching tool activity status
                     if let Some(activity) = self
                         .tool_activity
@@ -751,6 +811,8 @@ impl App {
                 }
 
                 AgentEvent::Response(text) => {
+                    self.voice.recording = false;
+                    self.voice.processing = false;
                     self.is_thinking = false;
                     if !text.is_empty() {
                         self.messages.push(ChatMessage::assistant(&text));
@@ -760,12 +822,43 @@ impl App {
                 }
 
                 AgentEvent::Error(err) => {
+                    self.voice.recording = false;
+                    self.voice.processing = false;
                     self.is_thinking = false;
                     self.messages.push(ChatMessage::error(&err));
                     self.scroll_offset = 0;
                 }
 
+                AgentEvent::VoiceTranscript {
+                    transcript,
+                    audio_path,
+                } => {
+                    self.voice.recording = false;
+                    self.voice.processing = true;
+                    if let Some(path) = audio_path.filter(|path| !path.trim().is_empty()) {
+                        self.messages
+                            .push(ChatMessage::system(format!("Voice transcript from {path}")));
+                    }
+                    self.messages.push(ChatMessage::user(transcript));
+                    self.scroll_offset = 0;
+                }
+
+                AgentEvent::VoiceNoSpeech { reason, audio_path } => {
+                    self.voice.recording = false;
+                    self.voice.processing = false;
+                    self.is_thinking = false;
+                    let suffix = audio_path
+                        .filter(|path| !path.trim().is_empty())
+                        .map(|path| format!(" Recording preserved at {path}."))
+                        .unwrap_or_default();
+                    self.messages
+                        .push(ChatMessage::system(format!("{reason}{suffix}")));
+                    self.scroll_offset = 0;
+                }
+
                 AgentEvent::Done => {
+                    self.voice.recording = false;
+                    self.voice.processing = false;
                     self.is_thinking = false;
                 }
             }
@@ -1333,7 +1426,7 @@ mod tests {
         assert!(
             message
                 .content
-                .contains("TUI microphone capture is still pending")
+                .contains("TUI one-shot capture is ready through voice_capture")
         );
         assert!(!app.is_thinking);
     }
@@ -1383,8 +1476,24 @@ mod tests {
     }
 
     #[test]
-    fn configured_voice_record_key_shows_readiness_report() {
-        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+    fn voice_status_bar_reflects_capture_phases() {
+        let mut voice = TuiVoiceStatus {
+            enabled: true,
+            ..TuiVoiceStatus::default()
+        };
+        assert_eq!(voice.status_bar_hint(), "Voice:on Ctrl+B");
+
+        voice.recording = true;
+        assert_eq!(voice.status_bar_hint(), "Voice:rec Ctrl+B");
+
+        voice.recording = false;
+        voice.processing = true;
+        assert_eq!(voice.status_bar_hint(), "Voice:stt Ctrl+B");
+    }
+
+    #[test]
+    fn configured_voice_record_key_starts_voice_capture() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
         let (_event_tx, event_rx) = mpsc::unbounded_channel();
         let voice = VoiceConfig {
             record_key: "ctrl+o".to_string(),
@@ -1398,6 +1507,9 @@ mod tests {
             "test-session-123".to_string(),
         )
         .with_voice_config(&voice);
+        app.voice.audio_environment.capture_available = true;
+        app.voice.audio_environment.capture_backend = "test-recorder".to_string();
+        app.voice.transcription_ready = true;
 
         app.handle_voice_command(Some("on"));
         app.handle_key_event(key_with_mod(KeyCode::Char('O'), KeyModifiers::CONTROL));
@@ -1405,8 +1517,20 @@ mod tests {
         let message = app.messages.last().unwrap();
         assert_eq!(app.voice.record_key_label, "Ctrl+O");
         assert_eq!(message.role, crate::Role::System);
-        assert!(message.content.contains("Record key: Ctrl+O"));
-        assert!(message.content.contains("provider=edge"));
+        assert!(message.content.contains("Recording with Ctrl+O"));
+        assert!(app.voice.recording);
+        assert!(app.is_thinking);
+
+        match cmd_rx.try_recv().expect("voice command") {
+            AgentCommand::VoiceCapture {
+                duration_seconds,
+                silence_threshold,
+            } => {
+                assert_eq!(duration_seconds, hakimi_tools::NO_SPEECH_TIMEOUT_SECONDS);
+                assert_eq!(silence_threshold, app.voice.silence_threshold);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     #[test]
@@ -1624,6 +1748,57 @@ mod tests {
         app.poll_agent_events();
 
         assert!(!app.is_thinking);
+    }
+
+    #[test]
+    fn poll_voice_transcript_adds_user_message_and_keeps_stt_state() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.voice.recording = true;
+
+        event_tx
+            .send(crate::AgentEvent::VoiceTranscript {
+                transcript: "turn on the lights".to_string(),
+                audio_path: Some("/tmp/hakimi_voice.wav".to_string()),
+            })
+            .unwrap();
+        app.poll_agent_events();
+
+        assert!(!app.voice.recording);
+        assert!(app.voice.processing);
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::User);
+        assert_eq!(app.messages.last().unwrap().content, "turn on the lights");
+    }
+
+    #[test]
+    fn poll_voice_no_speech_clears_capture_state() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.voice.recording = true;
+        app.voice.processing = true;
+        app.is_thinking = true;
+
+        event_tx
+            .send(crate::AgentEvent::VoiceNoSpeech {
+                reason: "recording peak RMS 10 is below threshold 200".to_string(),
+                audio_path: Some("/tmp/quiet.wav".to_string()),
+            })
+            .unwrap();
+        app.poll_agent_events();
+
+        assert!(!app.voice.recording);
+        assert!(!app.voice.processing);
+        assert!(!app.is_thinking);
+        assert!(app.messages.last().unwrap().content.contains("peak RMS"));
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("/tmp/quiet.wav")
+        );
     }
 
     #[test]
