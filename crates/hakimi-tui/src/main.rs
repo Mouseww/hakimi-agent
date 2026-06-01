@@ -600,7 +600,9 @@ async fn main() -> Result<()> {
     terminal.clear()?;
 
     // Create the app state.
-    let mut app = App::new(cmd_tx, event_rx, model, session_id).with_voice_config(&config.voice);
+    let mut app = App::new(cmd_tx, event_rx, model, session_id)
+        .with_config(&config)
+        .with_voice_config(&config.voice);
 
     // Event loop.
     let tick_rate = Duration::from_millis(100);

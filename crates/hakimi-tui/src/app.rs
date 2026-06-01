@@ -7,7 +7,7 @@ use crate::{
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hakimi_common::{SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix};
-use hakimi_config::VoiceConfig;
+use hakimi_config::{HakimiConfig, VoiceConfig};
 use hakimi_cron::persistence::PersistentCronStore;
 use hakimi_cron::{CronJob, CronRepeat, CronSchedule, parse_schedule, validate_cron_prompt};
 use hakimi_session::{SessionDB, SessionMeta, SessionOps};
@@ -87,6 +87,291 @@ fn default_cron_db_path() -> PathBuf {
     dirs::home_dir()
         .map(|home| home.join(".hakimi").join("cron.db"))
         .unwrap_or_else(|| PathBuf::from(".hakimi/cron.db"))
+}
+
+fn default_config_path() -> PathBuf {
+    dirs::home_dir()
+        .map(|home| home.join(".hakimi").join("config.yaml"))
+        .unwrap_or_else(|| PathBuf::from(".hakimi/config.yaml"))
+}
+
+fn default_trajectory_dir_path() -> PathBuf {
+    dirs::home_dir()
+        .map(|home| home.join(".hakimi").join("trajectories"))
+        .unwrap_or_else(|| PathBuf::from(".hakimi/trajectories"))
+}
+
+fn default_memory_dir_path() -> PathBuf {
+    dirs::home_dir()
+        .map(|home| home.join(".hakimi").join("memory"))
+        .unwrap_or_else(|| PathBuf::from(".hakimi/memory"))
+}
+
+fn display_config_value(value: &str, fallback: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        fallback.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn secret_status(value: &str) -> &'static str {
+    if value.trim().is_empty() {
+        "not configured"
+    } else {
+        "configured (redacted)"
+    }
+}
+
+fn on_off(value: bool) -> &'static str {
+    if value { "on" } else { "off" }
+}
+
+fn format_name_list(mut names: Vec<String>) -> String {
+    names.sort();
+    if names.is_empty() {
+        "none".to_string()
+    } else {
+        names.join(", ")
+    }
+}
+
+fn enabled_gateway_names(config: &HakimiConfig) -> Vec<String> {
+    let gateways = &config.gateways;
+    let mut names = Vec::new();
+    if !gateways.telegram.bot_token.trim().is_empty() {
+        names.push("telegram".to_string());
+    }
+    if gateways.clawbot.enabled {
+        names.push("clawbot".to_string());
+    }
+    if gateways.bluebubbles.enabled {
+        names.push("bluebubbles".to_string());
+    }
+    if gateways.slack.enabled {
+        names.push("slack".to_string());
+    }
+    if gateways.discord.enabled {
+        names.push("discord".to_string());
+    }
+    if gateways.mattermost.enabled {
+        names.push("mattermost".to_string());
+    }
+    if gateways.webhook.enabled {
+        names.push("webhook".to_string());
+    }
+    if gateways.msgraph_webhook.enabled {
+        names.push("msgraph_webhook".to_string());
+    }
+    if gateways.signal.enabled {
+        names.push("signal".to_string());
+    }
+    if gateways.sms.enabled {
+        names.push("sms".to_string());
+    }
+    if gateways.email.enabled {
+        names.push("email".to_string());
+    }
+    if gateways.whatsapp.enabled {
+        names.push("whatsapp".to_string());
+    }
+    if gateways.homeassistant.enabled {
+        names.push("homeassistant".to_string());
+    }
+    if gateways.matrix.enabled {
+        names.push("matrix".to_string());
+    }
+    if gateways.dingtalk.enabled {
+        names.push("dingtalk".to_string());
+    }
+    if gateways.wecom.enabled {
+        names.push("wecom".to_string());
+    }
+    if gateways.feishu.enabled {
+        names.push("feishu".to_string());
+    }
+    names
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TuiConfigSummary {
+    config_path: PathBuf,
+    lines: Vec<String>,
+}
+
+impl Default for TuiConfigSummary {
+    fn default() -> Self {
+        Self::from_config(
+            &HakimiConfig::default(),
+            "(default resolver)",
+            default_config_path(),
+        )
+    }
+}
+
+impl TuiConfigSummary {
+    pub fn from_config(config: &HakimiConfig, effective_model: &str, config_path: PathBuf) -> Self {
+        let mcp_servers = format_name_list(config.mcp_servers.keys().cloned().collect());
+        let credential_pools = format_name_list(config.credential_pools.keys().cloned().collect());
+        let roles = format_name_list(config.roles.keys().cloned().collect());
+        let disabled_toolsets = format_name_list(config.agent.disabled_toolsets.clone());
+        let enabled_gateways = format_name_list(enabled_gateway_names(config));
+        let skills_path = display_config_value(
+            &config.agent.skills_path,
+            &default_skills_dir_path().display().to_string(),
+        );
+        let memory_path = display_config_value(
+            &config.memory.path,
+            &default_memory_dir_path().display().to_string(),
+        );
+        let trajectory_dir = if config.agent.save_trajectories {
+            display_config_value(
+                &config.agent.trajectory_dir,
+                &default_trajectory_dir_path().display().to_string(),
+            )
+        } else {
+            "disabled".to_string()
+        };
+
+        let lines = vec![
+            format!("path: {}", config_path.display()),
+            format!(
+                "model: configured={} effective={} provider={} api_mode={} base_url={} api_key={}",
+                display_config_value(&config.model.default, "(resolver default)"),
+                display_config_value(effective_model, "(unknown)"),
+                display_config_value(&config.model.provider, "auto"),
+                display_config_value(&config.model.api_mode, "auto"),
+                display_config_value(&config.model.base_url, "(provider default)"),
+                secret_status(&config.model.api_key),
+            ),
+            format!(
+                "runtime: terminal={} cwd={} timeout={}s max_turns={} context_length={}",
+                display_config_value(&config.terminal.env_type, "local"),
+                display_config_value(&config.terminal.cwd, "."),
+                config.terminal.timeout,
+                config.agent.max_turns,
+                if config.model.context_length == 0 {
+                    "auto".to_string()
+                } else {
+                    config.model.context_length.to_string()
+                },
+            ),
+            format!(
+                "display: streaming={} compact={} skin={}",
+                on_off(config.display.streaming),
+                on_off(config.display.compact),
+                display_config_value(&config.display.skin, "default"),
+            ),
+            format!(
+                "compression: enabled={} engine={} threshold={:.2} target_ratio={:.2} context_length={}",
+                on_off(config.compression.enabled),
+                display_config_value(&config.compression.engine, "smart"),
+                config.compression.threshold,
+                config.compression.target_ratio,
+                config.compression.context_length,
+            ),
+            format!(
+                "safety: disabled_toolsets={} tool_output_max_bytes={} system_prompt={}",
+                disabled_toolsets,
+                config.tools.output.max_bytes,
+                if config.agent.system_prompt.trim().is_empty() {
+                    "not configured"
+                } else {
+                    "configured (content hidden)"
+                },
+            ),
+            format!(
+                "delegation: max_iterations={} model={} provider={} base_url={} api_key={}",
+                config.delegation.max_iterations,
+                display_config_value(&config.delegation.model, "inherit"),
+                display_config_value(&config.delegation.provider, "inherit"),
+                display_config_value(&config.delegation.base_url, "inherit"),
+                secret_status(&config.delegation.api_key),
+            ),
+            format!("skills: path={skills_path}"),
+            format!("trajectories: {trajectory_dir}"),
+            format!(
+                "memory: enabled={} path={}",
+                on_off(config.memory.enabled),
+                memory_path,
+            ),
+            format!(
+                "embedding: enabled={} provider={} model={} dimension={} api_key={}",
+                on_off(config.embedding.enabled),
+                display_config_value(&config.embedding.provider, "openai-compatible"),
+                display_config_value(&config.embedding.model, "BAAI/bge-m3"),
+                config.embedding.dimension,
+                secret_status(&config.embedding.api_key),
+            ),
+            format!(
+                "integrations: mcp_servers={} ({}) credential_pools={} ({}) roles={} ({}) gateways={}",
+                config.mcp_servers.len(),
+                mcp_servers,
+                config.credential_pools.len(),
+                credential_pools,
+                config.roles.len(),
+                roles,
+                enabled_gateways,
+            ),
+            format!(
+                "gateway_policy: allow_all={} allowed_users={} filter_silence_narration={}",
+                on_off(config.gateways.allow_all),
+                config.gateways.allowed_users.len(),
+                on_off(config.gateways.filter_silence_narration),
+            ),
+            format!(
+                "voice: provider={} tts_model={} stt_model={} record_key={} auto_play={} beep={} api_key={}",
+                display_config_value(&config.voice.provider, "openai"),
+                display_config_value(&config.voice.model, "tts-1"),
+                display_config_value(&config.voice.transcription_model, "whisper-1"),
+                display_config_value(&config.voice.record_key, "ctrl+b"),
+                on_off(config.voice.auto_play),
+                on_off(config.voice.beep_enabled),
+                secret_status(&config.voice.api_key),
+            ),
+            "secrets: values are redacted; /config only reports configured/not configured status"
+                .to_string(),
+        ];
+
+        Self { config_path, lines }
+    }
+
+    fn render(&self, arg: Option<&str>) -> String {
+        let query = arg.unwrap_or_default().trim();
+        if query.is_empty()
+            || query.eq_ignore_ascii_case("show")
+            || query.eq_ignore_ascii_case("summary")
+        {
+            return format!(
+                "Hakimi TUI config:\n{}\n\nUse the CLI config commands or edit config.yaml for write-side changes.",
+                self.lines.join("\n")
+            );
+        }
+
+        if query.eq_ignore_ascii_case("path") {
+            return format!("Config path: {}", self.config_path.display());
+        }
+
+        let query_lower = query.to_ascii_lowercase();
+        let matches = self
+            .lines
+            .iter()
+            .filter(|line| line.to_ascii_lowercase().contains(&query_lower))
+            .cloned()
+            .collect::<Vec<_>>();
+        if matches.is_empty() {
+            return format!(
+                "No TUI config summary field matched `{query}`.\nAvailable filters: model, runtime, display, compression, safety, delegation, skills, trajectories, memory, embedding, integrations, gateway, voice, secrets, path."
+            );
+        }
+
+        format!("Hakimi TUI config ({query}):\n{}", matches.join("\n"))
+    }
+}
+
+fn render_tui_config_command(arg: Option<&str>, summary: &TuiConfigSummary) -> String {
+    summary.render(arg)
 }
 
 fn render_tui_cron_help() -> String {
@@ -1276,6 +1561,7 @@ impl TuiVoiceStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TuiCommand {
     Help,
+    Config(Option<String>),
     Sessions(Option<String>),
     History(Option<String>),
     Undo(Option<String>),
@@ -1298,6 +1584,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
 
     match canonical_slash_command(cmd)? {
         "help" => Some(TuiCommand::Help),
+        "config" => Some(TuiCommand::Config(arg)),
         "sessions" => Some(TuiCommand::Sessions(arg)),
         "history" => Some(TuiCommand::History(arg)),
         "undo" => Some(TuiCommand::Undo(arg)),
@@ -1349,6 +1636,8 @@ pub struct App {
     pub skills_dir_path: PathBuf,
     /// Local cron database used by TUI cron management commands.
     pub cron_db_path: PathBuf,
+    /// Sanitized snapshot of the current TUI configuration.
+    pub config_summary: TuiConfigSummary,
     /// Total tokens used this session.
     pub total_tokens: u32,
     /// Number of API calls made.
@@ -1365,6 +1654,12 @@ impl App {
         model_name: String,
         session_id: String,
     ) -> Self {
+        let config_summary = TuiConfigSummary::from_config(
+            &HakimiConfig::default(),
+            &model_name,
+            default_config_path(),
+        );
+
         Self {
             messages: vec![ChatMessage::system(
                 "Welcome to Hakimi Agent! Type a message and press Enter to chat.",
@@ -1385,6 +1680,7 @@ impl App {
             session_db_path: default_session_db_path(),
             skills_dir_path: default_skills_dir_path(),
             cron_db_path: default_cron_db_path(),
+            config_summary,
             total_tokens: 0,
             api_calls: 0,
             voice: TuiVoiceStatus::default(),
@@ -1393,6 +1689,12 @@ impl App {
 
     pub fn with_voice_config(mut self, config: &VoiceConfig) -> Self {
         self.voice = TuiVoiceStatus::from_config(config);
+        self
+    }
+
+    pub fn with_config(mut self, config: &HakimiConfig) -> Self {
+        self.config_summary =
+            TuiConfigSummary::from_config(config, &self.model_name, default_config_path());
         self
     }
 
@@ -1614,8 +1916,12 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help               — Show this help\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
+            }
+            Some(TuiCommand::Config(arg)) => {
+                let output = render_tui_config_command(arg.as_deref(), &self.config_summary);
+                self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::Sessions(arg)) => {
                 let output = render_tui_sessions_command(arg.as_deref(), &self.session_db_path);
@@ -2561,6 +2867,7 @@ mod tests {
         // welcome + help
         assert_eq!(app.messages.len(), 2);
         assert!(app.messages[1].content.contains("/help"));
+        assert!(app.messages[1].content.contains("/config"));
         assert!(app.messages[1].content.contains("/history"));
         assert!(app.messages[1].content.contains("/undo"));
         assert!(app.messages[1].content.contains("/copy"));
@@ -2592,6 +2899,65 @@ mod tests {
             parse_tui_command("/sess show abc123"),
             Some(TuiCommand::Sessions(Some("show abc123".to_string())))
         );
+    }
+
+    #[test]
+    fn parse_tui_command_accepts_config_alias() {
+        assert_eq!(
+            parse_tui_command("/cfg model"),
+            Some(TuiCommand::Config(Some("model".to_string())))
+        );
+    }
+
+    #[test]
+    fn render_tui_config_summary_redacts_secrets() {
+        let mut config = HakimiConfig::default();
+        config.model.default = "anthropic/claude-sonnet-4".to_string();
+        config.model.provider = "openrouter".to_string();
+        config.model.api_key = "sk-test-secret".to_string();
+        config.delegation.api_key = "delegate-secret".to_string();
+        config.voice.api_key = "voice-secret".to_string();
+        config.embedding.api_key = "embedding-secret".to_string();
+        config.gateways.slack.enabled = true;
+
+        let summary = TuiConfigSummary::from_config(
+            &config,
+            "anthropic/claude-sonnet-4",
+            PathBuf::from("/tmp/hakimi/config.yaml"),
+        );
+        let output = render_tui_config_command(None, &summary);
+
+        assert!(output.contains("model: configured=anthropic/claude-sonnet-4"));
+        assert!(output.contains("provider=openrouter"));
+        assert!(output.contains("api_key=configured (redacted)"));
+        assert!(output.contains("gateways=slack"));
+        assert!(!output.contains("sk-test-secret"));
+        assert!(!output.contains("delegate-secret"));
+        assert!(!output.contains("voice-secret"));
+        assert!(!output.contains("embedding-secret"));
+    }
+
+    #[test]
+    fn slash_config_uses_summary_without_model_call() {
+        let mut config = HakimiConfig::default();
+        config.model.default = "openai/gpt-5".to_string();
+        config.model.provider = "openrouter".to_string();
+        config.terminal.cwd = "/workspace".to_string();
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app = app.with_config(&config);
+
+        for c in "/config model".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("Hakimi TUI config (model)"));
+        assert!(message.content.contains("configured=openai/gpt-5"));
+        assert!(message.content.contains("provider=openrouter"));
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(!app.is_thinking);
     }
 
     #[test]

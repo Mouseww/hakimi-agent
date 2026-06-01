@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.198-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.199-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1592-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1595-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1592 |
+| 测试数量 | ~500 | 1595 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -100,7 +100,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 网关 `/undo [N]` 可回退近期内存会话轮次，并回显目标提示词，方便编辑后重发
 - 聊天里直接创建定时任务 `/cron add`
 - 网关 `/voice on|off|tts|status|doctor` 可切换口语化回复并报告语音 I/O 就绪状态，不污染 prompt cache 和聊天历史
-- TUI `/sessions [cmd]` 可浏览已保存 SQLite 会话；`/skills [cmd]` 可浏览/搜索本地 Skills Hub 元数据；`/cron [cmd]` 可在本地管理持久化 cron 数据库；`/undo [N]` 可把近期提示词放回输入框继续编辑；`/checkpoints [cmd]` 可在不进入模型循环的情况下查看和管理共享 shadow-git 检查点；`/voice status` 与可配置 Ctrl+B/Ctrl+字母按键录音共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验、超大 WAV 分块 STT 派发、本地 TTS 播放启动、支持录音后端和自动 transcript 提交的 `voice_capture` 工具、连续重启录音、二次按键取消录音、三次无语音自动退出，以及 Hermes 风格开始/停止提示音
+- TUI `/config [field]` 可查看脱敏运行配置摘要；`/sessions [cmd]` 可浏览已保存 SQLite 会话；`/skills [cmd]` 可浏览/搜索本地 Skills Hub 元数据；`/cron [cmd]` 可在本地管理持久化 cron 数据库；`/undo [N]` 可把近期提示词放回输入框继续编辑；`/checkpoints [cmd]` 可在不进入模型循环的情况下查看和管理共享 shadow-git 检查点；`/voice status` 与可配置 Ctrl+B/Ctrl+字母按键录音共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验、超大 WAV 分块 STT 派发、本地 TTS 播放启动、支持录音后端和自动 transcript 提交的 `voice_capture` 工具、连续重启录音、二次按键取消录音、三次无语音自动退出，以及 Hermes 风格开始/停止提示音
 
 **可扩展**
 - MCP 协议客户端 — stdio / HTTP / SSE 传输，并支持 CLI/网关目录搜索与配置片段生成
@@ -202,7 +202,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1592 |
+| 测试数量 | ~500 | 1595 |
 
 ---
 
@@ -235,7 +235,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] HTTP API 模型/能力发现端点 + 文本 Chat Completions + Responses + 可取消 Runs 生命周期事件
 - [x] WebUI 管理 API 摘要 + 运行期写入
 - [x] 插件系统 + HTTP 模板
-- [x] ratatui TUI 界面
+- [x] ratatui TUI 界面、本地 slash 命令与脱敏配置浏览
 - [x] 智能上下文压缩（3 层）
 - [x] 错误分类器 + 凭证池
 - [x] Prompt 缓存 (Anthropic)
