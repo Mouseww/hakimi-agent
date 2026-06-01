@@ -704,7 +704,19 @@ impl App {
             return;
         }
 
-        if self.voice.recording || self.voice.processing || self.is_thinking {
+        if self.voice.recording {
+            let _ = self.cmd_tx.send(AgentCommand::CancelVoiceCapture);
+            self.voice.recording = false;
+            self.voice.processing = false;
+            self.is_thinking = true;
+            self.messages.push(ChatMessage::system(format!(
+                "Stopping voice capture. Press {} again after Hakimi returns to ready.",
+                self.voice.record_key_label
+            )));
+            return;
+        }
+
+        if self.voice.processing || self.is_thinking {
             self.messages.push(ChatMessage::system(format!(
                 "Voice capture is already active. Wait for recording or transcription to finish before pressing {} again.",
                 self.voice.record_key_label
@@ -853,6 +865,23 @@ impl App {
                         .unwrap_or_default();
                     self.messages
                         .push(ChatMessage::system(format!("{reason}{suffix}")));
+                    self.scroll_offset = 0;
+                }
+
+                AgentEvent::VoiceCaptureCancelled => {
+                    self.voice.recording = false;
+                    self.voice.processing = false;
+                    self.is_thinking = false;
+                    if let Some(activity) = self
+                        .tool_activity
+                        .iter_mut()
+                        .rev()
+                        .find(|a| a.name == "voice_capture" && a.status == ToolStatus::Running)
+                    {
+                        activity.status = ToolStatus::Error;
+                    }
+                    self.messages
+                        .push(ChatMessage::system("Voice capture stopped."));
                     self.scroll_offset = 0;
                 }
 
@@ -1531,6 +1560,68 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn voice_record_key_cancels_active_capture() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(
+            cmd_tx,
+            event_rx,
+            "test-model".to_string(),
+            "test-session-123".to_string(),
+        );
+        app.voice.enabled = true;
+        app.voice.recording = true;
+        app.is_thinking = true;
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('b'), KeyModifiers::CONTROL));
+
+        assert!(!app.voice.recording);
+        assert!(!app.voice.processing);
+        assert!(app.is_thinking);
+        assert!(
+            app.messages
+                .last()
+                .expect("message")
+                .content
+                .contains("Stopping voice capture")
+        );
+        match cmd_rx.try_recv().expect("cancel command") {
+            AgentCommand::CancelVoiceCapture => {}
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn voice_cancel_event_clears_running_capture_activity() {
+        let (mut app, _cmd_rx, event_tx) = make_app();
+        app.voice.recording = true;
+        app.is_thinking = true;
+        app.tool_activity.push(ToolActivity {
+            name: "voice_capture".to_string(),
+            arguments_summary: "{}".to_string(),
+            status: ToolStatus::Running,
+            timestamp: Utc::now(),
+        });
+
+        event_tx
+            .send(AgentEvent::VoiceCaptureCancelled)
+            .expect("send cancel event");
+        app.poll_agent_events();
+
+        assert!(!app.voice.recording);
+        assert!(!app.voice.processing);
+        assert!(!app.is_thinking);
+        assert_eq!(app.tool_activity[0].status, ToolStatus::Error);
+        assert!(
+            app.messages
+                .last()
+                .expect("message")
+                .content
+                .contains("Voice capture stopped")
+        );
     }
 
     #[test]

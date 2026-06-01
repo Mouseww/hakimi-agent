@@ -103,6 +103,7 @@ pub enum AgentCommand {
         duration_seconds: f32,
         silence_threshold: u32,
     },
+    CancelVoiceCapture,
     Shutdown,
 }
 
@@ -131,6 +132,8 @@ pub enum AgentEvent {
         reason: String,
         audio_path: Option<String>,
     },
+    /// Voice capture was interrupted before a transcript was produced.
+    VoiceCaptureCancelled,
     /// An error occurred.
     Error(String),
     /// Agent finished processing this turn.

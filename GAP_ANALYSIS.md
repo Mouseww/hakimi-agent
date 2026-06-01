@@ -146,7 +146,7 @@ Generated: 2026-05-31
 - **TUI slash command autocomplete** — Tab completion for slash command prefixes, aliases, and bounded ambiguous-candidate hints while preserving normal Tab tools-panel toggling outside slash command entry
 - **TUI `/history [N]` command** — Reviews recent user/assistant turns locally without sending the command to the model
 - **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers plus OSC 52 terminal fallback
-- **Voice diagnostics, capture artifacts, chunked STT dispatch, local TTS playback, and STT filtering** — `/voice on|off|tts|status|doctor`, configurable Ctrl+B/Ctrl+letter diagnostics, shared TTS/transcription config/tool registration, audio I/O environment reporting, Markdown-cleaned TTS playback cache planning, local system-player launch/interrupt support, PCM16 WAV recording artifact validation, oversized WAV chunking, `voice_capture` recorder-backed capture with optional `transcribe_audio` dispatch, and Whisper silence-hallucination filtering without claiming the full interactive Ctrl+B recording loop is complete
+- **Voice diagnostics, capture artifacts, chunked STT dispatch, local TTS playback, and STT filtering** — `/voice on|off|tts|status|doctor`, configurable Ctrl+B/Ctrl+letter diagnostics, shared TTS/transcription config/tool registration, audio I/O environment reporting, Markdown-cleaned TTS playback cache planning, local system-player launch/interrupt support, PCM16 WAV recording artifact validation, oversized WAV chunking, `voice_capture` recorder-backed capture with optional `transcribe_audio` dispatch, second-press TUI capture cancellation, and Whisper silence-hallucination filtering
 - **Spinner animation** — Thinking indicator
 - **Key handling** — Ctrl+C quit, input editing, scrolling
 
@@ -423,7 +423,7 @@ Generated: 2026-05-31
 #### 47. Voice Mode (Push-to-Talk)
 - **What**: Audio recording and playback for CLI with STT dispatch
 - **Hermes location**: `tools/voice_mode.py`
-- **Details**: Hakimi now has `text_to_speech`, `transcribe_audio` with Whisper silence-hallucination filtering and Hermes-style oversized local WAV chunking for text transcripts, gateway `/voice on|off|tts|status|doctor` state that adds spoken-response guidance only to the current model turn while preserving clean chat history, shared voice I/O diagnostics for TUI/gateway surfaces, Markdown-cleaned TTS playback cache planning, local playback launch/interrupt support for generated audio, PCM16 WAV recording artifact validation for captured audio, the `voice_capture` tool for installed-recorder capture plus optional STT dispatch, and TUI Ctrl+B/Ctrl+letter one-shot capture that submits successful transcripts into the chat loop. Remaining parity is deeper interactive polish: second-press interruption, continuous restart mode, and audio cue handling.
+- **Details**: Hakimi now has `text_to_speech`, `transcribe_audio` with Whisper silence-hallucination filtering and Hermes-style oversized local WAV chunking for text transcripts, gateway `/voice on|off|tts|status|doctor` state that adds spoken-response guidance only to the current model turn while preserving clean chat history, shared voice I/O diagnostics for TUI/gateway surfaces, Markdown-cleaned TTS playback cache planning, local playback launch/interrupt support for generated audio, PCM16 WAV recording artifact validation for captured audio, the `voice_capture` tool for installed-recorder capture plus optional STT dispatch, and TUI Ctrl+B/Ctrl+letter one-shot capture that submits successful transcripts into the chat loop and cancels active recording on a second press. Remaining parity is deeper interactive polish: continuous restart mode and audio cue handling.
 - **Priority**: **Low** — Niche CLI feature
 
 #### 49. Curator
@@ -594,7 +594,7 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. Voice mode (remaining interactive Ctrl+B/TUI push-to-talk state machine)
+10. Voice mode (continuous restart mode and audio cue handling)
 
 ---
 
@@ -689,10 +689,10 @@ Generated: 2026-05-31
 | 76 | Voice TTS Playback Prep | `hakimi-tools/src/{voice_mode.rs,builtin_tts.rs}`, `hakimi-tui/src/app.rs` | 5 | ✅ `text_to_speech` can opt into Hermes-style voice playback preparation with Markdown/URL/code cleanup, 4000-character spoken-text cap, MP3 cache path planning, MP3/OGG cleanup metadata, and TUI `/voice status` reports playback readiness |
 | 77 | Voice Local Playback Launch | `hakimi-tools/src/{voice_mode.rs,builtin_tts.rs}`, `hakimi-core/src/agent.rs`, `hakimi-common/src/tool.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 4 | ✅ `voice.auto_play` flows into tool execution, `text_to_speech` accepts `auto_play`, generated audio can launch local system players (`afplay`, `ffplay`, `mpg123`, Linux WAV players, Windows SoundPlayer), and active playback can be interrupted before starting a new file |
 | 78 | Voice Capture Tool + STT Dispatch | `hakimi-tools/src/{voice_mode.rs,builtin_voice_capture.rs}`, CLI/server/TUI registration | 8 | ✅ `voice_capture` plans Hermes-style one-shot recorder backends (`arecord`, `rec`, `ffmpeg`, Termux), writes to the shared voice cache, validates PCM16 WAV recordings with existing speech gates, and can dispatch accepted recordings through `transcribe_audio` |
-| 79 | TUI Voice Push-to-Talk Loop | `hakimi-tui/src/{app.rs,lib.rs,main.rs}` | 3 | ✅ Configurable Ctrl+B/Ctrl+letter now triggers `voice_capture` from the TUI background task, reports recording/STT state in the status bar, injects successful transcripts as user messages, and surfaces no-speech recordings without entering the model loop |
+| 79 | TUI Voice Push-to-Talk Loop | `hakimi-tui/src/{app.rs,lib.rs,main.rs}` | 5 | ✅ Configurable Ctrl+B/Ctrl+letter now triggers `voice_capture` from the TUI background task, reports recording/STT state in the status bar, injects successful transcripts as user messages, surfaces no-speech recordings without entering the model loop, and cancels active recording on a second press |
 
 ### Summary
-- **Total tests**: 1455 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1457 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

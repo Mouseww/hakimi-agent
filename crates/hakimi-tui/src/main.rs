@@ -305,23 +305,60 @@ async fn run_agent_task(
                 silence_threshold,
             } => {
                 event_tx.send(AgentEvent::Thinking).ok();
-                if let Some(transcript) = run_voice_capture_turn(
+                let capture = run_voice_capture_turn(
                     &mut agent,
                     duration_seconds,
                     silence_threshold,
                     &event_tx,
-                )
-                .await
-                {
+                );
+                tokio::pin!(capture);
+                let transcript = loop {
+                    tokio::select! {
+                        transcript = &mut capture => break transcript,
+                        next = cmd_rx.recv() => {
+                            match next {
+                                Some(AgentCommand::CancelVoiceCapture) => {
+                                    event_tx.send(AgentEvent::VoiceCaptureCancelled).ok();
+                                    break None;
+                                }
+                                Some(AgentCommand::Shutdown) => {
+                                    event_tx.send(AgentEvent::VoiceCaptureCancelled).ok();
+                                    info!("Agent task shutting down");
+                                    return;
+                                }
+                                Some(other) => {
+                                    warn!(
+                                        command = command_kind(&other),
+                                        "ignoring command while voice capture is active"
+                                    );
+                                }
+                                None => break None,
+                            }
+                        }
+                    }
+                };
+                if let Some(transcript) = transcript {
                     run_chat_turn(&mut agent, &transcript, &event_tx).await;
                 }
                 event_tx.send(AgentEvent::Done).ok();
+            }
+            AgentCommand::CancelVoiceCapture => {
+                warn!("ignoring voice capture cancellation with no active capture");
             }
             AgentCommand::Shutdown => {
                 info!("Agent task shutting down");
                 break;
             }
         }
+    }
+}
+
+fn command_kind(command: &AgentCommand) -> &'static str {
+    match command {
+        AgentCommand::Chat(_) => "chat",
+        AgentCommand::VoiceCapture { .. } => "voice_capture",
+        AgentCommand::CancelVoiceCapture => "cancel_voice_capture",
+        AgentCommand::Shutdown => "shutdown",
     }
 }
 

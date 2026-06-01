@@ -131,6 +131,7 @@ impl Tool for VoiceCaptureTool {
 
         let mut command = Command::new(&plan.command.program);
         command.args(&plan.command.args);
+        command.kill_on_drop(true);
         let output = tokio::time::timeout(
             Duration::from_secs_f32(plan.duration_seconds + 15.0),
             command.output(),
