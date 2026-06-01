@@ -209,6 +209,7 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         Arc::new(hakimi_tools::ImageGenerateTool),
         Arc::new(hakimi_tools::TextToSpeechTool),
         Arc::new(hakimi_tools::TranscribeAudioTool),
+        Arc::new(hakimi_tools::VoiceCaptureTool),
     ];
     builtin_tools.extend(hakimi_tools::kanban_tools());
     // Browser tools (shared browser instance)

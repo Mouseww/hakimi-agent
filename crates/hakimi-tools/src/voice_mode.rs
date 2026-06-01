@@ -87,6 +87,37 @@ pub struct VoicePlaybackStart {
     pub process_id: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoiceCaptureFormat {
+    Pcm16Wav,
+    EncodedAudio,
+}
+
+impl VoiceCaptureFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pcm16Wav => "pcm16_wav",
+            Self::EncodedAudio => "encoded_audio",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceCaptureCommand {
+    pub program: String,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VoiceCapturePlan {
+    pub command: VoiceCaptureCommand,
+    pub output_path: PathBuf,
+    pub backend: String,
+    pub format: VoiceCaptureFormat,
+    pub duration_seconds: f32,
+    pub silence_threshold: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceEnvironmentReport {
     pub capture_available: bool,
@@ -467,6 +498,203 @@ pub fn stop_voice_playback() -> bool {
     true
 }
 
+/// Default directory for temporary push-to-talk recordings.
+pub fn voice_capture_cache_dir() -> PathBuf {
+    std::env::temp_dir().join("hakimi_voice")
+}
+
+/// Build a deterministic voice recording path for tests and callers with their own clock.
+pub fn voice_capture_output_path_for(
+    dir: &Path,
+    timestamp: &str,
+    suffix: &str,
+    ext: &str,
+) -> PathBuf {
+    dir.join(format!("recording_{timestamp}_{suffix}.{ext}"))
+}
+
+/// Generate a temporary voice recording path.
+pub fn next_voice_capture_output_path(ext: &str) -> PathBuf {
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let suffix = uuid::Uuid::new_v4().to_string().replace('-', "");
+    voice_capture_output_path_for(&voice_capture_cache_dir(), &timestamp, &suffix[..8], ext)
+}
+
+/// Return Hermes-style one-shot microphone capture command candidates.
+pub fn voice_capture_command_candidates(
+    output_path: Option<&Path>,
+    duration_seconds: f32,
+    silence_threshold: u32,
+) -> Vec<VoiceCapturePlan> {
+    voice_capture_command_candidates_for_platform(
+        output_path,
+        duration_seconds,
+        silence_threshold,
+        std::env::consts::OS,
+        detect_termux(),
+    )
+}
+
+/// Return microphone capture command candidates for a specific platform.
+pub fn voice_capture_command_candidates_for_platform(
+    output_path: Option<&Path>,
+    duration_seconds: f32,
+    silence_threshold: u32,
+    platform: &str,
+    is_termux: bool,
+) -> Vec<VoiceCapturePlan> {
+    let duration_seconds = sanitized_voice_capture_duration(duration_seconds);
+    let duration_arg = format!("{duration_seconds:.3}");
+    let duration_secs = duration_seconds.ceil().max(1.0).to_string();
+    let wav_path = output_path
+        .filter(|path| path.extension_is("wav"))
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| next_voice_capture_output_path("wav"));
+    let aac_path = output_path
+        .filter(|path| path.extension_is("aac"))
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| next_voice_capture_output_path("aac"));
+    let wav = wav_path.to_string_lossy().to_string();
+    let aac = aac_path.to_string_lossy().to_string();
+
+    let mut candidates = Vec::new();
+    if is_termux {
+        candidates.push(VoiceCapturePlan {
+            command: VoiceCaptureCommand {
+                program: "termux-microphone-record".to_string(),
+                args: vec![
+                    "-f".to_string(),
+                    aac.clone(),
+                    "-l".to_string(),
+                    duration_secs.clone(),
+                    "-e".to_string(),
+                    "aac".to_string(),
+                    "-r".to_string(),
+                    VOICE_SAMPLE_RATE.to_string(),
+                    "-c".to_string(),
+                    VOICE_CHANNELS.to_string(),
+                ],
+            },
+            output_path: aac_path.clone(),
+            backend: "termux-microphone-record".to_string(),
+            format: VoiceCaptureFormat::EncodedAudio,
+            duration_seconds,
+            silence_threshold,
+        });
+    }
+
+    if platform == "linux" {
+        candidates.push(VoiceCapturePlan {
+            command: VoiceCaptureCommand {
+                program: "arecord".to_string(),
+                args: vec![
+                    "-q".to_string(),
+                    "-d".to_string(),
+                    duration_secs.clone(),
+                    "-f".to_string(),
+                    "S16_LE".to_string(),
+                    "-r".to_string(),
+                    VOICE_SAMPLE_RATE.to_string(),
+                    "-c".to_string(),
+                    VOICE_CHANNELS.to_string(),
+                    wav.clone(),
+                ],
+            },
+            output_path: wav_path.clone(),
+            backend: "arecord".to_string(),
+            format: VoiceCaptureFormat::Pcm16Wav,
+            duration_seconds,
+            silence_threshold,
+        });
+        candidates.push(VoiceCapturePlan {
+            command: VoiceCaptureCommand {
+                program: "rec".to_string(),
+                args: vec![
+                    "-q".to_string(),
+                    "-r".to_string(),
+                    VOICE_SAMPLE_RATE.to_string(),
+                    "-c".to_string(),
+                    VOICE_CHANNELS.to_string(),
+                    "-b".to_string(),
+                    "16".to_string(),
+                    wav.clone(),
+                    "trim".to_string(),
+                    "0".to_string(),
+                    duration_arg.clone(),
+                ],
+            },
+            output_path: wav_path.clone(),
+            backend: "sox-rec".to_string(),
+            format: VoiceCaptureFormat::Pcm16Wav,
+            duration_seconds,
+            silence_threshold,
+        });
+        candidates.push(ffmpeg_capture_plan(
+            wav_path.clone(),
+            vec![
+                "-f".to_string(),
+                "pulse".to_string(),
+                "-i".to_string(),
+                "default".to_string(),
+            ],
+            "ffmpeg-pulse",
+            duration_seconds,
+            silence_threshold,
+        ));
+        candidates.push(ffmpeg_capture_plan(
+            wav_path.clone(),
+            vec![
+                "-f".to_string(),
+                "alsa".to_string(),
+                "-i".to_string(),
+                "default".to_string(),
+            ],
+            "ffmpeg-alsa",
+            duration_seconds,
+            silence_threshold,
+        ));
+    } else if platform == "macos" {
+        candidates.push(ffmpeg_capture_plan(
+            wav_path.clone(),
+            vec![
+                "-f".to_string(),
+                "avfoundation".to_string(),
+                "-i".to_string(),
+                ":0".to_string(),
+            ],
+            "ffmpeg-avfoundation",
+            duration_seconds,
+            silence_threshold,
+        ));
+    } else if platform == "windows" {
+        candidates.push(ffmpeg_capture_plan(
+            wav_path.clone(),
+            vec![
+                "-f".to_string(),
+                "dshow".to_string(),
+                "-i".to_string(),
+                "audio=default".to_string(),
+            ],
+            "ffmpeg-dshow",
+            duration_seconds,
+            silence_threshold,
+        ));
+    }
+
+    candidates
+}
+
+/// Return the first installed one-shot microphone capture plan.
+pub fn find_voice_capture_plan(
+    output_path: Option<&Path>,
+    duration_seconds: f32,
+    silence_threshold: u32,
+) -> Option<VoiceCapturePlan> {
+    voice_capture_command_candidates(output_path, duration_seconds, silence_threshold)
+        .into_iter()
+        .find(|plan| command_exists(&plan.command.program))
+}
+
 fn reap_voice_playback_when_done(process_id: u32) {
     let _ = std::thread::spawn(move || {
         let started = Instant::now();
@@ -494,6 +722,51 @@ fn reap_voice_playback_when_done(process_id: u32) {
             }
         }
     });
+}
+
+fn ffmpeg_capture_plan(
+    output_path: PathBuf,
+    input_args: Vec<String>,
+    backend: &str,
+    duration_seconds: f32,
+    silence_threshold: u32,
+) -> VoiceCapturePlan {
+    let mut args = vec![
+        "-y".to_string(),
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+    ];
+    args.extend(input_args);
+    args.extend([
+        "-t".to_string(),
+        format!("{duration_seconds:.3}"),
+        "-ac".to_string(),
+        VOICE_CHANNELS.to_string(),
+        "-ar".to_string(),
+        VOICE_SAMPLE_RATE.to_string(),
+        "-acodec".to_string(),
+        "pcm_s16le".to_string(),
+        output_path.to_string_lossy().to_string(),
+    ]);
+    VoiceCapturePlan {
+        command: VoiceCaptureCommand {
+            program: "ffmpeg".to_string(),
+            args,
+        },
+        output_path,
+        backend: backend.to_string(),
+        format: VoiceCaptureFormat::Pcm16Wav,
+        duration_seconds,
+        silence_threshold,
+    }
+}
+
+fn sanitized_voice_capture_duration(duration_seconds: f32) -> f32 {
+    if !duration_seconds.is_finite() || duration_seconds <= 0.0 {
+        return NO_SPEECH_TIMEOUT_SECONDS;
+    }
+    duration_seconds.clamp(MIN_SPEECH_RECORDING_SECONDS, 300.0)
 }
 
 /// Summarize PCM16 mono recording data using Hermes-compatible speech gates.
@@ -578,6 +851,20 @@ pub fn write_pcm16_wav_with_threshold(
     Ok(summarize_pcm16_recording(samples, silence_threshold))
 }
 
+/// Read and summarize a PCM16 mono WAV recording created by a capture backend.
+pub fn summarize_pcm16_wav_file(
+    path: impl AsRef<Path>,
+    silence_threshold: u32,
+) -> io::Result<VoiceRecordingSummary> {
+    let bytes = std::fs::read(path)?;
+    let data = extract_pcm16_mono_wav_data(&bytes)?;
+    let samples = data
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    Ok(summarize_pcm16_recording(&samples, silence_threshold))
+}
+
 /// Return true when a transcript looks like a common Whisper hallucination on silence.
 pub fn is_whisper_hallucination(transcript: &str) -> bool {
     let cleaned = normalize_transcript(transcript);
@@ -613,6 +900,75 @@ pub fn is_whisper_hallucination(transcript: &str) -> bool {
     let allowed = ["thank", "you", "thanks", "bye", "ok", "okay", "the", "end"];
     let mut tokens = cleaned.split_whitespace().peekable();
     tokens.peek().is_some() && tokens.all(|token| allowed.contains(&token))
+}
+
+fn extract_pcm16_mono_wav_data(bytes: &[u8]) -> io::Result<&[u8]> {
+    if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "recording is not a RIFF/WAVE file",
+        ));
+    }
+
+    let mut offset = 12usize;
+    let mut format_ok = false;
+    let mut data_range = None;
+    while offset.checked_add(8).is_some_and(|end| end <= bytes.len()) {
+        let id = &bytes[offset..offset + 4];
+        let len = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
+        let start = offset + 8;
+        let end = start
+            .checked_add(len)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "WAV chunk is too large"))?;
+        if end > bytes.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "WAV chunk exceeds file size",
+            ));
+        }
+
+        if id == b"fmt " {
+            if len < 16 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "WAV fmt chunk is too short",
+                ));
+            }
+            let audio_format = u16::from_le_bytes(bytes[start..start + 2].try_into().unwrap());
+            let channels = u16::from_le_bytes(bytes[start + 2..start + 4].try_into().unwrap());
+            let sample_rate = u32::from_le_bytes(bytes[start + 4..start + 8].try_into().unwrap());
+            let bits_per_sample =
+                u16::from_le_bytes(bytes[start + 14..start + 16].try_into().unwrap());
+            format_ok = audio_format == 1
+                && channels == VOICE_CHANNELS
+                && sample_rate == VOICE_SAMPLE_RATE
+                && bits_per_sample == VOICE_SAMPLE_WIDTH_BYTES * 8;
+        } else if id == b"data" {
+            data_range = Some(start..end);
+        }
+
+        offset = end + (len % 2);
+    }
+
+    if !format_ok {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "WAV recording is not 16 kHz mono PCM16",
+        ));
+    }
+    let range = data_range.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "WAV recording has no data chunk",
+        )
+    })?;
+    if range.len() % 2 != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "WAV data chunk has an odd byte length",
+        ));
+    }
+    Ok(&bytes[range])
 }
 
 fn normalize_transcript(transcript: &str) -> String {
@@ -754,6 +1110,18 @@ fn command_exists(name: &str) -> bool {
     })
 }
 
+trait VoicePathExt {
+    fn extension_is(&self, expected: &str) -> bool;
+}
+
+impl VoicePathExt for Path {
+    fn extension_is(&self, expected: &str) -> bool {
+        self.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case(expected))
+    }
+}
+
 #[cfg(windows)]
 fn command_extensions() -> Vec<String> {
     let mut extensions = vec![String::new()];
@@ -880,6 +1248,74 @@ mod tests {
     }
 
     #[test]
+    fn capture_candidates_include_linux_pcm16_backends() {
+        let path = Path::new("/tmp/hakimi-voice.wav");
+        let plans = voice_capture_command_candidates_for_platform(
+            Some(path),
+            2.25,
+            DEFAULT_SILENCE_RMS_THRESHOLD,
+            "linux",
+            false,
+        );
+        let backends = plans
+            .iter()
+            .map(|plan| plan.backend.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(backends.contains(&"arecord"));
+        assert!(backends.contains(&"sox-rec"));
+        assert!(backends.contains(&"ffmpeg-pulse"));
+        assert!(
+            plans
+                .iter()
+                .all(|plan| plan.format == VoiceCaptureFormat::Pcm16Wav)
+        );
+        assert!(plans.iter().all(|plan| plan.output_path == path));
+        assert!(
+            plans
+                .iter()
+                .any(|plan| plan.command.args.iter().any(|arg| arg == "16000"))
+        );
+    }
+
+    #[test]
+    fn capture_candidates_include_termux_encoded_backend() {
+        let path = Path::new("/tmp/hakimi-voice.aac");
+        let plans = voice_capture_command_candidates_for_platform(
+            Some(path),
+            1.0,
+            DEFAULT_SILENCE_RMS_THRESHOLD,
+            "linux",
+            true,
+        );
+        let termux = plans
+            .iter()
+            .find(|plan| plan.backend == "termux-microphone-record")
+            .expect("termux plan");
+
+        assert_eq!(termux.output_path, path);
+        assert_eq!(termux.format, VoiceCaptureFormat::EncodedAudio);
+        assert!(termux.command.args.iter().any(|arg| arg == "aac"));
+    }
+
+    #[test]
+    fn capture_duration_is_clamped_to_safe_bounds() {
+        let plan = voice_capture_command_candidates_for_platform(
+            Some(Path::new("/tmp/hakimi-voice.wav")),
+            f32::NAN,
+            DEFAULT_SILENCE_RMS_THRESHOLD,
+            "macos",
+            false,
+        )
+        .into_iter()
+        .next()
+        .expect("capture plan");
+
+        assert_eq!(plan.duration_seconds, NO_SPEECH_TIMEOUT_SECONDS);
+        assert!(plan.command.args.iter().any(|arg| arg == "15.000"));
+    }
+
+    #[test]
     fn start_voice_playback_rejects_missing_file() {
         let err = start_voice_playback(Path::new("/tmp/hakimi-missing-audio.mp3"))
             .expect_err("missing file should be rejected");
@@ -918,6 +1354,21 @@ mod tests {
         assert_eq!(&bytes[36..40], b"data");
         assert_eq!(u32::from_le_bytes(bytes[40..44].try_into().unwrap()), 6);
         assert_eq!(summary.samples, 3);
+    }
+
+    #[test]
+    fn summarizes_pcm16_wav_file_written_by_capture_backend() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("recording.wav");
+        let samples = vec![1_000; minimum_voice_samples()];
+        write_pcm16_wav(&path, &samples).expect("write wav");
+
+        let summary =
+            summarize_pcm16_wav_file(&path, DEFAULT_SILENCE_RMS_THRESHOLD).expect("summary");
+
+        assert!(summary.accepted);
+        assert_eq!(summary.samples, samples.len());
+        assert!(summary.peak_rms >= DEFAULT_SILENCE_RMS_THRESHOLD);
     }
 
     #[test]

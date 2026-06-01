@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.162-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.163-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1442-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1449-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1442 |
+| 测试数量 | ~500 | 1449 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -80,7 +80,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 全自动，零手动配置
 - 模型上下文窗口感知：`model.context_length` 覆盖静态元数据，并统一驱动压缩与工具披露阈值
 
-**59+ 内置工具**
+**60+ 内置工具**
 - **文件操作**：读写搜索补丁，安全沙箱保护
 - **终端**：命令执行 + 后台进程管理
 - **Web**：搜索、内容提取、浏览器自动化（Chromium）
@@ -96,7 +96,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 实时流式输出
 - 聊天里直接创建定时任务 `/cron add`
 - 网关 `/voice on|off|tts|status|doctor` 可切换口语化回复并报告语音 I/O 就绪状态，不污染 prompt cache 和聊天历史
-- TUI `/voice status` 与可配置 Ctrl+B/Ctrl+字母诊断共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验，以及基于系统播放器的本地 TTS 播放启动
+- TUI `/voice status` 与可配置 Ctrl+B/Ctrl+字母诊断共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验、本地 TTS 播放启动，以及支持录音后端和可选 STT 派发的 `voice_capture` 工具
 
 **可扩展**
 - MCP 协议客户端 — stdio / HTTP / SSE 传输
@@ -141,7 +141,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 hakimi-agent/
 ├── hakimi-core/          # Agent 主循环 + 错误分类 + 凭证池
 ├── hakimi-transports/    # LLM 传输层 (OpenAI/Anthropic/Gemini)
-├── hakimi-tools/         # 59+ 内置工具 + 插件注册
+├── hakimi-tools/         # 60+ 内置工具 + 插件注册
 ├── hakimi-session/       # SQLite WAL + FTS5 + 决策树
 ├── hakimi-context/       # 上下文引擎 + 压缩 + 意图推理 + 角色
 ├── hakimi-knowledge/    # 知识图谱 (petgraph)
@@ -196,7 +196,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1442 |
+| 测试数量 | ~500 | 1449 |
 
 ---
 
@@ -222,7 +222,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 
 - [x] Agent 主循环 + 工具调度
 - [x] OpenAI / Anthropic / Gemini 传输层 + SSE 流式
-- [x] 59+ 内置工具
+- [x] 60+ 内置工具
 - [x] 11 个运行时可启用的平台适配器
 - [x] MCP 客户端 + 服务器目录
 - [x] HTTP API 模型与能力发现端点
@@ -244,10 +244,11 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 语音环境诊断与 STT 静音幻觉过滤
 - [x] 语音采集用 PCM16 WAV 录音产物校验
 - [x] 语音 TTS 播放文本清洗、MP3 缓存规划与本地播放器启动
+- [x] 语音采集工具支持系统录音后端与 STT 派发
 - [x] 基于 OpenRouter 的 Mixture-of-Agents 多模型推理
 - [ ] WASM 插件运行时
 - [ ] Web 仪表盘
-- [ ] CLI 按键录音语音输入
+- [ ] Ctrl+B 交互式按键录音循环
 
 ---
 
