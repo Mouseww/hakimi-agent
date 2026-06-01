@@ -40,4 +40,5 @@ clap = { workspace = true }
 [dev-dependencies]
 async-trait = { workspace = true }
 futures = { workspace = true }
+hakimi-skills = { path = "../hakimi-skills" }
 reqwest = { workspace = true }
