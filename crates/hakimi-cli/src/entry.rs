@@ -130,6 +130,66 @@ fn restore_voice_history_text(messages: &mut [hakimi_common::Message]) {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GatewayUndoResult {
+    turns_undone: usize,
+    removed_messages: usize,
+    target_text: String,
+}
+
+fn parse_gateway_undo_turns(raw: Option<&str>) -> std::result::Result<usize, String> {
+    let raw = raw.unwrap_or_default().trim();
+    if raw.is_empty() {
+        return Ok(1);
+    }
+    match raw.parse::<usize>() {
+        Ok(turns) if turns > 0 => Ok(turns),
+        _ => Err("Usage: `/undo [turns]`".to_string()),
+    }
+}
+
+fn rewind_gateway_history(
+    history: &mut Vec<hakimi_common::Message>,
+    turns: usize,
+) -> Option<GatewayUndoResult> {
+    let mut seen_user_turns = 0usize;
+    let mut target_index = None;
+
+    for (index, message) in history.iter().enumerate().rev() {
+        if message.role != hakimi_common::MessageRole::User {
+            continue;
+        }
+        seen_user_turns += 1;
+        target_index = Some(index);
+        if seen_user_turns == turns {
+            break;
+        }
+    }
+
+    let target_index = target_index?;
+    let target_text = history[target_index].content.clone().unwrap_or_default();
+    let removed_messages = history.len().saturating_sub(target_index);
+    history.truncate(target_index);
+
+    Some(GatewayUndoResult {
+        turns_undone: seen_user_turns,
+        removed_messages,
+        target_text,
+    })
+}
+
+fn render_gateway_undo_response(result: GatewayUndoResult) -> String {
+    let plural = if result.turns_undone == 1 {
+        "turn"
+    } else {
+        "turns"
+    };
+    format!(
+        "↩️ Undid {} {plural} ({} messages). Edit and resend:\n\n{}",
+        result.turns_undone, result.removed_messages, result.target_text
+    )
+}
+
 #[derive(Debug, Clone)]
 struct GatewayIngressPolicy {
     allow_all: bool,
@@ -4176,6 +4236,32 @@ async fn start_gateway(
                     });
                     continue;
                 }
+                Some(Command::Undo(arg)) => {
+                    let key = gateway_task_key(&platform, &bot_id, &chat_id);
+                    let busy = {
+                        let active = active_tasks.lock().await;
+                        active.contains_key(&key)
+                    };
+                    let response = if busy {
+                        "⏳ This chat is busy. Use `/stop` before `/undo`.".to_string()
+                    } else {
+                        match parse_gateway_undo_turns(arg.as_deref()) {
+                            Ok(turns) => {
+                                let result = {
+                                    let mut histories = histories_clone.lock().await;
+                                    let history = histories.entry(chat_id.clone()).or_default();
+                                    rewind_gateway_history(history, turns)
+                                };
+                                result.map(render_gateway_undo_response).unwrap_or_else(|| {
+                                    "Nothing to undo for this chat yet.".to_string()
+                                })
+                            }
+                            Err(err) => err,
+                        }
+                    };
+                    send_gateway_text(&gateway, &platform, &bot_id, &chat_id, &response).await;
+                    continue;
+                }
                 _ => {}
             }
         }
@@ -4283,6 +4369,7 @@ async fn start_gateway(
 • `/stop` - Cancel the active task or stream\n\
 • `/clear` - Clear this chat's conversation state\n\
 • `/history [N]` - Show recent local TUI conversation messages\n\
+• `/undo [N]` - Rewind recent gateway user turns and echo the text for editing\n\
 • `/status` - Show gateway, platform, and model status\n\
 • `/usage` - Show last-turn tokens, cost, and rate limits\n\n\
 **Agent capability**\n\
@@ -4443,7 +4530,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Copy(_)) => "`/copy [N]` is available in the local Hakimi TUI for copying recent assistant responses. In gateway chats, use your chat client's native copy action.".to_string(),
-                    Some(Command::History(_)) => "`/history [N]` is available in the local Hakimi TUI for reviewing recent user/assistant messages. Gateway chats keep history in the chat client and can use `/clear` to reset Hakimi state.".to_string(),
+                    Some(Command::History(_)) => "`/history [N]` is available in the local Hakimi TUI for reviewing recent user/assistant messages. Gateway chats keep history in the chat client and can use `/undo [N]` to rewind Hakimi's in-memory turn state.".to_string(),
                     Some(Command::Profile(cmd)) => crate::profiles::profile_response_from_raw(
                         cmd.as_deref(),
                         &hakimi_home_dir(),
@@ -5723,13 +5810,14 @@ mod tests {
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
         gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
         gateway_usage_response, gateway_voice_response, is_top_level_cron_tick,
-        plan_gateway_final_delivery, queue_cron_delivery, resolve_clawbot_gateway_config,
-        resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
+        parse_gateway_undo_turns, plan_gateway_final_delivery, queue_cron_delivery,
+        render_gateway_undo_response, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
+        restore_hakimi_state_backup, restore_voice_history_text, rewind_gateway_history,
         top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
         update_target_from_candidate,
     };
     use clap::ValueEnum;
-    use hakimi_common::Usage;
+    use hakimi_common::{Message, Usage};
     use hakimi_cron::{CronJob, CronSchedule, persistence::PersistentCronStore};
     use hakimi_skills::{Skill, SkillStore};
     use std::path::PathBuf;
@@ -5800,6 +5888,59 @@ mod tests {
             "matrix-main"
         );
         assert_eq!(gateway_bot_id_for_platform(&bot_ids, "wecom"), "wecom");
+    }
+
+    #[test]
+    fn gateway_undo_rewinds_latest_user_turn() {
+        let mut history = vec![
+            Message::user("q1"),
+            Message::assistant("a1"),
+            Message::user("q2"),
+            Message::assistant("a2"),
+        ];
+
+        let result = rewind_gateway_history(&mut history, 1).expect("undo result");
+
+        assert_eq!(result.turns_undone, 1);
+        assert_eq!(result.removed_messages, 2);
+        assert_eq!(result.target_text, "q2");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].content.as_deref(), Some("q1"));
+        assert_eq!(history[1].content.as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn gateway_undo_n_turns_clamps_to_oldest_turn() {
+        let mut history = vec![
+            Message::user("q1"),
+            Message::assistant("a1"),
+            Message::user("q2"),
+            Message::assistant("a2"),
+        ];
+
+        let result = rewind_gateway_history(&mut history, 99).expect("undo result");
+
+        assert_eq!(result.turns_undone, 2);
+        assert_eq!(result.removed_messages, 4);
+        assert_eq!(result.target_text, "q1");
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn gateway_undo_count_parser_and_response_are_operator_friendly() {
+        assert_eq!(parse_gateway_undo_turns(None).unwrap(), 1);
+        assert_eq!(parse_gateway_undo_turns(Some("2")).unwrap(), 2);
+        assert!(parse_gateway_undo_turns(Some("0")).is_err());
+        assert!(parse_gateway_undo_turns(Some("abc")).is_err());
+
+        let response = render_gateway_undo_response(super::GatewayUndoResult {
+            turns_undone: 2,
+            removed_messages: 4,
+            target_text: "retry this prompt".to_string(),
+        });
+        assert!(response.contains("Undid 2 turns"));
+        assert!(response.contains("4 messages"));
+        assert!(response.contains("retry this prompt"));
     }
 
     #[test]

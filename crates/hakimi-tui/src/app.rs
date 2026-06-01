@@ -40,6 +40,58 @@ fn parse_history_limit(arg: Option<&str>) -> Result<Option<usize>, &'static str>
     }
 }
 
+fn parse_undo_turns(arg: Option<&str>) -> Result<usize, &'static str> {
+    let raw = arg.unwrap_or_default().trim();
+    if raw.is_empty() {
+        return Ok(1);
+    }
+
+    match raw.parse::<usize>() {
+        Ok(turns) if turns > 0 => Ok(turns),
+        _ => Err("usage: /undo [turns]"),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UndoResult {
+    turns_undone: usize,
+    removed_messages: usize,
+    target_text: String,
+}
+
+fn undo_recent_user_turns(
+    messages: &mut Vec<ChatMessage>,
+    turns: usize,
+) -> Result<UndoResult, &'static str> {
+    let mut seen_user_turns = 0usize;
+    let mut target_index = None;
+
+    for (index, message) in messages.iter().enumerate().rev() {
+        if message.role != crate::Role::User {
+            continue;
+        }
+        seen_user_turns += 1;
+        target_index = Some(index);
+        if seen_user_turns == turns {
+            break;
+        }
+    }
+
+    let Some(target_index) = target_index else {
+        return Err("nothing to undo");
+    };
+
+    let target_text = messages[target_index].content.clone();
+    let removed_messages = messages.len().saturating_sub(target_index);
+    messages.truncate(target_index);
+
+    Ok(UndoResult {
+        turns_undone: seen_user_turns,
+        removed_messages,
+        target_text,
+    })
+}
+
 fn render_history_messages(
     messages: &[ChatMessage],
     arg: Option<&str>,
@@ -317,6 +369,7 @@ impl TuiVoiceStatus {
 enum TuiCommand {
     Help,
     History(Option<String>),
+    Undo(Option<String>),
     Copy(Option<String>),
     Clear,
     Tools,
@@ -334,6 +387,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
     match canonical_slash_command(cmd)? {
         "help" => Some(TuiCommand::Help),
         "history" => Some(TuiCommand::History(arg)),
+        "undo" => Some(TuiCommand::Undo(arg)),
         "copy" => Some(TuiCommand::Copy(arg)),
         "clear" => Some(TuiCommand::Clear),
         "tools" => Some(TuiCommand::Tools),
@@ -453,9 +507,11 @@ impl App {
 
                 // Handle slash commands locally
                 if text.starts_with('/') {
-                    self.handle_slash_command(&text);
-                    self.input.clear();
-                    self.cursor_position = 0;
+                    let clear_input = self.handle_slash_command(&text);
+                    if clear_input {
+                        self.input.clear();
+                        self.cursor_position = 0;
+                    }
                     self.completion_hint = None;
                     return;
                 }
@@ -614,16 +670,43 @@ impl App {
     }
 
     /// Handle slash commands locally (without sending to agent).
-    fn handle_slash_command(&mut self, cmd: &str) {
+    fn handle_slash_command(&mut self, cmd: &str) -> bool {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /voice [cmd]   — Show or toggle voice readiness\n  /quit          — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help          — Show this help\n  /history [N]   — Show recent conversation messages\n  /undo [N]      — Rewind recent user turns into the composer\n  /copy [N]      — Copy the Nth latest assistant response\n  /clear         — Clear chat history\n  /tools         — Toggle tools panel\n  /voice [cmd]   — Show or toggle voice readiness\n  /quit          — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
             }
             Some(TuiCommand::History(arg)) => {
                 match render_history_messages(&self.messages, arg.as_deref()) {
                     Ok(history) => self.messages.push(ChatMessage::system(history)),
+                    Err(message) => self.messages.push(ChatMessage::error(message)),
+                }
+            }
+            Some(TuiCommand::Undo(arg)) => {
+                let turns = match parse_undo_turns(arg.as_deref()) {
+                    Ok(turns) => turns,
+                    Err(message) => {
+                        self.messages.push(ChatMessage::error(message));
+                        return true;
+                    }
+                };
+                match undo_recent_user_turns(&mut self.messages, turns) {
+                    Ok(result) => {
+                        self.input = result.target_text;
+                        self.cursor_position = self.input.len();
+                        let plural = if result.turns_undone == 1 {
+                            "turn"
+                        } else {
+                            "turns"
+                        };
+                        self.messages.push(ChatMessage::system(format!(
+                            "Undid {} {plural} ({} messages). Edit and press Enter to resend.",
+                            result.turns_undone, result.removed_messages
+                        )));
+                        self.scroll_offset = 0;
+                        return false;
+                    }
                     Err(message) => self.messages.push(ChatMessage::error(message)),
                 }
             }
@@ -665,6 +748,7 @@ impl App {
                 )));
             }
         }
+        true
     }
 
     fn handle_voice_command(&mut self, arg: Option<&str>) {
@@ -1418,6 +1502,7 @@ mod tests {
         assert_eq!(app.messages.len(), 2);
         assert!(app.messages[1].content.contains("/help"));
         assert!(app.messages[1].content.contains("/history"));
+        assert!(app.messages[1].content.contains("/undo"));
         assert!(app.messages[1].content.contains("/copy"));
         assert!(app.messages[1].content.contains("/voice"));
     }
@@ -1481,6 +1566,110 @@ mod tests {
                 .unwrap()
                 .content
                 .contains("usage: /history")
+        );
+    }
+
+    #[test]
+    fn slash_undo_prefills_latest_user_turn() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages
+            .push(crate::ChatMessage::user("first question"));
+        app.messages
+            .push(crate::ChatMessage::assistant("first answer"));
+        app.messages
+            .push(crate::ChatMessage::user("second question"));
+        app.messages
+            .push(crate::ChatMessage::assistant("second answer"));
+
+        for c in "/undo".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.input, "second question");
+        assert_eq!(app.cursor_position, "second question".len());
+        assert_eq!(app.messages.len(), 4);
+        assert_eq!(app.messages[3].role, crate::Role::System);
+        assert!(app.messages[3].content.contains("Undid 1 turn"));
+        assert!(app.messages[3].content.contains("2 messages"));
+        assert!(!app.is_thinking);
+    }
+
+    #[test]
+    fn slash_undo_n_turns_rewinds_to_requested_user_message() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("q1"));
+        app.messages.push(crate::ChatMessage::assistant("a1"));
+        app.messages.push(crate::ChatMessage::user("q2"));
+        app.messages.push(crate::ChatMessage::assistant("a2"));
+        app.messages.push(crate::ChatMessage::user("q3"));
+        app.messages.push(crate::ChatMessage::assistant("a3"));
+
+        for c in "/rewind 2".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.input, "q2");
+        assert_eq!(app.messages.len(), 4);
+        assert_eq!(app.messages[1].content, "q1");
+        assert_eq!(app.messages[2].content, "a1");
+        assert!(app.messages[3].content.contains("Undid 2 turns"));
+        assert!(app.messages[3].content.contains("4 messages"));
+    }
+
+    #[test]
+    fn slash_undo_clamps_to_oldest_turn() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("only question"));
+        app.messages
+            .push(crate::ChatMessage::assistant("only answer"));
+
+        for c in "/undo 99".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.input, "only question");
+        assert_eq!(app.messages.len(), 2);
+        assert!(app.messages[1].content.contains("Undid 1 turn"));
+    }
+
+    #[test]
+    fn slash_undo_rejects_invalid_count() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("question"));
+        for c in "/undo nope".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Error);
+        assert!(app.input.is_empty());
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("usage: /undo")
+        );
+    }
+
+    #[test]
+    fn slash_undo_without_user_turn_shows_error() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/undo".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.messages.last().unwrap().role, crate::Role::Error);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("nothing to undo")
         );
     }
 

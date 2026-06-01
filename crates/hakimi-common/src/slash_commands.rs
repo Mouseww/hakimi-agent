@@ -94,6 +94,13 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
         category: "chat",
     },
     SlashCommandSpec {
+        name: "undo",
+        aliases: &["rewind"],
+        args_hint: "[N]",
+        summary: "Rewind recent user turns for editing",
+        category: "chat",
+    },
+    SlashCommandSpec {
         name: "tools",
         aliases: &["t"],
         args_hint: "[query]",
@@ -450,6 +457,7 @@ mod tests {
     fn canonical_slash_command_resolves_aliases() {
         assert_eq!(canonical_slash_command("/hist"), Some("history"));
         assert_eq!(canonical_slash_command("cp"), Some("copy"));
+        assert_eq!(canonical_slash_command("/rewind"), Some("undo"));
         assert_eq!(canonical_slash_command("/missing"), None);
     }
 }

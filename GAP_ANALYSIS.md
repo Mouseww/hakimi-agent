@@ -138,7 +138,7 @@ Generated: 2026-05-31
 
 ### CLI
 - **Interactive REPL** — Input loop with slash commands
-- **Slash commands** — /help, /quit, /clear, /model, /config, /resume, /history, /tools, /skills, /status, /usage
+- **Slash commands** — /help, /quit, /clear, /model, /config, /resume, /history, /undo, /tools, /skills, /status, /usage
 - **Single-query mode** — `--query` flag
 - **YOLO mode** — `--yolo` auto-accept
 - **Serve mode** — `--serve` HTTP API server
@@ -150,6 +150,7 @@ Generated: 2026-05-31
 - **Ratatui TUI** — Terminal UI with chat panel, tools activity panel, status bar
 - **TUI slash command autocomplete** — Tab completion for slash command prefixes, aliases, and bounded ambiguous-candidate hints while preserving normal Tab tools-panel toggling outside slash command entry
 - **TUI `/history [N]` command** — Reviews recent user/assistant turns locally without sending the command to the model
+- **Gateway/TUI `/undo [N]` command** — Rewinds recent in-memory user turns, clamps over-large counts to the oldest prompt, and returns the target text for edit/resend without entering the model loop
 - **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers plus OSC 52 terminal fallback
 - **Voice diagnostics, capture artifacts, chunked STT dispatch, local TTS playback, and STT filtering** — `/voice on|off|tts|status|doctor`, configurable Ctrl+B/Ctrl+letter diagnostics, shared TTS/transcription config/tool registration, audio I/O environment reporting, Markdown-cleaned TTS playback cache planning, local system-player launch/interrupt support, PCM16 WAV recording artifact validation, oversized WAV chunking, `voice_capture` recorder-backed capture with optional `transcribe_audio` dispatch, second-press TUI capture cancellation, and Whisper silence-hallucination filtering
 - **Spinner animation** — Thinking indicator
@@ -529,7 +530,7 @@ Generated: 2026-05-31
 - **Hermes reference**: `plugins/` (entire directory)
 
 ### 8. CLI Commands
-- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/profile`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、基于真实 shadow-git store 的 `/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`、`profile`
+- **Status**: 39 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/profile`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、`/undo`、基于真实 shadow-git store 的 `/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`、`profile`
 - **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher/board/swarm 管理面
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
@@ -554,7 +555,7 @@ Generated: 2026-05-31
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
-- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/history`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
+- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
 - **What's missing**: Session picker, skill browser, config editor, theme/skin support, checkpoint viewer, cron job management, gateway status panel
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
@@ -585,15 +586,15 @@ Generated: 2026-05-31
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~77** (up from ~30)
+**Fully present in Hakimi: ~78** (up from ~30)
 **Partially implemented: ~10**
-**Missing entirely: ~70+**
+**Missing entirely: ~69+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (CDP attach, cloud backends)
 2. Gateway platform breadth (7+ missing platforms after runtime exposure for webhook/signal/sms/whatsapp/homeassistant/matrix/wecom/dingtalk)
 3. Plugin ecosystem (memory providers, model providers, context engines)
-4. CLI command completeness (33+ missing commands)
+4. CLI command completeness (32+ missing commands)
 5. Bedrock transport
 6. ACP adapter / IDE integration
 7. Kanban dispatcher/swarm completion
@@ -706,9 +707,10 @@ Generated: 2026-05-31
 | 88 | SMS/Twilio Gateway Adapter | `hakimi-gateway/src/sms.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Twilio-compatible outbound SMS gateway supports config/env credentials, E.164 sender and home-channel routing, Markdown cleanup, UTF-8-safe 1600-character chunking, and channel-directory discovery |
 | 89 | Home Assistant Gateway Adapter | `hakimi-gateway/src/homeassistant.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 6 | ✅ Home Assistant outbound gateway sends persistent notifications through REST with `HASS_URL` / `HASS_TOKEN` or config credentials, default-title routing, UTF-8-safe message limits, and channel-directory discovery |
 | 90 | WhatsApp Business Cloud Gateway Adapter | `hakimi-gateway/src/whatsapp.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Meta Graph API outbound text gateway supports config/env credentials, phone-number-ID routing, optional home-channel delivery, API version/base URL overrides, redacted logging, and UTF-8-safe 4096-character chunking |
+| 91 | Gateway/TUI Undo Rewind | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-tui/src/app.rs` | 8 | ✅ Hermes-style `/undo [N]` / `/rewind [N]` rewinds recent in-memory user turns in gateway and TUI surfaces, clamps excessive counts, refuses invalid counts, returns the target prompt for edit/resend, and avoids model-loop execution; durable SessionDB soft-delete remains a future storage-level extension |
 
 ### Summary
-- **Total tests**: 1510 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1518 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

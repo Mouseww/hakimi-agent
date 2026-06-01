@@ -39,6 +39,8 @@ pub enum Command {
     Resume(Option<String>),
     /// Show recent local conversation history.
     History(Option<String>),
+    /// Rewind recent user turns for editing.
+    Undo(Option<String>),
     /// List or describe available tools.
     Tools(Option<String>),
     /// List or describe available skills.
@@ -131,6 +133,7 @@ impl Command {
             "config" => Some(Command::Config(arg.map(String::from))),
             "resume" => Some(Command::Resume(arg.map(String::from))),
             "history" => Some(Command::History(arg.map(String::from))),
+            "undo" => Some(Command::Undo(arg.map(String::from))),
             "tools" => Some(Command::Tools(arg.map(String::from))),
             "skills" => Some(Command::Skills(arg.map(String::from))),
             "status" => Some(Command::Status),
@@ -184,6 +187,8 @@ impl fmt::Display for Command {
             Command::Resume(Some(id)) => write!(f, "/resume {id}"),
             Command::History(None) => write!(f, "/history"),
             Command::History(Some(h)) => write!(f, "/history {h}"),
+            Command::Undo(None) => write!(f, "/undo"),
+            Command::Undo(Some(n)) => write!(f, "/undo {n}"),
             Command::Tools(None) => write!(f, "/tools"),
             Command::Tools(Some(t)) => write!(f, "/tools {t}"),
             Command::Skills(None) => write!(f, "/skills"),
@@ -281,6 +286,11 @@ mod tests {
         assert_eq!(
             Command::parse("/hist 2"),
             Some(Command::History(Some("2".into())))
+        );
+        assert_eq!(Command::parse("/undo"), Some(Command::Undo(None)));
+        assert_eq!(
+            Command::parse("/rewind 2"),
+            Some(Command::Undo(Some("2".into())))
         );
         assert_eq!(Command::parse("/doctor"), Some(Command::Doctor));
         assert_eq!(Command::parse("/setup"), Some(Command::Setup));
