@@ -273,6 +273,7 @@ async fn build_agent(
         Arc::new(hakimi_tools::TextToSpeechTool),
         Arc::new(hakimi_tools::TranscribeAudioTool),
         Arc::new(hakimi_tools::VoiceCaptureTool),
+        Arc::new(hakimi_tools::ComputerUseTool),
         Arc::new(hakimi_tools::ImageGenerateTool),
     ];
     builtin_tools.extend(hakimi_tools::kanban_tools());

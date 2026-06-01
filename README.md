@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.169-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.170-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1468-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1473-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1468 |
+| Tests | ~500 | 1473 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -81,10 +81,11 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Model-aware context windows: `model.context_length` overrides static metadata before compression and tool disclosure thresholds
 - Intent classification into 10 categories with next-tool prediction
 
-**Built-in Tools (60+)**
+**Built-in Tools (61+)**
 - **Files**: read, write, search, patch with safe-root sandbox
 - **Shell**: terminal, background processes
 - **Web**: search, extract, browser automation (Chromium with screenshot vision capture)
+- **Desktop**: Hermes-style `computer_use` readiness surface with safe wait, macOS screenshot/list-app discovery, and guarded action schema
 - **Code**: Python/JS/Bash execution with sandbox
 - **Media**: vision analysis, video analysis, TTS, transcription with silence-hallucination filtering and oversized WAV chunking
 - **Memory**: persistent memory + FTS5 full-text search
@@ -128,7 +129,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 hakimi-agent/
 ├── hakimi-core/          # Agent loop, error classifier, credential pool
 ├── hakimi-transports/    # OpenAI, Anthropic, Gemini transports + prompt caching
-├── hakimi-tools/         # 60+ built-in tools + plugin registry
+├── hakimi-tools/         # 61+ built-in tools + plugin registry
 ├── hakimi-session/       # SQLite WAL + FTS5, decision tree history
 ├── hakimi-context/       # Context engine, compression, intent reasoning, roles
 ├── hakimi-knowledge/    # Knowledge graph (petgraph)
@@ -189,7 +190,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1468 |
+| Tests | ~500 | 1473 |
 
 ---
 
@@ -215,7 +216,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 
 - [x] Core agent loop + tool dispatch
 - [x] OpenAI / Anthropic / Gemini transports + SSE streaming
-- [x] 60+ built-in tools
+- [x] 61+ built-in tools
 - [x] 11 runtime-exposed platform adapters
 - [x] MCP client + server catalog
 - [x] HTTP API model and capability discovery
@@ -231,6 +232,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Role adaptation
 - [x] Meta-skill auto-extraction
 - [x] Browser automation (Chromium)
+- [x] Computer Use readiness surface
 - [x] Kanban task boards + notification cursors
 - [x] Gateway voice-response mode
 - [x] TUI voice readiness and media-tool config parity

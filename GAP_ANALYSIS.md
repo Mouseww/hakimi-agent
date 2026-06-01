@@ -206,10 +206,11 @@ Generated: 2026-05-31
 - **Hermes location**: `tools/homeassistant_tool.py`
 - **Status**: ✅ Done in v0.3.75 — `ha_list_entities`, `ha_get_state`, `ha_list_services`, and `ha_call_service` use `HASS_TOKEN` / `HASS_URL`, validate path components, block high-risk HA domains, and return compact JSON summaries
 
-#### 10. Computer Use (macOS Desktop Control)
+#### 10. Computer Use (macOS Desktop Control) — PARTIAL
 - **What**: Background macOS desktop control via cua-driver
 - **Hermes location**: `tools/computer_use_tool.py`, `tools/computer_use/`
-- **Details**: Screenshots, mouse, keyboard, scroll, drag. Does NOT steal user's cursor/focus. Works with any tool-capable model.
+- **Status**: Partial in v0.3.170 — `computer_use` now exposes a Hermes-style action discriminator/schema across CLI, server, and TUI, supports cross-platform `wait`, macOS `screencapture` capture, macOS `osascript` app listing, and hard-blocks dangerous typed text or destructive system shortcuts. Mutating click/type/key/scroll/focus actions return an explicit readiness error until a Rust-native background desktop driver lands.
+- **Remaining**: Background cua-driver-compatible desktop control, SOM/AX overlays, app-scoped captures, and cursor/focus-safe mutating actions.
 - **Priority**: **High** — Desktop automation capability
 
 #### 11. ~~Mixture-of-Agents (MoA)~~ ✅ DONE
@@ -693,9 +694,10 @@ Generated: 2026-05-31
 | 80 | Voice Recording Audio Cues | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ `voice.beep_enabled` now controls Hermes-style start/stop cues, with generated PCM16 WAV tones (880 Hz start, 660 Hz double-stop), `/voice status` cue readiness, and TUI playback at recording start plus transcript/no-speech/cancel stop boundaries |
 | 81 | Voice Continuous Restart Mode | `hakimi-tui/src/app.rs` | 3 | ✅ TUI voice capture now enters a Hermes-style continuous loop after the first record key press, restarts listening after each completed voice response, restarts after no-speech recordings until 3 consecutive no-speech exits, and disables auto-restart on second-press cancellation or errors |
 | 82 | Browser Vision Routing | `hakimi-tools/src/builtin_browser.rs`, CLI/server/TUI registration | 3 | ✅ Optional Chromium `browser_vision` captures a persistent PNG screenshot, returns `screenshot_path` for `MEDIA:` sharing, and emits a vision-compatible image content block plus question metadata for native multimodal routing |
+| 83 | Computer Use Readiness Surface | `hakimi-tools/src/builtin_computer_use.rs`, CLI/server/TUI registration | 5 | 🟡 `computer_use` mirrors Hermes action-schema inputs, supports safe wait plus macOS screenshot/list-app discovery, blocks dangerous typed payloads and destructive key combos, and reports driver readiness for mutating desktop actions without claiming full cua-driver parity |
 
 ### Summary
-- **Total tests**: 1468 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1473 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

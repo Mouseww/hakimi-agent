@@ -28,6 +28,7 @@ const CORE_TOOL_NAMES: &[&str] = &[
     "checkpoint",
     "clarify",
     "code_exec",
+    "computer_use",
     "cronjob",
     "delegate_task",
     "ha_call_service",

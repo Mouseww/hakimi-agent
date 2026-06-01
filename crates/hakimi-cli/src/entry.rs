@@ -3298,6 +3298,9 @@ async fn build_agent(
         .register(std::sync::Arc::new(hakimi_tools::VoiceCaptureTool))
         .await;
     tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::ComputerUseTool))
+        .await;
+    tool_registry
         .register(std::sync::Arc::new(hakimi_tools::SendMessageTool))
         .await;
     tool_registry
