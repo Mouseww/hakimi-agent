@@ -2345,7 +2345,7 @@ fn register_configured_gateway_adapters(
             match email {
                 Ok(email) => {
                     gateway.add_adapter(Box::new(email));
-                    bot_ids.insert("email".to_string(), bot_id);
+                    bot_ids.insert("email".to_string(), bot_id.clone());
                     if !home_channel.trim().is_empty() {
                         channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
                             "email",
