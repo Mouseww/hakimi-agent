@@ -29,6 +29,7 @@
 //! - `DELETE /v1/responses/:id` — Delete a stored Responses API result
 //! - `POST /v1/runs`         — Submit an asynchronous text run
 //! - `GET  /v1/runs/:id`     — Poll an asynchronous run status/result
+//! - `GET  /v1/runs/:id/events` — Read run lifecycle events as SSE
 //! - `POST /v1/runs/:id/stop` — Cancel an asynchronous run
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -40,7 +41,7 @@ use axum::{
     extract::{Path, Query, Request, State},
     http::{StatusCode, header},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -413,6 +414,45 @@ struct StoredResponse {
 }
 
 #[derive(Debug, Clone)]
+struct RunEvent {
+    event: String,
+    status: String,
+    created_at: u64,
+    message: Option<String>,
+}
+
+impl RunEvent {
+    fn at(
+        event: impl Into<String>,
+        status: impl Into<String>,
+        created_at: u64,
+        message: Option<String>,
+    ) -> Self {
+        Self {
+            event: event.into(),
+            status: status.into(),
+            created_at,
+            message,
+        }
+    }
+
+    fn new(event: impl Into<String>, status: impl Into<String>, message: Option<String>) -> Self {
+        Self::at(event, status, unix_timestamp_secs(), message)
+    }
+
+    fn to_json(&self, run_id: &str) -> JsonValue {
+        json!({
+            "object": "hakimi.run.event",
+            "event": self.event,
+            "run_id": run_id,
+            "status": self.status,
+            "created_at": self.created_at,
+            "message": self.message
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 struct StoredRun {
     id: String,
     status: String,
@@ -423,6 +463,7 @@ struct StoredRun {
     output_text: Option<String>,
     usage: Option<JsonValue>,
     error: Option<String>,
+    events: Vec<RunEvent>,
 }
 
 impl StoredRun {
@@ -437,6 +478,7 @@ impl StoredRun {
             output_text: None,
             usage: None,
             error: None,
+            events: vec![RunEvent::at("run.queued", "queued", created_at, None)],
         }
     }
 
@@ -451,8 +493,22 @@ impl StoredRun {
             "model": self.model,
             "output_text": self.output_text,
             "usage": self.usage,
-            "error": self.error
+            "error": self.error,
+            "events_url": format!("/v1/runs/{}/events", self.id)
         })
+    }
+
+    fn push_event(&mut self, event: impl Into<String>, message: Option<String>) {
+        let event = RunEvent::new(event, self.status.clone(), message);
+        self.updated_at = event.created_at;
+        self.events.push(event);
+    }
+
+    fn events_json(&self) -> Vec<JsonValue> {
+        self.events
+            .iter()
+            .map(|event| event.to_json(&self.id))
+            .collect()
     }
 }
 
@@ -588,6 +644,10 @@ impl RunsStore {
         self.entries.get(run_id).map(StoredRun::to_json)
     }
 
+    fn events(&self, run_id: &str) -> Option<Vec<JsonValue>> {
+        self.entries.get(run_id).map(StoredRun::events_json)
+    }
+
     fn attach_control(&mut self, run_id: &str, control: RunControl) {
         match self.entries.get(run_id) {
             Some(run) if !is_terminal_run_status(&run.status) => {
@@ -607,7 +667,7 @@ impl RunsStore {
                 return;
             }
             run.status = status.to_string();
-            run.updated_at = unix_timestamp_secs();
+            run.push_event(format!("run.{status}"), None);
         }
     }
 
@@ -618,10 +678,10 @@ impl RunsStore {
                 return;
             }
             run.status = "completed".to_string();
-            run.updated_at = unix_timestamp_secs();
             run.output_text = Some(output_text);
             run.usage = Some(usage);
             run.error = None;
+            run.push_event("run.completed", None);
         }
         self.controls.remove(run_id);
     }
@@ -633,8 +693,8 @@ impl RunsStore {
                 return;
             }
             run.status = "failed".to_string();
-            run.updated_at = unix_timestamp_secs();
-            run.error = Some(error);
+            run.error = Some(error.clone());
+            run.push_event("run.failed", Some(error));
         }
         self.controls.remove(run_id);
     }
@@ -648,8 +708,9 @@ impl RunsStore {
         }
 
         run.status = "cancelled".to_string();
-        run.updated_at = unix_timestamp_secs();
-        run.error = Some("Stop requested via API".to_string());
+        let message = "Stop requested via API".to_string();
+        run.error = Some(message.clone());
+        run.push_event("run.cancelled", Some(message));
         let body = run.to_json();
 
         if let Some(control) = self.controls.remove(run_id) {
@@ -725,6 +786,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/responses/{id}", delete(delete_response))
         .route("/runs", post(create_run))
         .route("/runs/{id}", get(get_run))
+        .route("/runs/{id}/events", get(get_run_events))
         .route("/runs/{id}/stop", post(stop_run));
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
@@ -814,7 +876,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "config_write": true,
             "run_submission": true,
             "run_status": true,
-            "run_events_sse": false,
+            "run_events_sse": true,
             "run_stop": true,
             "websocket_streaming": false,
             "media_api": false
@@ -842,6 +904,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "response_delete": {"method": "DELETE", "path": "/v1/responses/{id}"},
             "run": {"method": "POST", "path": "/v1/runs"},
             "run_status": {"method": "GET", "path": "/v1/runs/{id}"},
+            "run_events": {"method": "GET", "path": "/v1/runs/{id}/events"},
             "run_stop": {"method": "POST", "path": "/v1/runs/{id}/stop"},
             "chat": {"method": "POST", "path": "/api/chat"},
             "sessions": {"method": "GET", "path": "/api/sessions"},
@@ -1960,6 +2023,48 @@ async fn get_run(
     }
 }
 
+/// GET /v1/runs/:id/events — retrieve stored run lifecycle events as SSE.
+async fn get_run_events(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let id = id.trim();
+    let events = {
+        let store = state.run_store.lock().await;
+        store.events(id)
+    };
+
+    let Some(events) = events else {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("run not found: {id}"),
+        ));
+    };
+
+    let mut body = String::new();
+    for event in events {
+        let event_name = event
+            .get("event")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("run.event");
+        body.push_str("event: ");
+        body.push_str(event_name);
+        body.push('\n');
+        body.push_str("data: ");
+        body.push_str(&event.to_string());
+        body.push_str("\n\n");
+    }
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/event-stream; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        body,
+    )
+        .into_response())
+}
+
 /// POST /v1/runs/:id/stop — cancel a submitted run.
 async fn stop_run(
     State(state): State<AppState>,
@@ -2638,7 +2743,7 @@ mod tests {
         assert_eq!(capabilities["features"]["toolsets_api"], true);
         assert_eq!(capabilities["features"]["run_submission"], true);
         assert_eq!(capabilities["features"]["run_status"], true);
-        assert_eq!(capabilities["features"]["run_events_sse"], false);
+        assert_eq!(capabilities["features"]["run_events_sse"], true);
         assert_eq!(capabilities["features"]["run_stop"], true);
         assert_eq!(
             capabilities["endpoints"]["models"],
@@ -2667,6 +2772,10 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["run_status"],
             json!({"method": "GET", "path": "/v1/runs/{id}"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["run_events"],
+            json!({"method": "GET", "path": "/v1/runs/{id}/events"})
         );
         assert_eq!(
             capabilities["endpoints"]["run_stop"],
@@ -3086,6 +3195,27 @@ mod tests {
         assert!(output_text.contains("Summarize the run API"));
         assert_eq!(polled["usage"]["total_tokens"], 10);
 
+        let req = Request::builder()
+            .uri(format!("/v1/runs/{run_id}/events"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let content_type = resp
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(content_type.starts_with("text/event-stream"));
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let events = String::from_utf8(body.to_vec()).unwrap();
+        assert!(events.contains("event: run.queued"));
+        assert!(events.contains("event: run.running"));
+        assert!(events.contains("event: run.completed"));
+
         let agent = state.agent.lock().await;
         assert!(
             agent.messages().is_empty(),
@@ -3159,6 +3289,19 @@ mod tests {
             .unwrap();
         let polled: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(polled["status"], "cancelled");
+
+        let req = Request::builder()
+            .uri(format!("/v1/runs/{run_id}/events"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let events = String::from_utf8(body.to_vec()).unwrap();
+        assert!(events.contains("event: run.queued"));
+        assert!(events.contains("event: run.cancelled"));
     }
 
     #[tokio::test]
