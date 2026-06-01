@@ -9,6 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hakimi_common::{SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix};
 use hakimi_config::VoiceConfig;
 use hakimi_session::{SessionDB, SessionMeta, SessionOps};
+use hakimi_skills::{SkillHub, SkillHubEntry, SkillUsageStore};
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 
@@ -20,6 +21,8 @@ const SESSION_LIST_MAX_LIMIT: i64 = 50;
 const SESSION_SHOW_DEFAULT_LIMIT: usize = 8;
 const SESSION_SHOW_MAX_LIMIT: usize = 30;
 const SESSION_PREVIEW_CHARS: usize = 120;
+const SKILL_BROWSER_DEFAULT_LIMIT: usize = 20;
+const SKILL_BROWSER_MAX_LIMIT: usize = 100;
 const COMPLETION_HINT_LIMIT: usize = 5;
 const COMPLETION_HINT_CHARS: usize = 96;
 const VOICE_MAX_CONSECUTIVE_NO_SPEECH: u8 = 3;
@@ -67,6 +70,297 @@ fn default_session_db_path() -> PathBuf {
     dirs::home_dir()
         .map(|home| home.join(".hakimi").join("sessions.db"))
         .unwrap_or_else(|| PathBuf::from(".hakimi/sessions.db"))
+}
+
+fn default_skills_dir_path() -> PathBuf {
+    dirs::home_dir()
+        .map(|home| home.join(".hakimi").join("skills"))
+        .unwrap_or_else(|| PathBuf::from(".hakimi/skills"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TuiSkillOptions {
+    index_path: Option<PathBuf>,
+    limit: usize,
+    json: bool,
+}
+
+impl Default for TuiSkillOptions {
+    fn default() -> Self {
+        Self {
+            index_path: None,
+            limit: SKILL_BROWSER_DEFAULT_LIMIT,
+            json: false,
+        }
+    }
+}
+
+fn parse_tui_skill_args(
+    raw: Option<&str>,
+) -> Result<(String, TuiSkillOptions, Vec<String>), String> {
+    let mut args = raw
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(String::from)
+        .collect::<Vec<_>>();
+
+    if args.first().is_some_and(|arg| arg == "hub") {
+        args.remove(0);
+    }
+
+    let command = if args.is_empty() {
+        "browse".to_string()
+    } else {
+        args.remove(0).to_ascii_lowercase()
+    };
+
+    let mut options = TuiSkillOptions::default();
+    let mut rest = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--index" => {
+                let Some(value) = args.get(i + 1) else {
+                    return Err("--index requires a path".to_string());
+                };
+                options.index_path = Some(PathBuf::from(value));
+                i += 2;
+            }
+            "--limit" | "--size" => {
+                let Some(value) = args.get(i + 1) else {
+                    return Err("--limit requires a number".to_string());
+                };
+                options.limit = value
+                    .parse::<usize>()
+                    .map_err(|_| "--limit must be a positive integer".to_string())?
+                    .clamp(1, SKILL_BROWSER_MAX_LIMIT);
+                i += 2;
+            }
+            "--json" => {
+                options.json = true;
+                i += 1;
+            }
+            flag if flag.starts_with("--") => {
+                return Err(format!("unsupported /skills option `{flag}`"));
+            }
+            value => {
+                rest.push(value.to_string());
+                i += 1;
+            }
+        }
+    }
+
+    Ok((command, options, rest))
+}
+
+fn skill_hub_for_options(skills_dir: &Path, options: &TuiSkillOptions) -> SkillHub {
+    match &options.index_path {
+        Some(index_path) => SkillHub::with_index_path(skills_dir, index_path),
+        None => SkillHub::new(skills_dir),
+    }
+}
+
+fn render_tui_skills_help() -> String {
+    [
+        "TUI skills browser:",
+        "- `/skills` or `/skills browse` - list skills from the local hub index",
+        "- `/skills search <query>` - search local hub indexes",
+        "- `/skills inspect <identifier>` - preview skill metadata",
+        "- `/skills list` - list hub-installed skills",
+        "- `/skills usage` - show skill use/view counters",
+        "- `/skills path` - show local skills paths",
+        "",
+        "Use `hakimi skills install|sync|sources` from the CLI for commands that modify skill stores.",
+    ]
+    .join("\n")
+}
+
+fn render_tui_skill_entries(entries: &[SkillHubEntry], hub: &SkillHub, as_json: bool) -> String {
+    if as_json {
+        let payload = entries.iter().map(tui_skill_entry_json).collect::<Vec<_>>();
+        return serde_json::to_string_pretty(&payload)
+            .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#));
+    }
+    if entries.is_empty() {
+        return format!(
+            "No skills found in hub index `{}`.",
+            hub.index_path().display()
+        );
+    }
+
+    let mut lines = vec![format!(
+        "Skills Hub results from `{}`:",
+        hub.index_path().display()
+    )];
+    for entry in entries {
+        lines.push(format!(
+            "- `{}` [{}:{}] - {}",
+            entry.name,
+            entry.source,
+            entry.trust_level,
+            empty_dash(&entry.description)
+        ));
+        lines.push(format!("  id: `{}`", entry.identifier));
+        if !entry.tags.is_empty() {
+            lines.push(format!("  tags: {}", entry.tags.join(", ")));
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_tui_skill_inspect(entry: &SkillHubEntry, as_json: bool) -> String {
+    if as_json {
+        return serde_json::to_string_pretty(&tui_skill_entry_json(entry))
+            .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#));
+    }
+    [
+        format!("Skill: `{}`", entry.name),
+        format!("Identifier: `{}`", entry.identifier),
+        format!("Source: `{}`", entry.source),
+        format!("Trust: `{}`", entry.trust_level),
+        format!("Description: {}", empty_dash(&entry.description)),
+        format!(
+            "Tags: {}",
+            if entry.tags.is_empty() {
+                "-".to_string()
+            } else {
+                entry.tags.join(", ")
+            }
+        ),
+        format!("Files: {}", entry.files.len()),
+    ]
+    .join("\n")
+}
+
+fn tui_skill_entry_json(entry: &SkillHubEntry) -> serde_json::Value {
+    serde_json::json!({
+        "name": entry.name,
+        "description": entry.description,
+        "source": entry.source,
+        "identifier": entry.identifier,
+        "trust_level": entry.trust_level,
+        "repo": entry.repo,
+        "category": entry.category,
+        "tags": entry.tags,
+        "files": entry.files.keys().collect::<Vec<_>>(),
+    })
+}
+
+fn empty_dash(value: &str) -> &str {
+    if value.trim().is_empty() { "-" } else { value }
+}
+
+fn render_tui_skill_usage(skills_dir: &Path, as_json: bool) -> String {
+    let usage_store = SkillUsageStore::new(skills_dir);
+    let usage = usage_store.report();
+    if as_json {
+        return serde_json::to_string_pretty(&usage)
+            .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#));
+    }
+    if usage.is_empty() {
+        return format!(
+            "No skill usage recorded in `{}`.",
+            usage_store.path().display()
+        );
+    }
+
+    let mut lines = vec![format!(
+        "Skill usage from `{}`:",
+        usage_store.path().display()
+    )];
+    for item in usage {
+        let last_used = item.record.last_used_at.as_deref().unwrap_or("-");
+        let last_viewed = item.record.last_viewed_at.as_deref().unwrap_or("-");
+        lines.push(format!(
+            "- `{}`: used {}, viewed {}, last used {}, last viewed {}",
+            item.name, item.record.use_count, item.record.view_count, last_used, last_viewed
+        ));
+    }
+    lines.join("\n")
+}
+
+fn render_tui_installed_skills(hub: &SkillHub, as_json: bool) -> String {
+    match hub.installed() {
+        Ok(installed) if as_json => serde_json::to_string_pretty(&installed)
+            .unwrap_or_else(|err| format!(r#"{{"error":"{err}"}}"#)),
+        Ok(installed) if installed.is_empty() => {
+            format!(
+                "No hub-installed skills recorded in `{}`.",
+                hub.skills_dir().display()
+            )
+        }
+        Ok(installed) => {
+            let mut lines = vec![format!(
+                "Skills Hub installs in `{}`:",
+                hub.skills_dir().display()
+            )];
+            for skill in installed {
+                lines.push(format!(
+                    "- `{}` [{}:{}] `{}` -> {}",
+                    skill.name,
+                    skill.source,
+                    skill.trust_level,
+                    skill.identifier,
+                    skill.install_path
+                ));
+            }
+            lines.join("\n")
+        }
+        Err(err) => format!("Error: {err}"),
+    }
+}
+
+fn render_tui_skills_command(arg: Option<&str>, skills_dir: &Path) -> String {
+    let (command, options, rest) = match parse_tui_skill_args(arg) {
+        Ok(parsed) => parsed,
+        Err(err) => return format!("Error: {err}\n{}", render_tui_skills_help()),
+    };
+    let hub = skill_hub_for_options(skills_dir, &options);
+
+    match command.as_str() {
+        "browse" | "ls-remote" => match hub.browse(options.limit) {
+            Ok(entries) => render_tui_skill_entries(&entries, &hub, options.json),
+            Err(err) => format!("Error: {err}"),
+        },
+        "search" => {
+            let query = rest.join(" ");
+            if query.trim().is_empty() {
+                return "Usage: /skills search <query> [--limit N] [--json]".to_string();
+            }
+            match hub.search(&query, options.limit) {
+                Ok(entries) => render_tui_skill_entries(&entries, &hub, options.json),
+                Err(err) => format!("Error: {err}"),
+            }
+        }
+        "inspect" | "show" => {
+            let Some(identifier) = rest.first() else {
+                return "Usage: /skills inspect <identifier-or-name> [--json]".to_string();
+            };
+            match hub.inspect(identifier) {
+                Ok(entry) => render_tui_skill_inspect(&entry, options.json),
+                Err(err) => format!("Error: {err}"),
+            }
+        }
+        "list" | "installed" => render_tui_installed_skills(&hub, options.json),
+        "path" => format!(
+            "Skills directory: `{}`\nHub index: `{}`\nHub sources: `{}`\nIndex cache: `{}`",
+            hub.skills_dir().display(),
+            hub.index_path().display(),
+            hub.sources_path().display(),
+            hub.index_cache_dir().display()
+        ),
+        "usage" => render_tui_skill_usage(skills_dir, options.json),
+        "help" | "-h" | "--help" => render_tui_skills_help(),
+        "install" | "sync" | "sources" | "source" => [
+            "TUI /skills is read-only for install, sync, and source mutation.",
+            "Use the `hakimi skills ...` CLI commands for those operations.",
+        ]
+        .join("\n"),
+        other => format!(
+            "Unknown /skills command `{other}`.\n{}",
+            render_tui_skills_help()
+        ),
+    }
 }
 
 fn parse_session_list_limit(raw: Option<&str>) -> Result<i64, String> {
@@ -580,6 +874,7 @@ enum TuiCommand {
     Sessions(Option<String>),
     History(Option<String>),
     Undo(Option<String>),
+    Skills(Option<String>),
     Copy(Option<String>),
     Checkpoints(Option<String>),
     Clear,
@@ -600,6 +895,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "sessions" => Some(TuiCommand::Sessions(arg)),
         "history" => Some(TuiCommand::History(arg)),
         "undo" => Some(TuiCommand::Undo(arg)),
+        "skills" => Some(TuiCommand::Skills(arg)),
         "copy" => Some(TuiCommand::Copy(arg)),
         "checkpoints" => Some(TuiCommand::Checkpoints(arg)),
         "clear" => Some(TuiCommand::Clear),
@@ -642,6 +938,8 @@ pub struct App {
     pub session_id: String,
     /// SQLite session database used by local read-only session browsing.
     pub session_db_path: PathBuf,
+    /// Local skills directory used by the read-only TUI skills browser.
+    pub skills_dir_path: PathBuf,
     /// Total tokens used this session.
     pub total_tokens: u32,
     /// Number of API calls made.
@@ -676,6 +974,7 @@ impl App {
             model_name,
             session_id,
             session_db_path: default_session_db_path(),
+            skills_dir_path: default_skills_dir_path(),
             total_tokens: 0,
             api_calls: 0,
             voice: TuiVoiceStatus::default(),
@@ -689,6 +988,11 @@ impl App {
 
     pub fn with_session_db_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.session_db_path = path.into();
+        self
+    }
+
+    pub fn with_skills_dir_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.skills_dir_path = path.into();
         self
     }
 
@@ -895,7 +1199,7 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help               — Show this help\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help               — Show this help\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
             }
             Some(TuiCommand::Sessions(arg)) => {
@@ -934,6 +1238,10 @@ impl App {
                     }
                     Err(message) => self.messages.push(ChatMessage::error(message)),
                 }
+            }
+            Some(TuiCommand::Skills(arg)) => {
+                let output = render_tui_skills_command(arg.as_deref(), &self.skills_dir_path);
+                self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::Copy(arg)) => {
                 let response =
@@ -1413,6 +1721,37 @@ mod tests {
         let _ = std::fs::remove_file(path.with_extension("db-shm"));
     }
 
+    fn make_skills_hub_dir() -> PathBuf {
+        let skills_dir =
+            std::env::temp_dir().join(format!("hakimi-tui-skills-{}", uuid::Uuid::new_v4()));
+        let hub_dir = skills_dir.join(".hub");
+        std::fs::create_dir_all(&hub_dir).unwrap();
+        std::fs::write(
+            hub_dir.join("index.json"),
+            r##"{
+  "version": 1,
+  "skills": [
+    {
+      "name": "release-check",
+      "description": "Verify CI, tag, and release state",
+      "source": "official",
+      "identifier": "official/dev/release-check",
+      "trust_level": "trusted",
+      "tags": ["release", "ci"],
+      "files": {"SKILL.md": "# Release Check"}
+    }
+  ]
+}
+"##,
+        )
+        .unwrap();
+        skills_dir
+    }
+
+    fn cleanup_skills_dir(path: &Path) {
+        let _ = std::fs::remove_dir_all(path);
+    }
+
     // ---------------------------------------------------------------
     // App::new initial state
     // ---------------------------------------------------------------
@@ -1797,8 +2136,17 @@ mod tests {
         assert!(app.messages[1].content.contains("/undo"));
         assert!(app.messages[1].content.contains("/copy"));
         assert!(app.messages[1].content.contains("/sessions"));
+        assert!(app.messages[1].content.contains("/skills"));
         assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/voice"));
+    }
+
+    #[test]
+    fn parse_tui_command_accepts_skills_arguments() {
+        assert_eq!(
+            parse_tui_command("/skills search release"),
+            Some(TuiCommand::Skills(Some("search release".to_string())))
+        );
     }
 
     #[test]
@@ -1862,6 +2210,67 @@ mod tests {
         let output = render_tui_sessions_command(None, &path);
 
         assert!(output.contains("No session database found"));
+    }
+
+    #[test]
+    fn render_tui_skills_browse_reads_hub_index() {
+        let skills_dir = make_skills_hub_dir();
+
+        let output = render_tui_skills_command(Some("browse --limit 1"), &skills_dir);
+
+        assert!(output.contains("Skills Hub results"));
+        assert!(output.contains("release-check"));
+        assert!(output.contains("official/dev/release-check"));
+
+        cleanup_skills_dir(&skills_dir);
+    }
+
+    #[test]
+    fn render_tui_skills_inspect_shows_metadata() {
+        let skills_dir = make_skills_hub_dir();
+
+        let output =
+            render_tui_skills_command(Some("inspect official/dev/release-check"), &skills_dir);
+
+        assert!(output.contains("Skill: `release-check`"));
+        assert!(output.contains("Trust: `trusted`"));
+        assert!(output.contains("Files: 1"));
+
+        cleanup_skills_dir(&skills_dir);
+    }
+
+    #[test]
+    fn slash_skills_search_uses_configured_dir_without_model_call() {
+        let skills_dir = make_skills_hub_dir();
+        let mut app = make_app_simple().with_skills_dir_path(skills_dir.clone());
+        for c in "/skills search release".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("release-check"));
+        assert!(!app.is_thinking);
+
+        cleanup_skills_dir(&skills_dir);
+    }
+
+    #[test]
+    fn slash_skills_path_reports_configured_directory() {
+        let skills_dir = make_skills_hub_dir();
+        let mut app = make_app_simple().with_skills_dir_path(skills_dir.clone());
+        for c in "/skills path".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("Skills directory"));
+        assert!(message.content.contains(&skills_dir.display().to_string()));
+
+        cleanup_skills_dir(&skills_dir);
     }
 
     #[test]

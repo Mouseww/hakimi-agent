@@ -18,6 +18,7 @@ hakimi-transports = { path = "../hakimi-transports" }
 hakimi-context = { path = "../hakimi-context" }
 hakimi-config = { path = "../hakimi-config" }
 hakimi-session = { path = "../hakimi-session" }
+hakimi-skills = { path = "../hakimi-skills" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 tokio = { workspace = true }

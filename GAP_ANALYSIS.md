@@ -153,6 +153,7 @@ Generated: 2026-05-31
 - **TUI slash command autocomplete** — Tab completion for slash command prefixes, aliases, and bounded ambiguous-candidate hints while preserving normal Tab tools-panel toggling outside slash command entry
 - **TUI `/history [N]` command** — Reviews recent user/assistant turns locally without sending the command to the model
 - **TUI `/sessions [cmd]` command** — Browses saved SQLite sessions locally with recent-session listing and session message inspection
+- **TUI `/skills [cmd]` command** — Browses local Skills Hub metadata, searches and inspects entries, shows installed/usage/path summaries, and keeps skill inspection out of the model loop
 - **Gateway/TUI `/undo [N]` command** — Rewinds recent in-memory user turns, clamps over-large counts to the oldest prompt, and returns the target text for edit/resend without entering the model loop
 - **TUI `/copy [N]` clipboard command** — Copies the latest or Nth-latest assistant response through native Windows/macOS/WSL/Wayland/X11 clipboard writers plus OSC 52 terminal fallback
 - **TUI `/checkpoints [cmd]` command** — Reuses the shared shadow-git checkpoint renderer for list/status/create/diff/restore from the TUI without entering the model loop
@@ -558,8 +559,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
-- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/sessions`, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
-- **What's missing**: Rich interactive session picker, skill browser, config editor, theme/skin support, cron job management, gateway status panel
+- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/sessions`, `/skills`, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
+- **What's missing**: Rich interactive session picker, config editor, theme/skin support, cron job management, gateway status panel
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
 ### 15. Error Handling
@@ -603,7 +604,7 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. TUI session/config/cron/gateway management surfaces
+10. TUI config/cron/gateway management surfaces
 
 ---
 
@@ -717,9 +718,10 @@ Generated: 2026-05-31
 | 95 | TUI Checkpoint Viewer | `hakimi-tui/src/app.rs`, `hakimi-tools/src/builtin_checkpoint.rs` | 2 | ✅ `/checkpoints` and `/ckpt` now run locally in the TUI, reuse the same shadow-git response renderer as gateway `/checkpoints`, support list/status/create/diff/restore command text, and keep checkpoint inspection out of the agent/model loop |
 | 96 | BlueBubbles/iMessage Gateway Adapter | `hakimi-gateway/src/bluebubbles.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ Local BlueBubbles REST outbound text gateway supports config/env credentials, chat GUID/address lookup, optional new-chat creation, Markdown cleanup, UTF-8-safe 4000-character chunking, redacted logging, and channel-directory discovery |
 | 97 | TUI Session Browser | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-tui/src/app.rs` | 5 | ✅ `/sessions` and `/sess` now run locally in the TUI, list recent saved SQLite sessions from `~/.hakimi/sessions.db`, inspect recent messages with bounded previews, report missing stores clearly, and give gateway users a surface-boundary notice instead of entering the model loop |
+| 98 | TUI Skill Browser | `hakimi-tui/src/app.rs`, `hakimi-tui/Cargo.toml` | 4 | ✅ `/skills` now runs locally in the TUI, browses/searches local Skills Hub indexes, inspects metadata, renders installed/usage/path summaries, and keeps skill discovery out of the agent/model loop |
 
 ### Summary
-- **Total tests**: 1556 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1560 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
