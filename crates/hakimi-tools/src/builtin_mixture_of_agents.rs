@@ -230,7 +230,12 @@ fn parse_reference_models(args: &JsonValue) -> Result<Vec<String>> {
                 .collect::<Vec<_>>()
         })
         .filter(|models| !models.is_empty())
-        .unwrap_or_else(|| DEFAULT_REFERENCE_MODELS.iter().map(|s| s.to_string()).collect());
+        .unwrap_or_else(|| {
+            DEFAULT_REFERENCE_MODELS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        });
 
     if models.is_empty() {
         return Err(HakimiError::Tool(
@@ -415,7 +420,10 @@ mod tests {
         let schema = tool.schema();
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&json!("user_prompt")));
-        assert_eq!(schema["properties"]["reference_models"]["maxItems"], MAX_REFERENCE_MODELS);
+        assert_eq!(
+            schema["properties"]["reference_models"]["maxItems"],
+            MAX_REFERENCE_MODELS
+        );
     }
 
     #[test]
@@ -504,7 +512,10 @@ mod tests {
         }
         let tool = MixtureOfAgentsTool;
         let result = tool
-            .execute(&json!({"user_prompt": "solve this"}), &ToolContext::default())
+            .execute(
+                &json!({"user_prompt": "solve this"}),
+                &ToolContext::default(),
+            )
             .await;
         assert!(
             result
