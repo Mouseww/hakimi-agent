@@ -5540,7 +5540,8 @@ mod tests {
         gateway_usage_response, gateway_voice_response, is_top_level_cron_tick,
         plan_gateway_final_delivery, queue_cron_delivery, resolve_clawbot_gateway_config,
         resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
-        top_level_cron_response_for_path, update_shim_paths, update_target_from_candidate,
+        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
+        update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::Usage;
