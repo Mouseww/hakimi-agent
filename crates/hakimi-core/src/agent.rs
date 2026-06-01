@@ -573,6 +573,11 @@ impl AIAgent {
         self.streaming_callback = callback;
     }
 
+    /// Enable or disable streaming for subsequent conversation turns.
+    pub fn set_streaming(&mut self, streaming: bool) {
+        self.streaming = streaming;
+    }
+
     fn save_trajectory_if_enabled(&self, completed: bool) {
         let Some(config) = self.trajectory_config.as_ref() else {
             return;

@@ -236,7 +236,7 @@ Generated: 2026-05-31
 - **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/Signal/SMS/WhatsApp/Home Assistant/Matrix/DingTalk/WeCom/Feishu/ClawBot
 - **Hermes location**: `gateway/platforms/`
 - **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio outbound text, WhatsApp Business Cloud API outbound text, Home Assistant persistent notifications, Matrix, DingTalk, WeCom, Feishu/Lark outbound text, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling; Feishu uses Hermes-compatible app credentials and `FEISHU_HOME_CHANNEL` routing for tenant-token IM sends; SMS uses Twilio-compatible account credentials, E.164 sender/recipient numbers, `SMS_HOME_CHANNEL`, Markdown cleanup, and safe message chunking; WhatsApp uses `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and optional `WHATSAPP_HOME_CHANNEL` for Graph API delivery; Home Assistant uses `HASS_URL` / `HASS_TOKEN` or config credentials for persistent notification delivery.
-- **Missing**: email, weixin, qqbot, bluebubbles, yuanbao, api_server, msgraph_webhook
+- **Missing**: email, weixin, qqbot, bluebubbles, yuanbao, full api_server Responses/runs/session surface, msgraph_webhook
 - **Priority**: **High** — Platform reach
 
 #### 14. Bedrock Transport
@@ -551,8 +551,8 @@ Generated: 2026-05-31
 - **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original feature that needs completion
 
 ### 13. REST API Server
-- **Status**: Basic endpoints (health, chat, sessions, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models` plus machine-readable `/v1/capabilities` discovery, and dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
-- **What's missing**: OpenAI Chat Completions/Responses compatibility, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
+- **Status**: Basic endpoints (health, chat, sessions, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, non-streaming text `/v1/chat/completions`, and dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
+- **What's missing**: Responses API compatibility, Chat Completions streaming, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
@@ -691,7 +691,7 @@ Generated: 2026-05-31
 | 71 | TUI Voice Readiness | `hakimi-config/src/config.rs`, `hakimi-tui/src/{app.rs,main.rs,ui.rs}` | 5 | ✅ TUI now registers `text_to_speech` and `transcribe_audio`, passes shared `voice.*` config into the agent, exposes `/voice on|off|tts|status|doctor`, and shows configurable Ctrl+B/Ctrl+letter readiness diagnostics without pretending microphone capture is complete |
 | 72 | Voice Diagnostics + STT Silence Filtering | `hakimi-tools/src/voice_mode.rs`, `hakimi-tools/src/builtin_transcribe_audio.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/app.rs` | 7 | ✅ Hermes-style audio environment diagnostics cover SSH/container/WSL/Termux/forwarded-audio cases, `/voice doctor` exposes readiness in gateway, TUI status includes capture/playback readiness, and `transcribe_audio` filters common Whisper silence hallucinations while chunking oversized local WAV text transcripts |
 | 73 | Voice Recording Artifact Validation | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ PCM16 mono WAV writer matches Hermes voice recording parameters, summarizes captured audio duration/peak RMS, rejects too-short or too-quiet recordings before STT, and surfaces artifact readiness in TUI `/voice status` while keeping microphone capture explicitly pending |
-| 74 | HTTP API Discovery | `hakimi-server/src/api.rs` | 2 | ✅ `/v1/models` returns an OpenAI-compatible model list for the active server agent, and `/v1/capabilities` advertises implemented vs pending API features and endpoint paths for external UI feature detection |
+| 74 | HTTP API Discovery + Chat Completions | `hakimi-server/src/api.rs`, `hakimi-core/src/agent.rs` | 5 | ✅ `/v1/models` returns an OpenAI-compatible model list, `/v1/capabilities` advertises implemented vs pending API features, and `/v1/chat/completions` accepts non-streaming text Chat Completions payloads without mutating the shared `/api/chat` history |
 | 75 | Mixture-of-Agents Tool | `hakimi-tools/src/builtin_mixture_of_agents.rs`, CLI/server/TUI registration | 9 | ✅ OpenRouter-backed `mixture_of_agents` runs parallel reference models, aggregates successful responses, reports failed references without leaking credentials, and exposes the tool across runtime surfaces |
 | 76 | Voice TTS Playback Prep | `hakimi-tools/src/{voice_mode.rs,builtin_tts.rs}`, `hakimi-tui/src/app.rs` | 5 | ✅ `text_to_speech` can opt into Hermes-style voice playback preparation with Markdown/URL/code cleanup, 4000-character spoken-text cap, MP3 cache path planning, MP3/OGG cleanup metadata, and TUI `/voice status` reports playback readiness |
 | 77 | Voice Local Playback Launch | `hakimi-tools/src/{voice_mode.rs,builtin_tts.rs}`, `hakimi-core/src/agent.rs`, `hakimi-common/src/tool.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 4 | ✅ `voice.auto_play` flows into tool execution, `text_to_speech` accepts `auto_play`, generated audio can launch local system players (`afplay`, `ffplay`, `mpg123`, Linux WAV players, Windows SoundPlayer), and active playback can be interrupted before starting a new file |
@@ -715,7 +715,7 @@ Generated: 2026-05-31
 | 95 | TUI Checkpoint Viewer | `hakimi-tui/src/app.rs`, `hakimi-tools/src/builtin_checkpoint.rs` | 2 | ✅ `/checkpoints` and `/ckpt` now run locally in the TUI, reuse the same shadow-git response renderer as gateway `/checkpoints`, support list/status/create/diff/restore command text, and keep checkpoint inspection out of the agent/model loop |
 
 ### Summary
-- **Total tests**: 1541 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1544 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

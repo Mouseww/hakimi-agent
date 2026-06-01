@@ -19,8 +19,10 @@
 //! - `POST /webhooks`        — Update runtime webhook gateway config
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
+//! - `POST /v1/chat/completions` — OpenAI-compatible non-streaming chat
 
 use std::collections::{BTreeMap, HashMap};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
     Json, Router,
@@ -31,7 +33,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value as JsonValue, json};
 use tracing::info;
 
 use crate::server::AppState;
@@ -44,6 +46,24 @@ use crate::server::AppState;
 #[derive(Debug, Deserialize)]
 pub struct ChatRequest {
     pub message: String,
+}
+
+/// Request body for POST /v1/chat/completions.
+#[derive(Debug, Deserialize)]
+pub struct ChatCompletionsRequest {
+    pub model: Option<String>,
+    #[serde(default)]
+    pub messages: Vec<ChatCompletionsMessage>,
+    #[serde(default)]
+    pub stream: Option<JsonValue>,
+}
+
+/// OpenAI-style chat message input.
+#[derive(Debug, Deserialize)]
+pub struct ChatCompletionsMessage {
+    pub role: String,
+    #[serde(default)]
+    pub content: JsonValue,
 }
 
 /// Response body for POST /chat.
@@ -277,7 +297,8 @@ pub fn build_router(state: AppState) -> Router {
 
     let mut v1_routes = Router::new()
         .route("/models", get(models))
-        .route("/capabilities", get(capabilities));
+        .route("/capabilities", get(capabilities))
+        .route("/chat/completions", post(chat_completions));
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
         v1_routes = v1_routes.route_layer(middleware::from_fn(auth_middleware));
@@ -352,7 +373,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
         },
         "features": {
             "chat": true,
-            "chat_completions": false,
+            "chat_completions": true,
             "chat_completions_streaming": false,
             "responses_api": false,
             "responses_streaming": false,
@@ -382,6 +403,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "health": {"method": "GET", "path": "/api/health"},
             "models": {"method": "GET", "path": "/v1/models"},
             "capabilities": {"method": "GET", "path": "/v1/capabilities"},
+            "chat_completions": {"method": "POST", "path": "/v1/chat/completions"},
             "chat": {"method": "POST", "path": "/api/chat"},
             "sessions": {"method": "GET", "path": "/api/sessions"},
             "session": {"method": "GET", "path": "/api/sessions/{id}"},
@@ -405,6 +427,160 @@ fn auth_required() -> bool {
     !std::env::var("HAKIMI_WEBUI_PASSWORD")
         .unwrap_or_default()
         .is_empty()
+}
+
+fn request_bool(value: Option<&JsonValue>, default: bool) -> bool {
+    match value {
+        Some(JsonValue::Bool(value)) => *value,
+        Some(JsonValue::String(value)) => match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "0" | "false" | "no" | "off" => false,
+            _ => default,
+        },
+        Some(JsonValue::Number(value)) => value.as_i64().is_some_and(|n| n != 0),
+        Some(JsonValue::Null) | None => default,
+        Some(_) => default,
+    }
+}
+
+fn chat_completions_prompt(
+    messages: &[ChatCompletionsMessage],
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    if messages.is_empty() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "messages must contain at least one chat message",
+        ));
+    }
+
+    let mut rendered = Vec::new();
+    let mut saw_user = false;
+    for message in messages {
+        let role = normalized_chat_role(&message.role)?;
+        let content = chat_content_text(&message.content)?;
+        let content = content.trim();
+        if content.is_empty() {
+            continue;
+        }
+        if role == "user" {
+            saw_user = true;
+        }
+        rendered.push(format!("{}: {}", chat_role_label(role), content));
+    }
+
+    if !saw_user {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "messages must include at least one user message",
+        ));
+    }
+    if rendered.is_empty() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "messages must include non-empty text content",
+        ));
+    }
+
+    Ok(truncate_chars(
+        &format!(
+            "Conversation supplied through OpenAI Chat Completions:\n\n{}\n\nRespond to the final user message.",
+            rendered.join("\n\n")
+        ),
+        65_536,
+    ))
+}
+
+fn normalized_chat_role(role: &str) -> Result<&'static str, (StatusCode, Json<ErrorResponse>)> {
+    match role.trim().to_ascii_lowercase().as_str() {
+        "system" | "developer" => Ok("system"),
+        "user" => Ok("user"),
+        "assistant" => Ok("assistant"),
+        "tool" | "function" => Ok("tool"),
+        other => Err(api_error(
+            StatusCode::BAD_REQUEST,
+            format!("unsupported chat message role: {other}"),
+        )),
+    }
+}
+
+fn chat_role_label(role: &str) -> &'static str {
+    match role {
+        "system" => "System",
+        "assistant" => "Assistant",
+        "tool" => "Tool",
+        _ => "User",
+    }
+}
+
+fn chat_content_text(value: &JsonValue) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    match value {
+        JsonValue::Null => Ok(String::new()),
+        JsonValue::String(text) => Ok(truncate_chars(text, 65_536)),
+        JsonValue::Array(parts) => {
+            let mut out = Vec::new();
+            for part in parts {
+                let text = chat_content_part_text(part)?;
+                if !text.trim().is_empty() {
+                    out.push(text);
+                }
+            }
+            Ok(truncate_chars(&out.join("\n"), 65_536))
+        }
+        JsonValue::Object(_) => chat_content_part_text(value),
+        other => Ok(truncate_chars(&other.to_string(), 65_536)),
+    }
+}
+
+fn chat_content_part_text(value: &JsonValue) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    match value {
+        JsonValue::String(text) => Ok(text.clone()),
+        JsonValue::Object(map) => {
+            let part_type = map
+                .get("type")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("text")
+                .trim()
+                .to_ascii_lowercase();
+            match part_type.as_str() {
+                "text" | "input_text" | "output_text" => Ok(map
+                    .get("text")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or_default()
+                    .to_string()),
+                "image_url" | "input_image" | "file" | "input_file" => Err(api_error(
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "unsupported chat content part type: {part_type}; this endpoint currently accepts text-only chat completions"
+                    ),
+                )),
+                other => Err(api_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("unsupported chat content part type: {other}"),
+                )),
+            }
+        }
+        JsonValue::Null => Ok(String::new()),
+        other => Ok(other.to_string()),
+    }
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+fn unix_timestamp_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default()
+}
+
+fn chat_completion_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!("chatcmpl-{nanos}")
 }
 
 fn redacted_env(env: &std::collections::HashMap<String, String>) -> BTreeMap<String, String> {
@@ -848,6 +1024,77 @@ async fn chat(
     }
 }
 
+/// POST /v1/chat/completions — OpenAI-compatible non-streaming chat.
+async fn chat_completions(
+    State(state): State<AppState>,
+    Json(req): Json<ChatCompletionsRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if request_bool(req.stream.as_ref(), false) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "stream=true is not yet supported on /v1/chat/completions",
+        ));
+    }
+
+    let prompt = chat_completions_prompt(&req.messages)?;
+    info!(
+        message_count = req.messages.len(),
+        prompt_len = prompt.len(),
+        "POST /v1/chat/completions"
+    );
+
+    let mut agent = {
+        let agent = state.agent.lock().await;
+        agent.clone()
+    };
+    agent.clear_messages();
+    agent.set_streaming(false);
+    agent.set_streaming_callback(None);
+
+    if let Some(model) = req
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+    {
+        agent.set_model(model.to_string());
+    }
+    let model = agent.model().to_string();
+
+    match agent.run_conversation(&prompt).await {
+        Ok(result) => {
+            let created = unix_timestamp_secs();
+            Ok(Json(json!({
+                "id": chat_completion_id(),
+                "object": "chat.completion",
+                "created": created,
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": result.final_response
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": result.usage.prompt_tokens,
+                    "completion_tokens": result.usage.completion_tokens,
+                    "total_tokens": result.usage.total_tokens
+                }
+            })))
+        }
+        Err(e) => {
+            let msg = format!("Agent error: {e}");
+            tracing::error!("{msg}");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: msg }),
+            ))
+        }
+    }
+}
+
 /// GET /sessions — list recent sessions from the database.
 async fn list_sessions(
     State(state): State<AppState>,
@@ -1064,6 +1311,7 @@ mod tests {
     use hakimi_common::ToolContext;
     use hakimi_session::{SessionDB, SessionOps};
     use serde_json::json;
+    use std::pin::Pin;
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use tower::ServiceExt;
@@ -1095,17 +1343,71 @@ mod tests {
         }
     }
 
+    struct StaticTransport;
+
+    #[async_trait::async_trait]
+    impl hakimi_transports::ProviderTransport for StaticTransport {
+        fn api_mode(&self) -> hakimi_common::ApiMode {
+            hakimi_common::ApiMode::ChatCompletions
+        }
+
+        fn provider_name(&self) -> &str {
+            "static"
+        }
+
+        async fn execute(
+            &self,
+            _model: &str,
+            messages: &[hakimi_common::Message],
+            _tools: &[hakimi_common::ToolDefinition],
+            _params: &hakimi_transports::RequestParams,
+        ) -> hakimi_common::Result<hakimi_common::NormalizedResponse> {
+            let prompt = messages
+                .iter()
+                .rev()
+                .find_map(|message| message.content.as_deref())
+                .unwrap_or_default();
+
+            Ok(hakimi_common::NormalizedResponse {
+                content: Some(format!("stub response to: {prompt}")),
+                tool_calls: None,
+                finish_reason: Some(hakimi_common::FinishReason::Stop),
+                usage: Some(hakimi_common::Usage {
+                    prompt_tokens: 7,
+                    completion_tokens: 3,
+                    total_tokens: 10,
+                    cached_tokens: 0,
+                    reasoning_tokens: 0,
+                }),
+                reasoning: None,
+            })
+        }
+
+        async fn execute_streaming(
+            &self,
+            _model: &str,
+            _messages: &[hakimi_common::Message],
+            _tools: &[hakimi_common::ToolDefinition],
+            _params: &hakimi_transports::RequestParams,
+        ) -> hakimi_common::Result<
+            Pin<
+                Box<
+                    dyn futures::stream::Stream<
+                            Item = std::result::Result<hakimi_transports::StreamEvent, String>,
+                        > + Send,
+                >,
+            >,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
     /// Build a minimal AppState for testing (no real agent).
     /// Uses a stub transport so we don't need a real LLM.
     fn test_state() -> AppState {
         use hakimi_context::SimpleContextEngine;
-        use hakimi_transports::ChatCompletionsTransport;
 
-        let transport = Arc::new(ChatCompletionsTransport::new(
-            "http://localhost:0".into(),
-            "test-key".into(),
-            reqwest::Client::new(),
-        ));
+        let transport: Arc<dyn hakimi_transports::ProviderTransport> = Arc::new(StaticTransport);
         let context_engine: Arc<tokio::sync::RwLock<dyn hakimi_context::ContextEngine>> =
             Arc::new(tokio::sync::RwLock::new(SimpleContextEngine::new(128_000)));
 
@@ -1204,11 +1506,15 @@ mod tests {
         assert_eq!(capabilities["features"]["chat"], true);
         assert_eq!(capabilities["features"]["session_resources"], true);
         assert_eq!(capabilities["features"]["tools_api"], true);
-        assert_eq!(capabilities["features"]["chat_completions"], false);
+        assert_eq!(capabilities["features"]["chat_completions"], true);
         assert_eq!(capabilities["features"]["run_events_sse"], false);
         assert_eq!(
             capabilities["endpoints"]["models"],
             json!({"method": "GET", "path": "/v1/models"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["chat_completions"],
+            json!({"method": "POST", "path": "/v1/chat/completions"})
         );
         assert_eq!(
             capabilities["endpoints"]["chat"],
@@ -1229,6 +1535,90 @@ mod tests {
             capabilities["endpoints"]["mcp_server_add"],
             json!({"method": "POST", "path": "/api/mcp/servers"})
         );
+    }
+
+    #[tokio::test]
+    async fn test_v1_chat_completions_non_streaming_endpoint() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "model": "custom-test-model",
+                    "messages": [
+                        {"role": "system", "content": "Answer tersely."},
+                        {"role": "user", "content": [
+                            {"type": "text", "text": "Say hello"},
+                            {"type": "input_text", "text": "and mention Hakimi"}
+                        ]}
+                    ],
+                    "stream": "false"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let completion: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(completion["object"], "chat.completion");
+        assert_eq!(completion["model"], "custom-test-model");
+        assert_eq!(completion["choices"][0]["message"]["role"], "assistant");
+        let content = completion["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap();
+        assert!(content.contains("Conversation supplied through OpenAI Chat Completions"));
+        assert!(content.contains("Say hello"));
+        assert!(content.contains("and mention Hakimi"));
+        assert_eq!(completion["usage"]["total_tokens"], 10);
+
+        let agent = state.agent.lock().await;
+        assert!(
+            agent.messages().is_empty(),
+            "OpenAI-compatible chat completions should not mutate the shared /api/chat history"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_v1_chat_completions_rejects_streaming_for_now() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "stream": true
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn chat_completions_prompt_rejects_image_parts() {
+        let messages = vec![ChatCompletionsMessage {
+            role: "user".to_string(),
+            content: json!([
+                {"type": "text", "text": "describe this"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/a.png"}}
+            ]),
+        }];
+        let err = chat_completions_prompt(&messages).unwrap_err();
+        assert_eq!(err.0, http::StatusCode::BAD_REQUEST);
+        assert!(err.1.0.error.contains("text-only chat completions"));
     }
 
     #[tokio::test]
