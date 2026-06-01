@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.195-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.196-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1585-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1587-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -105,7 +105,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 **可扩展**
 - MCP 协议客户端 — stdio / HTTP / SSE 传输，并支持 CLI/网关目录搜索与配置片段生成
 - HTTP 插件系统，YAML 模板
-- HTTP API 发现端点 — OpenAI 兼容 `/v1/models`、`/v1/capabilities`、`/v1/skills`、`/v1/toolsets`、非流式文本 `/v1/chat/completions`、支持 `previous_response_id` 链式续写的非流式 `/v1/responses`、可轮询的 `/v1/runs`，以及会话消息/搜索能力发现，方便外部 UI 探测能力
+- HTTP API 发现端点 — OpenAI 兼容 `/v1/models`、`/v1/capabilities`、`/v1/skills`、`/v1/toolsets`、非流式文本 `/v1/chat/completions`、支持 `previous_response_id` 链式续写的非流式 `/v1/responses`、可轮询且可取消的 `/v1/runs`，以及会话消息/搜索能力发现，方便外部 UI 探测能力
 - WebUI 管理 API — `/api/status`、`/api/sessions/{id}/messages`、`/api/sessions/search`、`/api/mcp/servers`、`/api/credentials/pool` 和 `/api/webhooks` 提供脱敏运行状态，并支持运行期作用域的管理写入
 - Skills Hub — 社区技能市场
 - 隔离 Profile — 管理命名工作区、克隆/导出 Profile 归档、创建 `~/.hakimi/bin/<profile>` 包装别名，并通过网关 `/profile` 操作
@@ -232,7 +232,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 17 个运行时可启用的平台适配器
 - [x] 网关目标目录 + send_message 频道解析
 - [x] MCP 客户端 + CLI/网关服务器目录
-- [x] HTTP API 模型/能力发现端点 + 文本 Chat Completions + Responses + Runs
+- [x] HTTP API 模型/能力发现端点 + 文本 Chat Completions + Responses + 可取消 Runs
 - [x] WebUI 管理 API 摘要 + 运行期写入
 - [x] 插件系统 + HTTP 模板
 - [x] ratatui TUI 界面

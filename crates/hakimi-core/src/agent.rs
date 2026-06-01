@@ -731,6 +731,11 @@ impl AIAgent {
         self.interrupt.store(true, Ordering::Relaxed);
     }
 
+    /// Clone the interrupt flag for external run controllers.
+    pub fn interrupt_handle(&self) -> Arc<AtomicBool> {
+        self.interrupt.clone()
+    }
+
     /// Clear the interrupt flag.
     pub fn clear_interrupt(&self) {
         self.interrupt.store(false, Ordering::Relaxed);

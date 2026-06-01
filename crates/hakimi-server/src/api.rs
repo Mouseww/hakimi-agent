@@ -29,8 +29,10 @@
 //! - `DELETE /v1/responses/:id` — Delete a stored Responses API result
 //! - `POST /v1/runs`         — Submit an asynchronous text run
 //! - `GET  /v1/runs/:id`     — Poll an asynchronous run status/result
+//! - `POST /v1/runs/:id/stop` — Cancel an asynchronous run
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
@@ -43,6 +45,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
+use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::server::AppState;
@@ -517,12 +520,34 @@ impl ResponsesStore {
     }
 }
 
+struct RunControl {
+    interrupt: std::sync::Arc<AtomicBool>,
+    task: JoinHandle<()>,
+}
+
+impl std::fmt::Debug for RunControl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunControl").finish_non_exhaustive()
+    }
+}
+
+enum StopRunResult {
+    Cancelled(JsonValue),
+    AlreadyFinished(String),
+    NotFound,
+}
+
+fn is_terminal_run_status(status: &str) -> bool {
+    matches!(status, "completed" | "failed" | "cancelled")
+}
+
 /// In-memory store for asynchronous API runs.
 #[derive(Debug)]
 pub struct RunsStore {
     max_entries: usize,
     entries: HashMap<String, StoredRun>,
     order: VecDeque<String>,
+    controls: HashMap<String, RunControl>,
 }
 
 impl Default for RunsStore {
@@ -537,6 +562,7 @@ impl RunsStore {
             max_entries: max_entries.max(1),
             entries: HashMap::new(),
             order: VecDeque::new(),
+            controls: HashMap::new(),
         }
     }
 
@@ -551,6 +577,10 @@ impl RunsStore {
                 break;
             };
             self.entries.remove(&evicted);
+            if let Some(control) = self.controls.remove(&evicted) {
+                control.interrupt.store(true, Ordering::Relaxed);
+                control.task.abort();
+            }
         }
     }
 
@@ -558,8 +588,24 @@ impl RunsStore {
         self.entries.get(run_id).map(StoredRun::to_json)
     }
 
+    fn attach_control(&mut self, run_id: &str, control: RunControl) {
+        match self.entries.get(run_id) {
+            Some(run) if !is_terminal_run_status(&run.status) => {
+                if let Some(previous) = self.controls.insert(run_id.to_string(), control) {
+                    previous.task.abort();
+                }
+            }
+            _ => {
+                control.task.abort();
+            }
+        }
+    }
+
     fn set_status(&mut self, run_id: &str, status: &str) {
         if let Some(run) = self.entries.get_mut(run_id) {
+            if is_terminal_run_status(&run.status) {
+                return;
+            }
             run.status = status.to_string();
             run.updated_at = unix_timestamp_secs();
         }
@@ -567,20 +613,51 @@ impl RunsStore {
 
     fn complete(&mut self, run_id: &str, output_text: String, usage: JsonValue) {
         if let Some(run) = self.entries.get_mut(run_id) {
+            if is_terminal_run_status(&run.status) {
+                self.controls.remove(run_id);
+                return;
+            }
             run.status = "completed".to_string();
             run.updated_at = unix_timestamp_secs();
             run.output_text = Some(output_text);
             run.usage = Some(usage);
             run.error = None;
         }
+        self.controls.remove(run_id);
     }
 
     fn fail(&mut self, run_id: &str, error: String) {
         if let Some(run) = self.entries.get_mut(run_id) {
+            if is_terminal_run_status(&run.status) {
+                self.controls.remove(run_id);
+                return;
+            }
             run.status = "failed".to_string();
             run.updated_at = unix_timestamp_secs();
             run.error = Some(error);
         }
+        self.controls.remove(run_id);
+    }
+
+    fn stop(&mut self, run_id: &str) -> StopRunResult {
+        let Some(run) = self.entries.get_mut(run_id) else {
+            return StopRunResult::NotFound;
+        };
+        if is_terminal_run_status(&run.status) {
+            return StopRunResult::AlreadyFinished(run.status.clone());
+        }
+
+        run.status = "cancelled".to_string();
+        run.updated_at = unix_timestamp_secs();
+        run.error = Some("Stop requested via API".to_string());
+        let body = run.to_json();
+
+        if let Some(control) = self.controls.remove(run_id) {
+            control.interrupt.store(true, Ordering::Relaxed);
+            control.task.abort();
+        }
+
+        StopRunResult::Cancelled(body)
     }
 }
 
@@ -647,7 +724,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/responses/{id}", get(get_response))
         .route("/responses/{id}", delete(delete_response))
         .route("/runs", post(create_run))
-        .route("/runs/{id}", get(get_run));
+        .route("/runs/{id}", get(get_run))
+        .route("/runs/{id}/stop", post(stop_run));
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
         v1_routes = v1_routes.route_layer(middleware::from_fn(auth_middleware));
@@ -737,7 +815,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "run_submission": true,
             "run_status": true,
             "run_events_sse": false,
-            "run_stop": false,
+            "run_stop": true,
             "websocket_streaming": false,
             "media_api": false
         },
@@ -764,6 +842,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "response_delete": {"method": "DELETE", "path": "/v1/responses/{id}"},
             "run": {"method": "POST", "path": "/v1/runs"},
             "run_status": {"method": "GET", "path": "/v1/runs/{id}"},
+            "run_stop": {"method": "POST", "path": "/v1/runs/{id}/stop"},
             "chat": {"method": "POST", "path": "/api/chat"},
             "sessions": {"method": "GET", "path": "/api/sessions"},
             "session": {"method": "GET", "path": "/api/sessions/{id}"},
@@ -1822,6 +1901,7 @@ async fn create_run(
     }
     let model = agent.model().to_string();
     let created_at = unix_timestamp_secs();
+    let interrupt = agent.interrupt_handle();
 
     let initial = {
         let mut store = state.run_store.lock().await;
@@ -1833,7 +1913,7 @@ async fn create_run(
 
     let run_store = state.run_store.clone();
     let run_id = id.clone();
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         run_store.lock().await.set_status(&run_id, "running");
         match agent.run_conversation(&prompt).await {
             Ok(result) => {
@@ -1854,6 +1934,13 @@ async fn create_run(
             }
         }
     });
+    state.run_store.lock().await.attach_control(
+        &id,
+        RunControl {
+            interrupt,
+            task: handle,
+        },
+    );
 
     Ok((StatusCode::ACCEPTED, Json(initial)))
 }
@@ -1867,6 +1954,25 @@ async fn get_run(
     match store.get(id.trim()) {
         Some(run) => Ok(Json(run)),
         None => Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("run not found: {id}"),
+        )),
+    }
+}
+
+/// POST /v1/runs/:id/stop — cancel a submitted run.
+async fn stop_run(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let mut store = state.run_store.lock().await;
+    match store.stop(id.trim()) {
+        StopRunResult::Cancelled(run) => Ok(Json(run)),
+        StopRunResult::AlreadyFinished(status) => Err(api_error(
+            StatusCode::CONFLICT,
+            format!("run already finished with status {status}: {id}"),
+        )),
+        StopRunResult::NotFound => Err(api_error(
             StatusCode::NOT_FOUND,
             format!("run not found: {id}"),
         )),
@@ -2365,12 +2471,65 @@ mod tests {
         }
     }
 
+    struct SlowTransport;
+
+    #[async_trait::async_trait]
+    impl hakimi_transports::ProviderTransport for SlowTransport {
+        fn api_mode(&self) -> hakimi_common::ApiMode {
+            hakimi_common::ApiMode::ChatCompletions
+        }
+
+        fn provider_name(&self) -> &str {
+            "slow"
+        }
+
+        async fn execute(
+            &self,
+            _model: &str,
+            _messages: &[hakimi_common::Message],
+            _tools: &[hakimi_common::ToolDefinition],
+            _params: &hakimi_transports::RequestParams,
+        ) -> hakimi_common::Result<hakimi_common::NormalizedResponse> {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            Ok(hakimi_common::NormalizedResponse {
+                content: Some("slow response".to_string()),
+                tool_calls: None,
+                finish_reason: Some(hakimi_common::FinishReason::Stop),
+                usage: Some(hakimi_common::Usage::default()),
+                reasoning: None,
+            })
+        }
+
+        async fn execute_streaming(
+            &self,
+            _model: &str,
+            _messages: &[hakimi_common::Message],
+            _tools: &[hakimi_common::ToolDefinition],
+            _params: &hakimi_transports::RequestParams,
+        ) -> hakimi_common::Result<
+            Pin<
+                Box<
+                    dyn futures::stream::Stream<
+                            Item = std::result::Result<hakimi_transports::StreamEvent, String>,
+                        > + Send,
+                >,
+            >,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
     /// Build a minimal AppState for testing (no real agent).
     /// Uses a stub transport so we don't need a real LLM.
     fn test_state() -> AppState {
+        test_state_with_transport(Arc::new(StaticTransport))
+    }
+
+    fn test_state_with_transport(
+        transport: Arc<dyn hakimi_transports::ProviderTransport>,
+    ) -> AppState {
         use hakimi_context::SimpleContextEngine;
 
-        let transport: Arc<dyn hakimi_transports::ProviderTransport> = Arc::new(StaticTransport);
         let context_engine: Arc<tokio::sync::RwLock<dyn hakimi_context::ContextEngine>> =
             Arc::new(tokio::sync::RwLock::new(SimpleContextEngine::new(128_000)));
 
@@ -2480,6 +2639,7 @@ mod tests {
         assert_eq!(capabilities["features"]["run_submission"], true);
         assert_eq!(capabilities["features"]["run_status"], true);
         assert_eq!(capabilities["features"]["run_events_sse"], false);
+        assert_eq!(capabilities["features"]["run_stop"], true);
         assert_eq!(
             capabilities["endpoints"]["models"],
             json!({"method": "GET", "path": "/v1/models"})
@@ -2507,6 +2667,10 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["run_status"],
             json!({"method": "GET", "path": "/v1/runs/{id}"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["run_stop"],
+            json!({"method": "POST", "path": "/v1/runs/{id}/stop"})
         );
         assert_eq!(
             capabilities["endpoints"]["chat"],
@@ -2948,6 +3112,103 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_runs_stop_cancels_running_run() {
+        let state = test_state_with_transport(Arc::new(SlowTransport));
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"input": "wait for stop"}).to_string()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::ACCEPTED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let submitted: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let run_id = submitted["id"].as_str().unwrap().to_string();
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/runs/{run_id}/stop"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let stopped: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(stopped["status"], "cancelled");
+        assert_eq!(stopped["error"], "Stop requested via API");
+
+        let req = Request::builder()
+            .uri(format!("/v1/runs/{run_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let polled: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(polled["status"], "cancelled");
+    }
+
+    #[tokio::test]
+    async fn test_v1_runs_stop_finished_run_returns_conflict() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"input": "finish first"}).to_string()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::ACCEPTED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let submitted: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let run_id = submitted["id"].as_str().unwrap().to_string();
+
+        let mut completed = false;
+        for _ in 0..20 {
+            let req = Request::builder()
+                .uri(format!("/v1/runs/{run_id}"))
+                .body(Body::empty())
+                .unwrap();
+            let resp = app.clone().oneshot(req).await.unwrap();
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let polled: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            if polled["status"] == "completed" {
+                completed = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            completed,
+            "run should complete before stop conflict assertion"
+        );
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/runs/{run_id}/stop"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::CONFLICT);
     }
 
     #[tokio::test]
