@@ -87,6 +87,13 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
         category: "chat",
     },
     SlashCommandSpec {
+        name: "sessions",
+        aliases: &["sess"],
+        args_hint: "[list|show <id>]",
+        summary: "Browse saved sessions",
+        category: "chat",
+    },
+    SlashCommandSpec {
         name: "history",
         aliases: &["hist"],
         args_hint: "[N]",
@@ -456,6 +463,7 @@ mod tests {
     #[test]
     fn canonical_slash_command_resolves_aliases() {
         assert_eq!(canonical_slash_command("/hist"), Some("history"));
+        assert_eq!(canonical_slash_command("/sess"), Some("sessions"));
         assert_eq!(canonical_slash_command("cp"), Some("copy"));
         assert_eq!(canonical_slash_command("/rewind"), Some("undo"));
         assert_eq!(canonical_slash_command("/missing"), None);

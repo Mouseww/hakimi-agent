@@ -37,6 +37,8 @@ pub enum Command {
     Config(Option<String>),
     /// Resume a previous session by ID or title.
     Resume(Option<String>),
+    /// Browse saved sessions.
+    Sessions(Option<String>),
     /// Show recent local conversation history.
     History(Option<String>),
     /// Rewind recent user turns for editing.
@@ -132,6 +134,7 @@ impl Command {
             "model" => Some(Command::Model(arg.map(String::from))),
             "config" => Some(Command::Config(arg.map(String::from))),
             "resume" => Some(Command::Resume(arg.map(String::from))),
+            "sessions" => Some(Command::Sessions(arg.map(String::from))),
             "history" => Some(Command::History(arg.map(String::from))),
             "undo" => Some(Command::Undo(arg.map(String::from))),
             "tools" => Some(Command::Tools(arg.map(String::from))),
@@ -185,6 +188,8 @@ impl fmt::Display for Command {
             Command::Config(Some(k)) => write!(f, "/config {k}"),
             Command::Resume(None) => write!(f, "/resume"),
             Command::Resume(Some(id)) => write!(f, "/resume {id}"),
+            Command::Sessions(None) => write!(f, "/sessions"),
+            Command::Sessions(Some(s)) => write!(f, "/sessions {s}"),
             Command::History(None) => write!(f, "/history"),
             Command::History(Some(h)) => write!(f, "/history {h}"),
             Command::Undo(None) => write!(f, "/undo"),
@@ -279,6 +284,15 @@ mod tests {
             Some(Command::Profile(Some("work".into())))
         );
         assert_eq!(Command::parse("/history"), Some(Command::History(None)));
+        assert_eq!(Command::parse("/sessions"), Some(Command::Sessions(None)));
+        assert_eq!(
+            Command::parse("/sessions show abc123"),
+            Some(Command::Sessions(Some("show abc123".into())))
+        );
+        assert_eq!(
+            Command::parse("/sess 5"),
+            Some(Command::Sessions(Some("5".into())))
+        );
         assert_eq!(
             Command::parse("/history 3"),
             Some(Command::History(Some("3".into())))

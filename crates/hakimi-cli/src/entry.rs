@@ -4533,6 +4533,7 @@ async fn start_gateway(
 • `/help` - Show this command reference\n\
 • `/stop` - Cancel the active task or stream\n\
 • `/clear` - Clear this chat's conversation state\n\
+• `/sessions [cmd]` - Browse saved sessions in the local TUI\n\
 • `/history [N]` - Show recent local TUI conversation messages\n\
 • `/undo [N]` - Rewind recent gateway user turns and echo the text for editing\n\
 • `/status` - Show gateway, platform, and model status\n\
@@ -4695,6 +4696,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Copy(_)) => "`/copy [N]` is available in the local Hakimi TUI for copying recent assistant responses. In gateway chats, use your chat client's native copy action.".to_string(),
+                    Some(Command::Sessions(_)) => "`/sessions [list|show <id>]` is available in the local Hakimi TUI for browsing the SQLite session store. Gateway chats can use `/history` in the chat client and `/undo [N]` for Hakimi's current in-memory turn state.".to_string(),
                     Some(Command::History(_)) => "`/history [N]` is available in the local Hakimi TUI for reviewing recent user/assistant messages. Gateway chats keep history in the chat client and can use `/undo [N]` to rewind Hakimi's in-memory turn state.".to_string(),
                     Some(Command::Profile(cmd)) => crate::profiles::profile_response_from_raw(
                         cmd.as_deref(),

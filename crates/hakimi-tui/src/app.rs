@@ -8,12 +8,18 @@ use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hakimi_common::{SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix};
 use hakimi_config::VoiceConfig;
-use std::path::Path;
+use hakimi_session::{SessionDB, SessionMeta, SessionOps};
+use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 
 const TOOL_CHAT_PREVIEW_CHARS: usize = 120;
 const TOOL_PANEL_PREVIEW_CHARS: usize = 80;
 const HISTORY_PREVIEW_CHARS: usize = 160;
+const SESSION_LIST_DEFAULT_LIMIT: i64 = 10;
+const SESSION_LIST_MAX_LIMIT: i64 = 50;
+const SESSION_SHOW_DEFAULT_LIMIT: usize = 8;
+const SESSION_SHOW_MAX_LIMIT: usize = 30;
+const SESSION_PREVIEW_CHARS: usize = 120;
 const COMPLETION_HINT_LIMIT: usize = 5;
 const COMPLETION_HINT_CHARS: usize = 96;
 const VOICE_MAX_CONSECUTIVE_NO_SPEECH: u8 = 3;
@@ -55,6 +61,203 @@ fn parse_undo_turns(arg: Option<&str>) -> Result<usize, &'static str> {
 
 fn render_tui_checkpoint_command(arg: Option<&str>, workdir: &Path) -> String {
     hakimi_tools::checkpoint_response(arg, workdir)
+}
+
+fn default_session_db_path() -> PathBuf {
+    dirs::home_dir()
+        .map(|home| home.join(".hakimi").join("sessions.db"))
+        .unwrap_or_else(|| PathBuf::from(".hakimi/sessions.db"))
+}
+
+fn parse_session_list_limit(raw: Option<&str>) -> Result<i64, String> {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(SESSION_LIST_DEFAULT_LIMIT);
+    };
+    match raw.parse::<i64>() {
+        Ok(limit) if (1..=SESSION_LIST_MAX_LIMIT).contains(&limit) => Ok(limit),
+        _ => Err(format!(
+            "usage: /sessions [list [1-{SESSION_LIST_MAX_LIMIT}]|show <id> [1-{SESSION_SHOW_MAX_LIMIT}]]"
+        )),
+    }
+}
+
+fn parse_session_show_limit(raw: Option<&str>) -> Result<usize, String> {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(SESSION_SHOW_DEFAULT_LIMIT);
+    };
+    match raw.parse::<usize>() {
+        Ok(limit) if (1..=SESSION_SHOW_MAX_LIMIT).contains(&limit) => Ok(limit),
+        _ => Err(format!(
+            "usage: /sessions show <id> [1-{SESSION_SHOW_MAX_LIMIT}]"
+        )),
+    }
+}
+
+fn short_session_id(session_id: &str) -> String {
+    let short: String = session_id.chars().take(8).collect();
+    if short.is_empty() {
+        "(none)".to_string()
+    } else {
+        short
+    }
+}
+
+fn compact_optional(value: Option<&str>, fallback: &str, max_chars: usize) -> String {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| compact_one_line(value, max_chars))
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn compact_timestamp(value: Option<&str>) -> String {
+    let value = value.map(str::trim).filter(|value| !value.is_empty());
+    let Some(value) = value else {
+        return "unknown".to_string();
+    };
+    let normalized = value.trim_end_matches('Z').replace('T', " ");
+    normalized.chars().take(19).collect()
+}
+
+fn session_token_total(meta: &SessionMeta) -> i64 {
+    meta.input_tokens
+        + meta.output_tokens
+        + meta.cache_read_tokens
+        + meta.cache_write_tokens
+        + meta.reasoning_tokens
+}
+
+fn render_session_line(index: usize, meta: &SessionMeta) -> String {
+    let title = compact_optional(
+        meta.title.as_deref(),
+        "Untitled session",
+        SESSION_PREVIEW_CHARS,
+    );
+    let source = compact_optional(meta.source.as_deref(), "unknown", 32);
+    let model = compact_optional(meta.model.as_deref(), "unknown model", 48);
+    let started = compact_timestamp(meta.started_at.as_deref());
+    let state = if meta.ended_at.is_some() {
+        "ended"
+    } else {
+        "active"
+    };
+
+    format!(
+        "  [{index}] {}  {started}  {source}/{model}  msgs={} tokens={} {state}  {}",
+        short_session_id(&meta.id),
+        meta.message_count,
+        session_token_total(meta),
+        title
+    )
+}
+
+fn render_sessions_list(db: &SessionDB, limit: i64) -> Result<String, String> {
+    let sessions = db
+        .get_recent_sessions(None, limit)
+        .map_err(|err| format!("Session list failed: {err}"))?;
+    if sessions.is_empty() {
+        return Ok("No saved sessions found.".to_string());
+    }
+
+    let mut lines = vec![format!("Saved sessions (showing {}):", sessions.len())];
+    for (index, meta) in sessions.iter().enumerate() {
+        lines.push(render_session_line(index + 1, meta));
+    }
+    lines.push("Use `/sessions show <session-id>` to inspect a session.".to_string());
+    Ok(lines.join("\n"))
+}
+
+fn render_sessions_show(db: &SessionDB, session_id: &str, limit: usize) -> Result<String, String> {
+    let Some((meta, messages)) = db
+        .get_session_with_messages(session_id, Some(limit))
+        .map_err(|err| format!("Session lookup failed: {err}"))?
+    else {
+        return Ok(format!("Session not found: {session_id}"));
+    };
+
+    let title = compact_optional(
+        meta.title.as_deref(),
+        "Untitled session",
+        SESSION_PREVIEW_CHARS,
+    );
+    let source = compact_optional(meta.source.as_deref(), "unknown", 32);
+    let model = compact_optional(meta.model.as_deref(), "unknown model", 48);
+    let started = compact_timestamp(meta.started_at.as_deref());
+    let ended = compact_timestamp(meta.ended_at.as_deref());
+
+    let mut lines = vec![
+        format!("Session {} — {}", short_session_id(&meta.id), title),
+        format!("ID: {}", meta.id),
+        format!("Source: {source}; model: {model}"),
+        format!("Started: {started}; ended: {ended}"),
+        format!(
+            "Messages: {}; tool calls: {}; tokens: {}; API calls: {}",
+            meta.message_count,
+            meta.tool_call_count,
+            session_token_total(&meta),
+            meta.api_call_count
+        ),
+        format!("Recent messages (showing {}):", messages.len()),
+    ];
+
+    for (index, message) in messages.iter().enumerate() {
+        let preview = compact_optional(
+            message.content.as_deref(),
+            "(no text content)",
+            SESSION_PREVIEW_CHARS,
+        );
+        lines.push(format!("  [{} #{}] {}", message.role, index + 1, preview));
+    }
+
+    if messages.is_empty() {
+        lines.push("  (no messages stored)".to_string());
+    }
+
+    Ok(lines.join("\n"))
+}
+
+fn render_sessions_command_from_db(db: &SessionDB, arg: Option<&str>) -> Result<String, String> {
+    let raw = arg.unwrap_or_default().trim();
+    if raw.is_empty() {
+        return render_sessions_list(db, SESSION_LIST_DEFAULT_LIMIT);
+    }
+
+    let (command, rest) = raw
+        .split_once(char::is_whitespace)
+        .map(|(command, rest)| (command, rest.trim()))
+        .unwrap_or((raw, ""));
+    match command.to_ascii_lowercase().as_str() {
+        "list" | "ls" | "recent" => render_sessions_list(db, parse_session_list_limit(Some(rest))?),
+        "show" | "view" | "inspect" => {
+            let (session_id, limit_raw) = rest
+                .split_once(char::is_whitespace)
+                .map(|(session_id, rest)| (session_id.trim(), Some(rest.trim())))
+                .unwrap_or((rest, None));
+            if session_id.is_empty() {
+                return Err(format!(
+                    "usage: /sessions show <id> [1-{SESSION_SHOW_MAX_LIMIT}]"
+                ));
+            }
+            render_sessions_show(db, session_id, parse_session_show_limit(limit_raw)?)
+        }
+        value if value.parse::<i64>().is_ok() => {
+            render_sessions_list(db, parse_session_list_limit(Some(value))?)
+        }
+        session_id => render_sessions_show(db, session_id, SESSION_SHOW_DEFAULT_LIMIT),
+    }
+}
+
+fn render_tui_sessions_command(arg: Option<&str>, db_path: &Path) -> String {
+    if !db_path.exists() {
+        return format!("No session database found at {}.", db_path.display());
+    }
+
+    let db = match SessionDB::new(db_path) {
+        Ok(db) => db,
+        Err(err) => return format!("Session database open failed: {err}"),
+    };
+
+    render_sessions_command_from_db(&db, arg).unwrap_or_else(|err| err)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -374,6 +577,7 @@ impl TuiVoiceStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TuiCommand {
     Help,
+    Sessions(Option<String>),
     History(Option<String>),
     Undo(Option<String>),
     Copy(Option<String>),
@@ -393,6 +597,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
 
     match canonical_slash_command(cmd)? {
         "help" => Some(TuiCommand::Help),
+        "sessions" => Some(TuiCommand::Sessions(arg)),
         "history" => Some(TuiCommand::History(arg)),
         "undo" => Some(TuiCommand::Undo(arg)),
         "copy" => Some(TuiCommand::Copy(arg)),
@@ -435,6 +640,8 @@ pub struct App {
     pub model_name: String,
     /// Session ID to display in status bar.
     pub session_id: String,
+    /// SQLite session database used by local read-only session browsing.
+    pub session_db_path: PathBuf,
     /// Total tokens used this session.
     pub total_tokens: u32,
     /// Number of API calls made.
@@ -468,6 +675,7 @@ impl App {
             tool_activity: Vec::new(),
             model_name,
             session_id,
+            session_db_path: default_session_db_path(),
             total_tokens: 0,
             api_calls: 0,
             voice: TuiVoiceStatus::default(),
@@ -476,6 +684,11 @@ impl App {
 
     pub fn with_voice_config(mut self, config: &VoiceConfig) -> Self {
         self.voice = TuiVoiceStatus::from_config(config);
+        self
+    }
+
+    pub fn with_session_db_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.session_db_path = path.into();
         self
     }
 
@@ -682,8 +895,12 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help               — Show this help\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help               — Show this help\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
+            }
+            Some(TuiCommand::Sessions(arg)) => {
+                let output = render_tui_sessions_command(arg.as_deref(), &self.session_db_path);
+                self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::History(arg)) => {
                 match render_history_messages(&self.messages, arg.as_deref()) {
@@ -1107,6 +1324,8 @@ impl App {
 mod tests {
     use super::*;
     use crossterm::event::{KeyEventKind, KeyEventState};
+    use hakimi_common::Message;
+    use hakimi_session::{MessageOps, SessionOps};
 
     /// Helper: create an App with dummy channels. Returns (app, cmd_rx, event_tx)
     /// so the receivers stay alive for the duration of the test.
@@ -1152,6 +1371,46 @@ mod tests {
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         }
+    }
+
+    fn make_session_db() -> (SessionDB, String) {
+        let db = SessionDB::new(std::path::Path::new(":memory:")).unwrap();
+        db.initialize().unwrap();
+        let session_id = db
+            .create_session("tui", Some("local-user"), Some("test-model"), None)
+            .unwrap();
+        db.set_title(&session_id, "Design session browser").unwrap();
+        db.save_message(&session_id, &Message::user("show my recent sessions"))
+            .unwrap();
+        db.save_message(
+            &session_id,
+            &Message::assistant("Here are your recent sessions."),
+        )
+        .unwrap();
+        (db, session_id)
+    }
+
+    fn make_file_session_db() -> (PathBuf, String) {
+        let path =
+            std::env::temp_dir().join(format!("hakimi-tui-sessions-{}.db", uuid::Uuid::new_v4()));
+        let session_id = {
+            let db = SessionDB::new(&path).unwrap();
+            db.initialize().unwrap();
+            let session_id = db
+                .create_session("tui", Some("local-user"), Some("test-model"), None)
+                .unwrap();
+            db.set_title(&session_id, "File backed session").unwrap();
+            db.save_message(&session_id, &Message::user("persisted question"))
+                .unwrap();
+            session_id
+        };
+        (path, session_id)
+    }
+
+    fn cleanup_session_db(path: &Path) {
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
     }
 
     // ---------------------------------------------------------------
@@ -1537,8 +1796,72 @@ mod tests {
         assert!(app.messages[1].content.contains("/history"));
         assert!(app.messages[1].content.contains("/undo"));
         assert!(app.messages[1].content.contains("/copy"));
+        assert!(app.messages[1].content.contains("/sessions"));
         assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/voice"));
+    }
+
+    #[test]
+    fn parse_tui_command_accepts_sessions_alias() {
+        assert_eq!(
+            parse_tui_command("/sess show abc123"),
+            Some(TuiCommand::Sessions(Some("show abc123".to_string())))
+        );
+    }
+
+    #[test]
+    fn render_sessions_lists_recent_session_metadata() {
+        let (db, session_id) = make_session_db();
+
+        let output = render_sessions_command_from_db(&db, None).unwrap();
+
+        assert!(output.contains("Saved sessions"));
+        assert!(output.contains(&short_session_id(&session_id)));
+        assert!(output.contains("Design session browser"));
+        assert!(output.contains("msgs=2"));
+    }
+
+    #[test]
+    fn render_sessions_show_includes_recent_messages() {
+        let (db, session_id) = make_session_db();
+
+        let output =
+            render_sessions_command_from_db(&db, Some(&format!("show {session_id} 2"))).unwrap();
+
+        assert!(output.contains("Session"));
+        assert!(output.contains("Design session browser"));
+        assert!(output.contains("[user #1] show my recent sessions"));
+        assert!(output.contains("[assistant #2] Here are your recent sessions."));
+    }
+
+    #[test]
+    fn slash_sessions_uses_configured_db_path_without_model_call() {
+        let (path, session_id) = make_file_session_db();
+        let mut app = make_app_simple().with_session_db_path(path.clone());
+        for c in "/sessions".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains(&short_session_id(&session_id)));
+        assert!(message.content.contains("File backed session"));
+        assert!(!app.is_thinking);
+
+        cleanup_session_db(&path);
+    }
+
+    #[test]
+    fn slash_sessions_reports_missing_database() {
+        let path = std::env::temp_dir().join(format!(
+            "missing-hakimi-tui-sessions-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+
+        let output = render_tui_sessions_command(None, &path);
+
+        assert!(output.contains("No session database found"));
     }
 
     #[test]
