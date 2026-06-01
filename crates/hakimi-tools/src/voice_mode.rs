@@ -32,6 +32,18 @@ pub const MIN_SPEECH_RECORDING_SECONDS: f32 = 0.3;
 /// Hermes-style maximum wait for speech before an interactive recording auto-stops.
 pub const NO_SPEECH_TIMEOUT_SECONDS: f32 = 15.0;
 
+/// Hermes-style start-recording cue frequency.
+pub const VOICE_CUE_START_FREQUENCY_HZ: u32 = 880;
+
+/// Hermes-style stop-recording cue frequency.
+pub const VOICE_CUE_STOP_FREQUENCY_HZ: u32 = 660;
+
+/// Duration of each short voice cue tone.
+pub const VOICE_CUE_DURATION_SECONDS: f32 = 0.12;
+
+/// Gap between repeated voice cue tones.
+pub const VOICE_CUE_GAP_SECONDS: f32 = 0.06;
+
 /// Maximum text length sent to the voice playback TTS path.
 pub const VOICE_TTS_MAX_CHARS: usize = 4_000;
 
@@ -85,6 +97,50 @@ pub struct VoicePlaybackCommand {
 pub struct VoicePlaybackStart {
     pub command: VoicePlaybackCommand,
     pub process_id: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoiceCueKind {
+    Start,
+    Stop,
+}
+
+impl VoiceCueKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Stop => "stop",
+        }
+    }
+
+    pub fn frequency_hz(self) -> u32 {
+        match self {
+            Self::Start => VOICE_CUE_START_FREQUENCY_HZ,
+            Self::Stop => VOICE_CUE_STOP_FREQUENCY_HZ,
+        }
+    }
+
+    pub fn count(self) -> usize {
+        match self {
+            Self::Start => 1,
+            Self::Stop => 2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceCuePlan {
+    pub kind: VoiceCueKind,
+    pub output_path: PathBuf,
+    pub frequency_hz: u32,
+    pub count: usize,
+    pub playback_backend: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceCueStart {
+    pub plan: VoiceCuePlan,
+    pub playback: VoicePlaybackStart,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -319,6 +375,64 @@ pub fn next_voice_tts_output_path() -> PathBuf {
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
     let suffix = uuid::Uuid::new_v4().to_string().replace('-', "");
     voice_tts_output_path_for(&voice_tts_cache_dir(), &timestamp, &suffix[..8])
+}
+
+/// Default directory for voice-mode start/stop cue files.
+pub fn voice_cue_cache_dir() -> PathBuf {
+    std::env::temp_dir().join("hakimi_voice")
+}
+
+/// Build a deterministic voice cue path for tests and callers with their own cache.
+pub fn voice_cue_output_path_for(dir: &Path, kind: VoiceCueKind) -> PathBuf {
+    dir.join(format!("cue_{}.wav", kind.as_str()))
+}
+
+/// Plan the cue WAV path and playback backend for a start/stop recording cue.
+pub fn plan_voice_cue(kind: VoiceCueKind) -> VoiceCuePlan {
+    plan_voice_cue_for_dir(kind, &voice_cue_cache_dir())
+}
+
+/// Plan a voice cue using a caller-provided cache directory.
+pub fn plan_voice_cue_for_dir(kind: VoiceCueKind, dir: &Path) -> VoiceCuePlan {
+    let output_path = voice_cue_output_path_for(dir, kind);
+    let playback_backend = find_voice_playback_command(&output_path).map(|command| command.program);
+    VoiceCuePlan {
+        kind,
+        output_path,
+        frequency_hz: kind.frequency_hz(),
+        count: kind.count(),
+        playback_backend,
+    }
+}
+
+/// Render the configured state of Hermes-style record start/stop cues.
+pub fn render_voice_cue_status(enabled: bool) -> String {
+    if enabled {
+        format!(
+            "Audio cues: enabled (start={}Hz x{}, stop={}Hz x{}, {:.2}s tones)",
+            VoiceCueKind::Start.frequency_hz(),
+            VoiceCueKind::Start.count(),
+            VoiceCueKind::Stop.frequency_hz(),
+            VoiceCueKind::Stop.count(),
+            VOICE_CUE_DURATION_SECONDS
+        )
+    } else {
+        "Audio cues: disabled by voice.beep_enabled=false".to_string()
+    }
+}
+
+/// Write a short PCM16 WAV recording cue.
+pub fn write_voice_cue(path: impl AsRef<Path>, kind: VoiceCueKind) -> io::Result<()> {
+    let samples = voice_cue_samples(kind);
+    write_pcm16_wav_with_threshold(path, &samples, 0).map(|_| ())
+}
+
+/// Write and start playing a Hermes-style recording cue.
+pub fn start_voice_cue(kind: VoiceCueKind) -> io::Result<VoiceCueStart> {
+    let plan = plan_voice_cue(kind);
+    write_voice_cue(&plan.output_path, kind)?;
+    let playback = start_voice_playback(&plan.output_path)?;
+    Ok(VoiceCueStart { plan, playback })
 }
 
 /// Build a deterministic voice TTS path for tests and callers with their own clock.
@@ -767,6 +881,47 @@ fn sanitized_voice_capture_duration(duration_seconds: f32) -> f32 {
         return NO_SPEECH_TIMEOUT_SECONDS;
     }
     duration_seconds.clamp(MIN_SPEECH_RECORDING_SECONDS, 300.0)
+}
+
+fn voice_cue_samples(kind: VoiceCueKind) -> Vec<i16> {
+    let tone_samples = (VOICE_SAMPLE_RATE as f32 * VOICE_CUE_DURATION_SECONDS)
+        .round()
+        .max(1.0) as usize;
+    let gap_samples = (VOICE_SAMPLE_RATE as f32 * VOICE_CUE_GAP_SECONDS)
+        .round()
+        .max(0.0) as usize;
+    let mut samples = Vec::with_capacity(
+        tone_samples * kind.count() + gap_samples * kind.count().saturating_sub(1),
+    );
+
+    for index in 0..kind.count() {
+        if index > 0 {
+            samples.extend(std::iter::repeat_n(0, gap_samples));
+        }
+        append_voice_cue_tone(&mut samples, kind.frequency_hz(), tone_samples);
+    }
+
+    samples
+}
+
+fn append_voice_cue_tone(samples: &mut Vec<i16>, frequency_hz: u32, sample_count: usize) {
+    let fade_samples = ((VOICE_SAMPLE_RATE as f32 * 0.01).round() as usize)
+        .min(sample_count / 4)
+        .max(1);
+    let amplitude = i16::MAX as f32 * 0.20;
+
+    for index in 0..sample_count {
+        let fade = if index < fade_samples {
+            index as f32 / fade_samples as f32
+        } else if sample_count - index <= fade_samples {
+            (sample_count - index) as f32 / fade_samples as f32
+        } else {
+            1.0
+        };
+        let phase =
+            std::f32::consts::TAU * frequency_hz as f32 * index as f32 / VOICE_SAMPLE_RATE as f32;
+        samples.push((phase.sin() * amplitude * fade) as i16);
+    }
 }
 
 /// Summarize PCM16 mono recording data using Hermes-compatible speech gates.
@@ -1244,6 +1399,43 @@ mod tests {
                 .args
                 .iter()
                 .any(|arg| arg.contains("SoundPlayer"))
+        );
+    }
+
+    #[test]
+    fn voice_cue_plans_hermes_style_start_and_stop_tones() {
+        let dir = Path::new("/tmp/hakimi-voice-cue-test");
+        let start = plan_voice_cue_for_dir(VoiceCueKind::Start, dir);
+        let stop = plan_voice_cue_for_dir(VoiceCueKind::Stop, dir);
+
+        assert_eq!(start.output_path, dir.join("cue_start.wav"));
+        assert_eq!(start.frequency_hz, VOICE_CUE_START_FREQUENCY_HZ);
+        assert_eq!(start.count, 1);
+        assert_eq!(stop.output_path, dir.join("cue_stop.wav"));
+        assert_eq!(stop.frequency_hz, VOICE_CUE_STOP_FREQUENCY_HZ);
+        assert_eq!(stop.count, 2);
+    }
+
+    #[test]
+    fn voice_cue_wav_contains_short_pcm16_tone() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("cue_stop.wav");
+
+        write_voice_cue(&path, VoiceCueKind::Stop).expect("write cue");
+        let summary = summarize_pcm16_wav_file(&path, 0).expect("summarize cue");
+
+        assert!(summary.accepted);
+        assert_eq!(summary.samples, voice_cue_samples(VoiceCueKind::Stop).len());
+        assert!(summary.peak_rms > 0);
+    }
+
+    #[test]
+    fn voice_cue_status_respects_config_flag() {
+        assert!(render_voice_cue_status(true).contains("start=880Hz x1"));
+        assert!(render_voice_cue_status(true).contains("stop=660Hz x2"));
+        assert_eq!(
+            render_voice_cue_status(false),
+            "Audio cues: disabled by voice.beep_enabled=false"
         );
     }
 

@@ -282,6 +282,7 @@ impl TuiVoiceStatus {
              STT tool: {stt_status} (model={transcription_model})\n\
              ffmpeg: {ffmpeg}; auto_play={auto_play}; beep={beep}\n\
              Capture settings: threshold={threshold}, silence={silence:.1}s\n\
+             {cue_status}\n\
              TTS playback: Markdown cleanup and MP3 cache planning ready (max {tts_max_chars} chars)\n\
              Recording artifact: PCM16 WAV writer ready ({sample_rate} Hz mono, min speech {min_speech:.1}s, no-speech timeout {no_speech:.0}s)\n\
              {audio_environment}\n\
@@ -293,6 +294,7 @@ impl TuiVoiceStatus {
             transcription_model = self.transcription_model,
             threshold = self.silence_threshold,
             silence = self.silence_duration_seconds,
+            cue_status = hakimi_tools::render_voice_cue_status(self.beep_enabled),
             tts_max_chars = hakimi_tools::VOICE_TTS_MAX_CHARS,
             sample_rate = hakimi_tools::VOICE_SAMPLE_RATE,
             min_speech = hakimi_tools::MIN_SPEECH_RECORDING_SECONDS,
@@ -754,6 +756,7 @@ impl App {
         self.voice.processing = false;
         self.is_thinking = true;
         self.scroll_offset = 0;
+        self.play_voice_cue(hakimi_tools::VoiceCueKind::Start);
         self.messages.push(ChatMessage::system(format!(
             "Recording with {}. Hakimi will transcribe and submit detected speech automatically.",
             self.voice.record_key_label
@@ -847,6 +850,7 @@ impl App {
                 } => {
                     self.voice.recording = false;
                     self.voice.processing = true;
+                    self.play_voice_cue(hakimi_tools::VoiceCueKind::Stop);
                     if let Some(path) = audio_path.filter(|path| !path.trim().is_empty()) {
                         self.messages
                             .push(ChatMessage::system(format!("Voice transcript from {path}")));
@@ -859,6 +863,7 @@ impl App {
                     self.voice.recording = false;
                     self.voice.processing = false;
                     self.is_thinking = false;
+                    self.play_voice_cue(hakimi_tools::VoiceCueKind::Stop);
                     let suffix = audio_path
                         .filter(|path| !path.trim().is_empty())
                         .map(|path| format!(" Recording preserved at {path}."))
@@ -872,6 +877,7 @@ impl App {
                     self.voice.recording = false;
                     self.voice.processing = false;
                     self.is_thinking = false;
+                    self.play_voice_cue(hakimi_tools::VoiceCueKind::Stop);
                     if let Some(activity) = self
                         .tool_activity
                         .iter_mut()
@@ -898,6 +904,22 @@ impl App {
     pub fn tick(&mut self) {
         if self.is_thinking {
             self.spinner_index = (self.spinner_index + 1) % SPINNER_FRAMES.len();
+        }
+    }
+
+    fn play_voice_cue(&self, kind: hakimi_tools::VoiceCueKind) {
+        if !self.voice.beep_enabled {
+            return;
+        }
+
+        #[cfg(not(test))]
+        {
+            let _ = hakimi_tools::start_voice_cue(kind);
+        }
+
+        #[cfg(test)]
+        {
+            let _ = kind;
         }
     }
 
@@ -1469,6 +1491,42 @@ mod tests {
         assert!(message.content.contains("16000 Hz mono"));
         assert!(message.content.contains("min speech 0.3s"));
         assert!(message.content.contains("no-speech timeout 15s"));
+    }
+
+    #[test]
+    fn slash_voice_status_reports_audio_cue_readiness() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_voice_command(Some("status"));
+
+        let message = app.messages.last().unwrap();
+        assert!(message.content.contains("Audio cues: enabled"));
+        assert!(message.content.contains("start=880Hz x1"));
+        assert!(message.content.contains("stop=660Hz x2"));
+    }
+
+    #[test]
+    fn slash_voice_status_respects_disabled_audio_cues() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+        let voice = VoiceConfig {
+            beep_enabled: false,
+            ..VoiceConfig::default()
+        };
+        let mut app = App::new(
+            cmd_tx,
+            event_rx,
+            "test-model".to_string(),
+            "test-session-123".to_string(),
+        )
+        .with_voice_config(&voice);
+        app.handle_voice_command(Some("status"));
+
+        let message = app.messages.last().unwrap();
+        assert!(
+            message
+                .content
+                .contains("Audio cues: disabled by voice.beep_enabled=false")
+        );
     }
 
     #[test]
