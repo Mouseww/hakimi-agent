@@ -296,6 +296,9 @@ async fn build_agent(
             browser_manager.clone(),
         )));
         builtin_tools.push(Arc::new(hakimi_tools::BrowserScreenshotTool::new(
+            browser_manager.clone(),
+        )));
+        builtin_tools.push(Arc::new(hakimi_tools::BrowserVisionTool::new(
             browser_manager,
         )));
     }

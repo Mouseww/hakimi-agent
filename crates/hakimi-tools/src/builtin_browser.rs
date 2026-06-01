@@ -207,6 +207,43 @@ fn generate_screenshot_filename(ext: &str) -> String {
     )
 }
 
+async fn capture_browser_screenshot(
+    page: &Page,
+    output_path: Option<PathBuf>,
+    full_page: bool,
+) -> Result<(PathBuf, Vec<u8>)> {
+    let screenshot_bytes = page
+        .screenshot(
+            chromiumoxide::page::ScreenshotParams::builder()
+                .format(chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat::Png)
+                .full_page(full_page)
+                .build(),
+        )
+        .await
+        .map_err(|e| HakimiError::Tool(format!("screenshot failed: {e}")))?;
+
+    if screenshot_bytes.is_empty() {
+        return Err(HakimiError::Tool("screenshot returned empty data".into()));
+    }
+
+    let out_path = output_path.unwrap_or_else(|| {
+        let dir = get_screenshot_dir();
+        let filename = generate_screenshot_filename("png");
+        dir.join(filename)
+    });
+
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            HakimiError::Tool(format!("failed to create screenshot directory: {e}"))
+        })?;
+    }
+
+    std::fs::write(&out_path, &screenshot_bytes)
+        .map_err(|e| HakimiError::Tool(format!("failed to write screenshot: {e}")))?;
+
+    Ok((out_path, screenshot_bytes))
+}
+
 const CONSOLE_RECORDER_SCRIPT: &str = r#"
 (function() {
     if (window.__hakimiConsoleRecorderInstalled) return true;
@@ -1604,44 +1641,144 @@ impl Tool for BrowserScreenshotTool {
         debug!(full_page, "browser screenshot request");
 
         let page = self.manager.get_page().await?;
-
-        // Take the screenshot as bytes
-        let screenshot_bytes = page
-            .screenshot(
-                chromiumoxide::page::ScreenshotParams::builder()
-                    .format(
-                        chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat::Png,
-                    )
-                    .full_page(full_page)
-                    .build(),
-            )
-            .await
-            .map_err(|e| HakimiError::Tool(format!("screenshot failed: {e}")))?;
-
-        if screenshot_bytes.is_empty() {
-            return Err(HakimiError::Tool("screenshot returned empty data".into()));
-        }
-
-        // Determine output path
-        let out_path = output_path.unwrap_or_else(|| {
-            let dir = get_screenshot_dir();
-            let filename = generate_screenshot_filename("png");
-            dir.join(filename)
-        });
-
-        // Ensure parent directory exists
-        if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                HakimiError::Tool(format!("failed to create screenshot directory: {e}"))
-            })?;
-        }
-
-        std::fs::write(&out_path, &screenshot_bytes)
-            .map_err(|e| HakimiError::Tool(format!("failed to write screenshot: {e}")))?;
+        let (out_path, _screenshot_bytes) =
+            capture_browser_screenshot(&page, output_path, full_page).await?;
 
         info!(path = %out_path.display(), full_page, "screenshot saved");
 
         Ok(format!("SCREENSHOT:{}", out_path.display()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// browser_vision
+// ---------------------------------------------------------------------------
+
+/// Take a screenshot of the current page and prepare it for vision analysis.
+pub struct BrowserVisionTool {
+    manager: Arc<BrowserManager>,
+}
+
+impl BrowserVisionTool {
+    pub fn new(manager: Arc<BrowserManager>) -> Self {
+        Self { manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserVisionTool {
+    fn name(&self) -> &str {
+        "browser_vision"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Take a screenshot of the current browser page for visual inspection. \
+         Returns a saved screenshot path plus a vision-compatible image content block."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{1f441}\u{fe0f}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "What to inspect or answer from the browser screenshot."
+                },
+                "full_page": {
+                    "type": "boolean",
+                    "description": "If true, capture the entire scrollable page. Default: true."
+                },
+                "annotate": {
+                    "type": "boolean",
+                    "description": "Request interactive-element annotations. Current Rust Chromium backend records the request but does not overlay labels."
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Custom screenshot output path. If not provided, auto-generates in ~/.hakimi/screenshots/."
+                }
+            }
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        BrowserManager::is_chrome_available()
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(10 * 1024 * 1024)
+    }
+
+    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let question = args
+            .get("question")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Describe what is visible in this browser page screenshot.");
+        let full_page = args
+            .get("full_page")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let annotate = args
+            .get("annotate")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let output_path = args
+            .get("output_path")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from);
+
+        debug!(full_page, annotate, question = %question, "browser vision request");
+
+        let page = self.manager.get_page().await?;
+        let (out_path, screenshot_bytes) =
+            capture_browser_screenshot(&page, output_path, full_page).await?;
+
+        use base64::Engine as _;
+        let data_url = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(&screenshot_bytes)
+        );
+        let screenshot_path = out_path.display().to_string();
+        let mut payload = json!({
+            "success": true,
+            "browser_vision": true,
+            "vision_request": true,
+            "image_source": screenshot_path,
+            "screenshot_path": screenshot_path,
+            "mime_type": "image/png",
+            "image_size_bytes": screenshot_bytes.len(),
+            "question": question,
+            "full_page": full_page,
+            "annotate_requested": annotate,
+            "content_block": {
+                "type": "image_url",
+                "image_url": {
+                    "url": data_url
+                }
+            },
+            "instruction": format!(
+                "Browser screenshot captured ({} bytes, image/png). Ask the vision model: {}. Screenshot path: {}. Share with MEDIA:{} when the user needs to inspect it.",
+                screenshot_bytes.len(),
+                question,
+                out_path.display(),
+                out_path.display()
+            )
+        });
+        if annotate {
+            payload["annotation_note"] = json!(
+                "The Rust Chromium backend captured the page screenshot but does not yet overlay interactive-element labels; use browser_snapshot for textual element references."
+            );
+        }
+
+        info!(path = %out_path.display(), full_page, "browser vision screenshot saved");
+        Ok(payload.to_string())
     }
 }
 
@@ -1697,6 +1834,16 @@ mod tests {
         assert_eq!(tool.name(), "browser_screenshot");
         assert_eq!(tool.toolset(), "browser");
         assert_eq!(tool.emoji(), "\u{1f4f7}");
+    }
+
+    #[test]
+    fn test_browser_vision_metadata() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserVisionTool::new(mgr);
+        assert_eq!(tool.name(), "browser_vision");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{1f441}\u{fe0f}");
+        assert!(tool.description().contains("vision-compatible"));
     }
 
     #[test]
@@ -1801,6 +1948,19 @@ mod tests {
         assert!(schema["properties"]["full_page"].is_object());
         assert!(schema["properties"]["output_path"].is_object());
         assert!(schema["properties"]["quality"].is_object());
+    }
+
+    #[test]
+    fn test_browser_vision_schema() {
+        let mgr = BrowserManager::new();
+        let tool = BrowserVisionTool::new(mgr);
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["question"].is_object());
+        assert!(schema["properties"]["full_page"].is_object());
+        assert!(schema["properties"]["annotate"].is_object());
+        assert!(schema["properties"]["output_path"].is_object());
+        assert!(schema.get("required").is_none());
     }
 
     #[test]
@@ -1939,6 +2099,10 @@ mod tests {
             BrowserScreenshotTool::new(mgr.clone()).max_result_size(),
             Some(2048)
         );
+        assert_eq!(
+            BrowserVisionTool::new(mgr.clone()).max_result_size(),
+            Some(10 * 1024 * 1024)
+        );
     }
 
     #[test]
@@ -1954,6 +2118,7 @@ mod tests {
         assert_eq!(BrowserGetImagesTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserConsoleTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserDialogTool::new(mgr.clone()).toolset(), "browser");
-        assert_eq!(BrowserScreenshotTool::new(mgr).toolset(), "browser");
+        assert_eq!(BrowserScreenshotTool::new(mgr.clone()).toolset(), "browser");
+        assert_eq!(BrowserVisionTool::new(mgr).toolset(), "browser");
     }
 }

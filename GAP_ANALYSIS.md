@@ -29,7 +29,7 @@ Generated: 2026-05-31
 - **transcribe_audio** — OpenAI-compatible speech-to-text for local audio files and remote audio URLs, with Hermes-style oversized local WAV chunking for text transcripts
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 - **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
-- **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, `browser_get_images`, `browser_console`, `browser_dialog`, and `browser_screenshot`
+- **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, `browser_get_images`, `browser_console`, `browser_dialog`, `browser_screenshot`, and `browser_vision`
 - **Kanban tools (basic)** — `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim` persist tasks, comments, status transitions, liveness, dependency links, event trails, diagnostics, profile routing, worker logs, notification subscriptions, unread claim cursors, and isolated board routing in SQLite
 
 ### Runtime Environment
@@ -175,7 +175,7 @@ Generated: 2026-05-31
 #### 1. Browser Automation (remaining advanced suite)
 - **What**: Advanced browser suite beyond the basic Chromium controls already present: vision, CDP attach, cloud/browser-provider routing
 - **Hermes location**: `tools/browser_tool.py`, `tools/browser_camofox.py`, `tools/browser_cdp_tool.py`, `tools/browser_dialog_tool.py`, `tools/browser_supervisor.py`, `tools/browser_providers/`
-- **Details**: Hakimi now covers navigate, snapshot, click, type, scroll, back, press, image listing, console/error capture, page-context expression evaluation, JavaScript dialog accept/dismiss, and screenshot through the optional Rust-native Chromium feature. Remaining parity is multi-backend support (Browserbase/Browser Use/Camofox/CDP) and vision routing.
+- **Details**: Hakimi now covers navigate, snapshot, click, type, scroll, back, press, image listing, console/error capture, page-context expression evaluation, JavaScript dialog accept/dismiss, screenshot, and screenshot-to-vision request routing through the optional Rust-native Chromium feature. Remaining parity is multi-backend support (Browserbase/Browser Use/Camofox/CDP) and deeper CDP/supervisor state.
 - **Priority**: **Critical** — Core capability for web interaction beyond search
 
 #### 2. Credential Pool / Multi-Credential Failover
@@ -585,7 +585,7 @@ Generated: 2026-05-31
 **Missing entirely: ~71+**
 
 ### Top 10 Critical Gaps (by impact)
-1. Browser advanced automation (vision, CDP attach, cloud backends)
+1. Browser advanced automation (CDP attach, cloud backends)
 2. Gateway platform breadth (12 missing platforms after runtime exposure for webhook/signal/matrix/wecom/dingtalk)
 3. Plugin ecosystem (memory providers, model providers, context engines)
 4. CLI command completeness (33+ missing commands)
@@ -692,9 +692,10 @@ Generated: 2026-05-31
 | 79 | TUI Voice Push-to-Talk Loop | `hakimi-tui/src/{app.rs,lib.rs,main.rs}` | 5 | ✅ Configurable Ctrl+B/Ctrl+letter now triggers `voice_capture` from the TUI background task, reports recording/STT state in the status bar, injects successful transcripts as user messages, surfaces no-speech recordings without entering the model loop, and cancels active recording on a second press |
 | 80 | Voice Recording Audio Cues | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ `voice.beep_enabled` now controls Hermes-style start/stop cues, with generated PCM16 WAV tones (880 Hz start, 660 Hz double-stop), `/voice status` cue readiness, and TUI playback at recording start plus transcript/no-speech/cancel stop boundaries |
 | 81 | Voice Continuous Restart Mode | `hakimi-tui/src/app.rs` | 3 | ✅ TUI voice capture now enters a Hermes-style continuous loop after the first record key press, restarts listening after each completed voice response, restarts after no-speech recordings until 3 consecutive no-speech exits, and disables auto-restart on second-press cancellation or errors |
+| 82 | Browser Vision Routing | `hakimi-tools/src/builtin_browser.rs`, CLI/server/TUI registration | 3 | ✅ Optional Chromium `browser_vision` captures a persistent PNG screenshot, returns `screenshot_path` for `MEDIA:` sharing, and emits a vision-compatible image content block plus question metadata for native multimodal routing |
 
 ### Summary
-- **Total tests**: 1465 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1468 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

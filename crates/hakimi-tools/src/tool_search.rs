@@ -24,6 +24,7 @@ const CORE_TOOL_NAMES: &[&str] = &[
     "browser_scroll",
     "browser_snapshot",
     "browser_type",
+    "browser_vision",
     "checkpoint",
     "clarify",
     "code_exec",
