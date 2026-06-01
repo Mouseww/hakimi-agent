@@ -63,6 +63,10 @@ impl Tool for TextToSpeechTool {
                 "output_path": {
                     "type": "string",
                     "description": "Custom output file path. If not provided, auto-generates in the TTS output directory."
+                },
+                "voice_playback": {
+                    "type": "boolean",
+                    "description": "Sanitize assistant Markdown into spoken text and use the voice playback cache path. Default: false."
                 }
             },
             "required": ["text"]
@@ -83,6 +87,11 @@ impl Tool for TextToSpeechTool {
             return Err(HakimiError::Tool("text parameter cannot be empty".into()));
         }
 
+        let voice_playback = args
+            .get("voice_playback")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         // Determine provider
         let config_provider = ctx.tts_provider.clone().filter(|s| !s.is_empty());
 
@@ -101,16 +110,33 @@ impl Tool for TextToSpeechTool {
             .map(String::from)
             .or_else(|| ctx.tts_voice.clone().filter(|s| !s.is_empty()));
 
-        let output_path = args
+        let mut output_path = args
             .get("output_path")
             .and_then(|v| v.as_str())
             .map(PathBuf::from);
 
-        debug!(provider = %provider, text_len = text.len(), "TTS request");
+        let text = if voice_playback {
+            let plan = crate::plan_voice_tts_playback(text, output_path.clone(), false)
+                .ok_or_else(|| {
+                    HakimiError::Tool("voice playback text is empty after cleanup".into())
+                })?;
+            output_path = Some(plan.output_path);
+            debug!(
+                provider = %provider,
+                text_len = plan.text.len(),
+                cleanup_paths = plan.cleanup_paths.len(),
+                "voice playback TTS request"
+            );
+            plan.text
+        } else {
+            text.to_string()
+        };
+
+        debug!(provider = %provider, text_len = text.len(), voice_playback, "TTS request");
 
         let result_path = match provider.as_str() {
-            "openai" => generate_openai_tts(text, voice.as_deref(), output_path, ctx).await?,
-            "edge" => generate_edge_tts(text, voice.as_deref(), output_path).await?,
+            "openai" => generate_openai_tts(&text, voice.as_deref(), output_path, ctx).await?,
+            "edge" => generate_edge_tts(&text, voice.as_deref(), output_path).await?,
             _ => {
                 return Err(HakimiError::Tool(format!(
                     "unsupported TTS provider: '{provider}'. Use 'openai' or 'edge'."
@@ -386,6 +412,7 @@ mod tests {
         assert!(schema["properties"]["voice"].is_object());
         assert!(schema["properties"]["provider"].is_object());
         assert!(schema["properties"]["output_path"].is_object());
+        assert_eq!(schema["properties"]["voice_playback"]["type"], "boolean");
 
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&JsonValue::String("text".to_string())));
@@ -493,6 +520,33 @@ mod tests {
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
         assert!(err_msg.contains("text"));
+    }
+
+    #[tokio::test]
+    async fn test_voice_playback_empty_after_cleanup_rejected() {
+        let tool = TextToSpeechTool;
+        let ctx = hakimi_common::ToolContext {
+            session_id: "test".to_string(),
+            user_id: None,
+            task_id: None,
+            workdir: "/tmp".to_string(),
+            model: None,
+            delegate_executor: None,
+            ..Default::default()
+        };
+        let result = tool
+            .execute(
+                &json!({
+                    "text": "```rust\nfn main() {}\n```\nhttps://example.com",
+                    "provider": "invalid",
+                    "voice_playback": true
+                }),
+                &ctx,
+            )
+            .await;
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("empty after cleanup"));
     }
 
     #[tokio::test]

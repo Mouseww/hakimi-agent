@@ -3,7 +3,10 @@
 use std::{
     io::{self, Write},
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
+
+use regex::Regex;
 
 /// Whisper-native recording sample rate used by Hermes voice mode.
 pub const VOICE_SAMPLE_RATE: u32 = 16_000;
@@ -26,6 +29,30 @@ pub const MIN_SPEECH_RECORDING_SECONDS: f32 = 0.3;
 /// Hermes-style maximum wait for speech before an interactive recording auto-stops.
 pub const NO_SPEECH_TIMEOUT_SECONDS: f32 = 15.0;
 
+/// Maximum text length sent to the voice playback TTS path.
+pub const VOICE_TTS_MAX_CHARS: usize = 4_000;
+
+static FENCED_CODE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("(?s)```.*?```").expect("valid fenced-code regex"));
+static MARKDOWN_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\([^)]+\)").expect("valid markdown-link regex"));
+static URL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"https?://\S+").expect("valid url regex"));
+static BOLD_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\*\*(.+?)\*\*").expect("valid bold regex"));
+static ITALIC_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\*(.+?)\*").expect("valid italic regex"));
+static INLINE_CODE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"`(.+?)`").expect("valid inline-code regex"));
+static HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("(?m)^#+\\s*").expect("valid heading regex"));
+static LIST_BULLET_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("(?m)^\\s*[-*]\\s+").expect("valid list-bullet regex"));
+static HORIZONTAL_RULE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("-{3,}").expect("valid horizontal-rule regex"));
+static EXCESS_NEWLINES_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("\n{3,}").expect("valid newline regex"));
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoiceRecordingSummary {
     pub samples: usize,
@@ -33,6 +60,14 @@ pub struct VoiceRecordingSummary {
     pub peak_rms: u32,
     pub accepted: bool,
     pub rejection_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceTtsPlaybackPlan {
+    pub text: String,
+    pub output_path: PathBuf,
+    pub playback_backend: Option<String>,
+    pub cleanup_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,6 +244,79 @@ pub fn detect_voice_environment() -> VoiceEnvironmentReport {
 /// Render a human-readable voice environment report for CLI/TUI/gateway surfaces.
 pub fn render_voice_environment_report() -> String {
     detect_voice_environment().render()
+}
+
+/// Strip Markdown and URLs before sending an assistant response to TTS playback.
+pub fn prepare_voice_tts_text(text: &str) -> Option<String> {
+    let capped: String = text.chars().take(VOICE_TTS_MAX_CHARS).collect();
+    let mut cleaned = capped;
+
+    cleaned = FENCED_CODE_RE.replace_all(&cleaned, " ").into_owned();
+    cleaned = MARKDOWN_LINK_RE.replace_all(&cleaned, "$1").into_owned();
+    cleaned = URL_RE.replace_all(&cleaned, "").into_owned();
+    cleaned = BOLD_RE.replace_all(&cleaned, "$1").into_owned();
+    cleaned = ITALIC_RE.replace_all(&cleaned, "$1").into_owned();
+    cleaned = INLINE_CODE_RE.replace_all(&cleaned, "$1").into_owned();
+    cleaned = HEADING_RE.replace_all(&cleaned, "").into_owned();
+    cleaned = LIST_BULLET_RE.replace_all(&cleaned, "").into_owned();
+    cleaned = HORIZONTAL_RULE_RE.replace_all(&cleaned, "").into_owned();
+    cleaned = EXCESS_NEWLINES_RE
+        .replace_all(&cleaned, "\n\n")
+        .into_owned();
+
+    let cleaned = cleaned.trim().to_string();
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
+/// Default directory for voice-mode TTS files that are intended for playback.
+pub fn voice_tts_cache_dir() -> PathBuf {
+    std::env::temp_dir().join("hakimi_voice")
+}
+
+/// Generate an MP3 output path for voice-mode TTS playback.
+pub fn next_voice_tts_output_path() -> PathBuf {
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let suffix = uuid::Uuid::new_v4().to_string().replace('-', "");
+    voice_tts_output_path_for(&voice_tts_cache_dir(), &timestamp, &suffix[..8])
+}
+
+/// Build a deterministic voice TTS path for tests and callers with their own clock.
+pub fn voice_tts_output_path_for(dir: &Path, timestamp: &str, suffix: &str) -> PathBuf {
+    dir.join(format!("tts_{timestamp}_{suffix}.mp3"))
+}
+
+/// Return the generated audio paths Hermes-style playback should clean up.
+pub fn voice_tts_cleanup_paths(output_path: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![output_path.to_path_buf()];
+    if output_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("mp3"))
+    {
+        paths.push(output_path.with_extension("ogg"));
+    }
+    paths
+}
+
+/// Prepare sanitized TTS text, output path, and playback metadata.
+pub fn plan_voice_tts_playback(
+    text: &str,
+    output_path: Option<PathBuf>,
+    auto_play: bool,
+) -> Option<VoiceTtsPlaybackPlan> {
+    let text = prepare_voice_tts_text(text)?;
+    let output_path = output_path.unwrap_or_else(next_voice_tts_output_path);
+    let playback_backend = auto_play
+        .then(|| detect_voice_environment().playback_backend)
+        .filter(|backend| backend != "none detected");
+    let cleanup_paths = voice_tts_cleanup_paths(&output_path);
+
+    Some(VoiceTtsPlaybackPlan {
+        text,
+        output_path,
+        playback_backend,
+        cleanup_paths,
+    })
 }
 
 /// Summarize PCM16 mono recording data using Hermes-compatible speech gates.
@@ -511,6 +619,48 @@ mod tests {
             "Schedule the release after CI passes."
         ));
         assert!(!is_whisper_hallucination("thanks, now open the dashboard"));
+    }
+
+    #[test]
+    fn prepares_voice_tts_text_like_hermes_playback() {
+        let input = "# Release\n\n- **Ship** [Hakimi](https://example.com)\n- Run `cargo test`\n\n```rust\nfn main() {}\n```\n\nhttps://example.com/raw";
+        let prepared = prepare_voice_tts_text(input).expect("prepared text");
+
+        assert!(prepared.contains("Release"));
+        assert!(prepared.contains("Ship Hakimi"));
+        assert!(prepared.contains("Run cargo test"));
+        assert!(!prepared.contains("https://"));
+        assert!(!prepared.contains("fn main"));
+        assert!(!prepared.contains("**"));
+        assert!(!prepared.contains('`'));
+    }
+
+    #[test]
+    fn prepares_voice_tts_text_caps_by_chars() {
+        let input = format!("{}tail", "你".repeat(VOICE_TTS_MAX_CHARS));
+        let prepared = prepare_voice_tts_text(&input).expect("prepared text");
+
+        assert_eq!(prepared.chars().count(), VOICE_TTS_MAX_CHARS);
+        assert!(!prepared.contains("tail"));
+    }
+
+    #[test]
+    fn plans_voice_tts_playback_paths_and_cleanup() {
+        let dir = Path::new("/tmp/hakimi-voice-test");
+        let path = voice_tts_output_path_for(dir, "20260601_010203", "abcdef12");
+        let plan =
+            plan_voice_tts_playback("hello", Some(path.clone()), false).expect("playback plan");
+
+        assert_eq!(plan.text, "hello");
+        assert_eq!(plan.output_path, path);
+        assert_eq!(
+            plan.cleanup_paths,
+            vec![
+                dir.join("tts_20260601_010203_abcdef12.mp3"),
+                dir.join("tts_20260601_010203_abcdef12.ogg"),
+            ]
+        );
+        assert_eq!(plan.playback_backend, None);
     }
 
     #[test]

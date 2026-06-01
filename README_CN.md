@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.160-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.161-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1433-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1438-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1433 |
+| 测试数量 | ~500 | 1438 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -96,7 +96,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 实时流式输出
 - 聊天里直接创建定时任务 `/cron add`
 - 网关 `/voice on|off|tts|status|doctor` 可切换口语化回复并报告语音 I/O 就绪状态，不污染 prompt cache 和聊天历史
-- TUI `/voice status` 与可配置 Ctrl+B/Ctrl+字母诊断共用 `voice.*` 配置、TTS/转写工具、音频环境检查和 PCM16 WAV 录音产物校验
+- TUI `/voice status` 与可配置 Ctrl+B/Ctrl+字母诊断共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验，以及 Markdown 清洗后的 TTS 播放缓存规划
 
 **可扩展**
 - MCP 协议客户端 — stdio / HTTP / SSE 传输
@@ -196,7 +196,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1433 |
+| 测试数量 | ~500 | 1438 |
 
 ---
 
@@ -243,6 +243,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] TUI 语音就绪诊断与媒体工具配置对齐
 - [x] 语音环境诊断与 STT 静音幻觉过滤
 - [x] 语音采集用 PCM16 WAV 录音产物校验
+- [x] 语音 TTS 播放文本清洗与 MP3 缓存规划
 - [x] 基于 OpenRouter 的 Mixture-of-Agents 多模型推理
 - [ ] WASM 插件运行时
 - [ ] Web 仪表盘
