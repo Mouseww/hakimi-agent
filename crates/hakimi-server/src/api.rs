@@ -2717,7 +2717,7 @@ mod tests {
             .uri("/v1/capabilities")
             .body(Body::empty())
             .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
 
         assert_eq!(resp.status(), http::StatusCode::OK);
 
@@ -3282,7 +3282,7 @@ mod tests {
             .uri(format!("/v1/runs/{run_id}"))
             .body(Body::empty())
             .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), http::StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
