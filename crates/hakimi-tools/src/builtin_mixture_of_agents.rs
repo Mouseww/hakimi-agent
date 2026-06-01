@@ -401,9 +401,8 @@ struct ChatCompletionMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     #[test]
     fn tool_metadata_matches_moa_surface() {
@@ -475,9 +474,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn check_available_tracks_openrouter_key() {
-        let _guard = ENV_LOCK.lock().unwrap();
+    #[tokio::test]
+    async fn check_available_tracks_openrouter_key() {
+        let _guard = ENV_LOCK.lock().await;
         unsafe {
             std::env::remove_var("OPENROUTER_API_KEY");
         }
@@ -506,7 +505,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_reports_missing_openrouter_key() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = ENV_LOCK.lock().await;
         unsafe {
             std::env::remove_var("OPENROUTER_API_KEY");
         }
