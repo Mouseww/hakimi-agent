@@ -242,15 +242,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn construction_sets_platform_identity() {
+    #[tokio::test]
+    async fn construction_sets_platform_identity() {
         let adapter = EmailAdapter::new(make_config()).unwrap();
         assert_eq!(adapter.name(), "email");
         assert_eq!(adapter.bot_id(), "email");
     }
 
-    #[test]
-    fn recipient_falls_back_to_home_channel() {
+    #[tokio::test]
+    async fn recipient_falls_back_to_home_channel() {
         let adapter = EmailAdapter::new(make_config()).unwrap();
         assert_eq!(adapter.recipient(""), "owner@example.com");
         assert_eq!(
@@ -295,8 +295,8 @@ mod tests {
         assert_eq!(redact_email("invalid"), "***");
     }
 
-    #[test]
-    fn take_receiver_once() {
+    #[tokio::test]
+    async fn take_receiver_once() {
         let mut adapter = EmailAdapter::new(make_config()).unwrap();
         assert!(adapter.take_receiver().is_some());
         assert!(adapter.take_receiver().is_none());
