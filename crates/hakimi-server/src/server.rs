@@ -23,6 +23,7 @@ pub struct AppState {
     pub agent: Arc<Mutex<hakimi_core::AIAgent>>,
     pub config: Arc<Mutex<hakimi_config::HakimiConfig>>,
     pub session_db: Arc<Mutex<hakimi_session::SessionDB>>,
+    pub response_store: Arc<Mutex<crate::api::ResponsesStore>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ impl Server {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(config)),
             session_db: Arc::new(Mutex::new(session_db)),
+            response_store: Arc::new(Mutex::new(crate::api::ResponsesStore::default())),
         };
         Ok(Self { state })
     }

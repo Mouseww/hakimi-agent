@@ -20,8 +20,11 @@
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
 //! - `POST /v1/chat/completions` — OpenAI-compatible non-streaming chat
+//! - `POST /v1/responses`    — OpenAI Responses-compatible non-streaming chat
+//! - `GET  /v1/responses/:id` — Retrieve a stored Responses API result
+//! - `DELETE /v1/responses/:id` — Delete a stored Responses API result
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
@@ -59,11 +62,23 @@ pub struct ChatCompletionsRequest {
 }
 
 /// OpenAI-style chat message input.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ChatCompletionsMessage {
     pub role: String,
     #[serde(default)]
     pub content: JsonValue,
+}
+
+/// Request body for POST /v1/responses.
+#[derive(Debug, Deserialize)]
+pub struct ResponsesRequest {
+    pub model: Option<String>,
+    #[serde(default)]
+    pub input: JsonValue,
+    pub instructions: Option<String>,
+    pub previous_response_id: Option<String>,
+    #[serde(default)]
+    pub stream: Option<JsonValue>,
 }
 
 /// Response body for POST /chat.
@@ -244,6 +259,76 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+#[derive(Debug, Clone)]
+struct StoredResponse {
+    response: JsonValue,
+    messages: Vec<ChatCompletionsMessage>,
+}
+
+/// In-memory store for OpenAI Responses-compatible chaining.
+#[derive(Debug)]
+pub struct ResponsesStore {
+    max_entries: usize,
+    entries: HashMap<String, StoredResponse>,
+    order: VecDeque<String>,
+}
+
+impl Default for ResponsesStore {
+    fn default() -> Self {
+        Self::new(100)
+    }
+}
+
+impl ResponsesStore {
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            max_entries: max_entries.max(1),
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+
+    fn insert(
+        &mut self,
+        response_id: String,
+        response: JsonValue,
+        messages: Vec<ChatCompletionsMessage>,
+    ) {
+        if !self.entries.contains_key(&response_id) {
+            self.order.push_back(response_id.clone());
+        }
+        self.entries
+            .insert(response_id.clone(), StoredResponse { response, messages });
+
+        while self.entries.len() > self.max_entries {
+            let Some(evicted) = self.order.pop_front() else {
+                break;
+            };
+            self.entries.remove(&evicted);
+        }
+    }
+
+    fn get(&self, response_id: &str) -> Option<JsonValue> {
+        self.entries
+            .get(response_id)
+            .map(|stored| stored.response.clone())
+    }
+
+    fn messages(&self, response_id: &str) -> Option<Vec<ChatCompletionsMessage>> {
+        self.entries
+            .get(response_id)
+            .map(|stored| stored.messages.clone())
+    }
+
+    fn delete(&mut self, response_id: &str) -> bool {
+        let removed = self.entries.remove(response_id).is_some();
+        if removed {
+            self.order.retain(|id| id != response_id);
+        }
+        removed
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Route builder
 // ---------------------------------------------------------------------------
@@ -298,7 +383,10 @@ pub fn build_router(state: AppState) -> Router {
     let mut v1_routes = Router::new()
         .route("/models", get(models))
         .route("/capabilities", get(capabilities))
-        .route("/chat/completions", post(chat_completions));
+        .route("/chat/completions", post(chat_completions))
+        .route("/responses", post(responses))
+        .route("/responses/{id}", get(get_response))
+        .route("/responses/{id}", delete(delete_response));
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
         v1_routes = v1_routes.route_layer(middleware::from_fn(auth_middleware));
@@ -375,7 +463,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "chat": true,
             "chat_completions": true,
             "chat_completions_streaming": false,
-            "responses_api": false,
+            "responses_api": true,
             "responses_streaming": false,
             "session_resources": true,
             "tools_api": true,
@@ -404,6 +492,9 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "models": {"method": "GET", "path": "/v1/models"},
             "capabilities": {"method": "GET", "path": "/v1/capabilities"},
             "chat_completions": {"method": "POST", "path": "/v1/chat/completions"},
+            "responses": {"method": "POST", "path": "/v1/responses"},
+            "response": {"method": "GET", "path": "/v1/responses/{id}"},
+            "response_delete": {"method": "DELETE", "path": "/v1/responses/{id}"},
             "chat": {"method": "POST", "path": "/api/chat"},
             "sessions": {"method": "GET", "path": "/api/sessions"},
             "session": {"method": "GET", "path": "/api/sessions/{id}"},
@@ -446,10 +537,23 @@ fn request_bool(value: Option<&JsonValue>, default: bool) -> bool {
 fn chat_completions_prompt(
     messages: &[ChatCompletionsMessage],
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    conversation_prompt(messages, "OpenAI Chat Completions")
+}
+
+fn responses_prompt(
+    messages: &[ChatCompletionsMessage],
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    conversation_prompt(messages, "OpenAI Responses API")
+}
+
+fn conversation_prompt(
+    messages: &[ChatCompletionsMessage],
+    surface: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     if messages.is_empty() {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
-            "messages must contain at least one chat message",
+            "messages must contain at least one message",
         ));
     }
 
@@ -483,11 +587,99 @@ fn chat_completions_prompt(
 
     Ok(truncate_chars(
         &format!(
-            "Conversation supplied through OpenAI Chat Completions:\n\n{}\n\nRespond to the final user message.",
+            "Conversation supplied through {surface}:\n\n{}\n\nRespond to the final user message.",
             rendered.join("\n\n")
         ),
         65_536,
     ))
+}
+
+fn responses_input_messages(
+    input: &JsonValue,
+) -> Result<Vec<ChatCompletionsMessage>, (StatusCode, Json<ErrorResponse>)> {
+    let messages = match input {
+        JsonValue::Null => Vec::new(),
+        JsonValue::String(text) => vec![ChatCompletionsMessage {
+            role: "user".to_string(),
+            content: JsonValue::String(text.clone()),
+        }],
+        JsonValue::Array(items) => {
+            let mut messages = Vec::new();
+            for item in items {
+                messages.push(response_input_item_message(item)?);
+            }
+            messages
+        }
+        JsonValue::Object(_) => vec![response_input_item_message(input)?],
+        other => vec![ChatCompletionsMessage {
+            role: "user".to_string(),
+            content: JsonValue::String(other.to_string()),
+        }],
+    };
+
+    if messages.is_empty() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "input must contain at least one message",
+        ));
+    }
+
+    if !messages
+        .iter()
+        .any(|message| normalized_chat_role(&message.role).is_ok_and(|role| role == "user"))
+    {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "input must include at least one user message",
+        ));
+    }
+
+    Ok(messages)
+}
+
+fn response_input_item_message(
+    item: &JsonValue,
+) -> Result<ChatCompletionsMessage, (StatusCode, Json<ErrorResponse>)> {
+    match item {
+        JsonValue::String(text) => Ok(ChatCompletionsMessage {
+            role: "user".to_string(),
+            content: JsonValue::String(text.clone()),
+        }),
+        JsonValue::Object(map) => {
+            if let Some(role) = map.get("role").and_then(JsonValue::as_str) {
+                normalized_chat_role(role)?;
+                Ok(ChatCompletionsMessage {
+                    role: role.to_string(),
+                    content: map.get("content").cloned().unwrap_or(JsonValue::Null),
+                })
+            } else {
+                Ok(ChatCompletionsMessage {
+                    role: "user".to_string(),
+                    content: item.clone(),
+                })
+            }
+        }
+        other => Ok(ChatCompletionsMessage {
+            role: "user".to_string(),
+            content: JsonValue::String(other.to_string()),
+        }),
+    }
+}
+
+fn response_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!("resp_{nanos}")
+}
+
+fn response_message_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!("msg_{nanos}")
 }
 
 fn normalized_chat_role(role: &str) -> Result<&'static str, (StatusCode, Json<ErrorResponse>)> {
@@ -1095,6 +1287,170 @@ async fn chat_completions(
     }
 }
 
+/// POST /v1/responses — OpenAI Responses-compatible non-streaming chat.
+async fn responses(
+    State(state): State<AppState>,
+    Json(req): Json<ResponsesRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if request_bool(req.stream.as_ref(), false) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "stream=true is not yet supported on /v1/responses",
+        ));
+    }
+
+    let mut new_messages = Vec::new();
+    if let Some(instructions) = req
+        .instructions
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        new_messages.push(ChatCompletionsMessage {
+            role: "system".to_string(),
+            content: JsonValue::String(instructions.to_string()),
+        });
+    }
+    new_messages.extend(responses_input_messages(&req.input)?);
+
+    let mut messages = if let Some(previous_response_id) = req
+        .previous_response_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
+        let store = state.response_store.lock().await;
+        match store.messages(previous_response_id) {
+            Some(messages) => messages,
+            None => {
+                return Err(api_error(
+                    StatusCode::NOT_FOUND,
+                    format!("previous response not found: {previous_response_id}"),
+                ));
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    messages.extend(new_messages);
+
+    let prompt = responses_prompt(&messages)?;
+    info!(
+        message_count = messages.len(),
+        prompt_len = prompt.len(),
+        previous_response_id = req.previous_response_id.as_deref().unwrap_or(""),
+        "POST /v1/responses"
+    );
+
+    let mut agent = {
+        let agent = state.agent.lock().await;
+        agent.clone()
+    };
+    agent.clear_messages();
+    agent.set_streaming(false);
+    agent.set_streaming_callback(None);
+
+    if let Some(model) = req
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+    {
+        agent.set_model(model.to_string());
+    }
+    let model = agent.model().to_string();
+
+    match agent.run_conversation(&prompt).await {
+        Ok(result) => {
+            let created = unix_timestamp_secs();
+            let id = response_id();
+            let message_id = response_message_id();
+            let output_text = result.final_response.clone();
+            let response = json!({
+                "id": id.clone(),
+                "object": "response",
+                "created_at": created,
+                "status": "completed",
+                "model": model,
+                "previous_response_id": req.previous_response_id,
+                "output": [{
+                    "id": message_id,
+                    "type": "message",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [{
+                        "type": "output_text",
+                        "text": output_text.clone(),
+                        "annotations": []
+                    }]
+                }],
+                "output_text": output_text,
+                "usage": {
+                    "input_tokens": result.usage.prompt_tokens,
+                    "output_tokens": result.usage.completion_tokens,
+                    "total_tokens": result.usage.total_tokens
+                }
+            });
+
+            let mut stored_messages = messages;
+            stored_messages.push(ChatCompletionsMessage {
+                role: "assistant".to_string(),
+                content: JsonValue::String(result.final_response),
+            });
+            state
+                .response_store
+                .lock()
+                .await
+                .insert(id, response.clone(), stored_messages);
+
+            Ok(Json(response))
+        }
+        Err(e) => {
+            let msg = format!("Agent error: {e}");
+            tracing::error!("{msg}");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: msg }),
+            ))
+        }
+    }
+}
+
+/// GET /v1/responses/:id — retrieve an in-memory Responses API result.
+async fn get_response(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.response_store.lock().await;
+    match store.get(id.trim()) {
+        Some(response) => Ok(Json(response)),
+        None => Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("response not found: {id}"),
+        )),
+    }
+}
+
+/// DELETE /v1/responses/:id — remove an in-memory Responses API result.
+async fn delete_response(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let deleted = state.response_store.lock().await.delete(id.trim());
+    if deleted {
+        Ok(Json(json!({
+            "id": id,
+            "object": "response.deleted",
+            "deleted": true
+        })))
+    } else {
+        Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("response not found: {id}"),
+        ))
+    }
+}
+
 /// GET /sessions — list recent sessions from the database.
 async fn list_sessions(
     State(state): State<AppState>,
@@ -1428,6 +1784,7 @@ mod tests {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(hakimi_config::HakimiConfig::default())),
             session_db: Arc::new(Mutex::new(db)),
+            response_store: Arc::new(Mutex::new(ResponsesStore::default())),
         }
     }
 
@@ -1507,6 +1864,7 @@ mod tests {
         assert_eq!(capabilities["features"]["session_resources"], true);
         assert_eq!(capabilities["features"]["tools_api"], true);
         assert_eq!(capabilities["features"]["chat_completions"], true);
+        assert_eq!(capabilities["features"]["responses_api"], true);
         assert_eq!(capabilities["features"]["run_events_sse"], false);
         assert_eq!(
             capabilities["endpoints"]["models"],
@@ -1515,6 +1873,10 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["chat_completions"],
             json!({"method": "POST", "path": "/v1/chat/completions"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["responses"],
+            json!({"method": "POST", "path": "/v1/responses"})
         );
         assert_eq!(
             capabilities["endpoints"]["chat"],
@@ -1598,6 +1960,185 @@ mod tests {
             .body(Body::from(
                 json!({
                     "messages": [{"role": "user", "content": "hello"}],
+                    "stream": true
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_v1_responses_non_streaming_endpoint_and_store() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/responses")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "model": "responses-test-model",
+                    "instructions": "Answer as a test harness.",
+                    "input": [
+                        {"role": "user", "content": [
+                            {"type": "input_text", "text": "Summarize Hakimi"},
+                            {"type": "text", "text": "in one sentence"}
+                        ]}
+                    ],
+                    "stream": "false"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(response["object"], "response");
+        assert_eq!(response["status"], "completed");
+        assert_eq!(response["model"], "responses-test-model");
+        assert_eq!(response["output"][0]["type"], "message");
+        assert_eq!(response["output"][0]["role"], "assistant");
+        assert_eq!(response["output"][0]["content"][0]["type"], "output_text");
+        assert_eq!(response["usage"]["total_tokens"], 10);
+        let output_text = response["output_text"].as_str().unwrap();
+        assert!(output_text.contains("Conversation supplied through OpenAI Responses API"));
+        assert!(output_text.contains("Summarize Hakimi"));
+        assert!(output_text.contains("in one sentence"));
+
+        let response_id = response["id"].as_str().unwrap();
+        let get_req = Request::builder()
+            .uri(format!("/v1/responses/{response_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let get_resp = app.clone().oneshot(get_req).await.unwrap();
+        assert_eq!(get_resp.status(), http::StatusCode::OK);
+        let get_body = axum::body::to_bytes(get_resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let stored: serde_json::Value = serde_json::from_slice(&get_body).unwrap();
+        assert_eq!(stored["id"], response["id"]);
+
+        let agent = state.agent.lock().await;
+        assert!(
+            agent.messages().is_empty(),
+            "Responses API should not mutate the shared /api/chat history"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_v1_responses_previous_response_id_chains_history() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let first_req = Request::builder()
+            .method("POST")
+            .uri("/v1/responses")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"input": "First turn"}).to_string()))
+            .unwrap();
+        let first_resp = app.clone().oneshot(first_req).await.unwrap();
+        assert_eq!(first_resp.status(), http::StatusCode::OK);
+        let first_body = axum::body::to_bytes(first_resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let first: serde_json::Value = serde_json::from_slice(&first_body).unwrap();
+        let first_id = first["id"].as_str().unwrap();
+
+        let second_req = Request::builder()
+            .method("POST")
+            .uri("/v1/responses")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "previous_response_id": first_id,
+                    "input": "Second turn"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let second_resp = app.oneshot(second_req).await.unwrap();
+        assert_eq!(second_resp.status(), http::StatusCode::OK);
+        let second_body = axum::body::to_bytes(second_resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let second: serde_json::Value = serde_json::from_slice(&second_body).unwrap();
+        let output = second["output_text"].as_str().unwrap();
+        assert_eq!(second["previous_response_id"], first["id"]);
+        assert!(output.contains("First turn"));
+        assert!(output.contains("Second turn"));
+    }
+
+    #[tokio::test]
+    async fn test_v1_responses_delete_and_missing_previous_response() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/responses")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({"input": "temporary response"}).to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let response_id = response["id"].as_str().unwrap();
+
+        let delete_req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/responses/{response_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let delete_resp = app.clone().oneshot(delete_req).await.unwrap();
+        assert_eq!(delete_resp.status(), http::StatusCode::OK);
+
+        let get_req = Request::builder()
+            .uri(format!("/v1/responses/{response_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let get_resp = app.clone().oneshot(get_req).await.unwrap();
+        assert_eq!(get_resp.status(), http::StatusCode::NOT_FOUND);
+
+        let missing_chain_req = Request::builder()
+            .method("POST")
+            .uri("/v1/responses")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "previous_response_id": "resp_missing",
+                    "input": "continue"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let missing_chain_resp = app.oneshot(missing_chain_req).await.unwrap();
+        assert_eq!(missing_chain_resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_v1_responses_rejects_streaming_for_now() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/responses")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "input": "hello",
                     "stream": true
                 })
                 .to_string(),

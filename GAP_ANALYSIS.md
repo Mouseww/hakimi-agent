@@ -146,7 +146,7 @@ Generated: 2026-05-31
 - **Serve mode** — `--serve` HTTP API server
 
 ### Server
-- **REST API** — Health, chat, sessions, tools, config endpoints, OpenAI-style discovery, and dashboard admin summaries plus runtime-scoped writes for status/MCP/credential pools/webhooks (Axum)
+- **REST API** — Health, chat, sessions, tools, config endpoints, OpenAI-style discovery, non-streaming Chat Completions and Responses surfaces, and dashboard admin summaries plus runtime-scoped writes for status/MCP/credential pools/webhooks (Axum)
 
 ### TUI
 - **Ratatui TUI** — Terminal UI with chat panel, tools activity panel, status bar
@@ -239,7 +239,7 @@ Generated: 2026-05-31
 - **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/Signal/SMS/WhatsApp/Home Assistant/Matrix/DingTalk/WeCom/Feishu/BlueBubbles/ClawBot
 - **Hermes location**: `gateway/platforms/`
 - **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio outbound text, WhatsApp Business Cloud API outbound text, Home Assistant persistent notifications, Matrix, DingTalk, WeCom, Feishu/Lark outbound text, BlueBubbles/iMessage outbound text, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling; Feishu uses Hermes-compatible app credentials and `FEISHU_HOME_CHANNEL` routing for tenant-token IM sends; SMS uses Twilio-compatible account credentials, E.164 sender/recipient numbers, `SMS_HOME_CHANNEL`, Markdown cleanup, and safe message chunking; WhatsApp uses `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and optional `WHATSAPP_HOME_CHANNEL` for Graph API delivery; Home Assistant uses `HASS_URL` / `HASS_TOKEN` or config credentials for persistent notification delivery; BlueBubbles uses `BLUEBUBBLES_SERVER_URL`, `BLUEBUBBLES_PASSWORD`, and optional `BLUEBUBBLES_HOME_CHANNEL` for local iMessage delivery.
-- **Missing**: email, weixin, qqbot, yuanbao, full api_server Responses/runs/session surface, msgraph_webhook
+- **Missing**: email, weixin, qqbot, yuanbao, full api_server streaming/runs/session surface, msgraph_webhook
 - **Priority**: **High** — Platform reach
 
 #### 14. Bedrock Transport
@@ -554,8 +554,8 @@ Generated: 2026-05-31
 - **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original feature that needs completion
 
 ### 13. REST API Server
-- **Status**: Basic endpoints (health, chat, sessions, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, non-streaming text `/v1/chat/completions`, and dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
-- **What's missing**: Responses API compatibility, Chat Completions streaming, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
+- **Status**: Basic endpoints (health, chat, sessions, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, non-streaming text `/v1/chat/completions`, non-streaming `/v1/responses` with in-memory `previous_response_id` chaining plus GET/DELETE retrieval, and dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
+- **What's missing**: Responses API streaming/durable store, Chat Completions streaming, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
@@ -719,9 +719,10 @@ Generated: 2026-05-31
 | 96 | BlueBubbles/iMessage Gateway Adapter | `hakimi-gateway/src/bluebubbles.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ Local BlueBubbles REST outbound text gateway supports config/env credentials, chat GUID/address lookup, optional new-chat creation, Markdown cleanup, UTF-8-safe 4000-character chunking, redacted logging, and channel-directory discovery |
 | 97 | TUI Session Browser | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-tui/src/app.rs` | 5 | ✅ `/sessions` and `/sess` now run locally in the TUI, list recent saved SQLite sessions from `~/.hakimi/sessions.db`, inspect recent messages with bounded previews, report missing stores clearly, and give gateway users a surface-boundary notice instead of entering the model loop |
 | 98 | TUI Skill Browser | `hakimi-tui/src/app.rs`, `hakimi-tui/Cargo.toml` | 4 | ✅ `/skills` now runs locally in the TUI, browses/searches local Skills Hub indexes, inspects metadata, renders installed/usage/path summaries, and keeps skill discovery out of the agent/model loop |
+| 99 | HTTP API Responses Endpoint | `hakimi-server/src/{api.rs,server.rs}` | 4 | ✅ `/v1/responses` accepts OpenAI-style string/message input, optional `instructions`, non-streaming model override, and in-memory `previous_response_id` chaining; `/v1/responses/{id}` supports GET/DELETE retrieval without mutating shared `/api/chat` history |
 
 ### Summary
-- **Total tests**: 1560 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1564 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
