@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.171-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.172-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1476-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1478-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1476 |
+| Tests | ~500 | 1478 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -102,12 +102,12 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - TUI `/voice status` and configurable Ctrl+B/Ctrl+letter push-to-talk share the same `voice.*` config, TTS/transcription tools, audio environment checks, PCM16 WAV recording artifact validation, oversized WAV chunked STT dispatch, local TTS playback launch, recorder-backed `voice_capture`, automatic transcript submission, continuous restart mode, second-press capture cancellation, three-no-speech auto-exit, and Hermes-style start/stop audio cues
 
 **Extensibility**
-- MCP (Model Context Protocol) client — stdio / HTTP / SSE transports
+- MCP (Model Context Protocol) client — stdio / HTTP / SSE transports plus CLI/gateway catalog search and config snippets
 - HTTP plugin system with YAML templates
 - HTTP API discovery — OpenAI-compatible `/v1/models` plus `/v1/capabilities` for external UI feature detection
 - Skills Hub — install community skills with `/skills install`
 - Isolated profiles — manage named workspaces, clone/export profile archives, create `~/.hakimi/bin/<profile>` wrapper aliases, and use gateway `/profile`
-- 9 bundled MCP servers: GitHub, filesystem, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking
+- 10 curated MCP catalog entries: GitHub, filesystem, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking, and the Hermes-reviewed n8n bridge
 
 ### 🛡️ Production Safety
 
@@ -191,7 +191,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1476 |
+| Tests | ~500 | 1478 |
 
 ---
 
@@ -219,7 +219,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] OpenAI / Anthropic / Gemini transports + SSE streaming
 - [x] 61+ built-in tools
 - [x] 11 runtime-exposed platform adapters
-- [x] MCP client + server catalog
+- [x] MCP client + CLI/gateway server catalog
 - [x] HTTP API model and capability discovery
 - [x] Plugin system + HTTP templates
 - [x] ratatui TUI with slash commands

@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.171-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.172-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1476-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1478-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1476 |
+| 测试数量 | ~500 | 1478 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -101,12 +101,12 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - TUI `/voice status` 与可配置 Ctrl+B/Ctrl+字母按键录音共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验、超大 WAV 分块 STT 派发、本地 TTS 播放启动、支持录音后端和自动 transcript 提交的 `voice_capture` 工具、连续重启录音、二次按键取消录音、三次无语音自动退出，以及 Hermes 风格开始/停止提示音
 
 **可扩展**
-- MCP 协议客户端 — stdio / HTTP / SSE 传输
+- MCP 协议客户端 — stdio / HTTP / SSE 传输，并支持 CLI/网关目录搜索与配置片段生成
 - HTTP 插件系统，YAML 模板
 - HTTP API 发现端点 — OpenAI 兼容 `/v1/models` 与 `/v1/capabilities`，方便外部 UI 探测能力
 - Skills Hub — 社区技能市场
 - 隔离 Profile — 管理命名工作区、克隆/导出 Profile 归档、创建 `~/.hakimi/bin/<profile>` 包装别名，并通过网关 `/profile` 操作
-- 内置 9 个 MCP 服务器：GitHub、文件系统、Brave Search、PostgreSQL、Puppeteer、记忆、fetch、SQLite、思维链
+- 10 个精选 MCP 目录项：GitHub、文件系统、Brave Search、PostgreSQL、Puppeteer、记忆、fetch、SQLite、思维链，以及 Hermes 审核过的 n8n bridge
 
 ### 🛡️ 生产级安全
 
@@ -198,7 +198,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1476 |
+| 测试数量 | ~500 | 1478 |
 
 ---
 
@@ -226,7 +226,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] OpenAI / Anthropic / Gemini 传输层 + SSE 流式
 - [x] 61+ 内置工具
 - [x] 11 个运行时可启用的平台适配器
-- [x] MCP 客户端 + 服务器目录
+- [x] MCP 客户端 + CLI/网关服务器目录
 - [x] HTTP API 模型与能力发现端点
 - [x] 插件系统 + HTTP 模板
 - [x] ratatui TUI 界面

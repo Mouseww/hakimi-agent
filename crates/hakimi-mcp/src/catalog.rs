@@ -144,6 +144,35 @@ pub fn default_catalog() -> Vec<McpServerEntry> {
             install_hint: "npm install -g @anthropic/sequential-thinking-mcp".into(),
             popular: false,
         },
+        McpServerEntry {
+            name: "n8n".into(),
+            description:
+                "Manage and inspect n8n workflows through the Hermes-reviewed stdio bridge".into(),
+            category: "automation".into(),
+            command: "sh".into(),
+            args: vec![
+                "-lc".into(),
+                "exec ~/.hakimi/mcp/n8n/.venv/bin/python ~/.hakimi/mcp/n8n/server.py".into(),
+            ],
+            env_vars: vec![
+                EnvVar {
+                    name: "N8N_BASE_URL".into(),
+                    description: "n8n instance URL".into(),
+                    required: true,
+                    example: Some("http://127.0.0.1:5678".into()),
+                },
+                EnvVar {
+                    name: "N8N_API_KEY".into(),
+                    description: "n8n API key generated under Settings > API".into(),
+                    required: true,
+                    example: Some("...".into()),
+                },
+            ],
+            install_hint:
+                "Clone https://github.com/CyberSamuraiX/hermes-n8n-mcp to ~/.hakimi/mcp/n8n, then run python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+                    .into(),
+            popular: false,
+        },
     ]
 }
 
@@ -219,7 +248,7 @@ mod tests {
     fn test_default_catalog_not_empty() {
         let catalog = default_catalog();
         assert!(!catalog.is_empty(), "catalog should have entries");
-        assert!(catalog.len() >= 9, "expected at least 9 catalog entries");
+        assert!(catalog.len() >= 10, "expected at least 10 catalog entries");
     }
 
     #[test]
@@ -233,6 +262,9 @@ mod tests {
 
         let results3 = search("nonexistent_xyz_12345");
         assert!(results3.is_empty());
+
+        let results4 = search("automation");
+        assert!(results4.iter().any(|e| e.name == "n8n"));
     }
 
     #[test]
@@ -312,6 +344,7 @@ mod tests {
         let cats = categories();
         assert!(!cats.is_empty());
         assert!(cats.contains(&"database".to_string()));
+        assert!(cats.contains(&"automation".to_string()));
         assert!(cats.contains(&"filesystem".to_string()));
         assert!(cats.contains(&"search".to_string()));
         assert!(cats.contains(&"scm".to_string()));

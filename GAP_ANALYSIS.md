@@ -84,6 +84,7 @@ Generated: 2026-05-31
 
 ### MCP
 - **McpClient** — stdio transport, JSON-RPC 2.0, with Hermes-style Node command fallback for narrowed PATH environments, credential-stripped remote error surfaces, and gateway `/mcp list` inventory over configured servers
+- **MCP Catalog CLI/Gateway Surface** — `hakimi mcp catalog/search/inspect/config` and gateway `/mcp catalog/search/inspect/config` expose curated entries, category/search discovery, and config.yaml snippets without starting an agent loop
 - **McpToolAdapter** — Adapts MCP tools to Hakimi's Tool trait
 - **Protocol support** — initialize, tools/list, tools/call, StreamableHTTP, SSE
 
@@ -697,9 +698,10 @@ Generated: 2026-05-31
 | 82 | Browser Vision Routing | `hakimi-tools/src/builtin_browser.rs`, CLI/server/TUI registration | 3 | ✅ Optional Chromium `browser_vision` captures a persistent PNG screenshot, returns `screenshot_path` for `MEDIA:` sharing, and emits a vision-compatible image content block plus question metadata for native multimodal routing |
 | 83 | Computer Use Readiness Surface | `hakimi-tools/src/builtin_computer_use.rs`, CLI/server/TUI registration | 5 | 🟡 `computer_use` mirrors Hermes action-schema inputs, supports safe wait plus macOS screenshot/list-app discovery, blocks dangerous typed payloads and destructive key combos, and reports driver readiness for mutating desktop actions without claiming full cua-driver parity |
 | 84 | Gateway Lifecycle Diagnostics | `hakimi-gateway/src/lifecycle.rs`, `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Gateway lifecycle events are written to a redacted `gateway-events.log`, adapter/connect/route/filter/edit/receiver paths are instrumented, and gateway `/logs` reads lifecycle plus legacy service logs without invoking `tail` |
+| 85 | MCP Catalog CLI/Gateway Surface | `hakimi-mcp/src/catalog.rs`, `hakimi-cli/src/entry.rs` | 2 | ✅ `hakimi mcp catalog/search/inspect/config` and gateway `/mcp catalog/search/inspect/config` expose curated MCP discovery, including the Hermes-reviewed n8n bridge, plus YAML config snippets without starting an agent loop |
 
 ### Summary
-- **Total tests**: 1476 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1478 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

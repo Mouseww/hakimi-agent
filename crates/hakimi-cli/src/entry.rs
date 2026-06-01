@@ -679,6 +679,248 @@ fn top_level_plugins_response(args: &[String]) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum McpCatalogFormat {
+    Markdown,
+    Plain,
+    Json,
+}
+
+fn parse_mcp_catalog_options(
+    args: &[String],
+) -> std::result::Result<(McpCatalogFormat, Option<String>), String> {
+    let mut format = McpCatalogFormat::Markdown;
+    let mut category = None;
+    let mut idx = 0;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--plain" => format = McpCatalogFormat::Plain,
+            "--json" => format = McpCatalogFormat::Json,
+            "--category" => {
+                idx += 1;
+                let Some(value) = args.get(idx) else {
+                    return Err(
+                        "Usage: `hakimi mcp catalog [--plain|--json] [--category <name>]`"
+                            .to_string(),
+                    );
+                };
+                category = Some(value.to_ascii_lowercase());
+            }
+            "-h" | "--help" => return Err(mcp_help_response()),
+            other => return Err(format!("unknown mcp catalog option `{other}`")),
+        }
+        idx += 1;
+    }
+    Ok((format, category))
+}
+
+fn sorted_mcp_catalog_entries(category: Option<&str>) -> Vec<hakimi_mcp::McpServerEntry> {
+    let mut entries = match category {
+        Some(category) => hakimi_mcp::catalog::by_category(category),
+        None => hakimi_mcp::catalog::default_catalog(),
+    };
+    entries.sort_by(|a, b| {
+        b.popular
+            .cmp(&a.popular)
+            .then_with(|| a.category.cmp(&b.category))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    entries
+}
+
+fn render_mcp_catalog(entries: &[hakimi_mcp::McpServerEntry], format: McpCatalogFormat) -> String {
+    match format {
+        McpCatalogFormat::Json => serde_json::to_string_pretty(entries)
+            .unwrap_or_else(|err| format!("failed to render MCP catalog JSON: {err}")),
+        McpCatalogFormat::Plain => {
+            if entries.is_empty() {
+                return "No MCP catalog entries matched.".to_string();
+            }
+            entries
+                .iter()
+                .map(|entry| {
+                    let popular = if entry.popular { "popular" } else { "" };
+                    format!(
+                        "{}\t{}\t{}\t{}",
+                        entry.name, entry.category, popular, entry.description
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        McpCatalogFormat::Markdown => {
+            if entries.is_empty() {
+                return "🔌 **MCP Catalog:**\nNo catalog entries matched.".to_string();
+            }
+            let mut lines = vec!["🔌 **MCP Catalog**".to_string()];
+            for entry in entries {
+                let badge = if entry.popular {
+                    "popular"
+                } else {
+                    entry.category.as_str()
+                };
+                lines.push(format!(
+                    "- `{}` ({}) — {}",
+                    entry.name, badge, entry.description
+                ));
+            }
+            lines.push(
+                "Use `hakimi mcp inspect <name>` for details or `hakimi mcp config <name>` for a config snippet."
+                    .to_string(),
+            );
+            lines.join("\n")
+        }
+    }
+}
+
+fn render_mcp_entry(entry: &hakimi_mcp::McpServerEntry) -> String {
+    let mut lines = vec![
+        format!("🔌 **MCP `{}`**", entry.name),
+        format!("- Category: `{}`", entry.category),
+        format!("- Description: {}", entry.description),
+        format!("- Command: `{}`", entry.command),
+        format!("- Args: `{}`", entry.args.join(" ")),
+        format!("- Install: {}", entry.install_hint),
+    ];
+    if entry.env_vars.is_empty() {
+        lines.push("- Env vars: none".to_string());
+    } else {
+        lines.push("- Env vars:".to_string());
+        for env in &entry.env_vars {
+            let required = if env.required { "required" } else { "optional" };
+            lines.push(format!(
+                "  - `{}` ({}) — {}",
+                env.name, required, env.description
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_mcp_config_snippet(names: &[String]) -> String {
+    if names.is_empty() {
+        return "Usage: `hakimi mcp config <name> [name...]`".to_string();
+    }
+
+    let mut entries = Vec::new();
+    let mut missing = Vec::new();
+    for name in names {
+        match hakimi_mcp::catalog::get(name) {
+            Some(entry) => entries.push(entry),
+            None => missing.push(name.clone()),
+        }
+    }
+    if !missing.is_empty() {
+        return format!(
+            "Unknown MCP catalog entr{}: {}",
+            if missing.len() == 1 { "y" } else { "ies" },
+            missing.join(", ")
+        );
+    }
+
+    format!(
+        "```yaml\n{}\n```",
+        hakimi_mcp::catalog::to_config_yaml(&entries).trim_end()
+    )
+}
+
+fn configured_mcp_servers_response(
+    servers: &std::collections::HashMap<String, hakimi_config::McpServerConfig>,
+) -> String {
+    if servers.is_empty() {
+        return "🔌 **MCP Servers:**\nNo configured MCP servers.\nUse `hakimi mcp catalog` to browse curated entries."
+            .to_string();
+    }
+
+    let mut names: Vec<_> = servers.keys().collect();
+    names.sort();
+
+    let mut lines = vec!["🔌 **MCP Servers**".to_string()];
+    for name in names {
+        let server = &servers[name];
+        lines.push(format!(
+            "- `{}`: `{}` ({} args, {} env vars)",
+            name,
+            server.command,
+            server.args.len(),
+            server.env.len(),
+        ));
+    }
+    lines.push("Use `hakimi mcp catalog` to browse curated entries.".to_string());
+    lines.join("\n")
+}
+
+fn mcp_help_response() -> String {
+    [
+        "Usage: `hakimi mcp <command>`",
+        "",
+        "Commands:",
+        "- `list` - show configured MCP servers",
+        "- `catalog [--plain|--json] [--category <name>]` - list curated MCP catalog entries",
+        "- `categories` - list catalog categories",
+        "- `search <query>` - search the curated catalog",
+        "- `inspect <name>` - show catalog entry details",
+        "- `config <name> [name...]` - render a YAML snippet for config.yaml",
+    ]
+    .join("\n")
+}
+
+fn top_level_mcp_response(
+    args: &[String],
+    servers: &std::collections::HashMap<String, hakimi_config::McpServerConfig>,
+) -> String {
+    let action = args
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or("list")
+        .to_ascii_lowercase();
+
+    match action.as_str() {
+        "list" | "ls" => configured_mcp_servers_response(servers),
+        "catalog" | "browse" => match parse_mcp_catalog_options(&args[1..]) {
+            Ok((format, category)) => {
+                let entries = sorted_mcp_catalog_entries(category.as_deref());
+                render_mcp_catalog(&entries, format)
+            }
+            Err(err) => err,
+        },
+        "categories" => {
+            let categories = hakimi_mcp::catalog::categories();
+            format!("MCP catalog categories: {}", categories.join(", "))
+        }
+        "search" => {
+            let query = args[1..].join(" ");
+            if query.trim().is_empty() {
+                "Usage: `hakimi mcp search <query>`".to_string()
+            } else {
+                let mut entries = hakimi_mcp::catalog::search(&query);
+                entries.sort_by(|a, b| a.name.cmp(&b.name));
+                render_mcp_catalog(&entries, McpCatalogFormat::Markdown)
+            }
+        }
+        "inspect" | "show" => {
+            let Some(name) = args.get(1) else {
+                return "Usage: `hakimi mcp inspect <name>`".to_string();
+            };
+            match hakimi_mcp::catalog::get(name) {
+                Some(entry) => render_mcp_entry(&entry),
+                None => format!("Unknown MCP catalog entry `{name}`."),
+            }
+        }
+        "config" | "snippet" => render_mcp_config_snippet(&args[1..]),
+        "add" | "install" => {
+            let Some(name) = args.get(1) else {
+                return "Usage: `hakimi mcp config <name>`".to_string();
+            };
+            format!(
+                "MCP install remains config-file managed in Hakimi. Run `hakimi mcp config {name}` and add the snippet to `mcp_servers` in config.yaml."
+            )
+        }
+        "help" | "-h" | "--help" => mcp_help_response(),
+        other => format!("Unknown MCP command `{other}`.\n\n{}", mcp_help_response()),
+    }
+}
+
 fn take_leading_cron_repeat(raw: &str) -> std::result::Result<(Option<u32>, &str), String> {
     let raw = raw.trim_start();
     if let Some(rest) = raw.strip_prefix("--repeat=") {
@@ -1310,32 +1552,50 @@ fn gateway_mcp_response(
     let action = parts.next().unwrap_or("list").to_ascii_lowercase();
 
     match action.as_str() {
-        "list" => {
-            if servers.is_empty() {
-                return "🔌 **MCP Servers:**\nNo configured MCP servers.".to_string();
+        "list" => configured_mcp_servers_response(servers),
+        "catalog" | "browse" => render_mcp_catalog(
+            &sorted_mcp_catalog_entries(None),
+            McpCatalogFormat::Markdown,
+        ),
+        "categories" => {
+            let categories = hakimi_mcp::catalog::categories();
+            format!("MCP catalog categories: {}", categories.join(", "))
+        }
+        "search" => {
+            let query = parts.next().unwrap_or_default().trim();
+            if query.is_empty() {
+                "Usage: /mcp search <query>".to_string()
+            } else {
+                let mut entries = hakimi_mcp::catalog::search(query);
+                entries.sort_by(|a, b| a.name.cmp(&b.name));
+                render_mcp_catalog(&entries, McpCatalogFormat::Markdown)
             }
-
-            let mut names: Vec<_> = servers.keys().collect();
-            names.sort();
-
-            let mut lines = vec!["🔌 **MCP Servers**".to_string()];
-            for name in names {
-                let server = &servers[name];
-                lines.push(format!(
-                    "- `{}`: `{}` ({} args, {} env vars)",
-                    name,
-                    server.command,
-                    server.args.len(),
-                    server.env.len(),
-                ));
+        }
+        "inspect" | "show" => {
+            let name = parts.next().unwrap_or_default().trim();
+            if name.is_empty() {
+                "Usage: /mcp inspect <name>".to_string()
+            } else {
+                match hakimi_mcp::catalog::get(name) {
+                    Some(entry) => render_mcp_entry(&entry),
+                    None => format!("Unknown MCP catalog entry `{name}`."),
+                }
             }
-            lines.join("\n")
+        }
+        "config" | "snippet" => {
+            let names: Vec<String> = parts
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(str::to_string)
+                .collect();
+            render_mcp_config_snippet(&names)
         }
         "add" | "remove" => {
-            "MCP server add/remove is config-file managed. Edit `mcp_servers` in your Hakimi config and restart the gateway."
+            "MCP server add/remove is config-file managed. Use `/mcp catalog` and `/mcp config <name>` to prepare config.yaml snippets."
                 .to_string()
         }
-        _ => "Usage: /mcp <list|add|remove>".to_string(),
+        _ => "Usage: /mcp <list|catalog|search|inspect|config>".to_string(),
     }
 }
 
@@ -2216,6 +2476,13 @@ pub struct PluginCommandArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct McpCommandArgs {
+    /// MCP action and arguments, e.g. `list`, `catalog`, `inspect github`, or `config github`.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
 pub struct SkillCommandArgs {
     /// Skill action and arguments, e.g. `browse`, `search rust`, or `install <identifier>`.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -2254,6 +2521,8 @@ pub enum TopLevelCommand {
     Cron(CronCommandArgs),
     /// Manage HTTP tool plugins.
     Plugins(PluginCommandArgs),
+    /// Browse configured MCP servers and the curated MCP catalog.
+    Mcp(McpCommandArgs),
     /// Browse, inspect, and install Skills Hub skills.
     Skills(SkillCommandArgs),
     /// Manage isolated Hakimi profiles.
@@ -5165,6 +5434,14 @@ pub async fn run() -> Result<()> {
         println!("{}", top_level_plugins_response(&plugin_args.args));
         return Ok(());
     }
+    if let Some(TopLevelCommand::Mcp(mcp_args)) = &args.command {
+        let config = load_config();
+        println!(
+            "{}",
+            top_level_mcp_response(&mcp_args.args, &config.mcp_servers)
+        );
+        return Ok(());
+    }
     if let Some(TopLevelCommand::Skills(skill_args)) = &args.command {
         println!("{}", crate::skills::skills_response(&skill_args.args));
         return Ok(());
@@ -5253,8 +5530,8 @@ mod tests {
     use super::{
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
         GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamRenderSnapshot,
-        GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, PluginCommandArgs,
-        ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
+        GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, McpCommandArgs,
+        PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
         VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
         create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
         cron_success_output_should_deliver, gateway_bot_id_for_platform,
@@ -5463,6 +5740,16 @@ mod tests {
                     "weather".to_string(),
                     "local_weather".to_string()
                 ]
+            }))
+        );
+
+        let mcp =
+            <super::Args as clap::Parser>::try_parse_from(["hakimi", "mcp", "inspect", "github"])
+                .unwrap();
+        assert_eq!(
+            mcp.command,
+            Some(TopLevelCommand::Mcp(McpCommandArgs {
+                args: vec!["inspect".to_string(), "github".to_string()]
             }))
         );
 
@@ -5726,6 +6013,50 @@ mcp_servers:
     }
 
     #[test]
+    fn top_level_mcp_catalog_supports_search_inspect_and_config() {
+        let config = hakimi_config::HakimiConfig::default();
+
+        let catalog = top_level_mcp_response(&["catalog".to_string()], &config.mcp_servers);
+        assert!(catalog.contains("MCP Catalog"));
+        assert!(catalog.contains("`github`"));
+
+        let search = top_level_mcp_response(
+            &["search".to_string(), "automation".to_string()],
+            &config.mcp_servers,
+        );
+        assert!(search.contains("`n8n`"));
+
+        let inspect = top_level_mcp_response(
+            &["inspect".to_string(), "n8n".to_string()],
+            &config.mcp_servers,
+        );
+        assert!(inspect.contains("N8N_BASE_URL"));
+        assert!(inspect.contains("hermes-n8n-mcp"));
+
+        let snippet = top_level_mcp_response(
+            &["config".to_string(), "github".to_string()],
+            &config.mcp_servers,
+        );
+        assert!(snippet.contains("mcp_servers:"));
+        assert!(snippet.contains("github:"));
+        assert!(snippet.contains("GITHUB_TOKEN"));
+    }
+
+    #[test]
+    fn gateway_mcp_response_exposes_catalog_without_agent_call() {
+        let config = hakimi_config::HakimiConfig::default();
+
+        let catalog = gateway_mcp_response(Some("catalog"), &config.mcp_servers);
+        assert!(catalog.contains("MCP Catalog"));
+
+        let search = gateway_mcp_response(Some("search n8n"), &config.mcp_servers);
+        assert!(search.contains("`n8n`"));
+
+        let snippet = gateway_mcp_response(Some("config n8n"), &config.mcp_servers);
+        assert!(snippet.contains("N8N_API_KEY"));
+    }
+
+    #[test]
     fn gateway_mcp_response_reports_config_file_boundary() {
         let config = hakimi_config::HakimiConfig::default();
 
@@ -5738,7 +6069,7 @@ mcp_servers:
         );
         assert_eq!(
             gateway_mcp_response(Some("bogus"), &config.mcp_servers),
-            "Usage: /mcp <list|add|remove>"
+            "Usage: /mcp <list|catalog|search|inspect|config>"
         );
     }
 
