@@ -560,8 +560,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
-- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/sessions`, `/skills`, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
-- **What's missing**: Rich interactive session picker, config editor, theme/skin support, cron job management, gateway status panel
+- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/sessions`, `/skills`, `/cron`, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
+- **What's missing**: Rich interactive session picker, config editor, theme/skin support, gateway status panel
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
 ### 15. Error Handling
@@ -605,7 +605,7 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. TUI config/cron/gateway management surfaces
+10. TUI config/gateway management surfaces
 
 ---
 
@@ -726,9 +726,10 @@ Generated: 2026-05-31
 | 102 | MSGraph Webhook Gateway Adapter | `hakimi-gateway/src/msgraph_webhook.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Microsoft Graph change-notification ingress supports validation-token handshakes, timing-safe `clientState` checks, optional accepted-resource filtering, public-bind CIDR allowlists, duplicate notification suppression, prompt templating, and gateway message injection |
 | 103 | HTTP API Runs Endpoint | `hakimi-server/src/{api.rs,server.rs}` | 5 | ✅ `/v1/runs` accepts text input/messages/instructions plus optional `session_id`, returns a pollable run id, executes through an isolated cloned server agent, `/v1/runs/{id}` exposes queued/running/completed/failed/cancelled status with output and usage, and `/v1/runs/{id}/stop` cancels queued/running background tasks without mutating shared `/api/chat` history |
 | 104 | HTTP API Runs Events | `hakimi-server/src/api.rs` | 2 | ✅ `/v1/runs/{id}/events` returns stored queued/running/completed/failed/cancelled lifecycle events as SSE snapshots, and `/v1/capabilities` advertises the events route for external UI discovery |
+| 105 | TUI Cron Manager | `hakimi-tui/src/app.rs`, `hakimi-tui/Cargo.toml` | 5 | ✅ `/cron` now runs locally in the TUI, lists/statuses persistent `~/.hakimi/cron.db` jobs, creates guarded scheduled prompts, and supports pause/resume/run/remove without entering the agent/model loop |
 
 ### Summary
-- **Total tests**: 1587 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1592 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
