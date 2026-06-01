@@ -7,6 +7,9 @@ use tracing::debug;
 
 use crate::{Tool, is_whisper_hallucination};
 
+const TRANSCRIPTION_MAX_FILE_SIZE_BYTES: usize = 25 * 1024 * 1024;
+const WAV_CHUNK_HEADER_RESERVE_BYTES: usize = 64 * 1024;
+
 /// Built-in speech-to-text tool using OpenAI-compatible transcription APIs.
 pub struct TranscribeAudioTool;
 
@@ -22,7 +25,8 @@ impl Tool for TranscribeAudioTool {
 
     fn description(&self) -> &str {
         "Transcribe speech from a local audio file path or remote URL. \
-         Uses an OpenAI-compatible audio transcription API and returns the recognized text."
+         Uses an OpenAI-compatible audio transcription API and returns the recognized text. \
+         Oversized local WAV files are split into provider-sized chunks for text output."
     }
 
     fn emoji(&self) -> &str {
@@ -110,9 +114,16 @@ impl Tool for TranscribeAudioTool {
         );
 
         let source = load_audio_source(audio_path).await?;
-        let transcript =
+        let transcript = if should_chunk_for_transcription(
+            &source,
+            response_format,
+            TRANSCRIPTION_MAX_FILE_SIZE_BYTES,
+        ) {
+            transcribe_wav_in_chunks(&source, &model, prompt, language, ctx).await?
+        } else {
             request_openai_transcription(&source, &model, response_format, prompt, language, ctx)
-                .await?;
+                .await?
+        };
         Ok(filter_text_transcription_response(
             response_format,
             transcript,
@@ -120,11 +131,18 @@ impl Tool for TranscribeAudioTool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AudioSourceKind {
+    Local,
+    Remote,
+}
+
 #[derive(Debug, Clone)]
 struct AudioSource {
     file_name: String,
     mime_type: String,
     bytes: Vec<u8>,
+    kind: AudioSourceKind,
 }
 
 async fn load_audio_source(audio_path: &str) -> Result<AudioSource> {
@@ -176,6 +194,7 @@ async fn download_audio(url: &str) -> Result<AudioSource> {
         file_name: file_name_from_source(url),
         mime_type,
         bytes: bytes.to_vec(),
+        kind: AudioSourceKind::Remote,
     })
 }
 
@@ -187,7 +206,198 @@ fn read_local_audio(path: &str) -> Result<AudioSource> {
         file_name: file_name_from_source(path),
         mime_type: guess_audio_mime_type(path),
         bytes,
+        kind: AudioSourceKind::Local,
     })
+}
+
+fn should_chunk_for_transcription(
+    source: &AudioSource,
+    response_format: &str,
+    max_file_size: usize,
+) -> bool {
+    source.kind == AudioSourceKind::Local
+        && response_format == "text"
+        && source.file_name.to_ascii_lowercase().ends_with(".wav")
+        && source.bytes.len() > max_file_size
+}
+
+async fn transcribe_wav_in_chunks(
+    source: &AudioSource,
+    model: &str,
+    prompt: Option<&str>,
+    language: Option<&str>,
+    ctx: &ToolContext,
+) -> Result<String> {
+    let chunks = split_wav_for_transcription(source, TRANSCRIPTION_MAX_FILE_SIZE_BYTES)?;
+    if chunks.is_empty() {
+        return Err(HakimiError::Tool("no audio chunks were created".into()));
+    }
+
+    debug!(
+        file_name = %source.file_name,
+        chunks = chunks.len(),
+        "transcribing oversized WAV in chunks"
+    );
+
+    let mut transcripts = Vec::new();
+    for (index, chunk) in chunks.iter().enumerate() {
+        let transcript = request_openai_transcription(chunk, model, "text", prompt, language, ctx)
+            .await
+            .map_err(|err| {
+                HakimiError::Tool(format!(
+                    "chunk {}/{} transcription failed: {err}",
+                    index + 1,
+                    chunks.len()
+                ))
+            })?;
+        let filtered = filter_text_transcription_response("text", transcript);
+        let transcript = filtered.trim();
+        if !transcript.is_empty() {
+            transcripts.push(transcript.to_string());
+        }
+    }
+
+    Ok(transcripts.join(" "))
+}
+
+fn split_wav_for_transcription(
+    source: &AudioSource,
+    max_file_size: usize,
+) -> Result<Vec<AudioSource>> {
+    let wav = parse_wav_layout(&source.bytes)?;
+    let exact_header_budget = max_file_size.checked_sub(wav.data_start).ok_or_else(|| {
+        HakimiError::Tool("STT max file size is too small for WAV chunking".into())
+    })?;
+    let reserved_budget = max_file_size.saturating_sub(WAV_CHUNK_HEADER_RESERVE_BYTES);
+    let max_data_bytes = if reserved_budget >= wav.block_align {
+        reserved_budget
+    } else {
+        exact_header_budget
+    };
+    let block_align = wav.block_align.max(1);
+    let max_data_bytes = (max_data_bytes / block_align) * block_align;
+    if max_data_bytes == 0 {
+        return Err(HakimiError::Tool(
+            "STT max file size is too small for WAV chunking".into(),
+        ));
+    }
+
+    let mut chunks = Vec::new();
+    let mut offset = 0usize;
+    let stem = wav_chunk_file_stem(&source.file_name);
+    let data = &source.bytes[wav.data_start..wav.data_end];
+
+    while offset < data.len() {
+        let end = offset.saturating_add(max_data_bytes).min(data.len());
+        let mut chunk_bytes = source.bytes[..wav.data_start].to_vec();
+        chunk_bytes.extend_from_slice(&data[offset..end]);
+        patch_wav_sizes(&mut chunk_bytes, wav.data_len_offset)?;
+
+        let index = chunks.len() + 1;
+        chunks.push(AudioSource {
+            file_name: format!("{stem}_chunk{index:03}.wav"),
+            mime_type: source.mime_type.clone(),
+            bytes: chunk_bytes,
+            kind: source.kind,
+        });
+        offset = end;
+    }
+
+    Ok(chunks)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WavLayout {
+    data_start: usize,
+    data_end: usize,
+    data_len_offset: usize,
+    block_align: usize,
+}
+
+fn parse_wav_layout(bytes: &[u8]) -> Result<WavLayout> {
+    if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err(HakimiError::Tool("expected a RIFF/WAVE audio file".into()));
+    }
+
+    let mut cursor = 12usize;
+    let mut block_align = None;
+    let mut data = None;
+    while cursor <= bytes.len().saturating_sub(8) {
+        let chunk_id = &bytes[cursor..cursor + 4];
+        let chunk_len = read_u32_le(bytes, cursor + 4)? as usize;
+        let data_start = cursor
+            .checked_add(8)
+            .ok_or_else(|| HakimiError::Tool("invalid WAV chunk offset".into()))?;
+        let data_end = data_start
+            .checked_add(chunk_len)
+            .ok_or_else(|| HakimiError::Tool("invalid WAV chunk length".into()))?;
+        if data_end > bytes.len() {
+            return Err(HakimiError::Tool(
+                "WAV chunk length exceeds file size".into(),
+            ));
+        }
+
+        if chunk_id == b"fmt " && chunk_len >= 14 {
+            let value = read_u16_le(bytes, data_start + 12)? as usize;
+            block_align = Some(value.max(1));
+        } else if chunk_id == b"data" {
+            data = Some(WavLayout {
+                data_start,
+                data_end,
+                data_len_offset: cursor + 4,
+                block_align: block_align.unwrap_or(2),
+            });
+            break;
+        }
+
+        cursor = data_end
+            .checked_add(chunk_len % 2)
+            .ok_or_else(|| HakimiError::Tool("invalid WAV chunk padding".into()))?;
+    }
+
+    data.ok_or_else(|| HakimiError::Tool("WAV file has no data chunk".into()))
+}
+
+fn patch_wav_sizes(bytes: &mut [u8], data_len_offset: usize) -> Result<()> {
+    let riff_len = bytes
+        .len()
+        .checked_sub(8)
+        .ok_or_else(|| HakimiError::Tool("WAV chunk is too small".into()))?;
+    let data_len = bytes
+        .len()
+        .checked_sub(data_len_offset + 4)
+        .ok_or_else(|| HakimiError::Tool("WAV data chunk is invalid".into()))?;
+    let riff_len =
+        u32::try_from(riff_len).map_err(|_| HakimiError::Tool("WAV chunk is too large".into()))?;
+    let data_len = u32::try_from(data_len)
+        .map_err(|_| HakimiError::Tool("WAV data chunk is too large".into()))?;
+
+    bytes[4..8].copy_from_slice(&riff_len.to_le_bytes());
+    bytes[data_len_offset..data_len_offset + 4].copy_from_slice(&data_len.to_le_bytes());
+    Ok(())
+}
+
+fn read_u16_le(bytes: &[u8], offset: usize) -> Result<u16> {
+    let slice = bytes
+        .get(offset..offset + 2)
+        .ok_or_else(|| HakimiError::Tool("unexpected end of WAV header".into()))?;
+    Ok(u16::from_le_bytes([slice[0], slice[1]]))
+}
+
+fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32> {
+    let slice = bytes
+        .get(offset..offset + 4)
+        .ok_or_else(|| HakimiError::Tool("unexpected end of WAV header".into()))?;
+    Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
+}
+
+fn wav_chunk_file_stem(file_name: &str) -> String {
+    Path::new(file_name)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("audio")
+        .to_string()
 }
 
 async fn request_openai_transcription(
@@ -380,6 +590,76 @@ mod tests {
         assert_eq!(source.file_name, "sample.wav");
         assert_eq!(source.mime_type, "audio/wav");
         assert_eq!(source.bytes, b"audio-bytes");
+        assert_eq!(source.kind, AudioSourceKind::Local);
+    }
+
+    #[test]
+    fn test_should_chunk_only_local_text_wav_over_limit() {
+        let source = AudioSource {
+            file_name: "recording.wav".to_string(),
+            mime_type: "audio/wav".to_string(),
+            bytes: vec![0; 128],
+            kind: AudioSourceKind::Local,
+        };
+        assert!(should_chunk_for_transcription(&source, "text", 127));
+        assert!(!should_chunk_for_transcription(&source, "json", 127));
+        assert!(!should_chunk_for_transcription(&source, "text", 128));
+        assert!(!should_chunk_for_transcription(
+            &AudioSource {
+                kind: AudioSourceKind::Remote,
+                ..source.clone()
+            },
+            "text",
+            127
+        ));
+        assert!(!should_chunk_for_transcription(
+            &AudioSource {
+                file_name: "recording.mp3".to_string(),
+                ..source
+            },
+            "text",
+            127
+        ));
+    }
+
+    #[test]
+    fn test_split_wav_for_transcription_patches_chunk_sizes() {
+        let samples: Vec<i16> = (0..20).collect();
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("recording.wav");
+        crate::write_pcm16_wav(&path, &samples).expect("write wav");
+        let source = read_local_audio(path.to_str().expect("path str")).expect("load source");
+
+        let chunks = split_wav_for_transcription(&source, 64).expect("split wav");
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].file_name, "recording_chunk001.wav");
+        for chunk in &chunks {
+            let layout = parse_wav_layout(&chunk.bytes).expect("parse chunk");
+            assert!(chunk.bytes.len() <= 64);
+            assert_eq!(
+                read_u32_le(&chunk.bytes, 4).expect("riff len") as usize,
+                chunk.bytes.len() - 8
+            );
+            assert_eq!(
+                read_u32_le(&chunk.bytes, layout.data_len_offset).expect("data len") as usize,
+                layout.data_end - layout.data_start
+            );
+            assert_eq!((layout.data_end - layout.data_start) % 2, 0);
+        }
+    }
+
+    #[test]
+    fn test_split_wav_rejects_invalid_input() {
+        let source = AudioSource {
+            file_name: "bad.wav".to_string(),
+            mime_type: "audio/wav".to_string(),
+            bytes: b"not-a-wav".to_vec(),
+            kind: AudioSourceKind::Local,
+        };
+
+        let err = split_wav_for_transcription(&source, 1024).expect_err("invalid wav");
+        assert!(format!("{err}").contains("RIFF/WAVE"));
     }
 
     #[tokio::test]
