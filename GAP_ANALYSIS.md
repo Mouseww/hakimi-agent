@@ -370,8 +370,7 @@ Generated: 2026-05-31
 #### 37. Checkpoint Manager (Filesystem Snapshots)
 - **What**: Transparent shadow-git snapshots before file-mutating operations
 - **Hermes location**: `tools/checkpoint_manager.py`
-- **Details**: Auto-snapshots of working directories. Single shared git store with deduplication. Rollback to any previous checkpoint. NOT visible to LLM — transparent infrastructure.
-- **Priority**: **Medium** — Safety net for file operations
+- **Status**: ✅ Done in v0.3.177 — `checkpoint` now uses a shared `~/.hakimi/checkpoints/store` shadow git repository with per-project refs and index files, validates checkpoint IDs and relative paths, supports list/status/diff/rollback including single-file paths, and keeps gateway `/checkpoints` backed by the same store instead of placeholder text.
 
 #### 38. Skin Engine (CLI Theming)
 - **What**: Data-driven CLI theming system
@@ -528,7 +527,7 @@ Generated: 2026-05-31
 - **Hermes reference**: `plugins/` (entire directory)
 
 ### 8. CLI Commands
-- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/profile`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、`/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`、`profile`
+- **Status**: 38 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/profile`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、基于真实 shadow-git store 的 `/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`、`profile`
 - **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher/board/swarm 管理面
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
@@ -629,7 +628,7 @@ Generated: 2026-05-31
 |---|---------|---------|-------|--------|
 | 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,sms,matrix,wecom,dingtalk}.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 30 | ✅ 6 adapter implementations now have YAML config and gateway startup registration, with queued outbound delivery mapped through configured bot IDs |
 | 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 36 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron status/add/edit`, standalone `hakimi cron status/tick` management, strict/assembled cron prompt scanner, skill-loaded scheduled runs, explicit gateway delivery targets |
-| 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs` | 20 | ✅ Shadow git snapshots, rollback, diff, transparent to LLM |
+| 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs`, `hakimi-cli/src/entry.rs` | 22 | ✅ Shared `~/.hakimi/checkpoints/store` shadow git snapshots with per-project refs/indexes, validated IDs/paths, status/list/diff/rollback, and real gateway `/checkpoints` responses |
 | 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
 | 18 | Gateway Media Delivery | `hakimi-core/src/loop_impl.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/telegram.rs` | 4 | ✅ `MEDIA:` / `IMAGE:` tool results now stream through gateway side-channel; Telegram uploads local images and generated TTS audio directly |
@@ -706,7 +705,7 @@ Generated: 2026-05-31
 | 89 | Home Assistant Gateway Adapter | `hakimi-gateway/src/homeassistant.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 6 | ✅ Home Assistant outbound gateway sends persistent notifications through REST with `HASS_URL` / `HASS_TOKEN` or config credentials, default-title routing, UTF-8-safe message limits, and channel-directory discovery |
 
 ### Summary
-- **Total tests**: 1500 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1502 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

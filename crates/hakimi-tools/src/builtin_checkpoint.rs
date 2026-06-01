@@ -1,18 +1,67 @@
 //! Checkpoint manager — transparent shadow-git snapshots before file mutations.
 //!
-//! Creates lightweight git snapshots of working directories before file-mutating
-//! operations, enabling rollback to any previous checkpoint.
+//! The checkpoint store intentionally lives outside the user's project git
+//! directory. Git is used as a content-addressed snapshot engine through
+//! `GIT_DIR`, `GIT_WORK_TREE`, and a per-project `GIT_INDEX_FILE`.
 
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use serde_json::{Value as JsonValue, json};
+use std::ffi::{OsStr, OsString};
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tracing::{info, warn};
 
 use crate::Tool;
 
-/// Shadow git store directory name.
-const SHADOW_GIT_DIR: &str = ".hakimi-checkpoints";
+const STORE_DIR: &str = "store";
+const INDEXES_DIR: &str = "indexes";
+const PROJECTS_DIR: &str = "projects";
+const REFS_PREFIX: &str = "refs/hakimi";
+const DEFAULT_LIST_LIMIT: usize = 20;
+const MAX_LIST_LIMIT: usize = 100;
+
+const DEFAULT_EXCLUDES: &[&str] = &[
+    ".git/",
+    ".hg/",
+    ".svn/",
+    ".worktrees/",
+    ".hakimi-checkpoints/",
+    "target/",
+    "node_modules/",
+    "dist/",
+    "build/",
+    ".next/",
+    ".nuxt/",
+    "__pycache__/",
+    ".cache/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".venv/",
+    "venv/",
+    "env/",
+    ".env",
+    ".env.*",
+    "*.log",
+    "*.zip",
+    "*.tar",
+    "*.tar.gz",
+    "*.tgz",
+    "*.7z",
+    "*.rar",
+    "*.mp4",
+    "*.mov",
+    "*.mkv",
+    "*.webm",
+    "*.exe",
+    "*.dll",
+    "*.dylib",
+    "*.so",
+    "*.o",
+    "*.a",
+];
 
 /// Built-in tool for creating and managing filesystem checkpoints.
 pub struct CheckpointTool;
@@ -28,13 +77,12 @@ impl Tool for CheckpointTool {
     }
 
     fn description(&self) -> &str {
-        "Create and manage filesystem checkpoints. Creates shadow-git snapshots \
-         of the working directory before file mutations. Supports rollback to any \
-         previous checkpoint."
+        "Create and manage filesystem checkpoints in a shared shadow-git store \
+         under ~/.hakimi/checkpoints without touching the project .git directory."
     }
 
     fn emoji(&self) -> &str {
-        "\u{1f3c3}"
+        "\u{1f4be}"
     }
 
     fn schema(&self) -> JsonValue {
@@ -43,16 +91,26 @@ impl Tool for CheckpointTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create", "list", "rollback", "diff"],
-                    "description": "Action to perform: create a checkpoint, list checkpoints, rollback to a checkpoint, or show diff since a checkpoint."
+                    "enum": ["create", "list", "rollback", "diff", "status"],
+                    "description": "Action to perform: create, list, rollback, diff, or status."
                 },
                 "checkpoint_id": {
                     "type": "string",
-                    "description": "Checkpoint ID (required for rollback and diff actions)."
+                    "description": "Checkpoint commit id, required for rollback and diff."
                 },
                 "label": {
                     "type": "string",
-                    "description": "Optional label for the checkpoint (for create action)."
+                    "description": "Optional label for a created checkpoint."
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Optional relative file path for rollback or diff."
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Maximum checkpoints to list."
                 }
             },
             "required": ["action"]
@@ -65,208 +123,682 @@ impl Tool for CheckpointTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
 
-        let checkpoint_id = args
-            .get("checkpoint_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-
-        let label = args.get("label").and_then(|v| v.as_str()).unwrap_or("");
-
-        let workdir = Path::new(&ctx.workdir);
-
         match action {
-            "create" => create_checkpoint(workdir, label).await,
-            "list" => list_checkpoints(workdir).await,
+            "create" => {
+                let label = args.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                let store = CheckpointStore::for_workdir(Path::new(&ctx.workdir))?;
+                store.create(label).map(|body| body.to_string())
+            }
+            "list" => {
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| usize::try_from(v).ok())
+                    .unwrap_or(DEFAULT_LIST_LIMIT)
+                    .clamp(1, MAX_LIST_LIMIT);
+                let store = CheckpointStore::for_workdir(Path::new(&ctx.workdir))?;
+                store.list(limit).map(|body| body.to_string())
+            }
             "rollback" => {
-                if checkpoint_id.is_empty() {
-                    return Err(HakimiError::Tool(
-                        "checkpoint_id is required for rollback action".into(),
-                    ));
-                }
-                rollback_checkpoint(workdir, checkpoint_id).await
+                let checkpoint_id = required_checkpoint_id(args)?;
+                let path = optional_relative_path(args, "path")?;
+                let store = CheckpointStore::for_workdir(Path::new(&ctx.workdir))?;
+                store
+                    .rollback(checkpoint_id, path.as_deref())
+                    .map(|body| body.to_string())
             }
             "diff" => {
-                if checkpoint_id.is_empty() {
-                    return Err(HakimiError::Tool(
-                        "checkpoint_id is required for diff action".into(),
-                    ));
-                }
-                diff_checkpoint(workdir, checkpoint_id).await
+                let checkpoint_id = required_checkpoint_id(args)?;
+                let path = optional_relative_path(args, "path")?;
+                let store = CheckpointStore::for_workdir(Path::new(&ctx.workdir))?;
+                store
+                    .diff(checkpoint_id, path.as_deref())
+                    .map(|body| body.to_string())
+            }
+            "status" => {
+                let store = CheckpointStore::for_workdir(Path::new(&ctx.workdir))?;
+                store.status().map(|body| body.to_string())
             }
             _ => Err(HakimiError::Tool(format!(
-                "Unknown checkpoint action: '{action}'. Valid actions: create, list, rollback, diff"
+                "Unknown checkpoint action: '{action}'. Valid actions: create, list, rollback, diff, status"
             ))),
         }
     }
 }
 
-/// Initialize the shadow git store if it doesn't exist.
-fn ensure_shadow_git(workdir: &Path) -> Result<PathBuf> {
-    let git_dir = workdir.join(SHADOW_GIT_DIR);
-    if !git_dir.join("HEAD").exists() {
-        std::fs::create_dir_all(&git_dir).map_err(HakimiError::Io)?;
-        // Initialize a bare-ish git repo.
-        run_git(workdir, &["init", "--bare", &git_dir.to_string_lossy()])?;
-        // Configure the shadow git repo.
-        run_git(&git_dir, &["config", "user.email", "hakimi@checkpoint"])?;
-        run_git(&git_dir, &["config", "user.name", "Hakimi Checkpoint"])?;
-    }
-    Ok(git_dir)
-}
-
-/// Create a new checkpoint.
-async fn create_checkpoint(workdir: &Path, label: &str) -> Result<String> {
-    let _git_dir = ensure_shadow_git(workdir)?;
-
-    // Add all files in the working directory.
-    run_git(workdir, &["add", "-A"])?;
-
-    // Create a commit with a descriptive message.
-    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let message = if label.is_empty() {
-        format!("checkpoint: {timestamp}")
-    } else {
-        format!("checkpoint: {label} ({timestamp})")
+/// Render checkpoint slash-command output for gateway and other text surfaces.
+pub fn checkpoint_response(raw: Option<&str>, workdir: &Path) -> String {
+    let mut parts = raw.unwrap_or("list").split_whitespace();
+    let action = parts.next().unwrap_or("list");
+    let store = match CheckpointStore::for_workdir(workdir) {
+        Ok(store) => store,
+        Err(err) => return format!("Failed to initialize checkpoints: {err}"),
     };
 
-    // Commit to the shadow git store.
-    let _output = run_git_raw(workdir, &["commit", "-m", &message, "--allow-empty"])?;
+    let result = match action {
+        "list" | "ls" => store.list(DEFAULT_LIST_LIMIT),
+        "status" => store.status(),
+        "create" | "new" => {
+            let label = parts.collect::<Vec<_>>().join(" ");
+            store.create(&label)
+        }
+        "restore" | "rollback" => {
+            let Some(id) = parts.next() else {
+                return "Usage: /checkpoints restore <id> [relative-path]".to_string();
+            };
+            let path = parts.next();
+            store.rollback(id, path)
+        }
+        "diff" => {
+            let Some(id) = parts.next() else {
+                return "Usage: /checkpoints diff <id> [relative-path]".to_string();
+            };
+            let path = parts.next();
+            store.diff(id, path)
+        }
+        _ => {
+            return "Usage: /checkpoints <list|status|create [label]|diff <id> [path]|restore <id> [path]>".to_string();
+        }
+    };
 
-    // Extract the commit hash.
-    let hash = run_git_raw(workdir, &["rev-parse", "HEAD"])?;
-    let hash = hash.trim();
-
-    info!(hash = %hash, label = %label, "Checkpoint created");
-
-    Ok(json!({
-        "status": "created",
-        "checkpoint_id": hash,
-        "label": label,
-        "message": message,
-        "timestamp": timestamp
-    })
-    .to_string())
+    match result {
+        Ok(value) => format_checkpoint_value(&value),
+        Err(err) => format!("Checkpoint command failed: {err}"),
+    }
 }
 
-/// List all checkpoints.
-async fn list_checkpoints(workdir: &Path) -> Result<String> {
-    let git_dir = workdir.join(SHADOW_GIT_DIR);
-    if !git_dir.join("HEAD").exists() {
-        return Ok(json!({
-            "checkpoints": [],
-            "message": "No checkpoints exist yet. Use action='create' to create one."
-        })
-        .to_string());
-    }
-
-    let output = run_git_raw(workdir, &["log", "--format=%H|%s|%ai", "--all"])?;
-
-    let checkpoints: Vec<JsonValue> = output
-        .lines()
-        .filter(|line| !line.is_empty())
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.splitn(3, '|').collect();
-            if parts.len() >= 3 {
-                Some(json!({
-                    "id": parts[0],
-                    "message": parts[1],
-                    "timestamp": parts[2]
-                }))
-            } else {
-                None
+fn format_checkpoint_value(value: &JsonValue) -> String {
+    match value.get("status").and_then(|v| v.as_str()) {
+        Some("created") => format!(
+            "Checkpoint created: `{}`\n{}",
+            value
+                .get("short_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown"),
+            value.get("message").and_then(|v| v.as_str()).unwrap_or("")
+        ),
+        Some("rolled_back") => format!(
+            "Checkpoint restored from `{}`{}.",
+            value
+                .get("short_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown"),
+            value
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|p| format!(" for `{p}`"))
+                .unwrap_or_default()
+        ),
+        Some("status") => format!(
+            "Checkpoint store: `{}`\nProject: `{}`\nCheckpoints: {}\nStore size: {} bytes",
+            value
+                .get("base")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown"),
+            value
+                .get("project_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown"),
+            value
+                .get("checkpoint_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            value
+                .get("store_size_bytes")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+        ),
+        _ if value.get("checkpoints").is_some() => {
+            let Some(items) = value.get("checkpoints").and_then(|v| v.as_array()) else {
+                return value.to_string();
+            };
+            if items.is_empty() {
+                return "No checkpoints found.".to_string();
             }
-        })
-        .collect();
-
-    Ok(json!({
-        "checkpoints": checkpoints,
-        "count": checkpoints.len()
-    })
-    .to_string())
+            let mut lines = vec!["Recent checkpoints:".to_string()];
+            for item in items {
+                lines.push(format!(
+                    "- `{}` {} {}",
+                    item.get("short_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown"),
+                    item.get("timestamp").and_then(|v| v.as_str()).unwrap_or(""),
+                    item.get("message").and_then(|v| v.as_str()).unwrap_or("")
+                ));
+            }
+            lines.push("Use `/checkpoints diff <id>` or `/checkpoints restore <id>`.".to_string());
+            lines.join("\n")
+        }
+        _ if value.get("diff").is_some() => {
+            let diff = value.get("diff").and_then(|v| v.as_str()).unwrap_or("");
+            if diff.trim().is_empty() {
+                "No changes since that checkpoint.".to_string()
+            } else {
+                format!("```diff\n{diff}\n```")
+            }
+        }
+        _ => value.to_string(),
+    }
 }
 
-/// Rollback to a specific checkpoint.
-async fn rollback_checkpoint(workdir: &Path, checkpoint_id: &str) -> Result<String> {
-    let git_dir = workdir.join(SHADOW_GIT_DIR);
-    if !git_dir.join("HEAD").exists() {
-        return Err(HakimiError::Tool(
-            "No checkpoints exist. Cannot rollback.".into(),
-        ));
+#[derive(Debug, Clone)]
+struct CheckpointStore {
+    base: PathBuf,
+    store: PathBuf,
+    workdir: PathBuf,
+    project_id: String,
+    index: PathBuf,
+    project_ref: String,
+}
+
+impl CheckpointStore {
+    fn for_workdir(workdir: &Path) -> Result<Self> {
+        let base = checkpoint_base_dir();
+        Self::with_base(base, workdir)
     }
 
-    // Reset the working directory to the checkpoint.
-    run_git(workdir, &["checkout", checkpoint_id, "--", "."])?;
-
-    info!(checkpoint_id = %checkpoint_id, "Rolled back to checkpoint");
-
-    Ok(json!({
-        "status": "rolled_back",
-        "checkpoint_id": checkpoint_id,
-        "message": format!("Successfully rolled back to checkpoint {}", &checkpoint_id[..8.min(checkpoint_id.len())])
-    })
-    .to_string())
-}
-
-/// Show diff since a checkpoint.
-async fn diff_checkpoint(workdir: &Path, checkpoint_id: &str) -> Result<String> {
-    let git_dir = workdir.join(SHADOW_GIT_DIR);
-    if !git_dir.join("HEAD").exists() {
-        return Err(HakimiError::Tool(
-            "No checkpoints exist. Cannot diff.".into(),
-        ));
+    fn with_base(base: PathBuf, workdir: &Path) -> Result<Self> {
+        let workdir = workdir
+            .canonicalize()
+            .map_err(|e| HakimiError::Tool(format!("invalid checkpoint workdir: {e}")))?;
+        if !workdir.is_dir() {
+            return Err(HakimiError::Tool(format!(
+                "checkpoint workdir is not a directory: {}",
+                workdir.display()
+            )));
+        }
+        let project_id = project_id(&workdir);
+        let store = base.join(STORE_DIR);
+        let index = store.join(INDEXES_DIR).join(format!("{project_id}.index"));
+        let project_ref = format!("{REFS_PREFIX}/{project_id}");
+        let this = Self {
+            base,
+            store,
+            workdir,
+            project_id,
+            index,
+            project_ref,
+        };
+        this.ensure_store()?;
+        Ok(this)
     }
 
-    let output = run_git_raw(workdir, &["diff", checkpoint_id])?;
+    fn create(&self, label: &str) -> Result<JsonValue> {
+        self.register_project()?;
+        match self.current_tip() {
+            Ok(parent) => self.git_ok([OsString::from("read-tree"), OsString::from(parent)])?,
+            Err(_) => self.git_ok(["read-tree", "--empty"])?,
+        }
+        self.git_ok(["add", "-A", "--", "."])?;
+        let tree = self.git_stdout(["write-tree"])?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let trimmed_label = label.trim();
+        let message = if trimmed_label.is_empty() {
+            format!("checkpoint: {timestamp}")
+        } else {
+            format!("checkpoint: {trimmed_label} ({timestamp})")
+        };
 
-    Ok(json!({
-        "checkpoint_id": checkpoint_id,
-        "diff": output,
-        "has_changes": !output.trim().is_empty()
-    })
-    .to_string())
-}
+        let parent = self.current_tip().ok();
+        let mut args = vec![
+            OsString::from("commit-tree"),
+            OsString::from("--no-gpg-sign"),
+            OsString::from(tree.trim()),
+            OsString::from("-m"),
+            OsString::from(&message),
+        ];
+        if let Some(parent) = parent.as_deref() {
+            args.push(OsString::from("-p"));
+            args.push(OsString::from(parent));
+        }
+        let hash = self.git_stdout(args)?;
+        let hash = hash.trim().to_string();
+        self.git_ok([
+            OsString::from("update-ref"),
+            OsString::from(&self.project_ref),
+            OsString::from(&hash),
+        ])?;
 
-/// Run a git command in the given directory.
-fn run_git(workdir: &Path, args: &[&str]) -> Result<()> {
-    let output = std::process::Command::new("git")
-        .current_dir(workdir)
-        .args(args)
-        .output()
-        .map_err(|e| HakimiError::Other(format!("Failed to run git: {e}")))?;
+        info!(checkpoint_id = %hash, label = %trimmed_label, "Checkpoint created");
+        Ok(json!({
+            "status": "created",
+            "checkpoint_id": &hash,
+            "short_id": short_id(&hash),
+            "label": trimmed_label,
+            "message": message,
+            "timestamp": timestamp,
+            "store": self.store.display().to_string(),
+            "project_id": &self.project_id,
+        }))
+    }
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // Don't fail on "nothing to commit" errors.
-        if stderr.contains("nothing to commit") || stderr.contains("no changes added") {
+    fn list(&self, limit: usize) -> Result<JsonValue> {
+        if self.current_tip().is_err() {
+            return Ok(json!({
+                "checkpoints": [],
+                "count": 0,
+                "project_id": &self.project_id,
+                "message": "No checkpoints exist yet. Use action='create' to create one."
+            }));
+        }
+
+        let output = self.git_stdout([
+            OsString::from("log"),
+            OsString::from(format!("--max-count={limit}")),
+            OsString::from("--format=%H%x1f%h%x1f%cI%x1f%s"),
+            OsString::from(&self.project_ref),
+        ])?;
+
+        let checkpoints: Vec<JsonValue> = output
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split('\u{1f}').collect();
+                if parts.len() == 4 {
+                    Some(json!({
+                        "id": parts[0],
+                        "short_id": parts[1],
+                        "timestamp": parts[2],
+                        "message": parts[3],
+                    }))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let count = checkpoints.len();
+
+        Ok(json!({
+            "checkpoints": checkpoints,
+            "count": count,
+            "project_id": &self.project_id,
+            "store": self.store.display().to_string(),
+        }))
+    }
+
+    fn rollback(&self, checkpoint_id: &str, path: Option<&str>) -> Result<JsonValue> {
+        let commit = self.resolve_project_commit(checkpoint_id)?;
+        let path = validate_optional_path(path, &self.workdir)?;
+        let mut args = vec![
+            OsString::from("checkout"),
+            OsString::from(&commit),
+            OsString::from("--"),
+        ];
+        if let Some(path) = path.as_deref() {
+            args.push(OsString::from(path));
+        } else {
+            args.push(OsString::from("."));
+        }
+        self.git_ok(args)?;
+
+        info!(checkpoint_id = %commit, path = ?path, "Rolled back to checkpoint");
+        Ok(json!({
+            "status": "rolled_back",
+            "checkpoint_id": &commit,
+            "short_id": short_id(&commit),
+            "path": path,
+            "message": format!("Successfully rolled back to checkpoint {}", short_id(&commit)),
+        }))
+    }
+
+    fn diff(&self, checkpoint_id: &str, path: Option<&str>) -> Result<JsonValue> {
+        let commit = self.resolve_project_commit(checkpoint_id)?;
+        let path = validate_optional_path(path, &self.workdir)?;
+        let mut args = vec![
+            OsString::from("diff"),
+            OsString::from(&commit),
+            OsString::from("--"),
+        ];
+        if let Some(path) = path.as_deref() {
+            args.push(OsString::from(path));
+        } else {
+            args.push(OsString::from("."));
+        }
+        let output = self.git_stdout(args)?;
+        Ok(json!({
+            "checkpoint_id": &commit,
+            "short_id": short_id(&commit),
+            "path": path,
+            "diff": output,
+            "has_changes": !output.trim().is_empty(),
+        }))
+    }
+
+    fn status(&self) -> Result<JsonValue> {
+        let count = if self.current_tip().is_ok() {
+            self.git_stdout([
+                OsString::from("rev-list"),
+                OsString::from("--count"),
+                OsString::from(&self.project_ref),
+            ])
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or(0)
+        } else {
+            0
+        };
+        Ok(json!({
+            "status": "status",
+            "base": self.base.display().to_string(),
+            "store": self.store.display().to_string(),
+            "workdir": self.workdir.display().to_string(),
+            "project_id": &self.project_id,
+            "project_ref": &self.project_ref,
+            "checkpoint_count": count,
+            "store_size_bytes": dir_size_bytes(&self.base),
+        }))
+    }
+
+    fn ensure_store(&self) -> Result<()> {
+        fs::create_dir_all(&self.base).map_err(HakimiError::Io)?;
+        fs::create_dir_all(self.store.join(INDEXES_DIR)).map_err(HakimiError::Io)?;
+        fs::create_dir_all(self.store.join(PROJECTS_DIR)).map_err(HakimiError::Io)?;
+        if !self.store.join("HEAD").exists() {
+            fs::create_dir_all(&self.store).map_err(HakimiError::Io)?;
+            raw_git_ok(
+                [
+                    OsString::from("init"),
+                    OsString::from("--bare"),
+                    self.store.clone().into_os_string(),
+                ],
+                &self.base,
+            )?;
+            raw_git_ok(
+                [
+                    OsString::from("--git-dir"),
+                    self.store.clone().into_os_string(),
+                    OsString::from("config"),
+                    OsString::from("user.email"),
+                    OsString::from("hakimi@checkpoint.local"),
+                ],
+                &self.base,
+            )?;
+            raw_git_ok(
+                [
+                    OsString::from("--git-dir"),
+                    self.store.clone().into_os_string(),
+                    OsString::from("config"),
+                    OsString::from("user.name"),
+                    OsString::from("Hakimi Checkpoint"),
+                ],
+                &self.base,
+            )?;
+            raw_git_ok(
+                [
+                    OsString::from("--git-dir"),
+                    self.store.clone().into_os_string(),
+                    OsString::from("config"),
+                    OsString::from("commit.gpgsign"),
+                    OsString::from("false"),
+                ],
+                &self.base,
+            )?;
+            raw_git_ok(
+                [
+                    OsString::from("--git-dir"),
+                    self.store.clone().into_os_string(),
+                    OsString::from("config"),
+                    OsString::from("tag.gpgSign"),
+                    OsString::from("false"),
+                ],
+                &self.base,
+            )?;
+            raw_git_ok(
+                [
+                    OsString::from("--git-dir"),
+                    self.store.clone().into_os_string(),
+                    OsString::from("config"),
+                    OsString::from("gc.auto"),
+                    OsString::from("0"),
+                ],
+                &self.base,
+            )?;
+        }
+        let info_dir = self.store.join("info");
+        fs::create_dir_all(&info_dir).map_err(HakimiError::Io)?;
+        let exclude_path = info_dir.join("exclude");
+        if !exclude_path.exists() {
+            fs::write(exclude_path, format!("{}\n", DEFAULT_EXCLUDES.join("\n")))
+                .map_err(HakimiError::Io)?;
+        }
+        Ok(())
+    }
+
+    fn register_project(&self) -> Result<()> {
+        let path = self
+            .store
+            .join(PROJECTS_DIR)
+            .join(format!("{}.json", self.project_id));
+        let now = chrono::Utc::now().to_rfc3339();
+        let body = json!({
+            "workdir": self.workdir.display().to_string(),
+            "project_id": &self.project_id,
+            "last_touch": now,
+        });
+        fs::write(path, body.to_string()).map_err(HakimiError::Io)
+    }
+
+    fn current_tip(&self) -> Result<String> {
+        self.git_stdout([
+            OsString::from("rev-parse"),
+            OsString::from("--verify"),
+            OsString::from(&self.project_ref),
+        ])
+        .map(|value| value.trim().to_string())
+    }
+
+    fn resolve_project_commit(&self, checkpoint_id: &str) -> Result<String> {
+        validate_checkpoint_id(checkpoint_id)?;
+        let commit = self.git_stdout([
+            OsString::from("rev-parse"),
+            OsString::from("--verify"),
+            OsString::from(format!("{checkpoint_id}^{{commit}}")),
+        ])?;
+        let commit = commit.trim().to_string();
+        let output = self.git_status([
+            OsString::from("merge-base"),
+            OsString::from("--is-ancestor"),
+            OsString::from(&commit),
+            OsString::from(&self.project_ref),
+        ])?;
+        if !output.status.success() {
+            return Err(HakimiError::Tool(format!(
+                "checkpoint {} does not belong to this workdir",
+                short_id(&commit)
+            )));
+        }
+        Ok(commit)
+    }
+
+    fn git_ok<I, S>(&self, args: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let output = self.git_status(args)?;
+        if output.status.success() {
             return Ok(());
         }
-        warn!(args = ?args, stderr = %stderr, "Git command failed");
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        warn!(stderr = %stderr, "checkpoint git command failed");
+        Err(HakimiError::Tool(format!(
+            "checkpoint git command failed: {stderr}"
+        )))
+    }
+
+    fn git_stdout<I, S>(&self, args: I) -> Result<String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let output = self.git_status(args)?;
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(HakimiError::Tool(format!(
+            "checkpoint git command failed: {stderr}"
+        )))
+    }
+
+    fn git_status<I, S>(&self, args: I) -> Result<std::process::Output>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let mut command = Command::new("git");
+        command
+            .current_dir(&self.workdir)
+            .args(args)
+            .env("GIT_DIR", &self.store)
+            .env("GIT_WORK_TREE", &self.workdir)
+            .env("GIT_INDEX_FILE", &self.index)
+            .env("GIT_CONFIG_GLOBAL", null_device())
+            .env("GIT_CONFIG_SYSTEM", null_device())
+            .env("GIT_CONFIG_NOSYSTEM", "1");
+        command
+            .output()
+            .map_err(|e| HakimiError::Other(format!("Failed to run git: {e}")))
+    }
+}
+
+fn raw_git_ok<I, S>(args: I, cwd: &Path) -> Result<()>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let output = Command::new("git")
+        .current_dir(cwd)
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", null_device())
+        .env("GIT_CONFIG_SYSTEM", null_device())
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .map_err(|e| HakimiError::Other(format!("Failed to run git: {e}")))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(HakimiError::Tool(format!(
+        "checkpoint git init failed: {stderr}"
+    )))
+}
+
+fn checkpoint_base_dir() -> PathBuf {
+    std::env::var_os("HAKIMI_CHECKPOINT_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HAKIMI_HOME").map(|home| PathBuf::from(home).join("checkpoints"))
+        })
+        .or_else(|| dirs::home_dir().map(|home| home.join(".hakimi").join("checkpoints")))
+        .unwrap_or_else(|| PathBuf::from(".hakimi").join("checkpoints"))
+}
+
+fn required_checkpoint_id(args: &JsonValue) -> Result<&str> {
+    args.get("checkpoint_id")
+        .and_then(|v| v.as_str())
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| HakimiError::Tool("checkpoint_id is required".into()))
+}
+
+fn optional_relative_path(args: &JsonValue, key: &str) -> Result<Option<String>> {
+    match args.get(key).and_then(|v| v.as_str()) {
+        Some(value) if !value.trim().is_empty() => Ok(Some(value.trim().to_string())),
+        _ => Ok(None),
+    }
+}
+
+fn validate_checkpoint_id(value: &str) -> Result<()> {
+    let value = value.trim();
+    if !(4..=64).contains(&value.len()) || !value.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(HakimiError::Tool(
+            "checkpoint_id must be a 4-64 character hex commit id".into(),
+        ));
     }
     Ok(())
 }
 
-/// Run a git command and return stdout as a string.
-fn run_git_raw(workdir: &Path, args: &[&str]) -> Result<String> {
-    let output = std::process::Command::new("git")
-        .current_dir(workdir)
-        .args(args)
-        .output()
-        .map_err(|e| HakimiError::Other(format!("Failed to run git: {e}")))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("does not have any commits") || stderr.contains("unknown revision") {
-            return Ok(String::new());
-        }
-        warn!(args = ?args, stderr = %stderr, "Git command failed");
+fn validate_optional_path(path: Option<&str>, workdir: &Path) -> Result<Option<String>> {
+    let Some(path) = path.map(str::trim).filter(|p| !p.is_empty()) else {
+        return Ok(None);
+    };
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        return Err(HakimiError::Tool(
+            "checkpoint path must be relative to the workdir".into(),
+        ));
     }
-    Ok(stdout)
+    let resolved = workdir.join(candidate);
+    let normalized = normalize_path_for_prefix(&resolved)?;
+    if !normalized.starts_with(workdir) {
+        return Err(HakimiError::Tool(
+            "checkpoint path escapes the workdir".into(),
+        ));
+    }
+    Ok(Some(path.replace('\\', "/")))
+}
+
+fn normalize_path_for_prefix(path: &Path) -> Result<PathBuf> {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    return Err(HakimiError::Tool("path traversal is not allowed".into()));
+                }
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    Ok(normalized)
+}
+
+fn project_id(workdir: &Path) -> String {
+    let path = workdir.to_string_lossy();
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in path.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn short_id(value: &str) -> &str {
+    &value[..value.len().min(8)]
+}
+
+fn null_device() -> &'static str {
+    if cfg!(windows) { "NUL" } else { "/dev/null" }
+}
+
+fn dir_size_bytes(path: &Path) -> u64 {
+    let mut total = 0u64;
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if meta.is_dir() {
+            total = total.saturating_add(dir_size_bytes(&path));
+        } else {
+            total = total.saturating_add(meta.len());
+        }
+    }
+    total
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn store_for(tmp: &tempfile::TempDir, workdir: &Path) -> CheckpointStore {
+        CheckpointStore::with_base(tmp.path().join("checkpoints"), workdir).unwrap()
+    }
 
     #[test]
     fn test_tool_metadata() {
@@ -274,62 +806,7 @@ mod tests {
         assert_eq!(tool.name(), "checkpoint");
         assert_eq!(tool.toolset(), "file");
         assert!(!tool.description().is_empty());
-    }
-
-    #[test]
-    fn test_schema_required_fields() {
-        let tool = CheckpointTool;
-        let schema = tool.schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("action")));
-    }
-
-    #[tokio::test]
-    async fn test_invalid_action() {
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: "/tmp".to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        let result = tool.execute(&json!({"action": "invalid"}), &ctx).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_rollback_missing_id() {
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: "/tmp".to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        let result = tool.execute(&json!({"action": "rollback"}), &ctx).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_diff_missing_id() {
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: "/tmp".to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        let result = tool.execute(&json!({"action": "diff"}), &ctx).await;
-        assert!(result.is_err());
+        assert!(!tool.emoji().is_empty());
     }
 
     #[test]
@@ -340,173 +817,261 @@ mod tests {
             .as_array()
             .expect("action enum should be an array");
         let action_strs: Vec<&str> = actions.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(
-            action_strs.contains(&"create"),
-            "enum must contain 'create'"
-        );
-        assert!(action_strs.contains(&"list"), "enum must contain 'list'");
-        assert!(
-            action_strs.contains(&"rollback"),
-            "enum must contain 'rollback'"
-        );
-        assert!(action_strs.contains(&"diff"), "enum must contain 'diff'");
+        for action in ["create", "list", "rollback", "diff", "status"] {
+            assert!(action_strs.contains(&action), "missing action {action}");
+        }
     }
 
     #[test]
-    fn test_toolset_is_file() {
+    fn schema_required_field_is_action() {
         let tool = CheckpointTool;
-        assert_eq!(tool.toolset(), "file");
+        let schema = tool.schema();
+        let required = schema["required"].as_array().unwrap();
+        assert_eq!(required, &vec![json!("action")]);
     }
 
     #[test]
-    fn test_emoji_not_empty() {
+    fn schema_exposes_optional_file_path() {
         let tool = CheckpointTool;
-        assert!(!tool.emoji().is_empty());
+        let schema = tool.schema();
+        assert_eq!(schema["properties"]["path"]["type"], "string");
     }
 
-    #[tokio::test]
-    async fn test_create_checkpoint_in_tempdir() {
+    #[test]
+    fn validates_checkpoint_ids() {
+        assert!(validate_checkpoint_id("abc123").is_ok());
+        assert!(validate_checkpoint_id("--patch").is_err());
+        assert!(validate_checkpoint_id("../abc").is_err());
+    }
+
+    #[test]
+    fn validates_relative_paths() {
         let tmp = tempfile::tempdir().unwrap();
-        // The checkpoint tool runs git add/commit in workdir, so we need a real repo.
-        std::process::Command::new("git")
-            .args(["init"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.com"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        // Seed the temp dir with a file so there's something to commit.
-        std::fs::write(tmp.path().join("hello.txt"), "checkpoint content").unwrap();
+        let workdir = tmp.path().canonicalize().unwrap();
+        assert_eq!(
+            validate_optional_path(Some("src/main.rs"), &workdir).unwrap(),
+            Some("src/main.rs".into())
+        );
+        assert!(validate_optional_path(Some("../escape"), &workdir).is_err());
+        assert!(validate_optional_path(Some("/tmp/file"), &workdir).is_err());
+    }
 
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        let result = tool.execute(&json!({"action": "create"}), &ctx).await;
-        assert!(result.is_ok(), "create should succeed: {:?}", result.err());
-        let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+    #[test]
+    fn project_id_is_stable_and_path_sensitive() {
+        let a = PathBuf::from("/tmp/project-a");
+        let b = PathBuf::from("/tmp/project-b");
+        assert_eq!(project_id(&a), project_id(&a));
+        assert_ne!(project_id(&a), project_id(&b));
+    }
+
+    #[test]
+    fn short_id_handles_short_values() {
+        assert_eq!(short_id("abcdef"), "abcdef");
+        assert_eq!(short_id("abcdef123"), "abcdef12");
+    }
+
+    #[test]
+    fn format_empty_checkpoint_list() {
+        let body = json!({ "checkpoints": [], "count": 0 });
+        assert_eq!(format_checkpoint_value(&body), "No checkpoints found.");
+    }
+
+    #[test]
+    fn list_checkpoints_empty_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+
+        let body = store.list(10).unwrap();
+        assert_eq!(body["count"], 0);
+        assert!(body["checkpoints"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn status_reports_zero_before_create() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+
+        let body = store.status().unwrap();
+        assert_eq!(body["checkpoint_count"], 0);
+        assert_eq!(body["project_id"].as_str().unwrap(), store.project_id);
+    }
+
+    #[test]
+    fn create_checkpoint_does_not_create_project_git() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        fs::write(workdir.join("hello.txt"), "checkpoint content").unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+
+        let body = store.create("before-refactor").unwrap();
         assert_eq!(body["status"], "created");
         assert!(!body["checkpoint_id"].as_str().unwrap().is_empty());
+        assert!(store.store.join("HEAD").exists());
+        assert!(!workdir.join(".git").exists());
     }
 
-    #[tokio::test]
-    async fn test_list_checkpoints_after_create() {
+    #[test]
+    fn create_checkpoint_with_label() {
         let tmp = tempfile::tempdir().unwrap();
-        std::process::Command::new("git")
-            .args(["init"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.com"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::fs::write(tmp.path().join("file.txt"), "data").unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        fs::write(workdir.join("labeled.txt"), "labeled content").unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
 
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-
-        // Create a checkpoint.
-        let create_res = tool.execute(&json!({"action": "create"}), &ctx).await;
-        assert!(create_res.is_ok(), "create failed: {:?}", create_res.err());
-
-        // List checkpoints.
-        let list_res = tool.execute(&json!({"action": "list"}), &ctx).await;
-        assert!(list_res.is_ok(), "list failed: {:?}", list_res.err());
-        let body: serde_json::Value = serde_json::from_str(&list_res.unwrap()).unwrap();
-        let count = body["count"].as_u64().expect("count should be a number");
-        assert!(count >= 1, "expected at least 1 checkpoint, got {}", count);
-    }
-
-    #[tokio::test]
-    async fn test_create_checkpoint_with_label() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::process::Command::new("git")
-            .args(["init"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.com"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::fs::write(tmp.path().join("labeled.txt"), "labeled content").unwrap();
-
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        let result = tool
-            .execute(
-                &json!({"action": "create", "label": "before-refactor"}),
-                &ctx,
-            )
-            .await;
-        assert!(
-            result.is_ok(),
-            "create with label failed: {:?}",
-            result.err()
-        );
-        let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+        let body = store.create("before-refactor").unwrap();
         assert_eq!(body["label"], "before-refactor");
-        let msg = body["message"].as_str().unwrap();
         assert!(
-            msg.contains("before-refactor"),
-            "commit message should contain the label, got: {}",
-            msg
+            body["message"]
+                .as_str()
+                .unwrap()
+                .contains("before-refactor")
         );
+    }
+
+    #[test]
+    fn list_checkpoints_after_create() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        fs::write(workdir.join("file.txt"), "v1").unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+        store.create("v1").unwrap();
+
+        let body = store.list(10).unwrap();
+        assert_eq!(body["count"], 1);
+        assert!(
+            body["checkpoints"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("v1")
+        );
+    }
+
+    #[test]
+    fn create_multiple_checkpoints_and_list() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        fs::write(workdir.join("file.txt"), "v1").unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+
+        store.create("v1").unwrap();
+        fs::write(workdir.join("file.txt"), "v2").unwrap();
+        store.create("v2").unwrap();
+
+        let body = store.list(10).unwrap();
+        assert_eq!(body["count"], 2);
+        let messages: Vec<&str> = body["checkpoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|cp| cp["message"].as_str().unwrap())
+            .collect();
+        assert!(messages.iter().any(|m| m.contains("v1")));
+        assert!(messages.iter().any(|m| m.contains("v2")));
+    }
+
+    #[test]
+    fn diff_checkpoint_detects_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        fs::write(workdir.join("file.txt"), "original").unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+        let created = store.create("baseline").unwrap();
+        let cp_id = created["checkpoint_id"].as_str().unwrap().to_string();
+        fs::write(workdir.join("file.txt"), "modified").unwrap();
+
+        let diff = store.diff(&cp_id, None).unwrap();
+        assert_eq!(diff["has_changes"], true);
+        let diff_text = diff["diff"].as_str().unwrap();
+        assert!(diff_text.contains("original"));
+        assert!(diff_text.contains("modified"));
+    }
+
+    #[test]
+    fn diff_checkpoint_can_target_single_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        fs::write(workdir.join("file.txt"), "original").unwrap();
+        fs::write(workdir.join("other.txt"), "unchanged").unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+        let created = store.create("baseline").unwrap();
+        let cp_id = created["checkpoint_id"].as_str().unwrap().to_string();
+        fs::write(workdir.join("file.txt"), "modified").unwrap();
+
+        let diff = store.diff(&cp_id, Some("file.txt")).unwrap();
+        let diff_text = diff["diff"].as_str().unwrap();
+        assert!(diff_text.contains("file.txt"));
+        assert!(!diff_text.contains("other.txt"));
+    }
+
+    #[test]
+    fn diff_rejects_unknown_checkpoint() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+        assert!(store.diff("deadbeef", None).is_err());
+    }
+
+    #[test]
+    fn rollback_can_restore_single_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        fs::write(workdir.join("file.txt"), "original").unwrap();
+        fs::write(workdir.join("other.txt"), "keep").unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+        let created = store.create("baseline").unwrap();
+        let cp_id = created["checkpoint_id"].as_str().unwrap().to_string();
+        fs::write(workdir.join("file.txt"), "modified").unwrap();
+        fs::write(workdir.join("other.txt"), "changed").unwrap();
+
+        store.rollback(&cp_id, Some("file.txt")).unwrap();
+        assert_eq!(
+            fs::read_to_string(workdir.join("file.txt")).unwrap(),
+            "original"
+        );
+        assert_eq!(
+            fs::read_to_string(workdir.join("other.txt")).unwrap(),
+            "changed"
+        );
+    }
+
+    #[test]
+    fn rollback_rejects_unknown_checkpoint() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workdir = tmp.path().join("project");
+        fs::create_dir_all(&workdir).unwrap();
+        let store_root = tempfile::tempdir().unwrap();
+        let store = store_for(&store_root, &workdir);
+        assert!(store.rollback("deadbeef", None).is_err());
     }
 
     #[tokio::test]
     async fn test_missing_action_fails() {
         let tool = CheckpointTool;
+        let tmp = tempfile::tempdir().unwrap();
         let ctx = ToolContext {
             session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: "/tmp".to_string(),
-            model: None,
-            delegate_executor: None,
+            workdir: tmp.path().to_string_lossy().to_string(),
             ..Default::default()
         };
         let result = tool.execute(&json!({}), &ctx).await;
@@ -514,240 +1079,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_list_checkpoints_empty_repo() {
-        let tmp = tempfile::tempdir().unwrap();
+    async fn test_rollback_missing_id() {
         let tool = CheckpointTool;
+        let tmp = tempfile::tempdir().unwrap();
         let ctx = ToolContext {
             session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
             workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
             ..Default::default()
         };
-        // No shadow git dir exists — list should return empty
-        let result = tool.execute(&json!({"action": "list"}), &ctx).await;
-        assert!(
-            result.is_ok(),
-            "list on empty dir should succeed: {:?}",
-            result.err()
-        );
-        let body: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
-        let checkpoints = body["checkpoints"].as_array().unwrap();
-        assert!(checkpoints.is_empty(), "should have no checkpoints");
-    }
-
-    #[tokio::test]
-    async fn test_rollback_with_no_checkpoints() {
-        let tmp = tempfile::tempdir().unwrap();
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        // No shadow git dir — rollback should fail
-        let result = tool
-            .execute(
-                &json!({"action": "rollback", "checkpoint_id": "abc123"}),
-                &ctx,
-            )
-            .await;
-        assert!(result.is_err(), "rollback with no checkpoints should fail");
-    }
-
-    #[tokio::test]
-    async fn test_diff_with_no_checkpoints() {
-        let tmp = tempfile::tempdir().unwrap();
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        // No shadow git dir — diff should fail
-        let result = tool
-            .execute(&json!({"action": "diff", "checkpoint_id": "abc123"}), &ctx)
-            .await;
-        assert!(result.is_err(), "diff with no checkpoints should fail");
-    }
-
-    #[tokio::test]
-    async fn test_create_multiple_checkpoints_and_list() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::process::Command::new("git")
-            .args(["init"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.com"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::fs::write(tmp.path().join("file.txt"), "v1").unwrap();
-
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-
-        // Create first checkpoint
-        let r1 = tool
-            .execute(&json!({"action": "create", "label": "v1"}), &ctx)
-            .await;
-        assert!(r1.is_ok(), "first create failed: {:?}", r1.err());
-
-        // Modify file and create second checkpoint
-        std::fs::write(tmp.path().join("file.txt"), "v2").unwrap();
-        let r2 = tool
-            .execute(&json!({"action": "create", "label": "v2"}), &ctx)
-            .await;
-        assert!(r2.is_ok(), "second create failed: {:?}", r2.err());
-
-        // List should show 2 checkpoints
-        let list_res = tool.execute(&json!({"action": "list"}), &ctx).await;
-        assert!(list_res.is_ok(), "list failed: {:?}", list_res.err());
-        let body: serde_json::Value = serde_json::from_str(&list_res.unwrap()).unwrap();
-        let count = body["count"].as_u64().unwrap();
-        assert!(count >= 2, "expected at least 2 checkpoints, got {}", count);
-
-        // Verify both labels appear in checkpoint messages
-        let checkpoints = body["checkpoints"].as_array().unwrap();
-        let messages: Vec<&str> = checkpoints
-            .iter()
-            .map(|cp| cp["message"].as_str().unwrap())
-            .collect();
-        assert!(
-            messages.iter().any(|m| m.contains("v1")),
-            "should have v1 checkpoint"
-        );
-        assert!(
-            messages.iter().any(|m| m.contains("v2")),
-            "should have v2 checkpoint"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_create_and_diff_checkpoint() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::process::Command::new("git")
-            .args(["init"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.com"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(tmp.path())
-            .output()
-            .unwrap();
-        std::fs::write(tmp.path().join("file.txt"), "original").unwrap();
-
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-
-        // Create checkpoint
-        let create_res = tool
-            .execute(&json!({"action": "create", "label": "baseline"}), &ctx)
-            .await
-            .unwrap();
-        let create_body: serde_json::Value = serde_json::from_str(&create_res).unwrap();
-        let cp_id = create_body["checkpoint_id"].as_str().unwrap().to_string();
-
-        // Modify file
-        std::fs::write(tmp.path().join("file.txt"), "modified").unwrap();
-
-        // Diff against the checkpoint
-        let diff_res = tool
-            .execute(&json!({"action": "diff", "checkpoint_id": cp_id}), &ctx)
-            .await;
-        assert!(
-            diff_res.is_ok(),
-            "diff should succeed: {:?}",
-            diff_res.err()
-        );
-        let diff_body: serde_json::Value = serde_json::from_str(&diff_res.unwrap()).unwrap();
-        assert_eq!(diff_body["has_changes"], true, "should detect changes");
-        let diff_text = diff_body["diff"].as_str().unwrap();
-        assert!(
-            diff_text.contains("original"),
-            "diff should mention original content"
-        );
-        assert!(
-            diff_text.contains("modified"),
-            "diff should mention modified content"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_schema_has_action_enum() {
-        let tool = CheckpointTool;
-        let schema = tool.schema();
-        let action_prop = &schema["properties"]["action"];
-        assert_eq!(action_prop["type"], "string");
-        assert!(!action_prop["description"].as_str().unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_schema_required_field_is_action() {
-        let tmp = tempfile::tempdir().unwrap();
-        let tool = CheckpointTool;
-        let ctx = ToolContext {
-            session_id: "test".to_string(),
-            user_id: None,
-            task_id: None,
-            workdir: tmp.path().to_string_lossy().to_string(),
-            model: None,
-            delegate_executor: None,
-            ..Default::default()
-        };
-        let result = tool
-            .execute(&json!({ "action": "unknown_action" }), &ctx)
-            .await;
+        let result = tool.execute(&json!({"action": "rollback"}), &ctx).await;
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Unknown checkpoint action"));
-    }
-
-    #[tokio::test]
-    async fn test_tool_name_and_toolset() {
-        let tool = CheckpointTool;
-        assert_eq!(tool.name(), "checkpoint");
-        assert_eq!(tool.toolset(), "file");
-        assert!(!tool.description().is_empty());
-        assert!(!tool.emoji().is_empty());
     }
 }

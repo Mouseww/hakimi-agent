@@ -4411,12 +4411,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Checkpoints(cmd)) => {
-                        match cmd.as_deref() {
-                            Some("list") => "💾 **Recent Checkpoints:**\nNo checkpoints found.".to_string(),
-                            Some(c) if c.starts_with("restore") => "💾 Checkpoint restored.".to_string(),
-                            Some(c) if c.starts_with("create") => "💾 Checkpoint created.".to_string(),
-                            _ => "Usage: /checkpoints <list|create|restore>".to_string(),
-                        }
+                        hakimi_tools::checkpoint_response(cmd.as_deref(), &std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
                     }
                     Some(Command::Dump(_)) => {
                         let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
