@@ -980,9 +980,9 @@ mod tests {
             let mut config = state.config.lock().await;
             config.credential_pools.insert(
                 "openrouter".to_string(),
-                hakimi_core::credential_pool::CredentialPoolConfig {
+                hakimi_config::CredentialPoolConfig {
                     strategy: Some("fill_first".to_string()),
-                    credentials: vec![hakimi_core::credential_pool::CredentialConfig {
+                    credentials: vec![hakimi_config::CredentialConfig {
                         id: Some("primary".to_string()),
                         api_key: "test-openrouter-secret-value".to_string(),
                         base_url: Some("https://openrouter.ai/api/v1".to_string()),
