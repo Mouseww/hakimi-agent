@@ -20,7 +20,7 @@ Generated: 2026-05-31
 - **session_search** — FTS5 search across past session transcripts
 - **delegate_task** — Subagent spawning with isolated context and toolset filtering
 - **skill_manage** — Skill loading and management from markdown files
-- **send_message** — Cross-platform messaging via gateway
+- **send_message** — Cross-platform messaging via gateway, cached target listing, and human-friendly channel/home resolution
 - **code_exec** — Code execution tool (similar to execute_code)
 - **web_extract** — URL content extraction with HTML cleaning, readability fallback, markdown/raw output
 - **mixture_of_agents** — Hermes-style MoA reasoning tool that runs parallel OpenRouter reference models and aggregates their answers for hard reasoning/coding/math tasks
@@ -97,7 +97,7 @@ Generated: 2026-05-31
 
 ### Gateway
 - **PlatformAdapter trait** — connect, send_message, disconnect, take_receiver
-- **Gateway** — Central message routing, adapter registration
+- **Gateway** — Central message routing, adapter registration, and cached home-target directory for outbound delivery
 - **Gateway ingress access policy** — Config-driven allowlist merges global gateway users, Telegram user IDs, role allowlists, and ClawBot sender IDs before command/agent handling
 - **Gateway fresh-final streaming** — Configurable `gateways.streaming.fresh_final_after_seconds` sends long streamed completions as a fresh final message and lets Telegram clean up stale preview bubbles
 - **Gateway stream pacing** — Configurable `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars` control progressive edit cadence and force pending-text flushes before tool/media/delegate boundaries
@@ -518,7 +518,7 @@ Generated: 2026-05-31
 
 ### 6. Gateway
 - **Status**: 11 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, Feishu/Lark, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
-- **What's missing**: 10+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
+- **What's missing**: 10+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -700,9 +700,10 @@ Generated: 2026-05-31
 | 84 | Gateway Lifecycle Diagnostics | `hakimi-gateway/src/lifecycle.rs`, `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Gateway lifecycle events are written to a redacted `gateway-events.log`, adapter/connect/route/filter/edit/receiver paths are instrumented, and gateway `/logs` reads lifecycle plus legacy service logs without invoking `tail` |
 | 85 | MCP Catalog CLI/Gateway Surface | `hakimi-mcp/src/catalog.rs`, `hakimi-cli/src/entry.rs` | 2 | ✅ `hakimi mcp catalog/search/inspect/config` and gateway `/mcp catalog/search/inspect/config` expose curated MCP discovery, including the Hermes-reviewed n8n bridge, plus YAML config snippets without starting an agent loop |
 | 86 | Browser Playwright Cache Discovery | `hakimi-tools/src/builtin_browser.rs` | 3 | ✅ Optional Chromium tools now resolve `AGENT_BROWSER_EXECUTABLE_PATH` / `CHROME_PATH` / `CHROME`, use platform-correct PATH lookup, and discover Playwright `chromium-*` plus `chromium_headless_shell-*` binaries without matching shared libraries |
+| 87 | Gateway Channel Directory | `hakimi-tools/src/builtin_send_message.rs`, `hakimi-cli/src/entry.rs` | 5 | ✅ Gateway startup writes configured home targets to `~/.hakimi/channel_directory.json`; `send_message(action="list")` renders cached targets, and delivery resolves bare platform names plus `platform:home` / `platform:#channel` aliases before queuing |
 
 ### Summary
-- **Total tests**: 1481 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1486 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

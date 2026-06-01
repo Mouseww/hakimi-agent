@@ -1991,6 +1991,7 @@ fn register_configured_gateway_adapters(
     config: &hakimi_config::HakimiConfig,
 ) -> std::collections::HashMap<String, String> {
     let mut bot_ids = std::collections::HashMap::new();
+    let mut channel_entries: Vec<hakimi_tools::ChannelDirectoryEntry> = Vec::new();
     bot_ids.insert("telegram".to_string(), "telegram_bot".to_string());
 
     let bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
@@ -2045,17 +2046,25 @@ fn register_configured_gateway_adapters(
     if config.gateways.slack.enabled {
         if let Some(token) = env_or_config_value("SLACK_BOT_TOKEN", &config.gateways.slack.token) {
             let bot_id = config.gateways.slack.bot_id.clone();
+            let channel_id =
+                env_or_config_value("SLACK_CHANNEL_ID", &config.gateways.slack.channel_id);
             let slack = hakimi_gateway::SlackAdapter::new(hakimi_gateway::SlackAdapterConfig {
                 token,
                 bot_id: bot_id.clone(),
-                channel_id: env_or_config_value(
-                    "SLACK_CHANNEL_ID",
-                    &config.gateways.slack.channel_id,
-                ),
+                channel_id: channel_id.clone(),
                 base_url: optional_config_value(&config.gateways.slack.base_url),
             });
             gateway.add_adapter(Box::new(slack));
             bot_ids.insert("slack".to_string(), bot_id);
+            if let Some(channel_id) = channel_id.filter(|id| !id.trim().is_empty()) {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "slack",
+                    &channel_id,
+                    "home",
+                    "home",
+                    "slack",
+                ));
+            }
             info!("slack gateway registered");
         } else {
             warn!("slack gateway enabled but no token configured");
@@ -2067,18 +2076,26 @@ fn register_configured_gateway_adapters(
             env_or_config_value("DISCORD_BOT_TOKEN", &config.gateways.discord.token)
         {
             let bot_id = config.gateways.discord.bot_id.clone();
+            let channel_id =
+                env_or_config_value("DISCORD_CHANNEL_ID", &config.gateways.discord.channel_id);
             let discord =
                 hakimi_gateway::DiscordAdapter::new(hakimi_gateway::DiscordAdapterConfig {
                     token,
                     bot_id: bot_id.clone(),
-                    channel_id: env_or_config_value(
-                        "DISCORD_CHANNEL_ID",
-                        &config.gateways.discord.channel_id,
-                    ),
+                    channel_id: channel_id.clone(),
                     base_url: optional_config_value(&config.gateways.discord.base_url),
                 });
             gateway.add_adapter(Box::new(discord));
             bot_ids.insert("discord".to_string(), bot_id);
+            if let Some(channel_id) = channel_id.filter(|id| !id.trim().is_empty()) {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "discord",
+                    &channel_id,
+                    "home",
+                    "home",
+                    "discord",
+                ));
+            }
             info!("discord gateway registered");
         } else {
             warn!("discord gateway enabled but no token configured");
@@ -2092,19 +2109,29 @@ fn register_configured_gateway_adapters(
 
         if let (Some(server_url), Some(token)) = (server_url, token) {
             let bot_id = config.gateways.mattermost.bot_id.clone();
+            let channel_id = env_or_config_value(
+                "MATTERMOST_CHANNEL_ID",
+                &config.gateways.mattermost.channel_id,
+            );
             let mattermost =
                 hakimi_gateway::MattermostAdapter::new(hakimi_gateway::MattermostAdapterConfig {
                     token,
                     bot_id: bot_id.clone(),
                     server_url,
-                    channel_id: env_or_config_value(
-                        "MATTERMOST_CHANNEL_ID",
-                        &config.gateways.mattermost.channel_id,
-                    ),
+                    channel_id: channel_id.clone(),
                     base_url: optional_config_value(&config.gateways.mattermost.base_url),
                 });
             gateway.add_adapter(Box::new(mattermost));
             bot_ids.insert("mattermost".to_string(), bot_id);
+            if let Some(channel_id) = channel_id.filter(|id| !id.trim().is_empty()) {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "mattermost",
+                    &channel_id,
+                    "home",
+                    "home",
+                    "mattermost",
+                ));
+            }
             info!("mattermost gateway registered");
         } else {
             warn!("mattermost gateway enabled but required server_url/token is missing");
@@ -2134,6 +2161,13 @@ fn register_configured_gateway_adapters(
             });
             gateway.add_adapter(Box::new(signal));
             bot_ids.insert("signal".to_string(), bot_id);
+            channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                "signal",
+                &config.gateways.signal.phone_number,
+                "home",
+                "phone",
+                "signal",
+            ));
             info!("signal gateway registered");
         } else {
             warn!("signal gateway enabled but no phone_number configured");
@@ -2154,6 +2188,13 @@ fn register_configured_gateway_adapters(
             });
             gateway.add_adapter(Box::new(matrix));
             bot_ids.insert("matrix".to_string(), bot_id);
+            channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                "matrix",
+                &config.gateways.matrix.room_id,
+                "home",
+                "room",
+                "matrix",
+            ));
             info!("matrix gateway registered");
         } else {
             warn!(
@@ -2173,6 +2214,9 @@ fn register_configured_gateway_adapters(
                 });
             gateway.add_adapter(Box::new(dingtalk));
             bot_ids.insert("dingtalk".to_string(), bot_id);
+            channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                "dingtalk", "home", "home", "webhook", "dingtalk",
+            ));
             info!("dingtalk gateway registered");
         } else {
             warn!("dingtalk gateway enabled but no webhook_url configured");
@@ -2206,15 +2250,16 @@ fn register_configured_gateway_adapters(
 
         if let (Some(app_id), Some(app_secret)) = (app_id, app_secret) {
             let bot_id = config.gateways.feishu.bot_id.clone();
+            let default_chat_id = env_or_config_value(
+                "FEISHU_HOME_CHANNEL",
+                &config.gateways.feishu.default_chat_id,
+            )
+            .unwrap_or_default();
             let feishu = hakimi_gateway::FeishuAdapter::new(hakimi_gateway::FeishuAdapterConfig {
                 bot_id: bot_id.clone(),
                 app_id,
                 app_secret,
-                default_chat_id: env_or_config_value(
-                    "FEISHU_HOME_CHANNEL",
-                    &config.gateways.feishu.default_chat_id,
-                )
-                .unwrap_or_default(),
+                default_chat_id: default_chat_id.clone(),
                 receive_id_type: env_or_config_value(
                     "FEISHU_RECEIVE_ID_TYPE",
                     &config.gateways.feishu.receive_id_type,
@@ -2227,9 +2272,25 @@ fn register_configured_gateway_adapters(
             });
             gateway.add_adapter(Box::new(feishu));
             bot_ids.insert("feishu".to_string(), bot_id);
+            if !default_chat_id.trim().is_empty() {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "feishu",
+                    &default_chat_id,
+                    "home",
+                    "chat",
+                    "feishu",
+                ));
+            }
             info!("feishu gateway registered");
         } else {
             warn!("feishu gateway enabled but required app_id/app_secret is missing");
+        }
+    }
+
+    if !channel_entries.is_empty() {
+        match hakimi_tools::write_channel_directory(&channel_entries) {
+            Ok(path) => info!(path = %path.display(), "gateway channel directory updated"),
+            Err(err) => warn!(error = %err, "failed to update gateway channel directory"),
         }
     }
 
