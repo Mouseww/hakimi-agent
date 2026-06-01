@@ -5877,8 +5877,8 @@ mod tests {
         parse_gateway_undo_turns, plan_gateway_final_delivery, queue_cron_delivery,
         render_gateway_undo_response, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
         restore_hakimi_state_backup, restore_voice_history_text, rewind_gateway_history,
-        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
-        update_target_from_candidate,
+        split_stream_chunks, top_level_cron_response_for_path, top_level_mcp_response,
+        update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::{Message, Usage};
