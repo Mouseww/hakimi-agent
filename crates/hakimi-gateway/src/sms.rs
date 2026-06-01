@@ -153,6 +153,10 @@ impl PlatformAdapter for SmsAdapter {
         Ok(())
     }
 
+    fn max_message_chars(&self) -> Option<usize> {
+        Some(MAX_SMS_CHARS)
+    }
+
     fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<GatewayMessage>> {
         self.receiver.take()
     }

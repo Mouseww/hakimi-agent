@@ -437,6 +437,10 @@ impl PlatformAdapter for DiscordAdapter {
         Ok(())
     }
 
+    fn max_message_chars(&self) -> Option<usize> {
+        Some(MAX_CONTENT_LENGTH)
+    }
+
     fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<GatewayMessage>> {
         self.msg_rx.take()
     }

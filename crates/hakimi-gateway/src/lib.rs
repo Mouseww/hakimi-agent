@@ -160,6 +160,13 @@ pub trait PlatformAdapter: Send + Sync {
     /// Send a message to a specific chat / channel.
     async fn send_message(&self, chat_id: &str, text: &str) -> anyhow::Result<()>;
 
+    /// Maximum safe outbound text size for one platform message, measured in
+    /// Unicode scalar values. Adapters can return `None` when the platform or
+    /// adapter already handles its own overflow policy.
+    fn max_message_chars(&self) -> Option<usize> {
+        None
+    }
+
     /// Send a media attachment with an optional caption.
     ///
     /// `media` may be a platform file ID, an HTTP(S) URL, or a local path for
@@ -252,6 +259,14 @@ impl Gateway {
     /// Enable or disable outbound silence-narration filtering.
     pub fn set_filter_silence_narration(&mut self, enabled: bool) {
         self.filter_silence_narration = silence_filter_env_override().unwrap_or(enabled);
+    }
+
+    /// Return the configured adapter's safe per-message text limit, when known.
+    pub fn max_message_chars(&self, platform: &str, bot_id: &str) -> Option<usize> {
+        self.adapters
+            .iter()
+            .find(|a| a.name() == platform && a.bot_id() == bot_id)
+            .and_then(|adapter| adapter.max_message_chars())
     }
 
     /// Register a platform adapter.
@@ -387,7 +402,25 @@ impl Gateway {
         {
             adapter.send_media(&msg.chat_id, media, &msg.text).await
         } else {
-            adapter.send_message(&msg.chat_id, &msg.text).await
+            let chunks = split_gateway_text(&msg.text, adapter.max_message_chars());
+            let chunk_count = chunks.len();
+            let mut result = Ok(());
+            for chunk in chunks {
+                if let Err(err) = adapter.send_message(&msg.chat_id, &chunk).await {
+                    result = Err(err);
+                    break;
+                }
+            }
+            if result.is_ok() && chunk_count > 1 {
+                lifecycle::record_gateway_event(
+                    "route.overflow_chunks",
+                    Some(&msg.platform),
+                    Some(&msg.bot_id),
+                    Some(&msg.chat_id),
+                    format!("chunks={chunk_count}"),
+                );
+            }
+            result
         };
 
         match &result {
@@ -458,7 +491,33 @@ impl Gateway {
             return Ok(None);
         }
 
-        let result = adapter.send_message_get_id(&msg.chat_id, &msg.text).await;
+        let chunks = split_gateway_text(&msg.text, adapter.max_message_chars());
+        let chunk_count = chunks.len();
+        let mut last_message_id = None;
+        let mut result = Ok(());
+        for chunk in chunks {
+            match adapter.send_message_get_id(&msg.chat_id, &chunk).await {
+                Ok(message_id) => {
+                    if message_id.is_some() {
+                        last_message_id = message_id;
+                    }
+                }
+                Err(err) => {
+                    result = Err(err);
+                    break;
+                }
+            }
+        }
+        let result = result.map(|()| last_message_id);
+        if result.is_ok() && chunk_count > 1 {
+            lifecycle::record_gateway_event(
+                "route_get_id.overflow_chunks",
+                Some(&msg.platform),
+                Some(&msg.bot_id),
+                Some(&msg.chat_id),
+                format!("chunks={chunk_count}"),
+            );
+        }
         match &result {
             Ok(message_id) => lifecycle::record_gateway_event(
                 "route_get_id.ok",
@@ -653,6 +712,31 @@ impl Default for Gateway {
     }
 }
 
+fn split_gateway_text(text: &str, max_chars: Option<usize>) -> Vec<String> {
+    let Some(max_chars) = max_chars.filter(|max| *max > 0) else {
+        return vec![text.to_string()];
+    };
+    if text.chars().count() <= max_chars {
+        return vec![text.to_string()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut current_count = 0usize;
+    for ch in text.chars() {
+        if current_count >= max_chars {
+            chunks.push(std::mem::take(&mut current));
+            current_count = 0;
+        }
+        current.push(ch);
+        current_count += 1;
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,6 +781,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct RecordingAdapter {
         calls: Arc<Mutex<Vec<String>>>,
+        max_chars: Option<usize>,
     }
 
     #[async_trait]
@@ -716,6 +801,10 @@ mod tests {
         async fn send_message(&self, _chat_id: &str, text: &str) -> anyhow::Result<()> {
             self.calls.lock().unwrap().push(text.to_string());
             Ok(())
+        }
+
+        fn max_message_chars(&self) -> Option<usize> {
+            self.max_chars
         }
 
         async fn send_media(
@@ -833,5 +922,56 @@ mod tests {
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0], "/tmp/image.png|silent");
+    }
+
+    #[tokio::test]
+    async fn route_message_splits_text_for_platform_limit() {
+        let adapter = RecordingAdapter {
+            max_chars: Some(3),
+            ..RecordingAdapter::default()
+        };
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+
+        gateway
+            .route_message(&gateway_message("abcdefg"))
+            .await
+            .unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.as_slice(), ["abc", "def", "g"]);
+    }
+
+    #[tokio::test]
+    async fn route_message_get_id_returns_last_overflow_message_id() {
+        let adapter = RecordingAdapter {
+            max_chars: Some(2),
+            ..RecordingAdapter::default()
+        };
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+
+        let message_id = gateway
+            .route_message_get_id(&gateway_message("你好世界!"))
+            .await
+            .unwrap();
+
+        assert_eq!(message_id, Some(42));
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.as_slice(), ["你好", "世界", "!"]);
+    }
+
+    #[test]
+    fn split_gateway_text_is_utf8_safe_and_noops_without_limit() {
+        assert_eq!(
+            split_gateway_text("a好b", Some(2)),
+            vec!["a好".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            split_gateway_text("unchanged", None),
+            vec!["unchanged".to_string()]
+        );
     }
 }

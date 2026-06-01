@@ -2536,6 +2536,7 @@ struct GatewayStreamRenderSnapshot {
     current_message_id: Option<i64>,
     current_text: String,
     first_rendered_at: Option<std::time::Instant>,
+    used_overflow_chunks: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2557,6 +2558,9 @@ fn plan_gateway_final_delivery(
     }
     if is_error || !snapshot.rendered_content {
         return GatewayFinalDelivery::Send(final_text.to_string());
+    }
+    if snapshot.used_overflow_chunks && snapshot.current_text == final_text {
+        return GatewayFinalDelivery::None;
     }
     let Some(message_id) = snapshot.current_message_id else {
         return GatewayFinalDelivery::Send(final_text.to_string());
@@ -2587,6 +2591,9 @@ struct GatewayStreamUiState {
     last_edit_text: String,
     needs_new_message: bool,
     pending_since_last_render: usize,
+    active_chunk_index: usize,
+    active_chunk_last_text: String,
+    used_overflow_chunks: bool,
 }
 
 impl Default for GatewayStreamUiState {
@@ -2596,6 +2603,9 @@ impl Default for GatewayStreamUiState {
             last_edit_text: String::new(),
             needs_new_message: true,
             pending_since_last_render: 0,
+            active_chunk_index: 0,
+            active_chunk_last_text: String::new(),
+            used_overflow_chunks: false,
         }
     }
 }
@@ -2613,20 +2623,49 @@ impl GatewayStreamUiState {
             && self.pending_since_last_render >= buffer_threshold_chars
     }
 
-    fn render_pending(&mut self) -> Option<GatewayUiContentTarget> {
+    fn render_pending(
+        &mut self,
+        max_message_chars: Option<usize>,
+    ) -> Option<GatewayUiContentTarget> {
         if self.current_text.is_empty() || self.current_text == self.last_edit_text {
             return None;
         }
 
-        self.last_edit_text = self.current_text.clone();
-        self.pending_since_last_render = 0;
-        let target = if self.needs_new_message {
+        let chunks = split_stream_chunks(&self.current_text, max_message_chars);
+        if chunks.len() > 1 {
+            self.used_overflow_chunks = true;
+        }
+        let active_index = self.active_chunk_index.min(chunks.len().saturating_sub(1));
+        let active_text = chunks.get(active_index)?;
+
+        if self.needs_new_message {
             self.needs_new_message = false;
-            GatewayUiContentTarget::NewMessage
-        } else {
-            GatewayUiContentTarget::EditCurrent
-        };
-        Some(target)
+            self.active_chunk_index = active_index;
+            self.active_chunk_last_text = active_text.clone();
+            self.last_edit_text = chunks[..=active_index].concat();
+            self.pending_since_last_render = 0;
+            return Some(GatewayUiContentTarget::NewMessage(active_text.clone()));
+        }
+
+        if self.active_chunk_last_text != *active_text {
+            self.active_chunk_index = active_index;
+            self.active_chunk_last_text = active_text.clone();
+            self.last_edit_text = chunks[..=active_index].concat();
+            self.pending_since_last_render = 0;
+            return Some(GatewayUiContentTarget::EditCurrent(active_text.clone()));
+        }
+
+        if active_index + 1 < chunks.len() {
+            let next_index = active_index + 1;
+            let next_text = chunks[next_index].clone();
+            self.active_chunk_index = next_index;
+            self.active_chunk_last_text = next_text.clone();
+            self.last_edit_text = chunks[..=next_index].concat();
+            self.pending_since_last_render = 0;
+            return Some(GatewayUiContentTarget::NewMessage(next_text));
+        }
+
+        None
     }
 
     fn finish_tool_boundary(&mut self) {
@@ -2634,13 +2673,16 @@ impl GatewayStreamUiState {
         self.last_edit_text.clear();
         self.needs_new_message = true;
         self.pending_since_last_render = 0;
+        self.active_chunk_index = 0;
+        self.active_chunk_last_text.clear();
+        self.used_overflow_chunks = false;
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum GatewayUiContentTarget {
-    EditCurrent,
-    NewMessage,
+    EditCurrent(String),
+    NewMessage(String),
 }
 
 struct GatewayStreamRenderEnv<'a> {
@@ -2657,42 +2699,63 @@ async fn render_gateway_stream_content(
     rendered_content: &mut bool,
     first_rendered_at: &mut Option<std::time::Instant>,
 ) -> bool {
-    let Some(target) = ui_state.render_pending() else {
-        return false;
-    };
+    let max_message_chars = env.gateway.max_message_chars(env.platform, env.bot_id);
+    let mut rendered_any = false;
 
-    *rendered_content = true;
-    first_rendered_at.get_or_insert_with(std::time::Instant::now);
+    while let Some(target) = ui_state.render_pending(max_message_chars) {
+        *rendered_content = true;
+        first_rendered_at.get_or_insert_with(std::time::Instant::now);
+        rendered_any = true;
 
-    match target {
-        GatewayUiContentTarget::EditCurrent => {
-            if let Some(active_msg_id) = *current_message_id {
-                let _ = env
-                    .gateway
-                    .edit_message(
-                        env.platform,
-                        env.bot_id,
-                        env.chat_id,
-                        active_msg_id,
-                        &ui_state.current_text,
-                    )
-                    .await;
+        match target {
+            GatewayUiContentTarget::EditCurrent(text) => {
+                if let Some(active_msg_id) = *current_message_id {
+                    let _ = env
+                        .gateway
+                        .edit_message(env.platform, env.bot_id, env.chat_id, active_msg_id, &text)
+                        .await;
+                }
             }
-        }
-        GatewayUiContentTarget::NewMessage => {
-            let msg = hakimi_gateway::GatewayMessage {
-                platform: env.platform.to_string(),
-                bot_id: env.bot_id.to_string(),
-                chat_id: env.chat_id.to_string(),
-                user_id: String::new(),
-                text: ui_state.current_text.clone(),
-                media: None,
-            };
-            *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
+            GatewayUiContentTarget::NewMessage(text) => {
+                let msg = hakimi_gateway::GatewayMessage {
+                    platform: env.platform.to_string(),
+                    bot_id: env.bot_id.to_string(),
+                    chat_id: env.chat_id.to_string(),
+                    user_id: String::new(),
+                    text,
+                    media: None,
+                };
+                *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
+            }
         }
     }
 
-    true
+    rendered_any
+}
+
+fn split_stream_chunks(text: &str, max_chars: Option<usize>) -> Vec<String> {
+    let Some(max_chars) = max_chars.filter(|max| *max > 0) else {
+        return vec![text.to_string()];
+    };
+    if text.chars().count() <= max_chars {
+        return vec![text.to_string()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut current_count = 0usize;
+    for ch in text.chars() {
+        if current_count >= max_chars {
+            chunks.push(std::mem::take(&mut current));
+            current_count = 0;
+        }
+        current.push(ch);
+        current_count += 1;
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
 }
 
 // ---------------------------------------------------------------------------
@@ -4952,6 +5015,7 @@ Just send a message to chat with me!"
                     GatewayStreamRenderSnapshot {
                         rendered_content,
                         current_message_id,
+                        used_overflow_chunks: ui_state.used_overflow_chunks,
                         current_text: ui_state.current_text,
                         first_rendered_at,
                     }
@@ -6643,21 +6707,21 @@ roles:
 
         state.push_content("爸");
         assert_eq!(
-            state.render_pending(),
-            Some(GatewayUiContentTarget::NewMessage)
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage("爸".to_string()))
         );
         state.push_content("爸");
         assert_eq!(
-            state.render_pending(),
-            Some(GatewayUiContentTarget::EditCurrent)
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::EditCurrent("爸爸".to_string()))
         );
         assert_eq!(state.current_text, "爸爸");
 
         let mut ascii_state = GatewayStreamUiState::default();
         ascii_state.push_content("hel");
-        let _ = ascii_state.render_pending();
+        let _ = ascii_state.render_pending(None);
         ascii_state.push_content("lo");
-        let _ = ascii_state.render_pending();
+        let _ = ascii_state.render_pending(None);
         assert_eq!(ascii_state.current_text, "hello");
     }
 
@@ -6666,8 +6730,10 @@ roles:
         let mut state = GatewayStreamUiState::default();
         state.push_content("爸爸，工具跑完了");
         assert_eq!(
-            state.render_pending(),
-            Some(GatewayUiContentTarget::NewMessage)
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "爸爸，工具跑完了".to_string()
+            ))
         );
         assert_eq!(state.current_text, "爸爸，工具跑完了");
         assert_eq!(state.current_text, state.last_edit_text);
@@ -6682,8 +6748,8 @@ roles:
         assert!(state.should_flush_buffered_content(3));
 
         assert_eq!(
-            state.render_pending(),
-            Some(GatewayUiContentTarget::NewMessage)
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage("abc".to_string()))
         );
         assert!(!state.should_flush_buffered_content(3));
     }
@@ -6701,23 +6767,62 @@ roles:
 
         state.push_content("爸爸，先看入口。");
         assert_eq!(
-            state.render_pending(),
-            Some(GatewayUiContentTarget::NewMessage)
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "爸爸，先看入口。".to_string()
+            ))
         );
 
         state.finish_tool_boundary();
 
         state.push_content("爸爸，工具跑完了，继续分析。");
         assert_eq!(
-            state.render_pending(),
-            Some(GatewayUiContentTarget::NewMessage)
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "爸爸，工具跑完了，继续分析。".to_string()
+            ))
         );
 
         state.push_content("下一句继续编辑同一个新气泡。");
         assert_eq!(
-            state.render_pending(),
-            Some(GatewayUiContentTarget::EditCurrent)
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::EditCurrent(
+                "爸爸，工具跑完了，继续分析。下一句继续编辑同一个新气泡。".to_string()
+            ))
         );
+    }
+
+    #[test]
+    fn streaming_overflow_starts_new_message_for_next_chunk() {
+        let mut state = GatewayStreamUiState::default();
+
+        state.push_content("abcdef");
+        assert_eq!(
+            state.render_pending(Some(3)),
+            Some(GatewayUiContentTarget::NewMessage("abc".to_string()))
+        );
+        assert_eq!(
+            state.render_pending(Some(3)),
+            Some(GatewayUiContentTarget::NewMessage("def".to_string()))
+        );
+        assert!(state.used_overflow_chunks);
+        assert_eq!(state.last_edit_text, "abcdef");
+        assert_eq!(state.render_pending(Some(3)), None);
+
+        state.push_content("g");
+        assert_eq!(
+            state.render_pending(Some(3)),
+            Some(GatewayUiContentTarget::NewMessage("g".to_string()))
+        );
+    }
+
+    #[test]
+    fn split_stream_chunks_is_utf8_safe() {
+        assert_eq!(
+            split_stream_chunks("你好吗", Some(2)),
+            vec!["你好".to_string(), "吗".to_string()]
+        );
+        assert_eq!(split_stream_chunks("same", None), vec!["same".to_string()]);
     }
 
     #[test]
@@ -6740,6 +6845,7 @@ roles:
             current_message_id: Some(42),
             current_text: "完整回复".to_string(),
             first_rendered_at: Some(std::time::Instant::now()),
+            used_overflow_chunks: false,
         };
 
         assert_eq!(
@@ -6762,6 +6868,7 @@ roles:
             first_rendered_at: Some(
                 std::time::Instant::now() - std::time::Duration::from_secs(120),
             ),
+            used_overflow_chunks: false,
         };
 
         assert_eq!(
@@ -6785,6 +6892,7 @@ roles:
             current_message_id: Some(42),
             current_text: "开头".to_string(),
             first_rendered_at: Some(std::time::Instant::now()),
+            used_overflow_chunks: false,
         };
 
         assert_eq!(
@@ -6810,6 +6918,7 @@ roles:
             first_rendered_at: Some(
                 std::time::Instant::now() - std::time::Duration::from_secs(120),
             ),
+            used_overflow_chunks: false,
         };
 
         assert_eq!(
@@ -6832,6 +6941,7 @@ roles:
             first_rendered_at: Some(
                 std::time::Instant::now() - std::time::Duration::from_secs(120),
             ),
+            used_overflow_chunks: false,
         };
 
         assert_eq!(
@@ -6854,6 +6964,7 @@ roles:
             first_rendered_at: Some(
                 std::time::Instant::now() - std::time::Duration::from_secs(120),
             ),
+            used_overflow_chunks: false,
         };
 
         assert_eq!(
@@ -6867,6 +6978,29 @@ roles:
                 old_message_id: 42,
                 text: "开头和后续完整内容".to_string()
             }
+        );
+    }
+
+    #[test]
+    fn final_delivery_skips_duplicate_after_overflow_stream_chunks() {
+        let snapshot = GatewayStreamRenderSnapshot {
+            rendered_content: true,
+            current_message_id: Some(43),
+            current_text: "abcdef".to_string(),
+            first_rendered_at: Some(
+                std::time::Instant::now() - std::time::Duration::from_secs(120),
+            ),
+            used_overflow_chunks: true,
+        };
+
+        assert_eq!(
+            plan_gateway_final_delivery(
+                &snapshot,
+                "abcdef",
+                false,
+                std::time::Duration::from_secs(60),
+            ),
+            GatewayFinalDelivery::None
         );
     }
 

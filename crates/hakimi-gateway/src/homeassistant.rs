@@ -139,6 +139,10 @@ impl PlatformAdapter for HomeAssistantAdapter {
         Ok(())
     }
 
+    fn max_message_chars(&self) -> Option<usize> {
+        Some(MAX_NOTIFICATION_CHARS)
+    }
+
     fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<GatewayMessage>> {
         self.receiver.take()
     }

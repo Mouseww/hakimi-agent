@@ -101,6 +101,7 @@ Generated: 2026-05-31
 - **Gateway ingress access policy** — Config-driven allowlist merges global gateway users, Telegram user IDs, role allowlists, and ClawBot sender IDs before command/agent handling
 - **Gateway fresh-final streaming** — Configurable `gateways.streaming.fresh_final_after_seconds` sends long streamed completions as a fresh final message and lets Telegram clean up stale preview bubbles
 - **Gateway stream pacing** — Configurable `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars` control progressive edit cadence and force pending-text flushes before tool/media/delegate boundaries
+- **Gateway overflow chunking** — Long outbound and streamed gateway text is split into UTF-8-safe per-platform chunks instead of truncating or trying to edit beyond platform limits
 - **Gateway silence-narration filter** — Configurable outbound guard drops bare loop-prone silence narration such as `*(silent)*`, `.`, `...`, `…`, `🔇`, `silent`, `no response`, and `no reply` before chat adapters send it
 - **Gateway lifecycle diagnostics** — Adapter registration, connect/disconnect, route success/failure, silence filtering, edit outcomes, and receiver attachment are persisted to `~/.hakimi/logs/gateway-events.log`; gateway `/logs` reads lifecycle and legacy service logs without shelling out
 - **Telegram adapter** — Telegram Bot API integration
@@ -384,7 +385,7 @@ Generated: 2026-05-31
 #### 39. Gateway Streaming Consumer
 - **What**: Bridges sync agent callbacks to async platform delivery with progressive message editing
 - **Hermes location**: `gateway/stream_consumer.py`
-- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup, configurable edit interval/buffer threshold, and a default-on silence-narration filter for loop-prone bare tokens. Remaining parity is native draft transport, overflow chunking, flood-control backoff, and per-platform display policy.
+- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup, configurable edit interval/buffer threshold, UTF-8-safe overflow chunking for long outbound/streamed text, and a default-on silence-narration filter for loop-prone bare tokens. Remaining parity is native draft transport, flood-control backoff, and per-platform display policy.
 - **Priority**: **Medium** — Real-time streaming UX on messaging platforms
 
 #### 40. Usage Pricing / Account Usage Tracking
@@ -520,7 +521,7 @@ Generated: 2026-05-31
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 6. Gateway
-- **Status**: 14 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
+- **Status**: 14 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound/streamed overflow chunking, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
 - **What's missing**: 7+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
@@ -708,9 +709,10 @@ Generated: 2026-05-31
 | 89 | Home Assistant Gateway Adapter | `hakimi-gateway/src/homeassistant.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 6 | ✅ Home Assistant outbound gateway sends persistent notifications through REST with `HASS_URL` / `HASS_TOKEN` or config credentials, default-title routing, UTF-8-safe message limits, and channel-directory discovery |
 | 90 | WhatsApp Business Cloud Gateway Adapter | `hakimi-gateway/src/whatsapp.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Meta Graph API outbound text gateway supports config/env credentials, phone-number-ID routing, optional home-channel delivery, API version/base URL overrides, redacted logging, and UTF-8-safe 4096-character chunking |
 | 91 | Gateway/TUI Undo Rewind | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-tui/src/app.rs` | 8 | ✅ Hermes-style `/undo [N]` / `/rewind [N]` rewinds recent in-memory user turns in gateway and TUI surfaces, clamps excessive counts, refuses invalid counts, returns the target prompt for edit/resend, and avoids model-loop execution; durable SessionDB soft-delete remains a future storage-level extension |
+| 92 | Gateway Stream Overflow Chunking | `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs`, platform gateway adapters | 6 | ✅ Gateway route/send/edit paths expose platform text limits and split long outbound or streamed replies into UTF-8-safe chunks; final delivery skips duplicate long replies after overflow stream chunks |
 
 ### Summary
-- **Total tests**: 1518 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1524 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

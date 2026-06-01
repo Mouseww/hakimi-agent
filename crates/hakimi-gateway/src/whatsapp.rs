@@ -172,6 +172,10 @@ impl PlatformAdapter for WhatsAppAdapter {
         Ok(())
     }
 
+    fn max_message_chars(&self) -> Option<usize> {
+        Some(MAX_WHATSAPP_CHARS)
+    }
+
     fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<GatewayMessage>> {
         self.receiver.take()
     }

@@ -502,6 +502,10 @@ impl PlatformAdapter for TelegramAdapter {
         Ok(())
     }
 
+    fn max_message_chars(&self) -> Option<usize> {
+        Some(MAX_MESSAGE_LENGTH)
+    }
+
     async fn send_media(&self, chat_id: &str, media: &str, caption: &str) -> Result<()> {
         let caption = normalize_outbound_text(caption);
         let media_kind = classify_media_kind(media);
