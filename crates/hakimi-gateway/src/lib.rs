@@ -4,6 +4,7 @@
 //! Telegram, etc.) and a central [`Gateway`] that routes inbound messages
 //! to the agent runtime.
 
+mod bluebubbles;
 mod clawbot;
 mod dingtalk;
 mod discord;
@@ -20,6 +21,7 @@ mod webhook;
 mod wecom;
 mod whatsapp;
 
+pub use bluebubbles::{BlueBubblesAdapter, BlueBubblesAdapterConfig};
 pub use clawbot::{ClawBotAdapter, ClawBotAdapterConfig, ClawBotMode};
 pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 pub use discord::{DiscordAdapter, DiscordAdapterConfig, DiscordEmbed};

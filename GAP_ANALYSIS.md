@@ -112,6 +112,7 @@ Generated: 2026-05-31
 - **SMS/Twilio adapter** — Twilio REST SMS outbound gateway with env/config credentials, home-channel delivery, Markdown cleanup, and UTF-8-safe message chunking
 - **WhatsApp Business Cloud adapter** — Meta Graph API outbound text gateway with env/config credentials, home-channel delivery, and UTF-8-safe 4096-character chunking
 - **Matrix adapter** — Matrix room send gateway with homeserver, access token, and room configuration
+- **BlueBubbles/iMessage adapter** — BlueBubbles REST outbound text gateway with env/config credentials, chat GUID/address resolution, optional new-chat creation, Markdown cleanup, and UTF-8-safe message chunking
 - **DingTalk adapter** — DingTalk custom robot webhook gateway
 - **WeCom adapter** — WeCom application message gateway
 - **Feishu/Lark adapter** — Feishu/Lark IM outbound gateway with app credentials and home-channel routing
@@ -232,11 +233,11 @@ Generated: 2026-05-31
 - **Details**: Hakimi now covers 17 Hermes-aligned structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat/events/diagnostics/assign/worker-log/notify operations, explicit board routing, profile/assignee routing, durable worker logs, notification subscriptions with unread claim cursors, and `/kanban boards list|show|create|switch` on isolated SQLite boards. Remaining parity is dispatcher-spawned workers, swarm creation, and dashboard-level management.
 - **Priority**: **High** — Multi-agent orchestration
 
-#### 13. Gateway Platform Adapters (7+ missing)
-- **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/Signal/SMS/WhatsApp/Home Assistant/Matrix/DingTalk/WeCom/Feishu/ClawBot
+#### 13. Gateway Platform Adapters (6+ missing)
+- **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/Signal/SMS/WhatsApp/Home Assistant/Matrix/DingTalk/WeCom/Feishu/BlueBubbles/ClawBot
 - **Hermes location**: `gateway/platforms/`
-- **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio outbound text, WhatsApp Business Cloud API outbound text, Home Assistant persistent notifications, Matrix, DingTalk, WeCom, Feishu/Lark outbound text, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling; Feishu uses Hermes-compatible app credentials and `FEISHU_HOME_CHANNEL` routing for tenant-token IM sends; SMS uses Twilio-compatible account credentials, E.164 sender/recipient numbers, `SMS_HOME_CHANNEL`, Markdown cleanup, and safe message chunking; WhatsApp uses `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and optional `WHATSAPP_HOME_CHANNEL` for Graph API delivery; Home Assistant uses `HASS_URL` / `HASS_TOKEN` or config credentials for persistent notification delivery.
-- **Missing**: email, weixin, qqbot, bluebubbles, yuanbao, full api_server Responses/runs/session surface, msgraph_webhook
+- **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio outbound text, WhatsApp Business Cloud API outbound text, Home Assistant persistent notifications, Matrix, DingTalk, WeCom, Feishu/Lark outbound text, BlueBubbles/iMessage outbound text, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling; Feishu uses Hermes-compatible app credentials and `FEISHU_HOME_CHANNEL` routing for tenant-token IM sends; SMS uses Twilio-compatible account credentials, E.164 sender/recipient numbers, `SMS_HOME_CHANNEL`, Markdown cleanup, and safe message chunking; WhatsApp uses `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and optional `WHATSAPP_HOME_CHANNEL` for Graph API delivery; Home Assistant uses `HASS_URL` / `HASS_TOKEN` or config credentials for persistent notification delivery; BlueBubbles uses `BLUEBUBBLES_SERVER_URL`, `BLUEBUBBLES_PASSWORD`, and optional `BLUEBUBBLES_HOME_CHANNEL` for local iMessage delivery.
+- **Missing**: email, weixin, qqbot, yuanbao, full api_server Responses/runs/session surface, msgraph_webhook
 - **Priority**: **High** — Platform reach
 
 #### 14. Bedrock Transport
@@ -521,8 +522,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 6. Gateway
-- **Status**: 14 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound/streamed overflow chunking, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
-- **What's missing**: 7+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
+- **Status**: 15 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, SMS/Twilio, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, BlueBubbles/iMessage, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound/streamed overflow chunking, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
+- **What's missing**: 6+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -577,7 +578,7 @@ Generated: 2026-05-31
 |----------|----------------|-----------------|----------------|----------------|
 | Core Tools | 40+ | 29 | 1 | 11+ |
 | Transports | 4 | 4 | 0 | 0 |
-| Gateway Platforms | 20+ | 13 | 1 | 7+ |
+| Gateway Platforms | 20+ | 14 | 1 | 6+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
 | Agent Internals | 25+ | 18 | 4 | 2+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
@@ -589,7 +590,7 @@ Generated: 2026-05-31
 **Total unique Hermes features identified: ~150+**
 **Fully present in Hakimi: ~80** (up from ~30)
 **Partially implemented: ~10**
-**Missing entirely: ~68+**
+**Missing entirely: ~67+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (CDP attach, cloud backends)
@@ -687,7 +688,7 @@ Generated: 2026-05-31
 | 67 | Tool Guardrail No-Progress Tracking | `hakimi-core/src/{guardrails.rs,loop_impl.rs}` | 3 | ✅ Tool-call loop state persists across a full user turn, repeated JSON-equivalent calls are canonicalized, and read-only/idempotent tools append Hermes-style no-progress guidance while mutating tools avoid false positive result-loop warnings |
 | 68 | Model Context Metadata | `hakimi-common/src/model_metadata.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ `model.context_length` explicit overrides, static model-family metadata, provider-prefix normalization, minimum-window diagnostics, and shared compression/tool-search context sizing |
 | 69 | Gateway Voice Mode | `hakimi-cli/src/entry.rs` | 2 | ✅ Gateway `/voice on|off|tts|status` tracks per-chat voice state, adds Hermes-style concise spoken-response guidance to the current model message, and restores the clean original user text before chat history persistence |
-| 70 | Gateway Adapter Runtime Exposure | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/feishu.rs` | 9 | ✅ Slack, Discord, Mattermost, Webhook, Signal, SMS/Twilio, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, Telegram, and ClawBot can be enabled from config/env and registered at gateway startup; queued send_message/cron delivery resolves configured bot IDs by platform |
+| 70 | Gateway Adapter Runtime Exposure | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/feishu.rs` | 9 | ✅ Slack, Discord, Mattermost, Webhook, Signal, SMS/Twilio, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, BlueBubbles/iMessage, Telegram, and ClawBot can be enabled from config/env and registered at gateway startup; queued send_message/cron delivery resolves configured bot IDs by platform |
 | 71 | TUI Voice Readiness | `hakimi-config/src/config.rs`, `hakimi-tui/src/{app.rs,main.rs,ui.rs}` | 5 | ✅ TUI now registers `text_to_speech` and `transcribe_audio`, passes shared `voice.*` config into the agent, exposes `/voice on|off|tts|status|doctor`, and shows configurable Ctrl+B/Ctrl+letter readiness diagnostics without pretending microphone capture is complete |
 | 72 | Voice Diagnostics + STT Silence Filtering | `hakimi-tools/src/voice_mode.rs`, `hakimi-tools/src/builtin_transcribe_audio.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/app.rs` | 7 | ✅ Hermes-style audio environment diagnostics cover SSH/container/WSL/Termux/forwarded-audio cases, `/voice doctor` exposes readiness in gateway, TUI status includes capture/playback readiness, and `transcribe_audio` filters common Whisper silence hallucinations while chunking oversized local WAV text transcripts |
 | 73 | Voice Recording Artifact Validation | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ PCM16 mono WAV writer matches Hermes voice recording parameters, summarizes captured audio duration/peak RMS, rejects too-short or too-quiet recordings before STT, and surfaces artifact readiness in TUI `/voice status` while keeping microphone capture explicitly pending |
@@ -713,9 +714,10 @@ Generated: 2026-05-31
 | 93 | Dashboard Admin Runtime API | `hakimi-server/src/api.rs` | 9 | ✅ `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose WebUI/admin summaries with secret values omitted or redacted; runtime-scoped POST/DELETE handlers add/remove stdio MCP servers, credential-pool entries, and webhook settings without persisting secrets to disk; `/v1/capabilities` advertises the writable admin surface |
 | 94 | Trajectory Saving | `hakimi-core/src/trajectory.rs`, `hakimi-core/src/agent.rs`, CLI/server/TUI config wiring | 6 | ✅ Hermes-compatible ShareGPT JSONL trajectory saving for completed and failed turns, with system-prompt snapshots, reasoning scratchpad conversion, tool-call/tool-response XML payloads, image omission markers, config/env controls, and default output under `~/.hakimi/trajectories` |
 | 95 | TUI Checkpoint Viewer | `hakimi-tui/src/app.rs`, `hakimi-tools/src/builtin_checkpoint.rs` | 2 | ✅ `/checkpoints` and `/ckpt` now run locally in the TUI, reuse the same shadow-git response renderer as gateway `/checkpoints`, support list/status/create/diff/restore command text, and keep checkpoint inspection out of the agent/model loop |
+| 96 | BlueBubbles/iMessage Gateway Adapter | `hakimi-gateway/src/bluebubbles.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 7 | ✅ Local BlueBubbles REST outbound text gateway supports config/env credentials, chat GUID/address lookup, optional new-chat creation, Markdown cleanup, UTF-8-safe 4000-character chunking, redacted logging, and channel-directory discovery |
 
 ### Summary
-- **Total tests**: 1544 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1551 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

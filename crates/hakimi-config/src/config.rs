@@ -601,6 +601,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub clawbot: ClawBotGatewayConfig,
     #[serde(default)]
+    pub bluebubbles: BlueBubblesGatewayConfig,
+    #[serde(default)]
     pub slack: SlackGatewayConfig,
     #[serde(default)]
     pub discord: DiscordGatewayConfig,
@@ -639,6 +641,7 @@ impl Default for GatewaysConfig {
             streaming: GatewayStreamingConfig::default(),
             telegram: TelegramGatewayConfig::default(),
             clawbot: ClawBotGatewayConfig::default(),
+            bluebubbles: BlueBubblesGatewayConfig::default(),
             slack: SlackGatewayConfig::default(),
             discord: DiscordGatewayConfig::default(),
             mattermost: MattermostGatewayConfig::default(),
@@ -651,6 +654,40 @@ impl Default for GatewaysConfig {
             dingtalk: DingTalkGatewayConfig::default(),
             wecom: WeComGatewayConfig::default(),
             feishu: FeishuGatewayConfig::default(),
+        }
+    }
+}
+
+/// BlueBubbles / iMessage gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlueBubblesGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_bluebubbles_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub server_url: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub home_channel: String,
+    #[serde(default)]
+    pub allow_new_chat: bool,
+}
+
+fn default_bluebubbles_bot_id() -> String {
+    "bluebubbles".to_string()
+}
+
+impl Default for BlueBubblesGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_bluebubbles_bot_id(),
+            server_url: String::new(),
+            password: String::new(),
+            home_channel: String::new(),
+            allow_new_chat: false,
         }
     }
 }
@@ -1365,6 +1402,9 @@ mod tests {
         assert!(config.gateways.filter_silence_narration);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
+        assert!(!config.gateways.bluebubbles.enabled);
+        assert_eq!(config.gateways.bluebubbles.bot_id, "bluebubbles");
+        assert!(!config.gateways.bluebubbles.allow_new_chat);
         assert_eq!(config.voice.record_key, "ctrl+b");
         assert_eq!(config.voice.silence_threshold, 200);
         assert_eq!(config.voice.silence_duration_seconds, 3.0);
@@ -1509,6 +1549,13 @@ gateways:
     enabled: true
     phone_number: "+15551234567"
     signal_cli_path: "http://signal-cli:8080"
+  bluebubbles:
+    enabled: true
+    bot_id: "ops-imessage"
+    server_url: "http://127.0.0.1:1234"
+    password: "bb-redacted"
+    home_channel: "iMessage;-;user@example.com"
+    allow_new_chat: true
   sms:
     enabled: true
     bot_id: "ops-sms"
@@ -1575,6 +1622,17 @@ gateways:
         assert_eq!(config.gateways.webhook.path, "/events");
         assert!(config.gateways.signal.enabled);
         assert_eq!(config.gateways.signal.phone_number, "+15551234567");
+        assert!(config.gateways.bluebubbles.enabled);
+        assert_eq!(config.gateways.bluebubbles.bot_id, "ops-imessage");
+        assert_eq!(
+            config.gateways.bluebubbles.server_url,
+            "http://127.0.0.1:1234"
+        );
+        assert_eq!(
+            config.gateways.bluebubbles.home_channel,
+            "iMessage;-;user@example.com"
+        );
+        assert!(config.gateways.bluebubbles.allow_new_chat);
         assert!(config.gateways.sms.enabled);
         assert_eq!(config.gateways.sms.bot_id, "ops-sms");
         assert_eq!(config.gateways.sms.account_sid, "ACredacted");

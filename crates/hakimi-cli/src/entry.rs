@@ -2234,6 +2234,48 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.bluebubbles.enabled {
+        let server_url = env_or_config_value(
+            "BLUEBUBBLES_SERVER_URL",
+            &config.gateways.bluebubbles.server_url,
+        );
+        let password = env_or_config_value(
+            "BLUEBUBBLES_PASSWORD",
+            &config.gateways.bluebubbles.password,
+        );
+
+        if let (Some(server_url), Some(password)) = (server_url, password) {
+            let bot_id = config.gateways.bluebubbles.bot_id.clone();
+            let home_channel = env_or_config_value(
+                "BLUEBUBBLES_HOME_CHANNEL",
+                &config.gateways.bluebubbles.home_channel,
+            )
+            .unwrap_or_default();
+            let bluebubbles =
+                hakimi_gateway::BlueBubblesAdapter::new(hakimi_gateway::BlueBubblesAdapterConfig {
+                    bot_id: bot_id.clone(),
+                    server_url,
+                    password,
+                    home_channel: home_channel.clone(),
+                    allow_new_chat: config.gateways.bluebubbles.allow_new_chat,
+                });
+            gateway.add_adapter(Box::new(bluebubbles));
+            bot_ids.insert("bluebubbles".to_string(), bot_id);
+            if !home_channel.trim().is_empty() {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "bluebubbles",
+                    &home_channel,
+                    "home",
+                    "imessage",
+                    "bluebubbles",
+                ));
+            }
+            info!("bluebubbles gateway registered");
+        } else {
+            warn!("bluebubbles gateway enabled but required server_url/password is missing");
+        }
+    }
+
     if config.gateways.sms.enabled {
         let account_sid =
             env_or_config_value("TWILIO_ACCOUNT_SID", &config.gateways.sms.account_sid);
