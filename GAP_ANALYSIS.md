@@ -101,6 +101,7 @@ Generated: 2026-05-31
 - **Gateway fresh-final streaming** — Configurable `gateways.streaming.fresh_final_after_seconds` sends long streamed completions as a fresh final message and lets Telegram clean up stale preview bubbles
 - **Gateway stream pacing** — Configurable `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars` control progressive edit cadence and force pending-text flushes before tool/media/delegate boundaries
 - **Gateway silence-narration filter** — Configurable outbound guard drops bare loop-prone silence narration such as `*(silent)*`, `.`, `...`, `…`, `🔇`, `silent`, `no response`, and `no reply` before chat adapters send it
+- **Gateway lifecycle diagnostics** — Adapter registration, connect/disconnect, route success/failure, silence filtering, edit outcomes, and receiver attachment are persisted to `~/.hakimi/logs/gateway-events.log`; gateway `/logs` reads lifecycle and legacy service logs without shelling out
 - **Telegram adapter** — Telegram Bot API integration
 - **Discord adapter** — Discord bot with embeds
 - **Slack adapter** — Slack bot with blocks
@@ -515,8 +516,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 6. Gateway
-- **Status**: 11 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, Feishu/Lark, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, and outbound silence-narration filtering. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior.
-- **What's missing**: 10+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
+- **Status**: 11 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Signal, Matrix, DingTalk, WeCom, Feishu/Lark, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
+- **What's missing**: 10+ other platforms, gateway hooks system, channel directory, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -695,9 +696,10 @@ Generated: 2026-05-31
 | 81 | Voice Continuous Restart Mode | `hakimi-tui/src/app.rs` | 3 | ✅ TUI voice capture now enters a Hermes-style continuous loop after the first record key press, restarts listening after each completed voice response, restarts after no-speech recordings until 3 consecutive no-speech exits, and disables auto-restart on second-press cancellation or errors |
 | 82 | Browser Vision Routing | `hakimi-tools/src/builtin_browser.rs`, CLI/server/TUI registration | 3 | ✅ Optional Chromium `browser_vision` captures a persistent PNG screenshot, returns `screenshot_path` for `MEDIA:` sharing, and emits a vision-compatible image content block plus question metadata for native multimodal routing |
 | 83 | Computer Use Readiness Surface | `hakimi-tools/src/builtin_computer_use.rs`, CLI/server/TUI registration | 5 | 🟡 `computer_use` mirrors Hermes action-schema inputs, supports safe wait plus macOS screenshot/list-app discovery, blocks dangerous typed payloads and destructive key combos, and reports driver readiness for mutating desktop actions without claiming full cua-driver parity |
+| 84 | Gateway Lifecycle Diagnostics | `hakimi-gateway/src/lifecycle.rs`, `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Gateway lifecycle events are written to a redacted `gateway-events.log`, adapter/connect/route/filter/edit/receiver paths are instrumented, and gateway `/logs` reads lifecycle plus legacy service logs without invoking `tail` |
 
 ### Summary
-- **Total tests**: 1473 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1476 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

@@ -8,6 +8,7 @@ mod clawbot;
 mod dingtalk;
 mod discord;
 mod feishu;
+pub mod lifecycle;
 mod matrix;
 mod mattermost;
 mod signal;
@@ -20,6 +21,7 @@ pub use clawbot::{ClawBotAdapter, ClawBotAdapterConfig, ClawBotMode};
 pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
 pub use discord::{DiscordAdapter, DiscordAdapterConfig, DiscordEmbed};
 pub use feishu::{FeishuAdapter, FeishuAdapterConfig};
+pub use lifecycle::{gateway_events_log_path, read_recent_gateway_events, read_recent_lines};
 pub use matrix::{MatrixAdapter, MatrixAdapterConfig};
 pub use mattermost::{MattermostAdapter, MattermostAdapterConfig};
 pub use signal::{SignalAdapter, SignalAdapterConfig};
@@ -248,15 +250,51 @@ impl Gateway {
 
     /// Register a platform adapter.
     pub fn add_adapter(&mut self, adapter: Box<dyn PlatformAdapter>) {
-        tracing::info!("registered platform adapter: {}", adapter.name());
+        let platform = adapter.name().to_string();
+        let bot_id = adapter.bot_id().to_string();
+        tracing::info!("registered platform adapter: {}", platform);
+        lifecycle::record_gateway_event(
+            "adapter.registered",
+            Some(&platform),
+            Some(&bot_id),
+            None,
+            "",
+        );
         self.adapters.push(adapter);
     }
 
     /// Connect all registered adapters.
     pub async fn connect_all(&mut self) -> anyhow::Result<()> {
         for adapter in &mut self.adapters {
-            tracing::info!("connecting adapter: {}", adapter.name());
-            adapter.connect().await?;
+            let platform = adapter.name().to_string();
+            let bot_id = adapter.bot_id().to_string();
+            tracing::info!("connecting adapter: {}", platform);
+            lifecycle::record_gateway_event(
+                "adapter.connect.start",
+                Some(&platform),
+                Some(&bot_id),
+                None,
+                "",
+            );
+            match adapter.connect().await {
+                Ok(()) => lifecycle::record_gateway_event(
+                    "adapter.connect.ok",
+                    Some(&platform),
+                    Some(&bot_id),
+                    None,
+                    "",
+                ),
+                Err(err) => {
+                    lifecycle::record_gateway_event(
+                        "adapter.connect.error",
+                        Some(&platform),
+                        Some(&bot_id),
+                        None,
+                        err.to_string(),
+                    );
+                    return Err(err);
+                }
+            }
         }
         Ok(())
     }
@@ -264,25 +302,63 @@ impl Gateway {
     /// Disconnect all registered adapters.
     pub async fn disconnect_all(&mut self) -> anyhow::Result<()> {
         for adapter in &mut self.adapters {
-            tracing::info!("disconnecting adapter: {}", adapter.name());
-            adapter.disconnect().await?;
+            let platform = adapter.name().to_string();
+            let bot_id = adapter.bot_id().to_string();
+            tracing::info!("disconnecting adapter: {}", platform);
+            lifecycle::record_gateway_event(
+                "adapter.disconnect.start",
+                Some(&platform),
+                Some(&bot_id),
+                None,
+                "",
+            );
+            match adapter.disconnect().await {
+                Ok(()) => lifecycle::record_gateway_event(
+                    "adapter.disconnect.ok",
+                    Some(&platform),
+                    Some(&bot_id),
+                    None,
+                    "",
+                ),
+                Err(err) => {
+                    lifecycle::record_gateway_event(
+                        "adapter.disconnect.error",
+                        Some(&platform),
+                        Some(&bot_id),
+                        None,
+                        err.to_string(),
+                    );
+                    return Err(err);
+                }
+            }
         }
         Ok(())
     }
 
     /// Route an outbound message to the correct adapter by platform name.
     pub async fn route_message(&self, msg: &GatewayMessage) -> anyhow::Result<()> {
-        let adapter = self
+        let adapter = match self
             .adapters
             .iter()
             .find(|a| a.name() == msg.platform && a.bot_id() == msg.bot_id)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
+        {
+            Some(adapter) => adapter,
+            None => {
+                let err = anyhow::anyhow!(
                     "no adapter for platform '{}' with bot_id '{}'",
                     msg.platform,
                     msg.bot_id
-                )
-            })?;
+                );
+                lifecycle::record_gateway_event(
+                    "route.missing_adapter",
+                    Some(&msg.platform),
+                    Some(&msg.bot_id),
+                    Some(&msg.chat_id),
+                    err.to_string(),
+                );
+                return Err(err);
+            }
+        };
 
         if self.should_filter_outbound_text(msg) {
             tracing::warn!(
@@ -290,31 +366,75 @@ impl Gateway {
                 chat_id = %msg.chat_id,
                 "dropped silence-narration outbound gateway message"
             );
+            lifecycle::record_gateway_event(
+                "route.filtered_silence",
+                Some(&msg.platform),
+                Some(&msg.bot_id),
+                Some(&msg.chat_id),
+                "",
+            );
             return Ok(());
         }
 
-        if let Some(media) = msg.media.as_deref()
+        let result = if let Some(media) = msg.media.as_deref()
             && !media.trim().is_empty()
         {
             adapter.send_media(&msg.chat_id, media, &msg.text).await
         } else {
             adapter.send_message(&msg.chat_id, &msg.text).await
+        };
+
+        match &result {
+            Ok(()) => lifecycle::record_gateway_event(
+                "route.ok",
+                Some(&msg.platform),
+                Some(&msg.bot_id),
+                Some(&msg.chat_id),
+                if msg
+                    .media
+                    .as_deref()
+                    .is_some_and(|media| !media.trim().is_empty())
+                {
+                    "media=true"
+                } else {
+                    ""
+                },
+            ),
+            Err(err) => lifecycle::record_gateway_event(
+                "route.error",
+                Some(&msg.platform),
+                Some(&msg.bot_id),
+                Some(&msg.chat_id),
+                err.to_string(),
+            ),
         }
+        result
     }
 
     /// Route an outbound message to the correct adapter and get its ID.
     pub async fn route_message_get_id(&self, msg: &GatewayMessage) -> anyhow::Result<Option<i64>> {
-        let adapter = self
+        let adapter = match self
             .adapters
             .iter()
             .find(|a| a.name() == msg.platform && a.bot_id() == msg.bot_id)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
+        {
+            Some(adapter) => adapter,
+            None => {
+                let err = anyhow::anyhow!(
                     "no adapter for platform '{}' with bot_id '{}'",
                     msg.platform,
                     msg.bot_id
-                )
-            })?;
+                );
+                lifecycle::record_gateway_event(
+                    "route_get_id.missing_adapter",
+                    Some(&msg.platform),
+                    Some(&msg.bot_id),
+                    Some(&msg.chat_id),
+                    err.to_string(),
+                );
+                return Err(err);
+            }
+        };
 
         if self.should_filter_outbound_text(msg) {
             tracing::warn!(
@@ -322,10 +442,34 @@ impl Gateway {
                 chat_id = %msg.chat_id,
                 "dropped silence-narration outbound gateway message"
             );
+            lifecycle::record_gateway_event(
+                "route_get_id.filtered_silence",
+                Some(&msg.platform),
+                Some(&msg.bot_id),
+                Some(&msg.chat_id),
+                "",
+            );
             return Ok(None);
         }
 
-        adapter.send_message_get_id(&msg.chat_id, &msg.text).await
+        let result = adapter.send_message_get_id(&msg.chat_id, &msg.text).await;
+        match &result {
+            Ok(message_id) => lifecycle::record_gateway_event(
+                "route_get_id.ok",
+                Some(&msg.platform),
+                Some(&msg.bot_id),
+                Some(&msg.chat_id),
+                format!("message_id={}", message_id.unwrap_or_default()),
+            ),
+            Err(err) => lifecycle::record_gateway_event(
+                "route_get_id.error",
+                Some(&msg.platform),
+                Some(&msg.bot_id),
+                Some(&msg.chat_id),
+                err.to_string(),
+            ),
+        }
+        result
     }
 
     /// Download media from a platform adapter.
@@ -377,10 +521,34 @@ impl Gateway {
                 chat_id = %chat_id,
                 "dropped silence-narration gateway message edit"
             );
+            lifecycle::record_gateway_event(
+                "edit.filtered_silence",
+                Some(platform),
+                Some(bot_id),
+                Some(chat_id),
+                format!("message_id={message_id}"),
+            );
             return Ok(());
         }
 
-        adapter.edit_message(chat_id, message_id, text).await
+        let result = adapter.edit_message(chat_id, message_id, text).await;
+        match &result {
+            Ok(()) => lifecycle::record_gateway_event(
+                "edit.ok",
+                Some(platform),
+                Some(bot_id),
+                Some(chat_id),
+                format!("message_id={message_id}"),
+            ),
+            Err(err) => lifecycle::record_gateway_event(
+                "edit.error",
+                Some(platform),
+                Some(bot_id),
+                Some(chat_id),
+                err.to_string(),
+            ),
+        }
+        result
     }
 
     fn should_filter_outbound_text(&self, msg: &GatewayMessage) -> bool {
@@ -459,6 +627,13 @@ impl Gateway {
             let bid = adapter.bot_id().to_owned();
             if let Some(rx) = adapter.take_receiver() {
                 tracing::info!("took message receiver for adapter: {}", name);
+                lifecycle::record_gateway_event(
+                    "receiver.attached",
+                    Some(&name),
+                    Some(&bid),
+                    None,
+                    "",
+                );
                 receivers.push((name, bid, rx));
             }
         }

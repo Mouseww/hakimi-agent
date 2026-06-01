@@ -4033,14 +4033,50 @@ Just send a message to chat with me!"
                     Some(Command::Hooks(_)) => "🪝 No active hooks configured.".to_string(),
                     Some(Command::Kanban(cmd)) => hakimi_tools::kanban_response(cmd.as_deref()),
                     Some(Command::Logs(arg)) => {
-                        let lines = arg.unwrap_or_else(|| "50".to_string()).parse::<usize>().unwrap_or(50);
-                        let log_file = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join(".hakimi").join("logs").join("gateway.log");
-                        match std::process::Command::new("tail").arg(format!("-n{}", lines)).arg(&log_file).output() {
-                            Ok(o) => {
-                                let out = String::from_utf8_lossy(&o.stdout);
-                                if out.is_empty() { "No logs found.".to_string() } else { format!("```log\n{}\n```", out) }
-                            },
-                            Err(e) => format!("❌ Failed to read logs: {}", e),
+                        let raw = arg.as_deref().unwrap_or("50").trim();
+                        let (source, lines) = match raw.split_once(' ') {
+                            Some((kind, count)) if matches!(kind, "events" | "gateway" | "all") => {
+                                (kind, count.trim().parse::<usize>().unwrap_or(50))
+                            }
+                            _ if matches!(raw, "events" | "gateway" | "all") => (raw, 50),
+                            _ => ("all", raw.parse::<usize>().unwrap_or(50)),
+                        };
+                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+                        let gateway_log = home.join(".hakimi").join("logs").join("gateway.log");
+                        let mut sections = Vec::new();
+
+                        if matches!(source, "all" | "events") {
+                            match hakimi_gateway::read_recent_gateway_events(lines) {
+                                Ok(out) if !out.trim().is_empty() => {
+                                    sections.push(format!("# gateway-events.log\n{out}"));
+                                }
+                                Ok(_) if source == "events" => sections.push("No gateway lifecycle events found.".to_string()),
+                                Err(err) if source == "events" => {
+                                    sections.push(format!("Failed to read gateway lifecycle events: {err}"));
+                                }
+                                Err(_) => {}
+                                _ => {}
+                            }
+                        }
+
+                        if matches!(source, "all" | "gateway") {
+                            match hakimi_gateway::read_recent_lines(&gateway_log, lines) {
+                                Ok(out) if !out.trim().is_empty() => {
+                                    sections.push(format!("# gateway.log\n{out}"));
+                                }
+                                Ok(_) if source == "gateway" => sections.push("No gateway logs found.".to_string()),
+                                Err(err) if source == "gateway" => {
+                                    sections.push(format!("Failed to read gateway logs: {err}"));
+                                }
+                                Err(_) => {}
+                                _ => {}
+                            }
+                        }
+
+                        if sections.is_empty() {
+                            "No logs found. Use `/logs events` for lifecycle events or `/logs gateway` for the legacy service log.".to_string()
+                        } else {
+                            format!("```log\n{}\n```", sections.join("\n\n"))
                         }
                     }
                     Some(Command::Mcp(cmd)) => gateway_mcp_response(cmd.as_deref(), &config.mcp_servers),
