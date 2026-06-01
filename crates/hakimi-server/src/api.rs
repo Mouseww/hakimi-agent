@@ -125,6 +125,8 @@ pub struct SanitizedConfig {
     pub agent_verbose: bool,
     pub agent_system_prompt: String,
     pub agent_reasoning_effort: String,
+    pub agent_save_trajectories: bool,
+    pub agent_trajectory_dir: String,
     pub terminal_env_type: String,
     pub terminal_cwd: String,
     pub terminal_timeout: u64,
@@ -152,6 +154,8 @@ pub struct ConfigUpdate {
     pub agent_max_turns: Option<usize>,
     pub agent_verbose: Option<bool>,
     pub agent_system_prompt: Option<String>,
+    pub agent_save_trajectories: Option<bool>,
+    pub agent_trajectory_dir: Option<String>,
     pub terminal_cwd: Option<String>,
     pub terminal_timeout: Option<u64>,
     pub terminal_env_type: Option<String>,
@@ -609,6 +613,8 @@ async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
         agent_verbose: config.agent.verbose,
         agent_system_prompt: config.agent.system_prompt.clone(),
         agent_reasoning_effort: config.agent.reasoning_effort.clone(),
+        agent_save_trajectories: config.agent.save_trajectories,
+        agent_trajectory_dir: config.agent.trajectory_dir.clone(),
         terminal_env_type: config.terminal.env_type.clone(),
         terminal_cwd: config.terminal.cwd.clone(),
         terminal_timeout: config.terminal.timeout,
@@ -650,6 +656,12 @@ async fn update_config(
     }
     if let Some(v) = update.agent_system_prompt {
         config.agent.system_prompt = v;
+    }
+    if let Some(v) = update.agent_save_trajectories {
+        config.agent.save_trajectories = v;
+    }
+    if let Some(v) = update.agent_trajectory_dir {
+        config.agent.trajectory_dir = v;
     }
     if let Some(v) = update.terminal_cwd {
         config.terminal.cwd = v;
@@ -711,6 +723,8 @@ async fn update_config(
         agent_verbose: config.agent.verbose,
         agent_system_prompt: config.agent.system_prompt.clone(),
         agent_reasoning_effort: config.agent.reasoning_effort.clone(),
+        agent_save_trajectories: config.agent.save_trajectories,
+        agent_trajectory_dir: config.agent.trajectory_dir.clone(),
         terminal_env_type: config.terminal.env_type.clone(),
         terminal_cwd: config.terminal.cwd.clone(),
         terminal_timeout: config.terminal.timeout,
@@ -1103,6 +1117,8 @@ mod tests {
             .unwrap();
         let config: SanitizedConfig = serde_json::from_slice(&body).unwrap();
         assert_eq!(config.agent_max_turns, 90);
+        assert!(!config.agent_save_trajectories);
+        assert_eq!(config.agent_trajectory_dir, "");
         assert_eq!(config.compression_engine, "smart");
         assert_eq!(config.compression_model, "");
         assert!(config.embedding_enabled);
@@ -1117,6 +1133,8 @@ mod tests {
         let update = json!({
             "agent_max_turns": 42,
             "agent_verbose": true,
+            "agent_save_trajectories": true,
+            "agent_trajectory_dir": "./trajectories",
             "compression_engine": "llm",
             "compression_model": "claude-3-5-haiku-latest",
             "embedding_enabled": false
@@ -1137,6 +1155,8 @@ mod tests {
         let config: SanitizedConfig = serde_json::from_slice(&body).unwrap();
         assert_eq!(config.agent_max_turns, 42);
         assert!(config.agent_verbose);
+        assert!(config.agent_save_trajectories);
+        assert_eq!(config.agent_trajectory_dir, "./trajectories");
         assert_eq!(config.compression_engine, "llm");
         assert_eq!(config.compression_model, "claude-3-5-haiku-latest");
         assert!(!config.embedding_enabled);

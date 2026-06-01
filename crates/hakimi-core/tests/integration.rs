@@ -6,10 +6,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures::stream;
 use hakimi_common::{
-    ApiMode, FinishReason, Message, NormalizedResponse, Result, ToolContext, ToolDefinition, Usage,
+    ApiMode, FinishReason, HakimiError, Message, NormalizedResponse, Result, ToolContext,
+    ToolDefinition, Usage,
 };
 use hakimi_context::SimpleContextEngine;
-use hakimi_core::{AIAgent, IterationBudget};
+use hakimi_core::{AIAgent, IterationBudget, TrajectoryConfig};
 use hakimi_tools::{Tool, ToolContextBuilder, ToolRegistry};
 use hakimi_transports::{ProviderTransport, RequestParams, StreamAccumulator, StreamEvent};
 use serde_json::{Value as JsonValue, json};
@@ -141,6 +142,40 @@ impl ProviderTransport for MockTransport {
             ];
             Ok(Box::pin(stream::iter(events)))
         }
+    }
+}
+
+struct FailingTransport;
+
+#[async_trait]
+impl ProviderTransport for FailingTransport {
+    fn api_mode(&self) -> ApiMode {
+        ApiMode::ChatCompletions
+    }
+
+    fn provider_name(&self) -> &str {
+        "failing"
+    }
+
+    async fn execute(
+        &self,
+        _model: &str,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _params: &RequestParams,
+    ) -> Result<NormalizedResponse> {
+        Err(HakimiError::Transport("simulated failure".to_string()))
+    }
+
+    async fn execute_streaming(
+        &self,
+        _model: &str,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _params: &RequestParams,
+    ) -> Result<Pin<Box<dyn futures::Stream<Item = std::result::Result<StreamEvent, String>> + Send>>>
+    {
+        Err(HakimiError::Transport("simulated failure".to_string()))
     }
 }
 
@@ -299,6 +334,68 @@ async fn test_simple_text_conversation() {
     assert_eq!(result.api_call_count, 1);
     // Should have: user message + assistant message = 2
     assert!(result.messages.len() >= 2);
+}
+
+#[tokio::test]
+async fn test_agent_saves_successful_trajectory() {
+    let dir = std::env::temp_dir().join(format!(
+        "hakimi-agent-trajectory-success-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let transport = Arc::new(MockTransport::text_response("saved response"));
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("trajectory-success")
+        .workdir("/tmp")
+        .trajectory_saving(TrajectoryConfig::new(&dir))
+        .build()
+        .unwrap();
+
+    let result = agent.run_conversation("save this").await.unwrap();
+    assert_eq!(result.final_response, "saved response");
+
+    let saved =
+        std::fs::read_to_string(dir.join("trajectory_samples.jsonl")).expect("trajectory saved");
+    assert!(saved.contains("\"completed\":true"));
+    assert!(saved.contains("\"model\":\"test-model\""));
+    assert!(saved.contains("\"from\":\"system\""));
+    assert!(saved.contains("\"from\":\"human\""));
+    assert!(saved.contains("\"from\":\"gpt\""));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn test_agent_saves_failed_trajectory_on_transport_error() {
+    let dir = std::env::temp_dir().join(format!(
+        "hakimi-agent-trajectory-failure-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let transport = Arc::new(FailingTransport);
+    let mut agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("trajectory-failure")
+        .workdir("/tmp")
+        .trajectory_saving(TrajectoryConfig::new(&dir))
+        .build()
+        .unwrap();
+
+    let err = agent
+        .run_conversation("this will fail")
+        .await
+        .expect_err("transport should fail");
+    assert!(format!("{err}").contains("simulated failure"));
+
+    let saved =
+        std::fs::read_to_string(dir.join("failed_trajectories.jsonl")).expect("trajectory saved");
+    assert!(saved.contains("\"completed\":false"));
+    assert!(saved.contains("this will fail"));
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[tokio::test]

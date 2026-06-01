@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.181-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.182-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1528-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1534-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1528 |
+| 测试数量 | ~500 | 1534 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -90,6 +90,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **记忆**：持久化记忆 + FTS5 全文检索
 - **效率**：待办清单、支持 Profile 路由、工作日志、事件轨迹、诊断与通知订阅的 Kanban 看板、定时任务
 - **元能力**：子 Agent 委派、Mixture-of-Agents 多模型推理、技能系统、插件机制
+- **评测**：Hermes 兼容的 ShareGPT JSONL 轨迹保存，覆盖完成与失败轮次
 
 **多平台网关**
 - Telegram · Discord · Slack · Mattermost · Webhook · Signal · SMS/Twilio · WhatsApp Business Cloud · Home Assistant · Matrix · 钉钉 · 企业微信 · 飞书/Lark · WeChat
@@ -201,7 +202,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1528 |
+| 测试数量 | ~500 | 1534 |
 
 ---
 

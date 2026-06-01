@@ -71,6 +71,24 @@ fn load_config() -> hakimi_config::HakimiConfig {
 // Agent builder (simplified — mirrors hakimi-cli)
 // ---------------------------------------------------------------------------
 
+fn trajectory_config_from_config(
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_core::TrajectoryConfig> {
+    if !config.agent.save_trajectories {
+        return None;
+    }
+
+    let dir = if config.agent.trajectory_dir.trim().is_empty() {
+        dirs::home_dir()
+            .map(|home| home.join(".hakimi").join("trajectories"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/trajectories"))
+    } else {
+        std::path::PathBuf::from(config.agent.trajectory_dir.trim())
+    };
+
+    Some(hakimi_core::TrajectoryConfig::new(dir))
+}
+
 async fn build_agent(
     args: &Args,
     config: &hakimi_config::HakimiConfig,
@@ -346,7 +364,8 @@ async fn build_agent(
             config.tools.tool_search.clone(),
             config.compression.context_length,
         )
-        .build()?;
+        .build()?
+        .with_trajectory_saving(trajectory_config_from_config(config));
     agent = agent.with_embedding_provider(embedding_provider);
 
     info!(model = %model, "agent built successfully");

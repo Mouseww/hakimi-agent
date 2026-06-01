@@ -2885,6 +2885,14 @@ pub struct Args {
     #[arg(long)]
     pub serve: bool,
 
+    /// Save conversations as Hermes-compatible ShareGPT JSONL trajectories.
+    #[arg(long, alias = "save_trajectories")]
+    pub save_trajectories: bool,
+
+    /// Directory for trajectory_samples.jsonl and failed_trajectories.jsonl.
+    #[arg(long, alias = "trajectory_dir")]
+    pub trajectory_dir: Option<std::path::PathBuf>,
+
     /// Start gateway mode (Telegram/Discord/etc.) instead of interactive REPL.
     ///
     /// Optional mode: `start` (default) runs in the current process; `restart`
@@ -2945,6 +2953,11 @@ model:
 agent:
   # Maximum tool-calling iterations per conversation
   max_turns: 90
+  # Save Hermes-compatible ShareGPT JSONL trajectories after each turn.
+  save_trajectories: false
+  # Output directory for trajectory_samples.jsonl / failed_trajectories.jsonl.
+  # Empty means ~/.hakimi/trajectories.
+  trajectory_dir: ""
   # Enable verbose logging
   verbose: false
   # Custom system prompt (leave empty for default)
@@ -3536,6 +3549,52 @@ fn resolve_model(args_model: Option<&str>, config: &hakimi_config::HakimiConfig)
     "anthropic/claude-sonnet-4-20250514".to_string()
 }
 
+fn env_truthy(name: &str) -> bool {
+    std::env::var(name)
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn resolve_trajectory_config(
+    args: &Args,
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_core::TrajectoryConfig> {
+    let enabled = args.save_trajectories
+        || config.agent.save_trajectories
+        || env_truthy("HAKIMI_SAVE_TRAJECTORIES")
+        || env_truthy("HERMES_SAVE_TRAJECTORIES");
+
+    if !enabled {
+        return None;
+    }
+
+    let dir = args
+        .trajectory_dir
+        .clone()
+        .or_else(|| {
+            let configured = config.agent.trajectory_dir.trim();
+            if configured.is_empty() {
+                None
+            } else {
+                Some(std::path::PathBuf::from(configured))
+            }
+        })
+        .or_else(|| {
+            std::env::var("HAKIMI_TRAJECTORY_DIR")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .map(std::path::PathBuf::from)
+        })
+        .unwrap_or_else(|| hakimi_home_dir().join("trajectories"));
+
+    Some(hakimi_core::TrajectoryConfig::new(dir))
+}
+
 // ---------------------------------------------------------------------------
 // MCP tool registration
 // ---------------------------------------------------------------------------
@@ -3992,7 +4051,8 @@ async fn build_agent(
             Some(config.voice.transcription_model.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
-        );
+        )
+        .with_trajectory_saving(resolve_trajectory_config(args, config));
     agent.set_model(&model);
     // agent.set_max_turns(config.agent.max_turns);
 

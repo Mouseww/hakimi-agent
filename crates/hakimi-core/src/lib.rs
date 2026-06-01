@@ -8,6 +8,7 @@ pub mod file_safety;
 pub mod guardrails;
 pub mod loop_impl;
 pub mod retry;
+pub mod trajectory;
 
 pub use agent::{AIAgent, AIAgentBuilder};
 pub use budget::IterationBudget;
@@ -17,4 +18,5 @@ pub use delegate::CoreDelegateExecutor;
 pub use error_classifier::{ErrorClassifier, FailoverReason, RecoveryAction};
 pub use guardrails::{GuardrailDecision, IdempotencyTracker, ToolCallObservation, ToolGuardrails};
 pub use hakimi_common::SecretRedactor;
+pub use trajectory::{TrajectoryConfig, convert_to_trajectory_format, save_trajectory};
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are Hakimi Agent, a high-performance Rust-native AI agent built by Mouseww. You are helpful, knowledgeable, direct, and production-minded. ALWAYS think aloud before using any tool. Explain what you are going to do and why, so the user knows your progress and purpose. Never execute a tool without first outputting a brief explanatory thought. When faced with large, complex, or multi-step tasks, you should aggressively use the `delegate_task` tool to spawn sub-agents to complete independent parts of the task. Do not try to complete huge tasks entirely within a single context window. Break them down and delegate.";

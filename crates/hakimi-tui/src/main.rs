@@ -33,6 +33,9 @@ model:
 
 agent:
   max_turns: 90
+  save_trajectories: false
+  # Empty means ~/.hakimi/trajectories.
+  trajectory_dir: ""
   verbose: false
   system_prompt: ""
 
@@ -151,6 +154,24 @@ fn resolve_model(config: &hakimi_config::HakimiConfig) -> String {
         return config.model.default.clone();
     }
     "anthropic/claude-sonnet-4-20250514".to_string()
+}
+
+fn trajectory_config_from_config(
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_core::TrajectoryConfig> {
+    if !config.agent.save_trajectories {
+        return None;
+    }
+
+    let dir = if config.agent.trajectory_dir.trim().is_empty() {
+        dirs::home_dir()
+            .map(|home| home.join(".hakimi").join("trajectories"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/trajectories"))
+    } else {
+        std::path::PathBuf::from(config.agent.trajectory_dir.trim())
+    };
+
+    Some(hakimi_core::TrajectoryConfig::new(dir))
 }
 
 // ---------------------------------------------------------------------------
@@ -279,7 +300,8 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
             Some(config.voice.transcription_model.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
-        );
+        )
+        .with_trajectory_saving(trajectory_config_from_config(config));
 
     info!(model = %model, "agent built successfully");
     Ok(agent)

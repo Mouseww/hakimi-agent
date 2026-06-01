@@ -13,6 +13,7 @@ hakimi-context = { path = "../hakimi-context" }
 hakimi-skills = { path = "../hakimi-skills" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+chrono = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

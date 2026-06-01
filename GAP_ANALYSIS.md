@@ -365,11 +365,10 @@ Generated: 2026-05-31
 - **Details**: Dataset loading, parallel processing with multiprocessing, checkpointing for fault tolerance, trajectory saving, tool usage statistics.
 - **Priority**: **Medium** — Evaluation/benchmarking workflows
 
-#### 36. Trajectory Saving
+#### 36. ~~Trajectory Saving~~ ✅ DONE
 - **What**: Save conversation trajectories in structured format (from/value pairs)
 - **Hermes location**: `agent/trajectory.py`
-- **Details**: For training data generation and debugging. Controlled by `save_trajectories` flag.
-- **Priority**: **Medium** — ML training pipeline
+- **Status**: ✅ Done in v0.3.182 — `hakimi-core::trajectory` saves completed and failed conversation turns as Hermes-compatible ShareGPT JSONL, converts reasoning scratchpads to `<think>` blocks, serializes tool calls/responses in XML wrappers, keeps image payloads out of text trajectories with explicit markers, and wires `save_trajectories` / `trajectory_dir` through CLI, TUI, server config, and env toggles.
 
 #### 37. Checkpoint Manager (Filesystem Snapshots)
 - **What**: Transparent shadow-git snapshots before file-mutating operations
@@ -589,7 +588,7 @@ Generated: 2026-05-31
 **Total unique Hermes features identified: ~150+**
 **Fully present in Hakimi: ~79** (up from ~30)
 **Partially implemented: ~10**
-**Missing entirely: ~69+**
+**Missing entirely: ~68+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (CDP attach, cloud backends)
@@ -711,9 +710,10 @@ Generated: 2026-05-31
 | 91 | Gateway/TUI Undo Rewind | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-tui/src/app.rs` | 8 | ✅ Hermes-style `/undo [N]` / `/rewind [N]` rewinds recent in-memory user turns in gateway and TUI surfaces, clamps excessive counts, refuses invalid counts, returns the target prompt for edit/resend, and avoids model-loop execution; durable SessionDB soft-delete remains a future storage-level extension |
 | 92 | Gateway Stream Overflow Chunking | `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs`, platform gateway adapters | 6 | ✅ Gateway route/send/edit paths expose platform text limits and split long outbound or streamed replies into UTF-8-safe chunks; final delivery skips duplicate long replies after overflow stream chunks |
 | 93 | Dashboard Admin Read API | `hakimi-server/src/api.rs` | 4 | ✅ `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose WebUI/admin summaries with secret values omitted or redacted; `/v1/capabilities` advertises the read-only admin surface |
+| 94 | Trajectory Saving | `hakimi-core/src/trajectory.rs`, `hakimi-core/src/agent.rs`, CLI/server/TUI config wiring | 6 | ✅ Hermes-compatible ShareGPT JSONL trajectory saving for completed and failed turns, with system-prompt snapshots, reasoning scratchpad conversion, tool-call/tool-response XML payloads, image omission markers, config/env controls, and default output under `~/.hakimi/trajectories` |
 
 ### Summary
-- **Total tests**: 1528 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1534 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

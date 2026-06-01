@@ -159,6 +159,14 @@ pub struct AgentConfig {
     /// Path to the skills directory.
     #[serde(default)]
     pub skills_path: String,
+
+    /// Save completed/failed conversations as Hermes-compatible JSONL trajectories.
+    #[serde(default)]
+    pub save_trajectories: bool,
+
+    /// Directory for trajectory_samples.jsonl and failed_trajectories.jsonl.
+    #[serde(default)]
+    pub trajectory_dir: String,
 }
 
 fn default_max_turns() -> usize {
@@ -175,6 +183,8 @@ impl Default for AgentConfig {
             service_tier: String::new(),
             disabled_toolsets: Vec::new(),
             skills_path: String::new(),
+            save_trajectories: false,
+            trajectory_dir: String::new(),
         }
     }
 }
@@ -1328,6 +1338,8 @@ mod tests {
         assert_eq!(config.model.provider, "auto");
         assert_eq!(config.model.context_length, 0);
         assert_eq!(config.agent.max_turns, 90);
+        assert!(!config.agent.save_trajectories);
+        assert_eq!(config.agent.trajectory_dir, "");
         assert_eq!(config.terminal.env_type, "local");
         assert_eq!(config.terminal.cwd, ".");
         assert!(config.compression.enabled);
@@ -1409,12 +1421,16 @@ model:
 
 agent:
   max_turns: 50
+  save_trajectories: true
+  trajectory_dir: "./trajectories"
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.model.default, "gpt-4o");
         assert_eq!(config.model.context_length, 400_000);
         assert_eq!(config.model.provider, "openai");
         assert_eq!(config.agent.max_turns, 50);
+        assert!(config.agent.save_trajectories);
+        assert_eq!(config.agent.trajectory_dir, "./trajectories");
         // Defaults for unset fields
         assert_eq!(config.terminal.env_type, "local");
         assert_eq!(config.delegation.max_iterations, 45);

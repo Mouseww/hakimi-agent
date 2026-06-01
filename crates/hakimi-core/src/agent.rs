@@ -6,11 +6,12 @@ use hakimi_context::ContextEngine;
 use hakimi_tools::ToolRegistry;
 use hakimi_transports::{EmbeddingProvider, ProviderTransport};
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::conversation::ConversationResult;
 use crate::loop_impl;
+use crate::trajectory::TrajectoryConfig;
 
 /// The central AI agent that orchestrates LLM interactions, tool dispatch,
 /// and context management.
@@ -47,6 +48,7 @@ pub struct AIAgent {
     pub(crate) transcription_api_key: Option<String>,
     pub(crate) tool_search_config: ToolSearchConfig,
     pub(crate) tool_search_context_length: usize,
+    pub(crate) trajectory_config: Option<TrajectoryConfig>,
 }
 
 impl Clone for AIAgent {
@@ -82,6 +84,7 @@ impl Clone for AIAgent {
             transcription_api_key: self.transcription_api_key.clone(),
             tool_search_config: self.tool_search_config.clone(),
             tool_search_context_length: self.tool_search_context_length,
+            trajectory_config: self.trajectory_config.clone(),
         }
     }
 }
@@ -113,6 +116,12 @@ impl AIAgent {
     ) -> Self {
         self.tool_search_config = config.normalized();
         self.tool_search_context_length = context_length;
+        self
+    }
+
+    /// Enable or disable Hermes-compatible ShareGPT JSONL trajectory saving.
+    pub fn with_trajectory_saving(mut self, config: Option<TrajectoryConfig>) -> Self {
+        self.trajectory_config = config;
         self
     }
 
@@ -206,6 +215,7 @@ pub struct AIAgentBuilder {
     transcription_api_key: Option<String>,
     tool_search_config: Option<ToolSearchConfig>,
     tool_search_context_length: Option<usize>,
+    trajectory_config: Option<TrajectoryConfig>,
 }
 
 impl AIAgentBuilder {
@@ -241,6 +251,7 @@ impl AIAgentBuilder {
             transcription_api_key: None,
             tool_search_config: None,
             tool_search_context_length: None,
+            trajectory_config: None,
         }
     }
 
@@ -361,6 +372,12 @@ impl AIAgentBuilder {
         self
     }
 
+    /// Configure Hermes-compatible ShareGPT JSONL trajectory saving.
+    pub fn trajectory_saving(mut self, config: TrajectoryConfig) -> Self {
+        self.trajectory_config = Some(config);
+        self
+    }
+
     /// Build the [`AIAgent`].
     ///
     /// # Errors
@@ -427,6 +444,7 @@ impl AIAgentBuilder {
             transcription_api_key: self.transcription_api_key,
             tool_search_config: self.tool_search_config.unwrap_or_default().normalized(),
             tool_search_context_length: self.tool_search_context_length.unwrap_or(128_000),
+            trajectory_config: self.trajectory_config,
         })
     }
 }
@@ -475,12 +493,21 @@ impl AIAgent {
 
         // Run the core agent loop (streaming or non-streaming).
         let result = if self.streaming {
-            loop_impl::run_loop_streaming(self).await?
+            loop_impl::run_loop_streaming(self).await
         } else {
-            loop_impl::run_loop(self).await?
+            loop_impl::run_loop(self).await
         };
 
-        Ok(result)
+        match result {
+            Ok(result) => {
+                self.save_trajectory_if_enabled(!result.final_response.is_empty());
+                Ok(result)
+            }
+            Err(err) => {
+                self.save_trajectory_if_enabled(false);
+                Err(err)
+            }
+        }
     }
 
     /// Run a conversation with a custom pre-constructed message.
@@ -498,12 +525,21 @@ impl AIAgent {
         self.messages.push(msg);
 
         let result = if self.streaming {
-            loop_impl::run_loop_streaming(self).await?
+            loop_impl::run_loop_streaming(self).await
         } else {
-            loop_impl::run_loop(self).await?
+            loop_impl::run_loop(self).await
         };
 
-        Ok(result)
+        match result {
+            Ok(result) => {
+                self.save_trajectory_if_enabled(!result.final_response.is_empty());
+                Ok(result)
+            }
+            Err(err) => {
+                self.save_trajectory_if_enabled(false);
+                Err(err)
+            }
+        }
     }
 
     /// Convenience method: enable streaming and run a conversation.
@@ -535,6 +571,39 @@ impl AIAgent {
     /// Dynamically set the streaming callback for this agent instance.
     pub fn set_streaming_callback(&mut self, callback: Option<Arc<dyn Fn(String) + Send + Sync>>) {
         self.streaming_callback = callback;
+    }
+
+    fn save_trajectory_if_enabled(&self, completed: bool) {
+        let Some(config) = self.trajectory_config.as_ref() else {
+            return;
+        };
+
+        let system_prompt = self
+            .system_prompt
+            .as_deref()
+            .unwrap_or(crate::DEFAULT_SYSTEM_PROMPT);
+        let mut snapshot = Vec::with_capacity(self.messages.len() + 1);
+        if !system_prompt.trim().is_empty() {
+            snapshot.push(Message::system(system_prompt));
+        }
+        snapshot.extend(self.messages.iter().cloned());
+
+        match crate::trajectory::save_trajectory(&snapshot, &self.model, completed, config) {
+            Ok(path) => {
+                info!(
+                    completed = completed,
+                    path = %path.display(),
+                    "trajectory saved"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    completed = completed,
+                    error = %err,
+                    "failed to save trajectory"
+                );
+            }
+        }
     }
 
     /// Convert a loaded skill slash command into the user-message payload that
