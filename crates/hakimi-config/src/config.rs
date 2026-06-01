@@ -603,6 +603,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub sms: SmsGatewayConfig,
     #[serde(default)]
+    pub whatsapp: WhatsAppGatewayConfig,
+    #[serde(default)]
     pub homeassistant: HomeAssistantGatewayConfig,
     #[serde(default)]
     pub matrix: MatrixGatewayConfig,
@@ -633,6 +635,7 @@ impl Default for GatewaysConfig {
             webhook: WebhookGatewayConfig::default(),
             signal: SignalGatewayConfig::default(),
             sms: SmsGatewayConfig::default(),
+            whatsapp: WhatsAppGatewayConfig::default(),
             homeassistant: HomeAssistantGatewayConfig::default(),
             matrix: MatrixGatewayConfig::default(),
             dingtalk: DingTalkGatewayConfig::default(),
@@ -841,6 +844,47 @@ impl Default for SmsGatewayConfig {
             auth_token: String::new(),
             from_number: String::new(),
             home_channel: String::new(),
+            base_url: String::new(),
+        }
+    }
+}
+
+/// WhatsApp Business Cloud API gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhatsAppGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_whatsapp_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub access_token: String,
+    #[serde(default)]
+    pub phone_number_id: String,
+    #[serde(default)]
+    pub home_channel: String,
+    #[serde(default = "default_whatsapp_api_version")]
+    pub api_version: String,
+    #[serde(default)]
+    pub base_url: String,
+}
+
+fn default_whatsapp_bot_id() -> String {
+    "whatsapp".to_string()
+}
+
+fn default_whatsapp_api_version() -> String {
+    "v20.0".to_string()
+}
+
+impl Default for WhatsAppGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_whatsapp_bot_id(),
+            access_token: String::new(),
+            phone_number_id: String::new(),
+            home_channel: String::new(),
+            api_version: default_whatsapp_api_version(),
             base_url: String::new(),
         }
     }
@@ -1326,6 +1370,9 @@ mod tests {
         );
         assert!(!config.gateways.sms.enabled);
         assert_eq!(config.gateways.sms.bot_id, "sms");
+        assert!(!config.gateways.whatsapp.enabled);
+        assert_eq!(config.gateways.whatsapp.bot_id, "whatsapp");
+        assert_eq!(config.gateways.whatsapp.api_version, "v20.0");
         assert!(!config.gateways.homeassistant.enabled);
         assert_eq!(config.gateways.homeassistant.bot_id, "homeassistant");
         assert_eq!(
@@ -1454,6 +1501,14 @@ gateways:
     from_number: "+15550001111"
     home_channel: "+15552223333"
     base_url: "https://api.twilio.test/2010-04-01/Accounts"
+  whatsapp:
+    enabled: true
+    bot_id: "ops-whatsapp"
+    access_token: "wa-redacted"
+    phone_number_id: "1234567890"
+    home_channel: "15552223333"
+    api_version: "v19.0"
+    base_url: "https://graph.test"
   homeassistant:
     enabled: true
     bot_id: "ops-ha"
@@ -1513,6 +1568,12 @@ gateways:
             config.gateways.sms.base_url,
             "https://api.twilio.test/2010-04-01/Accounts"
         );
+        assert!(config.gateways.whatsapp.enabled);
+        assert_eq!(config.gateways.whatsapp.bot_id, "ops-whatsapp");
+        assert_eq!(config.gateways.whatsapp.phone_number_id, "1234567890");
+        assert_eq!(config.gateways.whatsapp.home_channel, "15552223333");
+        assert_eq!(config.gateways.whatsapp.api_version, "v19.0");
+        assert_eq!(config.gateways.whatsapp.base_url, "https://graph.test");
         assert!(config.gateways.homeassistant.enabled);
         assert_eq!(config.gateways.homeassistant.bot_id, "ops-ha");
         assert_eq!(

@@ -18,6 +18,7 @@ mod sms;
 mod telegram;
 mod webhook;
 mod wecom;
+mod whatsapp;
 
 pub use clawbot::{ClawBotAdapter, ClawBotAdapterConfig, ClawBotMode};
 pub use dingtalk::{DingTalkAdapter, DingTalkAdapterConfig};
@@ -33,6 +34,7 @@ pub use sms::{SmsAdapter, SmsAdapterConfig};
 pub use telegram::TelegramAdapter;
 pub use webhook::{WebhookAdapter, WebhookAdapterConfig};
 pub use wecom::{WeComAdapter, WeComAdapterConfig};
+pub use whatsapp::{WhatsAppAdapter, WhatsAppAdapterConfig};
 
 // TelegramAdapterConfig is not re-exported above, add it
 pub use telegram::TelegramAdapterConfig;

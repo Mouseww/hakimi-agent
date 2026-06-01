@@ -2213,6 +2213,56 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.whatsapp.enabled {
+        let access_token = env_or_config_value(
+            "WHATSAPP_ACCESS_TOKEN",
+            &config.gateways.whatsapp.access_token,
+        );
+        let phone_number_id = env_or_config_value(
+            "WHATSAPP_PHONE_NUMBER_ID",
+            &config.gateways.whatsapp.phone_number_id,
+        );
+
+        if let (Some(access_token), Some(phone_number_id)) = (access_token, phone_number_id) {
+            let bot_id = config.gateways.whatsapp.bot_id.clone();
+            let home_channel = env_or_config_value(
+                "WHATSAPP_HOME_CHANNEL",
+                &config.gateways.whatsapp.home_channel,
+            )
+            .unwrap_or_default();
+            let whatsapp =
+                hakimi_gateway::WhatsAppAdapter::new(hakimi_gateway::WhatsAppAdapterConfig {
+                    bot_id: bot_id.clone(),
+                    access_token,
+                    phone_number_id,
+                    home_channel: home_channel.clone(),
+                    api_version: env_or_config_value(
+                        "WHATSAPP_API_VERSION",
+                        &config.gateways.whatsapp.api_version,
+                    )
+                    .unwrap_or_else(|| "v20.0".to_string()),
+                    base_url: env_or_config_value(
+                        "WHATSAPP_BASE_URL",
+                        &config.gateways.whatsapp.base_url,
+                    ),
+                });
+            gateway.add_adapter(Box::new(whatsapp));
+            bot_ids.insert("whatsapp".to_string(), bot_id);
+            if !home_channel.trim().is_empty() {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "whatsapp",
+                    &home_channel,
+                    "home",
+                    "phone",
+                    "whatsapp",
+                ));
+            }
+            info!("whatsapp gateway registered");
+        } else {
+            warn!("whatsapp gateway enabled but required access_token/phone_number_id is missing");
+        }
+    }
+
     if config.gateways.homeassistant.enabled {
         let token = env_or_config_value("HASS_TOKEN", &config.gateways.homeassistant.token);
         if let Some(token) = token {
