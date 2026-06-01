@@ -305,34 +305,36 @@ async fn run_agent_task(
                 silence_threshold,
             } => {
                 event_tx.send(AgentEvent::Thinking).ok();
-                let capture = run_voice_capture_turn(
-                    &mut agent,
-                    duration_seconds,
-                    silence_threshold,
-                    &event_tx,
-                );
-                tokio::pin!(capture);
-                let transcript = loop {
-                    tokio::select! {
-                        transcript = &mut capture => break transcript,
-                        next = cmd_rx.recv() => {
-                            match next {
-                                Some(AgentCommand::CancelVoiceCapture) => {
-                                    event_tx.send(AgentEvent::VoiceCaptureCancelled).ok();
-                                    break None;
+                let transcript = {
+                    let capture = run_voice_capture_turn(
+                        &mut agent,
+                        duration_seconds,
+                        silence_threshold,
+                        &event_tx,
+                    );
+                    tokio::pin!(capture);
+                    loop {
+                        tokio::select! {
+                            transcript = &mut capture => break transcript,
+                            next = cmd_rx.recv() => {
+                                match next {
+                                    Some(AgentCommand::CancelVoiceCapture) => {
+                                        event_tx.send(AgentEvent::VoiceCaptureCancelled).ok();
+                                        break None;
+                                    }
+                                    Some(AgentCommand::Shutdown) => {
+                                        event_tx.send(AgentEvent::VoiceCaptureCancelled).ok();
+                                        info!("Agent task shutting down");
+                                        return;
+                                    }
+                                    Some(other) => {
+                                        warn!(
+                                            command = command_kind(&other),
+                                            "ignoring command while voice capture is active"
+                                        );
+                                    }
+                                    None => break None,
                                 }
-                                Some(AgentCommand::Shutdown) => {
-                                    event_tx.send(AgentEvent::VoiceCaptureCancelled).ok();
-                                    info!("Agent task shutting down");
-                                    return;
-                                }
-                                Some(other) => {
-                                    warn!(
-                                        command = command_kind(&other),
-                                        "ignoring command while voice capture is active"
-                                    );
-                                }
-                                None => break None,
                             }
                         }
                     }
