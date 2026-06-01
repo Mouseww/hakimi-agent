@@ -10,12 +10,17 @@
 //! - `POST /config`          — Update config
 //! - `GET  /status`          — Dashboard runtime status
 //! - `GET  /mcp/servers`     — Dashboard MCP server summaries
+//! - `POST /mcp/servers`     — Add a runtime MCP server
+//! - `DELETE /mcp/servers/:name` — Remove a runtime MCP server
 //! - `GET  /credentials/pool`— Dashboard credential pool summaries
+//! - `POST /credentials/pool`— Add a runtime credential-pool entry
+//! - `DELETE /credentials/pool/:provider/:index` — Remove a runtime credential
 //! - `GET  /webhooks`        — Dashboard webhook gateway summary
+//! - `POST /webhooks`        — Update runtime webhook gateway config
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use axum::{
     Json, Router,
@@ -23,7 +28,7 @@ use axum::{
     http::{StatusCode, header},
     middleware::{self, Next},
     response::Response,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -175,6 +180,44 @@ pub struct ConfigUpdate {
     pub embedding_normalize: Option<bool>,
 }
 
+/// Request body for POST /mcp/servers.
+#[derive(Debug, Deserialize)]
+pub struct McpServerCreate {
+    pub name: String,
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    /// Accepted for dashboard compatibility; runtime writes currently support stdio only.
+    pub url: Option<String>,
+}
+
+/// Request body for POST /credentials/pool.
+#[derive(Debug, Deserialize)]
+pub struct CredentialPoolEntryCreate {
+    pub provider: String,
+    pub api_key: String,
+    pub id: Option<String>,
+    pub label: Option<String>,
+    pub base_url: Option<String>,
+    pub org_id: Option<String>,
+    pub source: Option<String>,
+    pub priority: Option<i32>,
+    pub max_concurrent: Option<usize>,
+    pub strategy: Option<String>,
+}
+
+/// Request body for POST /webhooks.
+#[derive(Debug, Deserialize)]
+pub struct WebhookUpdate {
+    pub enabled: Option<bool>,
+    pub bot_id: Option<String>,
+    pub port: Option<u16>,
+    pub path: Option<String>,
+    pub secret: Option<String>,
+}
+
 /// Generic error response.
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
@@ -213,8 +256,16 @@ pub fn build_router(state: AppState) -> Router {
         .route("/config", post(update_config))
         .route("/status", get(dashboard_status))
         .route("/mcp/servers", get(list_mcp_servers))
+        .route("/mcp/servers", post(add_mcp_server))
+        .route("/mcp/servers/{name}", delete(delete_mcp_server))
         .route("/credentials/pool", get(list_credential_pools))
-        .route("/webhooks", get(list_webhooks));
+        .route("/credentials/pool", post(add_credential_pool_entry))
+        .route(
+            "/credentials/pool/{provider}/{index}",
+            delete(delete_credential_pool_entry),
+        )
+        .route("/webhooks", get(list_webhooks))
+        .route("/webhooks", post(update_webhook));
 
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
@@ -319,9 +370,13 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
         "dashboard_admin": {
             "status": true,
             "mcp_servers_read": true,
+            "mcp_servers_write": true,
             "credential_pools_read": true,
+            "credential_pools_write": true,
             "webhooks_read": true,
-            "write_operations": false
+            "webhooks_write": true,
+            "write_operations": true,
+            "persistence": "runtime"
         },
         "endpoints": {
             "health": {"method": "GET", "path": "/api/health"},
@@ -335,8 +390,13 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "config_update": {"method": "POST", "path": "/api/config"},
             "dashboard_status": {"method": "GET", "path": "/api/status"},
             "mcp_servers": {"method": "GET", "path": "/api/mcp/servers"},
+            "mcp_server_add": {"method": "POST", "path": "/api/mcp/servers"},
+            "mcp_server_delete": {"method": "DELETE", "path": "/api/mcp/servers/{name}"},
             "credential_pool": {"method": "GET", "path": "/api/credentials/pool"},
-            "webhooks": {"method": "GET", "path": "/api/webhooks"}
+            "credential_pool_add": {"method": "POST", "path": "/api/credentials/pool"},
+            "credential_pool_delete": {"method": "DELETE", "path": "/api/credentials/pool/{provider}/{index}"},
+            "webhooks": {"method": "GET", "path": "/api/webhooks"},
+            "webhook_update": {"method": "POST", "path": "/api/webhooks"}
         }
     }))
 }
@@ -362,6 +422,105 @@ fn redacted_env(env: &std::collections::HashMap<String, String>) -> BTreeMap<Str
 
 fn configured(value: &str) -> bool {
     !value.trim().is_empty()
+}
+
+fn non_empty(
+    value: impl Into<String>,
+    field: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let value = value.into().trim().to_string();
+    if value.is_empty() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            format!("{field} must not be empty"),
+        ));
+    }
+    Ok(value)
+}
+
+fn valid_name(
+    value: impl Into<String>,
+    field: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let value = non_empty(value, field)?;
+    let ok = value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'));
+    if !ok {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            format!("{field} may only contain ASCII letters, numbers, '.', '_' and '-'"),
+        ));
+    }
+    Ok(value)
+}
+
+fn api_error(status: StatusCode, error: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        status,
+        Json(ErrorResponse {
+            error: error.into(),
+        }),
+    )
+}
+
+fn mcp_server_summary(name: &str, server: &hakimi_config::McpServerConfig) -> serde_json::Value {
+    json!({
+        "name": name,
+        "transport": "stdio",
+        "command": server.command.clone(),
+        "args_count": server.args.len(),
+        "env_count": server.env.len(),
+        "env": redacted_env(&server.env)
+    })
+}
+
+fn credential_pool_summary(
+    provider: &str,
+    pool: &hakimi_config::CredentialPoolConfig,
+) -> serde_json::Value {
+    let entries: Vec<_> = pool
+        .credentials
+        .iter()
+        .enumerate()
+        .map(|(idx, cred)| {
+            json!({
+                "index": idx + 1,
+                "id": cred
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| format!("{provider}-cred-{idx}")),
+                "has_api_key": configured(&cred.api_key),
+                "base_url_configured": cred.base_url.as_deref().map(configured).unwrap_or(false),
+                "org_id_configured": cred.org_id.as_deref().map(configured).unwrap_or(false),
+                "source": cred.source.clone(),
+                "priority": cred.priority.unwrap_or(0),
+                "max_concurrent": cred.max_concurrent.unwrap_or(10)
+            })
+        })
+        .collect();
+
+    json!({
+        "provider": provider,
+        "strategy": pool.strategy.as_deref().unwrap_or("round_robin"),
+        "count": entries.len(),
+        "entries": entries
+    })
+}
+
+fn webhook_summary(webhook: &hakimi_config::WebhookGatewayConfig) -> serde_json::Value {
+    json!({
+        "object": "hakimi.dashboard.webhooks",
+        "enabled": webhook.enabled,
+        "bot_id": webhook.bot_id.clone(),
+        "port": webhook.port,
+        "path": webhook.path.clone(),
+        "secret_configured": configured(&webhook.secret),
+        "routes": [],
+        "secrets_redacted": true,
+        "write_operations": true,
+        "persistence": "runtime"
+    })
 }
 
 /// GET /status — dashboard runtime status without secrets.
@@ -406,7 +565,9 @@ async fn dashboard_status(State(state): State<AppState>) -> Json<serde_json::Val
             "webhook_enabled": config.gateways.webhook.enabled
         },
         "dashboard_admin": {
-            "readonly": true,
+            "readonly": false,
+            "write_operations": true,
+            "persistence": "runtime",
             "mcp_servers": "/api/mcp/servers",
             "credential_pool": "/api/credentials/pool",
             "webhooks": "/api/webhooks"
@@ -420,16 +581,7 @@ async fn list_mcp_servers(State(state): State<AppState>) -> Json<serde_json::Val
     let mut servers: Vec<_> = config
         .mcp_servers
         .iter()
-        .map(|(name, server)| {
-            json!({
-                "name": name,
-                "transport": "stdio",
-                "command": server.command.clone(),
-                "args_count": server.args.len(),
-                "env_count": server.env.len(),
-                "env": redacted_env(&server.env)
-            })
-        })
+        .map(|(name, server)| mcp_server_summary(name, server))
         .collect();
     servers.sort_by(|a, b| {
         a["name"]
@@ -444,8 +596,71 @@ async fn list_mcp_servers(State(state): State<AppState>) -> Json<serde_json::Val
         "servers": servers,
         "count": count,
         "secrets_redacted": true,
-        "write_operations": false
+        "write_operations": true,
+        "persistence": "runtime"
     }))
+}
+
+/// POST /mcp/servers — add an in-memory stdio MCP server config.
+async fn add_mcp_server(
+    State(state): State<AppState>,
+    Json(req): Json<McpServerCreate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if req.url.as_deref().map(configured).unwrap_or(false) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "dashboard MCP writes currently support stdio command/args/env only",
+        ));
+    }
+
+    let name = valid_name(req.name, "name")?;
+    let command = non_empty(req.command.unwrap_or_default(), "command")?;
+    let server = hakimi_config::McpServerConfig {
+        command,
+        args: req.args,
+        env: req.env,
+    };
+
+    let mut config = state.config.lock().await;
+    let summary = match config.mcp_servers.entry(name.clone()) {
+        std::collections::hash_map::Entry::Occupied(_) => {
+            return Err(api_error(
+                StatusCode::CONFLICT,
+                format!("MCP server already exists: {name}"),
+            ));
+        }
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            mcp_server_summary(&name, entry.insert(server))
+        }
+    };
+
+    Ok(Json(json!({
+        "object": "hakimi.dashboard.mcp_server",
+        "server": summary,
+        "secrets_redacted": true,
+        "persistence": "runtime"
+    })))
+}
+
+/// DELETE /mcp/servers/:name — remove an in-memory MCP server config.
+async fn delete_mcp_server(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let name = valid_name(name, "name")?;
+    let mut config = state.config.lock().await;
+    if config.mcp_servers.remove(&name).is_none() {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("MCP server not found: {name}"),
+        ));
+    }
+
+    Ok(Json(json!({
+        "ok": true,
+        "removed": name,
+        "persistence": "runtime"
+    })))
 }
 
 /// GET /credentials/pool — dashboard-safe credential pool summaries.
@@ -454,35 +669,7 @@ async fn list_credential_pools(State(state): State<AppState>) -> Json<serde_json
     let mut providers: Vec<_> = config
         .credential_pools
         .iter()
-        .map(|(provider, pool)| {
-            let entries: Vec<_> = pool
-                .credentials
-                .iter()
-                .enumerate()
-                .map(|(idx, cred)| {
-                    json!({
-                        "index": idx + 1,
-                        "id": cred
-                            .id
-                            .clone()
-                            .unwrap_or_else(|| format!("{provider}-cred-{idx}")),
-                        "has_api_key": configured(&cred.api_key),
-                        "base_url_configured": cred.base_url.as_deref().map(configured).unwrap_or(false),
-                        "org_id_configured": cred.org_id.as_deref().map(configured).unwrap_or(false),
-                        "source": cred.source.clone(),
-                        "priority": cred.priority.unwrap_or(0),
-                        "max_concurrent": cred.max_concurrent.unwrap_or(10)
-                    })
-                })
-                .collect();
-
-            json!({
-                "provider": provider,
-                "strategy": pool.strategy.as_deref().unwrap_or("round_robin"),
-                "count": entries.len(),
-                "entries": entries
-            })
-        })
+        .map(|(provider, pool)| credential_pool_summary(provider, pool))
         .collect();
     providers.sort_by(|a, b| {
         a["provider"]
@@ -497,25 +684,142 @@ async fn list_credential_pools(State(state): State<AppState>) -> Json<serde_json
         "providers": providers,
         "count": count,
         "secrets_redacted": true,
-        "write_operations": false
+        "write_operations": true,
+        "persistence": "runtime"
     }))
+}
+
+/// POST /credentials/pool — add an in-memory credential-pool entry.
+async fn add_credential_pool_entry(
+    State(state): State<AppState>,
+    Json(req): Json<CredentialPoolEntryCreate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let provider = valid_name(req.provider, "provider")?;
+    let api_key = non_empty(req.api_key, "api_key")?;
+    let id = req
+        .id
+        .or(req.label)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let mut config = state.config.lock().await;
+    let pool = config.credential_pools.entry(provider.clone()).or_default();
+
+    if let Some(strategy) = req.strategy {
+        let strategy = strategy.trim();
+        if !strategy.is_empty() {
+            pool.strategy = Some(strategy.to_string());
+        }
+    }
+
+    pool.credentials.push(hakimi_config::CredentialConfig {
+        id,
+        api_key,
+        base_url: req.base_url.filter(|value| configured(value)),
+        org_id: req.org_id.filter(|value| configured(value)),
+        source: Some(
+            req.source
+                .filter(|value| configured(value))
+                .unwrap_or_else(|| "dashboard:runtime".to_string()),
+        ),
+        priority: req.priority,
+        max_concurrent: req.max_concurrent,
+    });
+    let summary = credential_pool_summary(&provider, pool);
+
+    Ok(Json(json!({
+        "object": "hakimi.dashboard.credential_pool.provider",
+        "provider": summary,
+        "secrets_redacted": true,
+        "persistence": "runtime"
+    })))
+}
+
+/// DELETE /credentials/pool/:provider/:index — remove an in-memory credential.
+async fn delete_credential_pool_entry(
+    State(state): State<AppState>,
+    Path((provider, index)): Path<(String, usize)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let provider = valid_name(provider, "provider")?;
+    if index == 0 {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "index is 1-based and must be greater than zero",
+        ));
+    }
+
+    let mut config = state.config.lock().await;
+    let Some(pool) = config.credential_pools.get_mut(&provider) else {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("credential provider not found: {provider}"),
+        ));
+    };
+    if index > pool.credentials.len() {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("credential index not found: {provider}/{index}"),
+        ));
+    }
+    pool.credentials.remove(index - 1);
+    let remaining = pool.credentials.len();
+    if remaining == 0 {
+        config.credential_pools.remove(&provider);
+    }
+
+    Ok(Json(json!({
+        "ok": true,
+        "provider": provider,
+        "removed_index": index,
+        "remaining": remaining,
+        "persistence": "runtime"
+    })))
 }
 
 /// GET /webhooks — dashboard-safe webhook gateway summary.
 async fn list_webhooks(State(state): State<AppState>) -> Json<serde_json::Value> {
     let config = state.config.lock().await;
-    let webhook = &config.gateways.webhook;
+    Json(webhook_summary(&config.gateways.webhook))
+}
 
-    Json(json!({
-        "object": "hakimi.dashboard.webhooks",
-        "enabled": webhook.enabled,
-        "bot_id": webhook.bot_id.clone(),
-        "port": webhook.port,
-        "path": webhook.path.clone(),
-        "secret_configured": configured(&webhook.secret),
-        "routes": [],
-        "write_operations": false
-    }))
+/// POST /webhooks — update the in-memory webhook gateway config.
+async fn update_webhook(
+    State(state): State<AppState>,
+    Json(req): Json<WebhookUpdate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let mut config = state.config.lock().await;
+    let webhook = &mut config.gateways.webhook;
+
+    if let Some(enabled) = req.enabled {
+        webhook.enabled = enabled;
+    }
+    if let Some(bot_id) = req.bot_id {
+        webhook.bot_id = valid_name(bot_id, "bot_id")?;
+    }
+    if let Some(port) = req.port {
+        if port == 0 {
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                "port must be greater than zero",
+            ));
+        }
+        webhook.port = port;
+    }
+    if let Some(path) = req.path {
+        let path = non_empty(path, "path")?;
+        if !path.starts_with('/') {
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                "path must start with '/'",
+            ));
+        }
+        webhook.path = path;
+    }
+    if let Some(secret) = req.secret {
+        webhook.secret = secret;
+    }
+
+    Ok(Json(webhook_summary(webhook)))
 }
 
 /// POST /chat — send a message to the agent and get a response.
@@ -920,6 +1224,11 @@ mod tests {
             capabilities["endpoints"]["mcp_servers"],
             json!({"method": "GET", "path": "/api/mcp/servers"})
         );
+        assert_eq!(capabilities["dashboard_admin"]["write_operations"], true);
+        assert_eq!(
+            capabilities["endpoints"]["mcp_server_add"],
+            json!({"method": "POST", "path": "/api/mcp/servers"})
+        );
     }
 
     #[tokio::test]
@@ -942,7 +1251,7 @@ mod tests {
         assert_eq!(status["object"], "hakimi.dashboard.status");
         assert_eq!(status["status"], "ok");
         assert_eq!(status["model"], "test-model");
-        assert_eq!(status["dashboard_admin"]["readonly"], true);
+        assert_eq!(status["dashboard_admin"]["readonly"], false);
         assert_eq!(status["resources"]["mcp_servers"], 0);
     }
 
@@ -985,6 +1294,73 @@ mod tests {
         assert_eq!(mcp["servers"][0]["transport"], "stdio");
         assert_eq!(mcp["servers"][0]["args_count"], 2);
         assert_eq!(mcp["servers"][0]["env"]["API_KEY"], "<redacted>");
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_mcp_server_add_delete_runtime_config() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/mcp/servers")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "name": "demo",
+                    "command": "npx",
+                    "args": ["-y", "demo-mcp"],
+                    "env": {"API_KEY": "test-mcp-secret-value"}
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_text.contains("test-mcp-secret-value"));
+        let created: serde_json::Value = serde_json::from_str(&body_text).unwrap();
+        assert_eq!(created["server"]["name"], "demo");
+        assert_eq!(created["server"]["env"]["API_KEY"], "<redacted>");
+
+        {
+            let config = state.config.lock().await;
+            let server = config.mcp_servers.get("demo").unwrap();
+            assert_eq!(server.command, "npx");
+            assert_eq!(server.env.get("API_KEY").unwrap(), "test-mcp-secret-value");
+        }
+
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/api/mcp/servers/demo")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let config = state.config.lock().await;
+        assert!(!config.mcp_servers.contains_key("demo"));
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_mcp_server_add_rejects_url_transport_for_now() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/mcp/servers")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({"name": "remote", "url": "https://example.com/mcp"}).to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
@@ -1036,6 +1412,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_dashboard_credential_pool_add_delete_runtime_entry() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/credentials/pool")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "provider": "openrouter",
+                    "api_key": "test-openrouter-secret-value",
+                    "label": "primary",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "strategy": "fill_first"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_text.contains("test-openrouter-secret-value"));
+        let pool: serde_json::Value = serde_json::from_str(&body_text).unwrap();
+        assert_eq!(pool["provider"]["provider"], "openrouter");
+        assert_eq!(pool["provider"]["entries"][0]["id"], "primary");
+        assert_eq!(pool["provider"]["entries"][0]["has_api_key"], true);
+
+        {
+            let config = state.config.lock().await;
+            let entry = &config.credential_pools["openrouter"].credentials[0];
+            assert_eq!(entry.api_key, "test-openrouter-secret-value");
+            assert_eq!(entry.source.as_deref(), Some("dashboard:runtime"));
+        }
+
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/api/credentials/pool/openrouter/1")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let config = state.config.lock().await;
+        assert!(!config.credential_pools.contains_key("openrouter"));
+    }
+
+    #[tokio::test]
     async fn test_dashboard_webhooks_redacts_secret() {
         let state = test_state();
         {
@@ -1068,6 +1496,60 @@ mod tests {
         assert_eq!(webhooks["port"], 9100);
         assert_eq!(webhooks["path"], "/hooks");
         assert_eq!(webhooks["secret_configured"], true);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_webhook_update_redacts_runtime_secret() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "enabled": true,
+                    "bot_id": "webhook-admin",
+                    "port": 9091,
+                    "path": "/events",
+                    "secret": "test-webhook-secret-value"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_text.contains("test-webhook-secret-value"));
+        let webhooks: serde_json::Value = serde_json::from_str(&body_text).unwrap();
+        assert_eq!(webhooks["enabled"], true);
+        assert_eq!(webhooks["bot_id"], "webhook-admin");
+        assert_eq!(webhooks["port"], 9091);
+        assert_eq!(webhooks["path"], "/events");
+        assert_eq!(webhooks["secret_configured"], true);
+
+        let config = state.config.lock().await;
+        assert_eq!(config.gateways.webhook.secret, "test-webhook-secret-value");
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_webhook_update_rejects_relative_path() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/webhooks")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"path": "events"}).to_string()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

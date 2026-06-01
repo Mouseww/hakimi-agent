@@ -145,7 +145,7 @@ Generated: 2026-05-31
 - **Serve mode** — `--serve` HTTP API server
 
 ### Server
-- **REST API** — Health, chat, sessions, tools, config endpoints, OpenAI-style discovery, and read-only dashboard admin summaries for status/MCP/credential pools/webhooks (Axum)
+- **REST API** — Health, chat, sessions, tools, config endpoints, OpenAI-style discovery, and dashboard admin summaries plus runtime-scoped writes for status/MCP/credential pools/webhooks (Axum)
 
 ### TUI
 - **Ratatui TUI** — Terminal UI with chat panel, tools activity panel, status bar
@@ -476,7 +476,7 @@ Generated: 2026-05-31
 #### 57. Web Server / Dashboard — PARTIAL
 - **What**: Web-based dashboard with embedded PTY terminal
 - **Hermes location**: `hermes_cli/web_server.py`
-- **Details**: Hakimi serves a basic React WebUI and now exposes Hermes-inspired read-only admin endpoints for `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks`, with secrets reduced to booleans/counts/redacted markers. Remaining parity is the full dashboard app, xterm.js/WebSocket PTY, write-side admin workflows, pairing management, and richer OAuth/session-token gates.
+- **Details**: Hakimi serves a basic React WebUI and now exposes Hermes-inspired admin endpoints for `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks`, with secrets reduced to booleans/counts/redacted markers. MCP stdio servers, credential-pool entries, and webhook config can be changed at runtime without writing secrets to disk. Remaining parity is the full dashboard app, xterm.js/WebSocket PTY, durable write-side config persistence, pairing management, and richer OAuth/session-token gates.
 - **Priority**: **Low** — Web UI (Hakimi has basic REST server)
 
 #### 58. Feishu/Lark Document Tools
@@ -550,8 +550,8 @@ Generated: 2026-05-31
 - **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original feature that needs completion
 
 ### 13. REST API Server
-- **Status**: Basic endpoints (health, chat, sessions, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models` plus machine-readable `/v1/capabilities` discovery, and read-only dashboard admin summaries for status, MCP servers, credential pools, and webhook configuration without exposing secrets
-- **What's missing**: OpenAI Chat Completions/Responses compatibility, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, and write-side dashboard admin actions
+- **Status**: Basic endpoints (health, chat, sessions, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models` plus machine-readable `/v1/capabilities` discovery, and dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
+- **What's missing**: OpenAI Chat Completions/Responses compatibility, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
@@ -709,11 +709,11 @@ Generated: 2026-05-31
 | 90 | WhatsApp Business Cloud Gateway Adapter | `hakimi-gateway/src/whatsapp.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | ✅ Meta Graph API outbound text gateway supports config/env credentials, phone-number-ID routing, optional home-channel delivery, API version/base URL overrides, redacted logging, and UTF-8-safe 4096-character chunking |
 | 91 | Gateway/TUI Undo Rewind | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-tui/src/app.rs` | 8 | ✅ Hermes-style `/undo [N]` / `/rewind [N]` rewinds recent in-memory user turns in gateway and TUI surfaces, clamps excessive counts, refuses invalid counts, returns the target prompt for edit/resend, and avoids model-loop execution; durable SessionDB soft-delete remains a future storage-level extension |
 | 92 | Gateway Stream Overflow Chunking | `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs`, platform gateway adapters | 6 | ✅ Gateway route/send/edit paths expose platform text limits and split long outbound or streamed replies into UTF-8-safe chunks; final delivery skips duplicate long replies after overflow stream chunks |
-| 93 | Dashboard Admin Read API | `hakimi-server/src/api.rs` | 4 | ✅ `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose WebUI/admin summaries with secret values omitted or redacted; `/v1/capabilities` advertises the read-only admin surface |
+| 93 | Dashboard Admin Runtime API | `hakimi-server/src/api.rs` | 9 | ✅ `/api/status`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose WebUI/admin summaries with secret values omitted or redacted; runtime-scoped POST/DELETE handlers add/remove stdio MCP servers, credential-pool entries, and webhook settings without persisting secrets to disk; `/v1/capabilities` advertises the writable admin surface |
 | 94 | Trajectory Saving | `hakimi-core/src/trajectory.rs`, `hakimi-core/src/agent.rs`, CLI/server/TUI config wiring | 6 | ✅ Hermes-compatible ShareGPT JSONL trajectory saving for completed and failed turns, with system-prompt snapshots, reasoning scratchpad conversion, tool-call/tool-response XML payloads, image omission markers, config/env controls, and default output under `~/.hakimi/trajectories` |
 
 ### Summary
-- **Total tests**: 1534 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1539 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
