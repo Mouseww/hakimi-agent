@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -62,21 +62,7 @@ impl BrowserManager {
 
     /// Check if Chromium/Chrome is available on this system.
     pub fn is_chrome_available() -> bool {
-        // Check common Chrome/Chromium binary locations
-        let candidates = [
-            "chromium-browser",
-            "chromium",
-            "google-chrome",
-            "google-chrome-stable",
-            "chrome",
-        ];
-        for candidate in &candidates {
-            if which(candidate) {
-                return true;
-            }
-        }
-        // Also check if CHROME_PATH env var is set
-        std::env::var("CHROME_PATH").is_ok()
+        find_browser_executable().is_some()
     }
 
     /// Get or create the browser and active page.
@@ -95,12 +81,18 @@ impl BrowserManager {
 
         // Launch browser if needed
         if inner.browser.is_none() {
-            let config = BrowserConfig::builder()
+            let mut builder = BrowserConfig::builder()
                 .no_sandbox()
                 .arg("--disable-gpu")
                 .arg("--disable-dev-shm-usage")
                 .arg("--disable-extensions")
-                .arg("--window-size=1280,720")
+                .arg("--window-size=1280,720");
+
+            if let Some(executable) = find_browser_executable() {
+                builder = builder.chrome_executable(executable);
+            }
+
+            let config = builder
                 .build()
                 .map_err(|e| HakimiError::Tool(format!("failed to build browser config: {e}")))?;
 
@@ -179,16 +171,181 @@ impl BrowserManager {
 // ---------------------------------------------------------------------------
 
 /// Check if a binary exists in PATH (simplified version of `which`).
-fn which(name: &str) -> bool {
-    if let Ok(path) = std::env::var("PATH") {
-        for dir in path.split(':') {
-            let full = std::path::Path::new(dir).join(name);
-            if full.exists() {
-                return true;
+fn which(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    find_executable_on_path(name, std::env::split_paths(&path))
+}
+
+fn find_browser_executable() -> Option<PathBuf> {
+    browser_executable_from_env()
+        .or_else(system_browser_executable)
+        .or_else(playwright_browser_executable)
+}
+
+fn browser_executable_from_env() -> Option<PathBuf> {
+    for name in [
+        "HAKIMI_BROWSER_EXECUTABLE",
+        "AGENT_BROWSER_EXECUTABLE_PATH",
+        "CHROME_PATH",
+        "CHROME",
+    ] {
+        if let Ok(value) = std::env::var(name)
+            && let Some(path) = resolve_browser_candidate(&value)
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn system_browser_executable() -> Option<PathBuf> {
+    for name in [
+        "chromium-browser",
+        "chromium",
+        "google-chrome",
+        "google-chrome-stable",
+        "chrome",
+        "chrome-headless-shell",
+    ] {
+        if let Some(path) = which(name) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn resolve_browser_candidate(value: &str) -> Option<PathBuf> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(trimmed);
+    if path.is_file() {
+        return Some(path);
+    }
+
+    which(trimmed)
+}
+
+fn find_executable_on_path(
+    name: &str,
+    paths: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
+    for dir in paths {
+        let full = dir.join(name);
+        if full.is_file() {
+            return Some(full);
+        }
+
+        #[cfg(windows)]
+        {
+            let full_exe = dir.join(format!("{name}.exe"));
+            if full_exe.is_file() {
+                return Some(full_exe);
             }
         }
     }
-    false
+    None
+}
+
+fn playwright_browser_executable() -> Option<PathBuf> {
+    for root in playwright_browser_search_roots() {
+        if let Some(path) = find_playwright_browser_executable(&root) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn playwright_browser_search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(path) = std::env::var("PLAYWRIGHT_BROWSERS_PATH") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() && trimmed != "0" {
+            roots.push(PathBuf::from(trimmed));
+        }
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join(".cache").join("ms-playwright"));
+
+        #[cfg(target_os = "macos")]
+        roots.push(home.join("Library").join("Caches").join("ms-playwright"));
+
+        #[cfg(windows)]
+        {
+            let local = std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join("AppData").join("Local"));
+            roots.push(local.join("ms-playwright"));
+        }
+    }
+
+    roots
+}
+
+fn find_playwright_browser_executable(root: &Path) -> Option<PathBuf> {
+    find_browser_executable_under(root, 6, 0)
+}
+
+fn find_browser_executable_under(root: &Path, max_depth: usize, visited: usize) -> Option<PathBuf> {
+    if visited > 2048 || max_depth == 0 || !root.is_dir() {
+        return None;
+    }
+
+    let mut entries = std::fs::read_dir(root)
+        .ok()?
+        .filter_map(std::result::Result::ok)
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.file_name());
+
+    let mut next_visited = visited;
+    for entry in entries {
+        next_visited += 1;
+        let path = entry.path();
+        if path.is_file() && is_browser_binary_name(&path) {
+            return Some(path);
+        }
+
+        if path.is_dir()
+            && should_descend_browser_dir(&path)
+            && let Some(found) = find_browser_executable_under(&path, max_depth - 1, next_visited)
+        {
+            return Some(found);
+        }
+    }
+
+    None
+}
+
+fn should_descend_browser_dir(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    let lower = name.to_ascii_lowercase();
+    lower.starts_with("chromium")
+        || lower.starts_with("chrome")
+        || matches!(lower.as_str(), "contents" | "macos")
+}
+
+fn is_browser_binary_name(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "chrome"
+            | "chrome.exe"
+            | "chromium"
+            | "chromium.exe"
+            | "chromium-browser"
+            | "chromium-browser.exe"
+            | "chrome-headless-shell"
+            | "chrome-headless-shell.exe"
+    )
 }
 
 /// Get the default screenshot output directory.
@@ -2050,6 +2207,50 @@ mod tests {
         assert!(f1.starts_with("screenshot_"));
         assert!(f1.ends_with(".png"));
         assert_ne!(f1, f2); // Should be unique
+    }
+
+    #[test]
+    fn test_find_executable_on_path_uses_platform_separator_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let binary_name = if cfg!(windows) {
+            "chrome.exe"
+        } else {
+            "chrome"
+        };
+        let binary = tmp.path().join(binary_name);
+        std::fs::write(&binary, "").unwrap();
+
+        let found = find_executable_on_path("chrome", vec![tmp.path().to_path_buf()]).unwrap();
+        assert_eq!(found, binary);
+    }
+
+    #[test]
+    fn test_playwright_scan_finds_headless_shell_binary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let binary = tmp
+            .path()
+            .join("chromium_headless_shell-1208")
+            .join("chrome-headless-shell-linux64")
+            .join("chrome-headless-shell");
+        std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        std::fs::write(&binary, "").unwrap();
+
+        let found = find_playwright_browser_executable(tmp.path()).unwrap();
+        assert_eq!(found, binary);
+    }
+
+    #[test]
+    fn test_playwright_scan_ignores_shared_libraries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp
+            .path()
+            .join("chromium_headless_shell-1208")
+            .join("chrome-headless-shell-linux64")
+            .join("libGLESv2.so");
+        std::fs::create_dir_all(lib.parent().unwrap()).unwrap();
+        std::fs::write(&lib, "").unwrap();
+
+        assert!(find_playwright_browser_executable(tmp.path()).is_none());
     }
 
     #[test]

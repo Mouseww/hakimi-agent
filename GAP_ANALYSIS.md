@@ -29,7 +29,7 @@ Generated: 2026-05-31
 - **transcribe_audio** — OpenAI-compatible speech-to-text for local audio files and remote audio URLs, with Hermes-style oversized local WAV chunking for text transcripts
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 - **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
-- **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, `browser_get_images`, `browser_console`, `browser_dialog`, `browser_screenshot`, and `browser_vision`
+- **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls, explicit browser executable env support, and Playwright `chromium-*` / `chromium_headless_shell-*` cache discovery: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, `browser_get_images`, `browser_console`, `browser_dialog`, `browser_screenshot`, and `browser_vision`
 - **Kanban tools (basic)** — `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim` persist tasks, comments, status transitions, liveness, dependency links, event trails, diagnostics, profile routing, worker logs, notification subscriptions, unread claim cursors, and isolated board routing in SQLite
 
 ### Runtime Environment
@@ -177,7 +177,7 @@ Generated: 2026-05-31
 #### 1. Browser Automation (remaining advanced suite)
 - **What**: Advanced browser suite beyond the basic Chromium controls already present: vision, CDP attach, cloud/browser-provider routing
 - **Hermes location**: `tools/browser_tool.py`, `tools/browser_camofox.py`, `tools/browser_cdp_tool.py`, `tools/browser_dialog_tool.py`, `tools/browser_supervisor.py`, `tools/browser_providers/`
-- **Details**: Hakimi now covers navigate, snapshot, click, type, scroll, back, press, image listing, console/error capture, page-context expression evaluation, JavaScript dialog accept/dismiss, screenshot, and screenshot-to-vision request routing through the optional Rust-native Chromium feature. Remaining parity is multi-backend support (Browserbase/Browser Use/Camofox/CDP) and deeper CDP/supervisor state.
+- **Details**: Hakimi now covers navigate, snapshot, click, type, scroll, back, press, image listing, console/error capture, page-context expression evaluation, JavaScript dialog accept/dismiss, screenshot, screenshot-to-vision request routing, explicit executable env vars, and Playwright cache/headless-shell discovery through the optional Rust-native Chromium feature. Remaining parity is multi-backend support (Browserbase/Browser Use/Camofox/CDP) and deeper CDP/supervisor state.
 - **Priority**: **Critical** — Core capability for web interaction beyond search
 
 #### 2. Credential Pool / Multi-Credential Failover
@@ -699,9 +699,10 @@ Generated: 2026-05-31
 | 83 | Computer Use Readiness Surface | `hakimi-tools/src/builtin_computer_use.rs`, CLI/server/TUI registration | 5 | 🟡 `computer_use` mirrors Hermes action-schema inputs, supports safe wait plus macOS screenshot/list-app discovery, blocks dangerous typed payloads and destructive key combos, and reports driver readiness for mutating desktop actions without claiming full cua-driver parity |
 | 84 | Gateway Lifecycle Diagnostics | `hakimi-gateway/src/lifecycle.rs`, `hakimi-gateway/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Gateway lifecycle events are written to a redacted `gateway-events.log`, adapter/connect/route/filter/edit/receiver paths are instrumented, and gateway `/logs` reads lifecycle plus legacy service logs without invoking `tail` |
 | 85 | MCP Catalog CLI/Gateway Surface | `hakimi-mcp/src/catalog.rs`, `hakimi-cli/src/entry.rs` | 2 | ✅ `hakimi mcp catalog/search/inspect/config` and gateway `/mcp catalog/search/inspect/config` expose curated MCP discovery, including the Hermes-reviewed n8n bridge, plus YAML config snippets without starting an agent loop |
+| 86 | Browser Playwright Cache Discovery | `hakimi-tools/src/builtin_browser.rs` | 3 | ✅ Optional Chromium tools now resolve `AGENT_BROWSER_EXECUTABLE_PATH` / `CHROME_PATH` / `CHROME`, use platform-correct PATH lookup, and discover Playwright `chromium-*` plus `chromium_headless_shell-*` binaries without matching shared libraries |
 
 ### Summary
-- **Total tests**: 1478 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1481 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
