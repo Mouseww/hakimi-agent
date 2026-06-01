@@ -15,6 +15,7 @@ const TOOL_PANEL_PREVIEW_CHARS: usize = 80;
 const HISTORY_PREVIEW_CHARS: usize = 160;
 const COMPLETION_HINT_LIMIT: usize = 5;
 const COMPLETION_HINT_CHARS: usize = 96;
+const VOICE_MAX_CONSECUTIVE_NO_SPEECH: u8 = 3;
 
 fn compact_one_line(input: &str, max_chars: usize) -> String {
     let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -152,8 +153,11 @@ fn voice_record_key_matches(key: &KeyEvent, raw: &str) -> bool {
 pub struct TuiVoiceStatus {
     pub enabled: bool,
     pub tts: bool,
+    pub continuous: bool,
     pub recording: bool,
     pub processing: bool,
+    pub restart_pending: bool,
+    pub consecutive_no_speech: u8,
     pub record_key: String,
     pub record_key_label: String,
     pub provider: String,
@@ -208,8 +212,11 @@ impl TuiVoiceStatus {
         Self {
             enabled: false,
             tts: false,
+            continuous: false,
             recording: false,
             processing: false,
+            restart_pending: false,
+            consecutive_no_speech: 0,
             record_key_label: format_voice_record_key(&record_key),
             record_key,
             provider: provider.clone(),
@@ -244,6 +251,8 @@ impl TuiVoiceStatus {
             "rec"
         } else if self.processing {
             "stt"
+        } else if self.continuous {
+            "loop"
         } else if self.enabled {
             "on"
         } else {
@@ -254,6 +263,7 @@ impl TuiVoiceStatus {
 
     fn render_status(&self) -> String {
         let mode = if self.enabled { "on" } else { "off" };
+        let continuous = if self.continuous { "on" } else { "off" };
         let tts = if self.tts { "on" } else { "off" };
         let tts_status = if self.tts_ready {
             "ready"
@@ -280,14 +290,15 @@ impl TuiVoiceStatus {
              Record key: {record_key}\n\
              TTS guidance: {tts}; tool {tts_status} (provider={provider}, model={model}, voice={voice})\n\
              STT tool: {stt_status} (model={transcription_model})\n\
-             ffmpeg: {ffmpeg}; auto_play={auto_play}; beep={beep}\n\
+             ffmpeg: {ffmpeg}; auto_play={auto_play}; beep={beep}; continuous={continuous}\n\
              Capture settings: threshold={threshold}, silence={silence:.1}s\n\
              {cue_status}\n\
              TTS playback: Markdown cleanup and MP3 cache planning ready (max {tts_max_chars} chars)\n\
              Recording artifact: PCM16 WAV writer ready ({sample_rate} Hz mono, min speech {min_speech:.1}s, no-speech timeout {no_speech:.0}s)\n\
              {audio_environment}\n\
-             TUI one-shot capture is ready through voice_capture; {record_key} records, transcribes, and submits the transcript.",
+             TUI continuous capture is ready through voice_capture; {record_key} records, transcribes, submits the transcript, and restarts listening until {record_key} is pressed again or 3 recordings contain no speech.",
             record_key = self.record_key_label,
+            continuous = continuous,
             provider = self.provider,
             model = self.model,
             voice = self.voice,
@@ -664,16 +675,22 @@ impl App {
             }
             "on" | "enable" => {
                 self.voice.enabled = true;
+                self.voice.continuous = false;
+                self.voice.restart_pending = false;
+                self.voice.consecutive_no_speech = 0;
                 self.messages.push(ChatMessage::system(format!(
-                    "Voice mode enabled. Press {} to record, transcribe, and submit speech.",
+                    "Voice mode enabled. Press {} to start continuous recording.",
                     self.voice.record_key_label
                 )));
             }
             "off" | "disable" => {
                 self.voice.enabled = false;
                 self.voice.tts = false;
+                self.voice.continuous = false;
                 self.voice.recording = false;
                 self.voice.processing = false;
+                self.voice.restart_pending = false;
+                self.voice.consecutive_no_speech = 0;
                 self.messages
                     .push(ChatMessage::system("Voice mode disabled."));
             }
@@ -708,11 +725,14 @@ impl App {
 
         if self.voice.recording {
             let _ = self.cmd_tx.send(AgentCommand::CancelVoiceCapture);
+            self.voice.continuous = false;
             self.voice.recording = false;
             self.voice.processing = false;
+            self.voice.restart_pending = false;
+            self.voice.consecutive_no_speech = 0;
             self.is_thinking = true;
             self.messages.push(ChatMessage::system(format!(
-                "Stopping voice capture. Press {} again after Hakimi returns to ready.",
+                "Stopping continuous voice capture. Press {} again after Hakimi returns to ready.",
                 self.voice.record_key_label
             )));
             return;
@@ -741,12 +761,23 @@ impl App {
             return;
         }
 
+        self.voice.continuous = true;
+        self.voice.consecutive_no_speech = 0;
+        self.start_voice_capture(false);
+    }
+
+    fn start_voice_capture(&mut self, restarted: bool) {
         let command = AgentCommand::VoiceCapture {
             duration_seconds: hakimi_tools::NO_SPEECH_TIMEOUT_SECONDS,
             silence_threshold: self.voice.silence_threshold,
         };
 
         if self.cmd_tx.send(command).is_err() {
+            self.voice.recording = false;
+            self.voice.processing = false;
+            self.voice.restart_pending = false;
+            self.voice.continuous = false;
+            self.is_thinking = false;
             self.messages
                 .push(ChatMessage::error("Failed to start voice capture."));
             return;
@@ -754,13 +785,23 @@ impl App {
 
         self.voice.recording = true;
         self.voice.processing = false;
+        self.voice.restart_pending = false;
         self.is_thinking = true;
         self.scroll_offset = 0;
         self.play_voice_cue(hakimi_tools::VoiceCueKind::Start);
-        self.messages.push(ChatMessage::system(format!(
-            "Recording with {}. Hakimi will transcribe and submit detected speech automatically.",
-            self.voice.record_key_label
-        )));
+
+        let message = if restarted {
+            format!(
+                "Voice continuous mode is listening again with {}.",
+                self.voice.record_key_label
+            )
+        } else {
+            format!(
+                "Recording with {}. Hakimi will transcribe, respond, and keep listening until you press it again.",
+                self.voice.record_key_label
+            )
+        };
+        self.messages.push(ChatMessage::system(message));
     }
 
     /// Process incoming agent events (non-blocking).
@@ -828,6 +869,7 @@ impl App {
                 AgentEvent::Response(text) => {
                     self.voice.recording = false;
                     self.voice.processing = false;
+                    self.voice.restart_pending = self.voice.continuous;
                     self.is_thinking = false;
                     if !text.is_empty() {
                         self.messages.push(ChatMessage::assistant(&text));
@@ -839,6 +881,9 @@ impl App {
                 AgentEvent::Error(err) => {
                     self.voice.recording = false;
                     self.voice.processing = false;
+                    self.voice.continuous = false;
+                    self.voice.restart_pending = false;
+                    self.voice.consecutive_no_speech = 0;
                     self.is_thinking = false;
                     self.messages.push(ChatMessage::error(&err));
                     self.scroll_offset = 0;
@@ -850,6 +895,7 @@ impl App {
                 } => {
                     self.voice.recording = false;
                     self.voice.processing = true;
+                    self.voice.consecutive_no_speech = 0;
                     self.play_voice_cue(hakimi_tools::VoiceCueKind::Stop);
                     if let Some(path) = audio_path.filter(|path| !path.trim().is_empty()) {
                         self.messages
@@ -862,20 +908,44 @@ impl App {
                 AgentEvent::VoiceNoSpeech { reason, audio_path } => {
                     self.voice.recording = false;
                     self.voice.processing = false;
-                    self.is_thinking = false;
+                    self.voice.consecutive_no_speech = if self.voice.continuous {
+                        self.voice.consecutive_no_speech.saturating_add(1)
+                    } else {
+                        0
+                    };
+                    let no_speech_count = self.voice.consecutive_no_speech;
+                    let should_stop =
+                        self.voice.continuous && no_speech_count >= VOICE_MAX_CONSECUTIVE_NO_SPEECH;
+                    self.voice.restart_pending = self.voice.continuous && !should_stop;
+                    if should_stop {
+                        self.voice.continuous = false;
+                        self.voice.restart_pending = false;
+                    }
+                    self.is_thinking = self.voice.restart_pending;
                     self.play_voice_cue(hakimi_tools::VoiceCueKind::Stop);
                     let suffix = audio_path
                         .filter(|path| !path.trim().is_empty())
                         .map(|path| format!(" Recording preserved at {path}."))
                         .unwrap_or_default();
-                    self.messages
-                        .push(ChatMessage::system(format!("{reason}{suffix}")));
+                    let loop_status = if should_stop {
+                        " Continuous voice mode stopped after 3 recordings without speech."
+                    } else if self.voice.restart_pending {
+                        " Listening will restart automatically."
+                    } else {
+                        ""
+                    };
+                    self.messages.push(ChatMessage::system(format!(
+                        "{reason}{suffix}{loop_status}"
+                    )));
                     self.scroll_offset = 0;
                 }
 
                 AgentEvent::VoiceCaptureCancelled => {
                     self.voice.recording = false;
                     self.voice.processing = false;
+                    self.voice.continuous = false;
+                    self.voice.restart_pending = false;
+                    self.voice.consecutive_no_speech = 0;
                     self.is_thinking = false;
                     self.play_voice_cue(hakimi_tools::VoiceCueKind::Stop);
                     if let Some(activity) = self
@@ -892,9 +962,14 @@ impl App {
                 }
 
                 AgentEvent::Done => {
-                    self.voice.recording = false;
-                    self.voice.processing = false;
-                    self.is_thinking = false;
+                    if self.voice.restart_pending && self.voice.enabled && self.voice.continuous {
+                        self.start_voice_capture(true);
+                    } else {
+                        self.voice.recording = false;
+                        self.voice.processing = false;
+                        self.voice.restart_pending = false;
+                        self.is_thinking = false;
+                    }
                 }
             }
         }
@@ -1477,7 +1552,7 @@ mod tests {
         assert!(
             message
                 .content
-                .contains("TUI one-shot capture is ready through voice_capture")
+                .contains("TUI continuous capture is ready through voice_capture")
         );
         assert!(!app.is_thinking);
     }
@@ -1576,6 +1651,10 @@ mod tests {
         voice.recording = false;
         voice.processing = true;
         assert_eq!(voice.status_bar_hint(), "Voice:stt Ctrl+B");
+
+        voice.processing = false;
+        voice.continuous = true;
+        assert_eq!(voice.status_bar_hint(), "Voice:loop Ctrl+B");
     }
 
     #[test]
@@ -1605,7 +1684,9 @@ mod tests {
         assert_eq!(app.voice.record_key_label, "Ctrl+O");
         assert_eq!(message.role, crate::Role::System);
         assert!(message.content.contains("Recording with Ctrl+O"));
+        assert!(message.content.contains("keep listening"));
         assert!(app.voice.recording);
+        assert!(app.voice.continuous);
         assert!(app.is_thinking);
 
         match cmd_rx.try_recv().expect("voice command") {
@@ -1631,6 +1712,7 @@ mod tests {
             "test-session-123".to_string(),
         );
         app.voice.enabled = true;
+        app.voice.continuous = true;
         app.voice.recording = true;
         app.is_thinking = true;
 
@@ -1638,13 +1720,14 @@ mod tests {
 
         assert!(!app.voice.recording);
         assert!(!app.voice.processing);
+        assert!(!app.voice.continuous);
         assert!(app.is_thinking);
         assert!(
             app.messages
                 .last()
                 .expect("message")
                 .content
-                .contains("Stopping voice capture")
+                .contains("Stopping continuous voice capture")
         );
         match cmd_rx.try_recv().expect("cancel command") {
             AgentCommand::CancelVoiceCapture => {}
@@ -1654,7 +1737,9 @@ mod tests {
 
     #[test]
     fn voice_cancel_event_clears_running_capture_activity() {
-        let (mut app, _cmd_rx, event_tx) = make_app();
+        let (mut app, mut cmd_rx, event_tx) = make_app();
+        app.voice.enabled = true;
+        app.voice.continuous = true;
         app.voice.recording = true;
         app.is_thinking = true;
         app.tool_activity.push(ToolActivity {
@@ -1667,12 +1752,15 @@ mod tests {
         event_tx
             .send(AgentEvent::VoiceCaptureCancelled)
             .expect("send cancel event");
+        event_tx.send(AgentEvent::Done).expect("send done event");
         app.poll_agent_events();
 
         assert!(!app.voice.recording);
         assert!(!app.voice.processing);
+        assert!(!app.voice.continuous);
         assert!(!app.is_thinking);
         assert_eq!(app.tool_activity[0].status, ToolStatus::Error);
+        assert!(cmd_rx.try_recv().is_err());
         assert!(
             app.messages
                 .last()
@@ -1921,6 +2009,51 @@ mod tests {
     }
 
     #[test]
+    fn continuous_voice_restarts_after_response_done() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.voice.enabled = true;
+        app.voice.continuous = true;
+        app.voice.recording = true;
+
+        event_tx
+            .send(crate::AgentEvent::VoiceTranscript {
+                transcript: "summarize the page".to_string(),
+                audio_path: Some("/tmp/hakimi_voice.wav".to_string()),
+            })
+            .unwrap();
+        event_tx
+            .send(crate::AgentEvent::Response("summary complete".to_string()))
+            .unwrap();
+        event_tx.send(crate::AgentEvent::Done).unwrap();
+        app.poll_agent_events();
+
+        assert!(app.voice.recording);
+        assert!(app.voice.continuous);
+        assert!(!app.voice.restart_pending);
+        assert_eq!(app.voice.consecutive_no_speech, 0);
+        assert!(app.is_thinking);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("listening again")
+        );
+        match cmd_rx.try_recv().expect("restarted capture") {
+            AgentCommand::VoiceCapture {
+                duration_seconds,
+                silence_threshold,
+            } => {
+                assert_eq!(duration_seconds, hakimi_tools::NO_SPEECH_TIMEOUT_SECONDS);
+                assert_eq!(silence_threshold, app.voice.silence_threshold);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn poll_voice_no_speech_clears_capture_state() {
         let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -1947,6 +2080,75 @@ mod tests {
                 .unwrap()
                 .content
                 .contains("/tmp/quiet.wav")
+        );
+    }
+
+    #[test]
+    fn continuous_voice_restarts_after_no_speech_below_limit() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.voice.enabled = true;
+        app.voice.continuous = true;
+        app.voice.recording = true;
+        app.is_thinking = true;
+
+        event_tx
+            .send(crate::AgentEvent::VoiceNoSpeech {
+                reason: "No speech transcript detected.".to_string(),
+                audio_path: None,
+            })
+            .unwrap();
+        event_tx.send(crate::AgentEvent::Done).unwrap();
+        app.poll_agent_events();
+
+        assert_eq!(app.voice.consecutive_no_speech, 1);
+        assert!(app.voice.recording);
+        assert!(app.voice.continuous);
+        assert!(app.is_thinking);
+        assert!(app.messages.iter().any(|message| {
+            message
+                .content
+                .contains("Listening will restart automatically")
+        }));
+        match cmd_rx.try_recv().expect("restarted capture") {
+            AgentCommand::VoiceCapture { .. } => {}
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn continuous_voice_stops_after_three_no_speech_recordings() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let mut app = App::new(cmd_tx, event_rx, "m".to_string(), "s".to_string());
+        app.voice.enabled = true;
+        app.voice.continuous = true;
+        app.voice.recording = true;
+        app.voice.consecutive_no_speech = 2;
+        app.is_thinking = true;
+
+        event_tx
+            .send(crate::AgentEvent::VoiceNoSpeech {
+                reason: "No speech transcript detected.".to_string(),
+                audio_path: None,
+            })
+            .unwrap();
+        event_tx.send(crate::AgentEvent::Done).unwrap();
+        app.poll_agent_events();
+
+        assert_eq!(app.voice.consecutive_no_speech, 3);
+        assert!(!app.voice.recording);
+        assert!(!app.voice.continuous);
+        assert!(!app.voice.restart_pending);
+        assert!(!app.is_thinking);
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("stopped after 3 recordings without speech")
         );
     }
 

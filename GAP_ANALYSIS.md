@@ -420,10 +420,10 @@ Generated: 2026-05-31
 - **Hermes location**: `plugins/disk-cleanup/`
 - **Priority**: **Low** — Maintenance
 
-#### 47. Voice Mode (Push-to-Talk)
+#### 47. ~~Voice Mode (Push-to-Talk)~~ ✅ DONE
 - **What**: Audio recording and playback for CLI with STT dispatch
 - **Hermes location**: `tools/voice_mode.py`
-- **Details**: Hakimi now has `text_to_speech`, `transcribe_audio` with Whisper silence-hallucination filtering and Hermes-style oversized local WAV chunking for text transcripts, gateway `/voice on|off|tts|status|doctor` state that adds spoken-response guidance only to the current model turn while preserving clean chat history, shared voice I/O diagnostics for TUI/gateway surfaces, Markdown-cleaned TTS playback cache planning, local playback launch/interrupt support for generated audio, PCM16 WAV recording artifact validation for captured audio, the `voice_capture` tool for installed-recorder capture plus optional STT dispatch, and TUI Ctrl+B/Ctrl+letter one-shot capture that submits successful transcripts into the chat loop, cancels active recording on a second press, and plays Hermes-style start/stop cues when enabled. Remaining parity is deeper interactive polish: continuous restart mode.
+- **Status**: ✅ Done in v0.3.168 — Hakimi now has `text_to_speech`, `transcribe_audio` with Whisper silence-hallucination filtering and Hermes-style oversized local WAV chunking for text transcripts, gateway `/voice on|off|tts|status|doctor` state that adds spoken-response guidance only to the current model turn while preserving clean chat history, shared voice I/O diagnostics for TUI/gateway surfaces, Markdown-cleaned TTS playback cache planning, local playback launch/interrupt support for generated audio, PCM16 WAV recording artifact validation for captured audio, the `voice_capture` tool for installed-recorder capture plus optional STT dispatch, and TUI Ctrl+B/Ctrl+letter continuous capture that submits successful transcripts into the chat loop, restarts listening after each response, cancels active recording on a second press, exits after 3 consecutive no-speech recordings, and plays Hermes-style start/stop cues when enabled.
 - **Priority**: **Low** — Niche CLI feature
 
 #### 49. Curator
@@ -549,7 +549,7 @@ Generated: 2026-05-31
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
-- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/history`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, and TTS/transcription tool registration with shared `voice.*` config.
+- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/history`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
 - **What's missing**: Session picker, skill browser, config editor, theme/skin support, checkpoint viewer, cron job management, gateway status panel
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
@@ -594,7 +594,7 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. Voice mode (continuous restart mode)
+10. TUI session/config/checkpoint management surfaces
 
 ---
 
@@ -691,9 +691,10 @@ Generated: 2026-05-31
 | 78 | Voice Capture Tool + STT Dispatch | `hakimi-tools/src/{voice_mode.rs,builtin_voice_capture.rs}`, CLI/server/TUI registration | 8 | ✅ `voice_capture` plans Hermes-style one-shot recorder backends (`arecord`, `rec`, `ffmpeg`, Termux), writes to the shared voice cache, validates PCM16 WAV recordings with existing speech gates, and can dispatch accepted recordings through `transcribe_audio` |
 | 79 | TUI Voice Push-to-Talk Loop | `hakimi-tui/src/{app.rs,lib.rs,main.rs}` | 5 | ✅ Configurable Ctrl+B/Ctrl+letter now triggers `voice_capture` from the TUI background task, reports recording/STT state in the status bar, injects successful transcripts as user messages, surfaces no-speech recordings without entering the model loop, and cancels active recording on a second press |
 | 80 | Voice Recording Audio Cues | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ `voice.beep_enabled` now controls Hermes-style start/stop cues, with generated PCM16 WAV tones (880 Hz start, 660 Hz double-stop), `/voice status` cue readiness, and TUI playback at recording start plus transcript/no-speech/cancel stop boundaries |
+| 81 | Voice Continuous Restart Mode | `hakimi-tui/src/app.rs` | 3 | ✅ TUI voice capture now enters a Hermes-style continuous loop after the first record key press, restarts listening after each completed voice response, restarts after no-speech recordings until 3 consecutive no-speech exits, and disables auto-restart on second-press cancellation or errors |
 
 ### Summary
-- **Total tests**: 1462 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1465 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
