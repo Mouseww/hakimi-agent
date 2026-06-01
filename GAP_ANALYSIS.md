@@ -23,6 +23,7 @@ Generated: 2026-05-31
 - **send_message** — Cross-platform messaging via gateway
 - **code_exec** — Code execution tool (similar to execute_code)
 - **web_extract** — URL content extraction with HTML cleaning, readability fallback, markdown/raw output
+- **mixture_of_agents** — Hermes-style MoA reasoning tool that runs parallel OpenRouter reference models and aggregates their answers for hard reasoning/coding/math tasks
 - **image_generate** — AI image generation with OpenAI/FAL backends and local file output
 - **text_to_speech** — OpenAI-compatible + Edge TTS with local audio file output
 - **transcribe_audio** — OpenAI-compatible speech-to-text for local audio files and remote audio URLs
@@ -211,11 +212,10 @@ Generated: 2026-05-31
 - **Details**: Screenshots, mouse, keyboard, scroll, drag. Does NOT steal user's cursor/focus. Works with any tool-capable model.
 - **Priority**: **High** — Desktop automation capability
 
-#### 11. Mixture-of-Agents (MoA)
+#### 11. ~~Mixture-of-Agents (MoA)~~ ✅ DONE
 - **What**: Multi-model collaboration for enhanced reasoning on complex tasks
 - **Hermes location**: `tools/mixture_of_agents_tool.py`
-- **Details**: Reference models generate parallel responses, aggregator synthesizes. Uses claude-opus-4.6, gemini-3-pro, gpt-5.4-pro, deepseek-v3.2.
-- **Priority**: **High** — Advanced reasoning capability
+- **Status**: ✅ Done in v0.3.160 — `hakimi-tools/src/builtin_mixture_of_agents.rs` exposes `mixture_of_agents`, runs OpenRouter reference model calls in parallel, tolerates failed references, aggregates successful answers through a synthesis model, and is registered in CLI, TUI, and server tool surfaces.
 
 #### 12. Kanban Multi-Agent Coordination
 - **What**: Durable SQLite-backed board for multi-agent task collaboration
@@ -685,6 +685,7 @@ Generated: 2026-05-31
 | 72 | Voice Diagnostics + STT Silence Filtering | `hakimi-tools/src/voice_mode.rs`, `hakimi-tools/src/builtin_transcribe_audio.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/app.rs` | 4 | ✅ Hermes-style audio environment diagnostics cover SSH/container/WSL/Termux/forwarded-audio cases, `/voice doctor` exposes readiness in gateway, TUI status includes capture/playback readiness, and `transcribe_audio` filters common Whisper silence hallucinations for text responses |
 | 73 | Voice Recording Artifact Validation | `hakimi-tools/src/voice_mode.rs`, `hakimi-tui/src/app.rs` | 5 | ✅ PCM16 mono WAV writer matches Hermes voice recording parameters, summarizes captured audio duration/peak RMS, rejects too-short or too-quiet recordings before STT, and surfaces artifact readiness in TUI `/voice status` while keeping microphone capture explicitly pending |
 | 74 | HTTP API Discovery | `hakimi-server/src/api.rs` | 2 | ✅ `/v1/models` returns an OpenAI-compatible model list for the active server agent, and `/v1/capabilities` advertises implemented vs pending API features and endpoint paths for external UI feature detection |
+| 75 | Mixture-of-Agents Tool | `hakimi-tools/src/builtin_mixture_of_agents.rs`, CLI/server/TUI registration | 9 | ✅ OpenRouter-backed `mixture_of_agents` runs parallel reference models, aggregates successful responses, reports failed references without leaking credentials, and exposes the tool across runtime surfaces |
 
 ### Summary
 - **Total tests**: 1433 (latest CI target; local compilation intentionally not run in automation)
