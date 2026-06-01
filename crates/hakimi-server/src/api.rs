@@ -19,6 +19,8 @@
 //! - `POST /webhooks`        — Update runtime webhook gateway config
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
+//! - `GET  /v1/skills`       — List loaded runtime skills without skill bodies
+//! - `GET  /v1/toolsets`     — List registered toolsets and their tool schemas
 //! - `POST /v1/chat/completions` — OpenAI-compatible non-streaming chat
 //! - `POST /v1/responses`    — OpenAI Responses-compatible non-streaming chat
 //! - `GET  /v1/responses/:id` — Retrieve a stored Responses API result
@@ -117,6 +119,55 @@ pub struct ModelInfo {
 /// Describes a single tool in GET /tools.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ToolInfo {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+/// Response body for GET /v1/skills.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillsResponse {
+    pub object: String,
+    pub total: usize,
+    pub active: Vec<String>,
+    pub data: Vec<SkillInfo>,
+}
+
+/// Public skill metadata. The markdown body is intentionally not exposed.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+    pub trigger: Option<String>,
+    pub tags: Vec<String>,
+    pub phases: Vec<String>,
+    pub platforms: Vec<String>,
+    pub provenance: String,
+    pub active: bool,
+}
+
+/// Response body for GET /v1/toolsets.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolsetsResponse {
+    pub object: String,
+    pub total_toolsets: usize,
+    pub total_tools: usize,
+    pub data: Vec<ToolsetInfo>,
+}
+
+/// Toolset inventory for external API clients.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolsetInfo {
+    pub name: String,
+    pub source: String,
+    pub deferrable: bool,
+    pub tool_count: usize,
+    pub tools: Vec<ToolsetToolInfo>,
+}
+
+/// Tool metadata grouped under a toolset.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolsetToolInfo {
     pub name: String,
     pub description: String,
     pub parameters: serde_json::Value,
@@ -383,6 +434,8 @@ pub fn build_router(state: AppState) -> Router {
     let mut v1_routes = Router::new()
         .route("/models", get(models))
         .route("/capabilities", get(capabilities))
+        .route("/skills", get(list_v1_skills))
+        .route("/toolsets", get(list_v1_toolsets))
         .route("/chat/completions", post(chat_completions))
         .route("/responses", post(responses))
         .route("/responses/{id}", get(get_response))
@@ -465,6 +518,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "chat_completions_streaming": false,
             "responses_api": true,
             "responses_streaming": false,
+            "skills_api": true,
+            "toolsets_api": true,
             "session_resources": true,
             "tools_api": true,
             "config_read": true,
@@ -491,6 +546,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "health": {"method": "GET", "path": "/api/health"},
             "models": {"method": "GET", "path": "/v1/models"},
             "capabilities": {"method": "GET", "path": "/v1/capabilities"},
+            "skills": {"method": "GET", "path": "/v1/skills"},
+            "toolsets": {"method": "GET", "path": "/v1/toolsets"},
             "chat_completions": {"method": "POST", "path": "/v1/chat/completions"},
             "responses": {"method": "POST", "path": "/v1/responses"},
             "response": {"method": "GET", "path": "/v1/responses/{id}"},
@@ -1510,6 +1567,106 @@ async fn list_tools(State(state): State<AppState>) -> Json<Vec<ToolInfo>> {
     )
 }
 
+/// GET /v1/skills — list loaded runtime skill metadata without prompt bodies.
+async fn list_v1_skills(State(state): State<AppState>) -> Json<SkillsResponse> {
+    let agent = state.agent.lock().await;
+    let Some(store) = agent.skill_store() else {
+        return Json(SkillsResponse {
+            object: "list".to_string(),
+            total: 0,
+            active: Vec::new(),
+            data: Vec::new(),
+        });
+    };
+
+    let active = store.working_set().active_skill_names();
+    let data = store
+        .skills()
+        .iter()
+        .map(|skill| SkillInfo {
+            name: skill.name.clone(),
+            description: skill.description.clone(),
+            trigger: skill.trigger.clone(),
+            tags: skill.tags.clone(),
+            phases: skill
+                .phases
+                .iter()
+                .map(|phase| phase.as_str().to_string())
+                .collect(),
+            platforms: skill.platforms.clone(),
+            provenance: skill.provenance_label(),
+            active: active.contains(&skill.name),
+        })
+        .collect::<Vec<_>>();
+
+    Json(SkillsResponse {
+        object: "list".to_string(),
+        total: data.len(),
+        active,
+        data,
+    })
+}
+
+/// GET /v1/toolsets — group currently registered tools by toolset.
+async fn list_v1_toolsets(State(state): State<AppState>) -> Json<ToolsetsResponse> {
+    let agent = state.agent.lock().await;
+    let mut defs = agent.tool_registry().get_definitions().await;
+    defs.sort_by(|a, b| a.toolset.cmp(&b.toolset).then(a.name.cmp(&b.name)));
+
+    let total_tools = defs.len();
+    let mut grouped: BTreeMap<String, Vec<ToolsetToolInfo>> = BTreeMap::new();
+    let mut deferrable_by_toolset: BTreeMap<String, bool> = BTreeMap::new();
+
+    for def in defs {
+        let toolset = if def.toolset.trim().is_empty() {
+            "default".to_string()
+        } else {
+            def.toolset
+        };
+        let deferrable = hakimi_tools::tool_search::is_deferrable_tool(&def.name, &toolset);
+        deferrable_by_toolset
+            .entry(toolset.clone())
+            .and_modify(|value| *value |= deferrable)
+            .or_insert(deferrable);
+        grouped.entry(toolset).or_default().push(ToolsetToolInfo {
+            name: def.name,
+            description: def.description,
+            parameters: def.parameters,
+        });
+    }
+
+    let data = grouped
+        .into_iter()
+        .map(|(name, tools)| {
+            let deferrable = deferrable_by_toolset.get(&name).copied().unwrap_or(false);
+            ToolsetInfo {
+                source: toolset_source(&name).to_string(),
+                deferrable,
+                tool_count: tools.len(),
+                name,
+                tools,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Json(ToolsetsResponse {
+        object: "list".to_string(),
+        total_toolsets: data.len(),
+        total_tools,
+        data,
+    })
+}
+
+fn toolset_source(toolset: &str) -> &'static str {
+    if toolset == "mcp" || toolset.starts_with("mcp-") {
+        "mcp"
+    } else if matches!(toolset, "http" | "plugin") {
+        "plugin"
+    } else {
+        "core"
+    }
+}
+
 /// GET /config — return the current configuration (no secrets).
 async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
     let config = state.config.lock().await;
@@ -1865,10 +2022,20 @@ mod tests {
         assert_eq!(capabilities["features"]["tools_api"], true);
         assert_eq!(capabilities["features"]["chat_completions"], true);
         assert_eq!(capabilities["features"]["responses_api"], true);
+        assert_eq!(capabilities["features"]["skills_api"], true);
+        assert_eq!(capabilities["features"]["toolsets_api"], true);
         assert_eq!(capabilities["features"]["run_events_sse"], false);
         assert_eq!(
             capabilities["endpoints"]["models"],
             json!({"method": "GET", "path": "/v1/models"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["skills"],
+            json!({"method": "GET", "path": "/v1/skills"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["toolsets"],
+            json!({"method": "GET", "path": "/v1/toolsets"})
         );
         assert_eq!(
             capabilities["endpoints"]["chat_completions"],
@@ -1897,6 +2064,83 @@ mod tests {
             capabilities["endpoints"]["mcp_server_add"],
             json!({"method": "POST", "path": "/api/mcp/servers"})
         );
+    }
+
+    #[tokio::test]
+    async fn test_v1_skills_endpoint_lists_metadata_without_content() {
+        let state = test_state();
+        {
+            let mut agent = state.agent.lock().await;
+            let mut skill = hakimi_skills::Skill::new(
+                "release-check",
+                "# Release checklist\n- Do not expose this body",
+            );
+            skill.description = "Checks release readiness".to_string();
+            skill.trigger = Some("when preparing a release".to_string());
+            skill.tags = vec!["release".to_string(), "ci".to_string()];
+            skill.phases = vec![hakimi_skills::HarnessPhase::Validate];
+            skill.platforms = vec!["linux".to_string(), "windows".to_string()];
+
+            let mut store = hakimi_skills::SkillStore::from_skills(vec![skill]);
+            store.observe("release validation failed");
+            *agent = agent.clone().with_skill_store(Some(store));
+        }
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/v1/skills")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let skills: SkillsResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(skills.object, "list");
+        assert_eq!(skills.total, 1);
+        assert_eq!(skills.active, vec!["release-check"]);
+        assert_eq!(skills.data[0].name, "release-check");
+        assert_eq!(skills.data[0].description, "Checks release readiness");
+        assert_eq!(skills.data[0].phases, vec!["validate"]);
+        assert_eq!(skills.data[0].provenance, "local");
+        assert!(skills.data[0].active);
+
+        let raw = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!raw.contains("Do not expose this body"));
+    }
+
+    #[tokio::test]
+    async fn test_v1_toolsets_endpoint_groups_registered_tools() {
+        let state = test_state();
+        state
+            .agent
+            .lock()
+            .await
+            .tool_registry()
+            .register(Arc::new(MockTool))
+            .await;
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/v1/toolsets")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let toolsets: ToolsetsResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(toolsets.object, "list");
+        assert_eq!(toolsets.total_toolsets, 1);
+        assert_eq!(toolsets.total_tools, 1);
+        assert_eq!(toolsets.data[0].name, "test");
+        assert_eq!(toolsets.data[0].source, "core");
+        assert!(!toolsets.data[0].deferrable);
+        assert_eq!(toolsets.data[0].tools[0].name, "mock_tool");
     }
 
     #[tokio::test]
