@@ -601,6 +601,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub signal: SignalGatewayConfig,
     #[serde(default)]
+    pub sms: SmsGatewayConfig,
+    #[serde(default)]
     pub matrix: MatrixGatewayConfig,
     #[serde(default)]
     pub dingtalk: DingTalkGatewayConfig,
@@ -628,6 +630,7 @@ impl Default for GatewaysConfig {
             mattermost: MattermostGatewayConfig::default(),
             webhook: WebhookGatewayConfig::default(),
             signal: SignalGatewayConfig::default(),
+            sms: SmsGatewayConfig::default(),
             matrix: MatrixGatewayConfig::default(),
             dingtalk: DingTalkGatewayConfig::default(),
             wecom: WeComGatewayConfig::default(),
@@ -799,6 +802,43 @@ impl Default for SignalGatewayConfig {
             bot_id: default_signal_bot_id(),
             phone_number: String::new(),
             signal_cli_path: default_signal_cli_path(),
+        }
+    }
+}
+
+/// SMS / Twilio gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmsGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_sms_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub account_sid: String,
+    #[serde(default)]
+    pub auth_token: String,
+    #[serde(default)]
+    pub from_number: String,
+    #[serde(default)]
+    pub home_channel: String,
+    #[serde(default)]
+    pub base_url: String,
+}
+
+fn default_sms_bot_id() -> String {
+    "sms".to_string()
+}
+
+impl Default for SmsGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_sms_bot_id(),
+            account_sid: String::new(),
+            auth_token: String::new(),
+            from_number: String::new(),
+            home_channel: String::new(),
+            base_url: String::new(),
         }
     }
 }
@@ -1242,6 +1282,8 @@ mod tests {
             config.gateways.signal.signal_cli_path,
             "http://127.0.0.1:8080"
         );
+        assert!(!config.gateways.sms.enabled);
+        assert_eq!(config.gateways.sms.bot_id, "sms");
         assert!(!config.gateways.matrix.enabled);
         assert!(!config.gateways.dingtalk.enabled);
         assert!(!config.gateways.wecom.enabled);
@@ -1355,6 +1397,14 @@ gateways:
     enabled: true
     phone_number: "+15551234567"
     signal_cli_path: "http://signal-cli:8080"
+  sms:
+    enabled: true
+    bot_id: "ops-sms"
+    account_sid: "ACredacted"
+    auth_token: "twilio-redacted"
+    from_number: "+15550001111"
+    home_channel: "+15552223333"
+    base_url: "https://api.twilio.test/2010-04-01/Accounts"
   matrix:
     enabled: true
     homeserver_url: "https://matrix.example.com"
@@ -1399,6 +1449,15 @@ gateways:
         assert_eq!(config.gateways.webhook.path, "/events");
         assert!(config.gateways.signal.enabled);
         assert_eq!(config.gateways.signal.phone_number, "+15551234567");
+        assert!(config.gateways.sms.enabled);
+        assert_eq!(config.gateways.sms.bot_id, "ops-sms");
+        assert_eq!(config.gateways.sms.account_sid, "ACredacted");
+        assert_eq!(config.gateways.sms.from_number, "+15550001111");
+        assert_eq!(config.gateways.sms.home_channel, "+15552223333");
+        assert_eq!(
+            config.gateways.sms.base_url,
+            "https://api.twilio.test/2010-04-01/Accounts"
+        );
         assert!(config.gateways.matrix.enabled);
         assert_eq!(config.gateways.matrix.room_id, "!room:example.com");
         assert!(config.gateways.dingtalk.enabled);

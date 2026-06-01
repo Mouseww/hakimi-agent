@@ -2174,6 +2174,45 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.sms.enabled {
+        let account_sid =
+            env_or_config_value("TWILIO_ACCOUNT_SID", &config.gateways.sms.account_sid);
+        let auth_token = env_or_config_value("TWILIO_AUTH_TOKEN", &config.gateways.sms.auth_token);
+        let from_number =
+            env_or_config_value("TWILIO_PHONE_NUMBER", &config.gateways.sms.from_number);
+
+        if let (Some(account_sid), Some(auth_token), Some(from_number)) =
+            (account_sid, auth_token, from_number)
+        {
+            let bot_id = config.gateways.sms.bot_id.clone();
+            let home_channel =
+                env_or_config_value("SMS_HOME_CHANNEL", &config.gateways.sms.home_channel)
+                    .unwrap_or_default();
+            let sms = hakimi_gateway::SmsAdapter::new(hakimi_gateway::SmsAdapterConfig {
+                bot_id: bot_id.clone(),
+                account_sid,
+                auth_token,
+                from_number,
+                home_channel: home_channel.clone(),
+                base_url: optional_config_value(&config.gateways.sms.base_url),
+            });
+            gateway.add_adapter(Box::new(sms));
+            bot_ids.insert("sms".to_string(), bot_id);
+            if !home_channel.trim().is_empty() {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "sms",
+                    &home_channel,
+                    "home",
+                    "phone",
+                    "sms",
+                ));
+            }
+            info!("sms gateway registered");
+        } else {
+            warn!("sms gateway enabled but required account_sid/auth_token/from_number is missing");
+        }
+    }
+
     if config.gateways.matrix.enabled {
         if !config.gateways.matrix.homeserver_url.trim().is_empty()
             && !config.gateways.matrix.access_token.trim().is_empty()
