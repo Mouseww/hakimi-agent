@@ -615,6 +615,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub sms: SmsGatewayConfig,
     #[serde(default)]
+    pub email: EmailGatewayConfig,
+    #[serde(default)]
     pub whatsapp: WhatsAppGatewayConfig,
     #[serde(default)]
     pub homeassistant: HomeAssistantGatewayConfig,
@@ -648,6 +650,7 @@ impl Default for GatewaysConfig {
             webhook: WebhookGatewayConfig::default(),
             signal: SignalGatewayConfig::default(),
             sms: SmsGatewayConfig::default(),
+            email: EmailGatewayConfig::default(),
             whatsapp: WhatsAppGatewayConfig::default(),
             homeassistant: HomeAssistantGatewayConfig::default(),
             matrix: MatrixGatewayConfig::default(),
@@ -892,6 +895,57 @@ impl Default for SmsGatewayConfig {
             from_number: String::new(),
             home_channel: String::new(),
             base_url: String::new(),
+        }
+    }
+}
+
+/// Email / SMTP gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_email_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default = "default_email_smtp_port")]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub address: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub home_channel: String,
+    #[serde(default = "default_email_subject")]
+    pub subject: String,
+}
+
+fn default_email_bot_id() -> String {
+    "email".to_string()
+}
+
+fn default_email_smtp_port() -> u16 {
+    587
+}
+
+fn default_email_subject() -> String {
+    "Hakimi Agent".to_string()
+}
+
+impl Default for EmailGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_email_bot_id(),
+            smtp_host: String::new(),
+            smtp_port: default_email_smtp_port(),
+            address: String::new(),
+            password: String::new(),
+            username: String::new(),
+            home_channel: String::new(),
+            subject: default_email_subject(),
         }
     }
 }

@@ -643,6 +643,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
+name = "email-encoding"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9298e6504d9b9e780ed3f7dfd43a61be8cd0e09eb07f7706a945b0072b6670b6"
+dependencies = [
+ "base64",
+ "memchr",
+]
+
+[[package]]
+name = "email_address"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e079f19b08ca6239f47f8ba8509c11cf3ea30095831f7fed61441475edd8c449"
+
+[[package]]
 name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -926,7 +942,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "hakimi-agent"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "hakimi-cli",
@@ -935,7 +951,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cli"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "base64",
@@ -977,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-common"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "async-trait",
  "chrono",
@@ -990,7 +1006,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-config"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1004,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-context"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1020,7 +1036,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-core"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1044,7 +1060,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cron"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1062,13 +1078,14 @@ dependencies = [
 
 [[package]]
 name = "hakimi-gateway"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
  "dirs",
  "hakimi-common",
+ "lettre",
  "reqwest",
  "serde",
  "serde_json",
@@ -1079,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-knowledge"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1098,7 +1115,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-mcp"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1117,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-plugin"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1137,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-server"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1166,7 +1183,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-session"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1181,7 +1198,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-skills"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1197,7 +1214,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tools"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1226,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-transports"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1247,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tui"
-version = "0.3.191"
+version = "0.3.192"
 dependencies = [
  "anyhow",
  "base64",
@@ -1318,6 +1335,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "hostname"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617aaa3557aef3810a6369d0a99fac8a080891b68bd9f9812a1eeda0c0730cbd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
 ]
 
 [[package]]
@@ -1668,6 +1696,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
+name = "lettre"
+version = "0.11.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0da65617f6cb926332d039cb578aad56178da86e128db6a1b09f4c94fa5b3349"
+dependencies = [
+ "async-trait",
+ "base64",
+ "email-encoding",
+ "email_address",
+ "fastrand",
+ "futures-io",
+ "futures-util",
+ "hostname",
+ "httpdate",
+ "idna",
+ "mime",
+ "nom",
+ "percent-encoding",
+ "quoted_printable",
+ "rustls",
+ "socket2",
+ "tokio",
+ "tokio-rustls",
+ "url",
+ "webpki-roots",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1836,6 +1892,15 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nom"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "nu-ansi-term"
@@ -2112,6 +2177,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "quoted_printable"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "478e0585659a122aa407eb7e3c0e1fa51b1d8a870038bd29f0cf4a8551eea972"
+
+[[package]]
 name = "r-efi"
 version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2361,6 +2432,7 @@ version = "0.23.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
 dependencies = [
+ "log",
  "once_cell",
  "ring",
  "rustls-pki-types",

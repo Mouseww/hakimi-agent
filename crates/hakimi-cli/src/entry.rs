@@ -2315,6 +2315,55 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.email.enabled {
+        let smtp_host = env_or_config_value("EMAIL_SMTP_HOST", &config.gateways.email.smtp_host);
+        let address = env_or_config_value("EMAIL_ADDRESS", &config.gateways.email.address);
+        let password = env_or_config_value("EMAIL_PASSWORD", &config.gateways.email.password);
+
+        if let (Some(smtp_host), Some(address), Some(password)) = (smtp_host, address, password) {
+            let bot_id = config.gateways.email.bot_id.clone();
+            let home_channel =
+                env_or_config_value("EMAIL_HOME_CHANNEL", &config.gateways.email.home_channel)
+                    .unwrap_or_default();
+            let email = hakimi_gateway::EmailAdapter::new(hakimi_gateway::EmailAdapterConfig {
+                bot_id: bot_id.clone(),
+                smtp_host,
+                smtp_port: env_or_config_value(
+                    "EMAIL_SMTP_PORT",
+                    &config.gateways.email.smtp_port.to_string(),
+                )
+                .and_then(|value| value.parse::<u16>().ok())
+                .unwrap_or(config.gateways.email.smtp_port),
+                address,
+                password,
+                username: env_or_config_value("EMAIL_USERNAME", &config.gateways.email.username)
+                    .unwrap_or_default(),
+                home_channel: home_channel.clone(),
+                subject: env_or_config_value("EMAIL_SUBJECT", &config.gateways.email.subject)
+                    .unwrap_or_else(|| "Hakimi Agent".to_string()),
+            });
+            match email {
+                Ok(email) => {
+                    gateway.add_adapter(Box::new(email));
+                    bot_ids.insert("email".to_string(), bot_id);
+                    if !home_channel.trim().is_empty() {
+                        channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                            "email",
+                            &home_channel,
+                            "home",
+                            "email",
+                            &bot_id,
+                        ));
+                    }
+                    info!("email gateway registered");
+                }
+                Err(err) => warn!(error = %err, "email gateway configuration is invalid"),
+            }
+        } else {
+            warn!("email gateway enabled but required smtp_host/address/password is missing");
+        }
+    }
+
     if config.gateways.whatsapp.enabled {
         let access_token = env_or_config_value(
             "WHATSAPP_ACCESS_TOKEN",
