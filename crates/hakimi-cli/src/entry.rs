@@ -1675,9 +1675,91 @@ fn gateway_mcp_response(
     }
 }
 
-fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
+async fn fetch_openrouter_account_usage_snapshot(
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_common::AccountUsageSnapshot> {
+    let model = resolve_model(None, config);
+    let provider = resolve_provider(None, config, &model);
+    let base_url = resolve_base_url(None, config);
+    if provider != "openrouter" && !base_url.contains("openrouter.ai") {
+        return None;
+    }
+
+    let api_key = resolve_api_key(None, config);
+    if api_key.trim().is_empty() {
+        return None;
+    }
+
+    let api_base = openrouter_account_api_base(&base_url);
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .read_timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?;
+
+    let credits_response = client
+        .get(format!("{api_base}/credits"))
+        .bearer_auth(api_key.trim())
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .ok()?;
+    if !credits_response.status().is_success() {
+        return None;
+    }
+    let credits_payload: serde_json::Value = credits_response.json().await.ok()?;
+
+    let key_payload = match client
+        .get(format!("{api_base}/key"))
+        .bearer_auth(api_key.trim())
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => response.json().await.ok(),
+        _ => None,
+    };
+
+    Some(hakimi_common::openrouter_account_usage_from_payloads(
+        &credits_payload,
+        key_payload.as_ref(),
+        chrono::Utc::now(),
+    ))
+}
+
+fn openrouter_account_api_base(base_url: &str) -> String {
+    let mut base = base_url.trim().trim_end_matches('/').to_string();
+    if base.is_empty() {
+        return "https://openrouter.ai/api/v1".to_string();
+    }
+    if base.ends_with("/api/v1") || base.ends_with("/v1") {
+        return base;
+    }
+    if base.ends_with("/api") {
+        base.push_str("/v1");
+        return base;
+    }
+    if base.contains("openrouter.ai") {
+        return format!("{base}/api/v1");
+    }
+    format!("{base}/v1")
+}
+
+fn gateway_usage_response(
+    snapshot: Option<&GatewayUsageSnapshot>,
+    account_usage: Option<&hakimi_common::AccountUsageSnapshot>,
+) -> String {
     let Some(snapshot) = snapshot else {
-        return "📊 No usage data yet. Send a message first, then run `/usage`.".to_string();
+        let mut lines =
+            vec!["📊 No usage data yet. Send a message first, then run `/usage`.".to_string()];
+        if let Some(account_usage) = account_usage {
+            lines.push(String::new());
+            lines.extend(hakimi_common::render_account_usage_lines(
+                account_usage,
+                true,
+            ));
+        }
+        return lines.join("\n");
     };
 
     let usage = &snapshot.usage;
@@ -1719,6 +1801,14 @@ fn gateway_usage_response(snapshot: Option<&GatewayUsageSnapshot>) -> String {
         hakimi_common::CostStatus::Unknown => {
             lines.push("- Estimated cost: n/a".to_string());
         }
+    }
+
+    if let Some(account_usage) = account_usage {
+        lines.push(String::new());
+        lines.extend(hakimi_common::render_account_usage_lines(
+            account_usage,
+            true,
+        ));
     }
 
     lines.push(String::new());
@@ -5276,7 +5366,8 @@ Just send a message to chat with me!"
                             let usage = last_usage.lock().await;
                             usage.get(&chat_id).cloned()
                         };
-                        gateway_usage_response(snapshot.as_ref())
+                        let account_usage = fetch_openrouter_account_usage_snapshot(&config).await;
+                        gateway_usage_response(snapshot.as_ref(), account_usage.as_ref())
                     }
                     Some(Command::Restart) => "🔄 正在重启 Hakimi Gateway...".to_string(),
                     Some(Command::Update) => {
@@ -7210,10 +7301,47 @@ mod tests {
 
     #[test]
     fn gateway_usage_response_prompts_for_first_turn() {
-        let response = gateway_usage_response(None);
+        let response = gateway_usage_response(None, None);
 
         assert!(response.contains("No usage data yet"));
         assert!(response.contains("/usage"));
+    }
+
+    #[test]
+    fn gateway_usage_response_can_render_account_usage_before_first_turn() {
+        let account_usage = hakimi_common::openrouter_account_usage_from_payloads(
+            &serde_json::json!({"data": {"total_credits": 12.0, "total_usage": 2.5}}),
+            Some(&serde_json::json!({"data": {
+                "limit": 10.0,
+                "limit_remaining": 7.0,
+                "usage": 3.0
+            }})),
+            chrono::Utc::now(),
+        );
+
+        let response = gateway_usage_response(None, Some(&account_usage));
+
+        assert!(response.contains("No usage data yet"));
+        assert!(response.contains("**Account limits**"));
+        assert!(response.contains("Provider: openrouter"));
+        assert!(response.contains("API key quota: 70% remaining"));
+        assert!(response.contains("Credits balance: $9.50"));
+    }
+
+    #[test]
+    fn openrouter_account_api_base_normalizes_common_base_urls() {
+        assert_eq!(
+            openrouter_account_api_base(""),
+            "https://openrouter.ai/api/v1"
+        );
+        assert_eq!(
+            openrouter_account_api_base("https://openrouter.ai/api"),
+            "https://openrouter.ai/api/v1"
+        );
+        assert_eq!(
+            openrouter_account_api_base("https://openrouter.ai/api/v1"),
+            "https://openrouter.ai/api/v1"
+        );
     }
 
     #[test]
@@ -7243,7 +7371,7 @@ mod tests {
             rate_limits: None,
         };
 
-        let response = gateway_usage_response(Some(&snapshot));
+        let response = gateway_usage_response(Some(&snapshot), None);
 
         assert!(response.contains("Model: `gpt-4.1`"));
         assert!(response.contains("Provider: `openai-compatible`"));
@@ -7294,11 +7422,56 @@ mod tests {
             rate_limits,
         };
 
-        let response = gateway_usage_response(Some(&snapshot));
+        let response = gateway_usage_response(Some(&snapshot), None);
 
         assert!(response.contains("openai-compatible rate limits"));
         assert!(response.contains("Requests/min"));
         assert!(response.contains("Tokens/hr"));
+    }
+
+    #[test]
+    fn gateway_usage_response_includes_openrouter_account_snapshot() {
+        let snapshot = GatewayUsageSnapshot {
+            model: "anthropic/claude-sonnet-4".to_string(),
+            provider: "openai-compatible".to_string(),
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            },
+            cost: hakimi_common::estimate_usage_cost(
+                "anthropic/claude-sonnet-4",
+                "openai-compatible",
+                &Usage {
+                    prompt_tokens: 10,
+                    completion_tokens: 5,
+                    total_tokens: 15,
+                    cached_tokens: 0,
+                    reasoning_tokens: 0,
+                },
+            ),
+            api_call_count: 1,
+            rate_limits: None,
+        };
+        let account_usage = hakimi_common::openrouter_account_usage_from_payloads(
+            &serde_json::json!({"data": {"total_credits": 20.0, "total_usage": 4.25}}),
+            Some(&serde_json::json!({"data": {
+                "limit": 50.0,
+                "limit_remaining": 40.0,
+                "usage": 10.0,
+                "usage_daily": 1.5
+            }})),
+            chrono::Utc::now(),
+        );
+
+        let response = gateway_usage_response(Some(&snapshot), Some(&account_usage));
+
+        assert!(response.contains("**Account limits**"));
+        assert!(response.contains("API key quota: 80% remaining"));
+        assert!(response.contains("Credits balance: $15.75"));
+        assert!(response.contains("API key usage: $10.00 total - $1.50 today"));
     }
 
     #[test]
