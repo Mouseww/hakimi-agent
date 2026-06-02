@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.221-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.222-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1689-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1698-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1689 |
+| 测试数量 | ~500 | 1698 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -88,7 +88,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **桌面**：Hermes 风格 `computer_use` 就绪面，支持安全等待、macOS 截图/应用发现与受保护的动作 schema
 - **代码执行**：Python/JS/Bash 沙箱运行
 - **媒体**：图片分析、视频分析、语音合成、带静音幻觉过滤和超大 WAV 分块的语音转文字
-- **记忆**：持久化记忆 + FTS5 全文检索
+- **记忆**：持久化记忆 + FTS5 全文检索 + `hakimi knowledge` / TUI `/knowledge` / 网关 `/knowledge` 图谱操作
 - **效率**：待办清单、支持 Profile 路由、工作日志、事件轨迹、诊断、通知订阅与 swarm 图创建的 Kanban 看板、定时任务
 - **元能力**：子 Agent 委派、Mixture-of-Agents 多模型推理、技能系统、插件机制
 - **评测**：Hermes 兼容的 ShareGPT JSONL 轨迹保存，覆盖完成与失败轮次
@@ -131,7 +131,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 
 > 以下功能原版 Hermes Agent 没有，是 Hakimi 首创：
 
-**知识图谱记忆** — 用 petgraph 有向图替代扁平记忆文件。10 种节点类型、12 种边类型，支持 BFS 搜索、最短路径、子图提取。
+**知识图谱记忆** — 用 petgraph 有向图替代扁平记忆文件。10 种节点类型、12 种边类型，持久化到 `~/.hakimi/knowledge.json`，支持运行时工具、`hakimi knowledge ...`、TUI `/knowledge ...` 和网关 `/knowledge ...` 操作。
 
 **意图推理** — 将用户消息分类为 10 种意图，零延迟规则匹配，结合工具历史预测下一步操作。
 
@@ -206,7 +206,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1689 |
+| 测试数量 | ~500 | 1698 |
 
 ---
 
@@ -246,7 +246,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 错误分类器 + 凭证池
 - [x] Prompt 缓存 (Anthropic)
 - [x] 图片 + 视频分析
-- [x] 知识图谱记忆
+- [x] 知识图谱记忆，支持 CLI/TUI/网关操作命令
 - [x] 意图推理引擎
 - [x] 决策树回溯
 - [x] 角色自适应

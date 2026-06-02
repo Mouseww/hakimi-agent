@@ -248,6 +248,13 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
         category: "agent",
     },
     SlashCommandSpec {
+        name: "knowledge",
+        aliases: &["kg"],
+        args_hint: "[stats|list|search|context|add|relate|path]",
+        summary: "Manage knowledge graph entries",
+        category: "agent",
+    },
+    SlashCommandSpec {
         name: "logs",
         aliases: &["l"],
         args_hint: "[lines]",

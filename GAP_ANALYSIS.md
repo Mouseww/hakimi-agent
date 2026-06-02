@@ -177,8 +177,8 @@ Generated: 2026-06-02
 - **Toolset filtering** — Only includes tools from specified toolsets
 - **Timeout** — Default 60s delegation timeout
 
-### Knowledge (stub)
-- **KnowledgeGraph** — Graph store with node/edge types (crate exists but minimal)
+### Knowledge
+- **KnowledgeGraph** — Petgraph-backed graph store with node/edge types, JSON persistence, runtime tools, optional vector search, and CLI/TUI/gateway `knowledge` operator commands
 
 ---
 
@@ -551,9 +551,9 @@ Generated: 2026-06-02
 - **Hermes reference**: `hermes_state.py`, `hermes_cli/dump.py`
 
 ### 12. Knowledge Graph
-- **Status**: Crate exists with basic types (KnowledgeGraph, NodeType, EdgeType)
-- **What's missing**: Actual graph operations, provider integration, store implementation, agent integration
-- **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original feature that needs completion
+- **Status**: `hakimi-knowledge` provides graph operations, JSON persistence at `~/.hakimi/knowledge.json`, runtime knowledge tools, optional vector search, and `hakimi knowledge ...` plus TUI/gateway `/knowledge ...` operator commands for stats/list/search/context/add/relate/path
+- **What's missing**: External memory-provider plugins, richer graph import/export, profile-scoped knowledge homes, and dashboard graph visualization
+- **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original Rust-native feature
 
 ### 13. REST API Server
 - **Status**: Basic endpoints (health, chat, sessions, session create/update/delete/fork lifecycle management, sanitized session messages, FTS-backed session search, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, `/v1/skills` loaded-skill metadata, `/v1/toolsets` grouped tool schema discovery, text `/v1/chat/completions` with OpenAI-style completed SSE snapshots for `stream=true`, `/v1/responses` with SQLite-backed `previous_response_id` chaining plus GET/DELETE retrieval and completed SSE snapshots for `stream=true`, pollable `/v1/runs` text submissions with background server-agent execution, `/v1/runs/{id}/stop` cancellation, and `/v1/runs/{id}/events` historical replay plus live lifecycle SSE, plus dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
@@ -583,7 +583,7 @@ Generated: 2026-06-02
 | Core Tools | 40+ | 29 | 1 | 11+ |
 | Transports | 4 | 4 | 0 | 0 |
 | Gateway Platforms | 20+ | 16 | 2 | 3+ |
-| CLI Commands | 50+ | 16 | 0 | 34+ |
+| CLI Commands | 50+ | 17 | 0 | 33+ |
 | Agent Internals | 25+ | 18 | 4 | 2+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
@@ -600,7 +600,7 @@ Generated: 2026-06-02
 1. Browser advanced automation (CDP attach, cloud backends)
 2. Gateway platform breadth (4+ missing platforms after runtime exposure for webhook/msgraph/signal/sms/email/whatsapp/homeassistant/matrix/wecom/dingtalk/weixin)
 3. Plugin ecosystem (memory providers, model providers, context engines)
-4. CLI command completeness (32+ missing commands)
+4. CLI command completeness (31+ missing commands)
 5. Bedrock transport
 6. ACP adapter / IDE integration
 7. Kanban dispatcher/dashboard completion
@@ -741,9 +741,10 @@ Generated: 2026-06-02
 | 113 | CLI Skin Engine | `hakimi-cli/src/skin.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-common/src/skin.rs`, `hakimi-tui/src/app.rs` | 13 | 🟡 `hakimi skin list|inspect|set|path` and gateway `/skin` manage built-in/user YAML skins with default inheritance, skin-name traversal guards, and `display.skin` persistence; local CLI startup banners consume selected branding, truecolor banner colors, prompt symbol, logo, and hero art; TUI thinking state now consumes Hermes-style spinner faces, verbs, and wings; response boxes and broader TUI theme application remain future work |
 | 114 | Gateway Stream Flood Backoff | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Gateway streaming previews now double the edit interval on flood/rate-limit edit failures, cap the backoff at `gateways.streaming.edit_backoff_max_ms`, reset after successful edits, and disable previews after `max_flood_strikes` so final delivery still sends the full answer |
 | 115 | Gateway Native Draft Transport | `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}`, `hakimi-cli/src/entry.rs` | 8 | ✅ `gateways.streaming.transport` now supports `edit`, `auto`, `draft`, and `off`; Telegram private chats can receive native `sendMessageDraft` previews with automatic fallback to progressive edits, draft segment rotation around tool/media/delegate boundaries, and UTF-8-safe truncation |
+| 116 | Knowledge Graph Operator Surface | `hakimi-knowledge/src/{commands.rs,graph.rs}`, `hakimi-cli/src/{knowledge.rs,lib.rs,entry.rs}`, `hakimi-tui/src/app.rs`, `hakimi-common/src/slash_commands.rs` | 9 | ✅ `hakimi knowledge stats/list/search/context/add/relate/path` plus TUI/gateway `/knowledge ...` expose the persisted `~/.hakimi/knowledge.json` graph for operator inspection and small updates without entering the model loop; node/relation string mapping and command rendering stay centralized in `hakimi-knowledge` |
 
 ### Summary
-- **Total tests**: 1689 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1698 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

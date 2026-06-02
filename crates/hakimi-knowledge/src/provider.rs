@@ -132,20 +132,7 @@ impl KnowledgeProvider {
     }
 
     fn edge_from_relation(relation: &str) -> EdgeType {
-        match relation {
-            "relates_to" => EdgeType::RelatesTo,
-            "depends_on" => EdgeType::DependsOn,
-            "prefers" => EdgeType::Prefers,
-            "knows" => EdgeType::Knows,
-            "part_of" => EdgeType::PartOf,
-            "caused_by" => EdgeType::CausedBy,
-            "used_with" => EdgeType::UsedWith,
-            "replaces" => EdgeType::Replaces,
-            "improves" => EdgeType::Improves,
-            "has_property" => EdgeType::HasProperty,
-            "temporal_before" => EdgeType::TemporalBefore,
-            custom => EdgeType::Custom(custom.to_string()),
-        }
+        EdgeType::from_relation(relation)
     }
 }
 
@@ -323,19 +310,8 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| HakimiError::Tool("missing 'kind' argument".into()))?;
 
-                let node = match kind {
-                    "entity" => NodeType::Entity(key.to_string()),
-                    "person" => NodeType::Person(key.to_string()),
-                    "location" => NodeType::Location(key.to_string()),
-                    "skill" => NodeType::Skill(key.to_string()),
-                    "tool" => NodeType::Tool(key.to_string()),
-                    "event" => NodeType::Event(key.to_string()),
-                    "note" => NodeType::Note(key.to_string()),
-                    "concept" => NodeType::Concept(key.to_string()),
-                    "fact" => NodeType::Fact(key.to_string()),
-                    "preference" => NodeType::Preference(key.to_string()),
-                    other => return Err(HakimiError::Tool(format!("unknown kind: {other}"))),
-                };
+                let node = NodeType::from_kind_and_key(kind, key)
+                    .ok_or_else(|| HakimiError::Tool(format!("unknown kind: {kind}")))?;
 
                 {
                     let mut store = self.store.lock().await;

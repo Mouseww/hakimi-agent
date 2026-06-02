@@ -5,6 +5,7 @@
 pub mod backup;
 pub mod doctor;
 pub mod entry;
+pub mod knowledge;
 pub mod onboarding;
 pub mod profiles;
 pub mod setup_wizard;
@@ -85,6 +86,8 @@ pub enum Command {
     Hooks(Option<String>),
     /// Manage Kanban boards
     Kanban(Option<String>),
+    /// Manage knowledge graph entries.
+    Knowledge(Option<String>),
     /// View logs
     Logs(Option<String>),
     /// Manage MCP servers
@@ -159,6 +162,7 @@ impl Command {
             "goals" => Some(Command::Goals(arg.map(String::from))),
             "hooks" => Some(Command::Hooks(arg.map(String::from))),
             "kanban" => Some(Command::Kanban(arg.map(String::from))),
+            "knowledge" => Some(Command::Knowledge(arg.map(String::from))),
             "logs" => Some(Command::Logs(arg.map(String::from))),
             "mcp" => Some(Command::Mcp(arg.map(String::from))),
             "memory" => Some(Command::Memory(arg.map(String::from))),
@@ -231,6 +235,8 @@ impl fmt::Display for Command {
             Command::Hooks(Some(h)) => write!(f, "/hooks {h}"),
             Command::Kanban(None) => write!(f, "/kanban"),
             Command::Kanban(Some(k)) => write!(f, "/kanban {k}"),
+            Command::Knowledge(None) => write!(f, "/knowledge"),
+            Command::Knowledge(Some(k)) => write!(f, "/knowledge {k}"),
             Command::Logs(None) => write!(f, "/logs"),
             Command::Logs(Some(l)) => write!(f, "/logs {l}"),
             Command::Mcp(None) => write!(f, "/mcp"),
@@ -328,6 +334,14 @@ mod tests {
         assert_eq!(
             Command::parse("/plugins list"),
             Some(Command::Plugins(Some("list".into())))
+        );
+        assert_eq!(
+            Command::parse("/knowledge stats"),
+            Some(Command::Knowledge(Some("stats".into())))
+        );
+        assert_eq!(
+            Command::parse("/kg search alice"),
+            Some(Command::Knowledge(Some("search alice".into())))
         );
         assert_eq!(Command::parse("/quit"), Some(Command::Quit));
         assert_eq!(Command::parse("/exit"), Some(Command::Quit));

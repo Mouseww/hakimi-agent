@@ -3408,6 +3408,13 @@ pub struct McpCommandArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct KnowledgeCommandArgs {
+    /// Knowledge graph action and arguments, e.g. `stats`, `add person alice`, or `relate alice knows bob`.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
 pub struct SkillCommandArgs {
     /// Skill action and arguments, e.g. `browse`, `search rust`, or `install <identifier>`.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -3455,6 +3462,8 @@ pub enum TopLevelCommand {
     Plugins(PluginCommandArgs),
     /// Browse configured MCP servers and the curated MCP catalog.
     Mcp(McpCommandArgs),
+    /// Inspect and update the local knowledge graph.
+    Knowledge(KnowledgeCommandArgs),
     /// Browse, inspect, and install Skills Hub skills.
     Skills(SkillCommandArgs),
     /// Manage isolated Hakimi profiles.
@@ -5170,6 +5179,7 @@ async fn start_gateway(
 • `/model [name]` - Show or switch the active model\n\
 • `/tools` - List available tools\n\
 • `/skills` - List loaded skills and browse/install hub skills\n\
+• `/knowledge` - Inspect and update the local knowledge graph\n\
 • `/profile` - List, create, and select isolated profiles\n\
 • `/providers` - List supported LLM providers\n\
 • `/platforms` - List connected gateway platforms\n\n\
@@ -5368,6 +5378,10 @@ Just send a message to chat with me!"
                     }
                     Some(Command::Hooks(_)) => "🪝 No active hooks configured.".to_string(),
                     Some(Command::Kanban(cmd)) => hakimi_tools::kanban_response(cmd.as_deref()),
+                    Some(Command::Knowledge(cmd)) => crate::knowledge::knowledge_response_from_raw(
+                        cmd.as_deref(),
+                        &hakimi_home_dir(),
+                    ),
                     Some(Command::Logs(arg)) => {
                         let raw = arg.as_deref().unwrap_or("50").trim();
                         let (source, lines) = match raw.split_once(' ') {
@@ -6620,6 +6634,13 @@ pub async fn run() -> Result<()> {
         );
         return Ok(());
     }
+    if let Some(TopLevelCommand::Knowledge(knowledge_args)) = &args.command {
+        println!(
+            "{}",
+            crate::knowledge::knowledge_response(&knowledge_args.args, &hakimi_home_dir())
+        );
+        return Ok(());
+    }
     if let Some(TopLevelCommand::Skills(skill_args)) = &args.command {
         println!("{}", crate::skills::skills_response(&skill_args.args));
         return Ok(());
@@ -7018,6 +7039,27 @@ mod tests {
             mcp.command,
             Some(TopLevelCommand::Mcp(McpCommandArgs {
                 args: vec!["inspect".to_string(), "github".to_string()]
+            }))
+        );
+
+        let knowledge = <super::Args as clap::Parser>::try_parse_from([
+            "hakimi",
+            "knowledge",
+            "relate",
+            "alice",
+            "knows",
+            "bob",
+        ])
+        .unwrap();
+        assert_eq!(
+            knowledge.command,
+            Some(TopLevelCommand::Knowledge(KnowledgeCommandArgs {
+                args: vec![
+                    "relate".to_string(),
+                    "alice".to_string(),
+                    "knows".to_string(),
+                    "bob".to_string()
+                ]
             }))
         );
 

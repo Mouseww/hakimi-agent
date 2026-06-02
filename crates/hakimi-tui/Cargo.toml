@@ -19,6 +19,7 @@ hakimi-context = { path = "../hakimi-context" }
 hakimi-config = { path = "../hakimi-config" }
 hakimi-cron = { path = "../hakimi-cron" }
 hakimi-gateway = { path = "../hakimi-gateway" }
+hakimi-knowledge = { path = "../hakimi-knowledge" }
 hakimi-session = { path = "../hakimi-session" }
 hakimi-skills = { path = "../hakimi-skills" }
 ratatui = { workspace = true }
@@ -35,3 +36,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

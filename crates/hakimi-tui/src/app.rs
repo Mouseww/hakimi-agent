@@ -13,6 +13,7 @@ use hakimi_common::{
 use hakimi_config::{HakimiConfig, VoiceConfig};
 use hakimi_cron::persistence::PersistentCronStore;
 use hakimi_cron::{CronJob, CronRepeat, CronSchedule, parse_schedule, validate_cron_prompt};
+use hakimi_knowledge::knowledge_response_from_raw;
 use hakimi_session::{SessionDB, SessionMeta, SessionOps};
 use hakimi_skills::{SkillHub, SkillHubEntry, SkillUsageStore};
 use serde::Deserialize;
@@ -1838,6 +1839,7 @@ enum TuiCommand {
     Skills(Option<String>),
     Cron(Option<String>),
     Gateway(Option<String>),
+    Knowledge(Option<String>),
     Copy(Option<String>),
     Checkpoints(Option<String>),
     Clear,
@@ -1865,6 +1867,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "platforms" => Some(TuiCommand::Gateway(Some(
             arg.unwrap_or_else(|| "channels".to_string()),
         ))),
+        "knowledge" => Some(TuiCommand::Knowledge(arg)),
         "copy" => Some(TuiCommand::Copy(arg)),
         "checkpoints" => Some(TuiCommand::Checkpoints(arg)),
         "clear" => Some(TuiCommand::Clear),
@@ -1913,6 +1916,8 @@ pub struct App {
     pub skills_dir_path: PathBuf,
     /// Local cron database used by TUI cron management commands.
     pub cron_db_path: PathBuf,
+    /// Local Hakimi home directory used by TUI knowledge graph commands.
+    pub knowledge_home_path: PathBuf,
     /// Local read-only gateway status paths and config summary.
     pub gateway_status: TuiGatewayStatus,
     /// Sanitized snapshot of the current TUI configuration.
@@ -1960,6 +1965,7 @@ impl App {
             session_db_path: default_session_db_path(),
             skills_dir_path: default_skills_dir_path(),
             cron_db_path: default_cron_db_path(),
+            knowledge_home_path: default_hakimi_home_path(),
             gateway_status: TuiGatewayStatus::default(),
             config_summary,
             total_tokens: 0,
@@ -2000,6 +2006,11 @@ impl App {
 
     pub fn with_cron_db_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.cron_db_path = path.into();
+        self
+    }
+
+    pub fn with_knowledge_home_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.knowledge_home_path = path.into();
         self
     }
 
@@ -2206,7 +2217,7 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
             }
             Some(TuiCommand::Config(arg)) => {
@@ -2260,6 +2271,10 @@ impl App {
             }
             Some(TuiCommand::Gateway(arg)) => {
                 let output = render_tui_gateway_command(arg.as_deref(), &self.gateway_status);
+                self.messages.push(ChatMessage::system(output));
+            }
+            Some(TuiCommand::Knowledge(arg)) => {
+                let output = knowledge_response_from_raw(arg.as_deref(), &self.knowledge_home_path);
                 self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::Copy(arg)) => {
@@ -3189,6 +3204,7 @@ mod tests {
         assert!(app.messages[1].content.contains("/copy"));
         assert!(app.messages[1].content.contains("/sessions"));
         assert!(app.messages[1].content.contains("/skills"));
+        assert!(app.messages[1].content.contains("/knowledge"));
         assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/voice"));
     }
@@ -3235,6 +3251,44 @@ mod tests {
             parse_tui_command("/platforms"),
             Some(TuiCommand::Gateway(Some("channels".to_string())))
         );
+    }
+
+    #[test]
+    fn parse_tui_command_accepts_knowledge_alias() {
+        assert_eq!(
+            parse_tui_command("/kg search alice"),
+            Some(TuiCommand::Knowledge(Some("search alice".to_string())))
+        );
+    }
+
+    #[test]
+    fn slash_knowledge_uses_configured_home_without_model_call() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().to_path_buf();
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app = app.with_knowledge_home_path(home.clone());
+
+        for c in "/knowledge add person alice".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("Added person `alice`")
+        );
+
+        for c in "/kg list".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("[person] alice"));
+        assert!(home.join("knowledge.json").exists());
+        assert!(cmd_rx.try_recv().is_err());
     }
 
     #[test]

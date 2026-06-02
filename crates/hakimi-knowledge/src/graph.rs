@@ -17,6 +17,23 @@ pub enum NodeType {
 }
 
 impl NodeType {
+    pub fn from_kind_and_key(kind: &str, key: impl Into<String>) -> Option<Self> {
+        let key = key.into();
+        match kind.trim().to_ascii_lowercase().as_str() {
+            "entity" => Some(NodeType::Entity(key)),
+            "concept" => Some(NodeType::Concept(key)),
+            "fact" => Some(NodeType::Fact(key)),
+            "preference" => Some(NodeType::Preference(key)),
+            "person" => Some(NodeType::Person(key)),
+            "location" => Some(NodeType::Location(key)),
+            "skill" => Some(NodeType::Skill(key)),
+            "tool" => Some(NodeType::Tool(key)),
+            "event" => Some(NodeType::Event(key)),
+            "note" => Some(NodeType::Note(key)),
+            _ => None,
+        }
+    }
+
     pub fn key(&self) -> &str {
         match self {
             NodeType::Entity(s)
@@ -62,6 +79,43 @@ pub enum EdgeType {
     HasProperty,
     TemporalBefore,
     Custom(String),
+}
+
+impl EdgeType {
+    pub fn from_relation(relation: &str) -> Self {
+        let trimmed = relation.trim();
+        match trimmed.to_ascii_lowercase().as_str() {
+            "relates_to" => EdgeType::RelatesTo,
+            "depends_on" => EdgeType::DependsOn,
+            "prefers" => EdgeType::Prefers,
+            "knows" => EdgeType::Knows,
+            "part_of" => EdgeType::PartOf,
+            "caused_by" => EdgeType::CausedBy,
+            "used_with" => EdgeType::UsedWith,
+            "replaces" => EdgeType::Replaces,
+            "improves" => EdgeType::Improves,
+            "has_property" => EdgeType::HasProperty,
+            "temporal_before" => EdgeType::TemporalBefore,
+            _ => EdgeType::Custom(trimmed.to_string()),
+        }
+    }
+
+    pub fn relation_name(&self) -> &str {
+        match self {
+            EdgeType::RelatesTo => "relates_to",
+            EdgeType::DependsOn => "depends_on",
+            EdgeType::Prefers => "prefers",
+            EdgeType::Knows => "knows",
+            EdgeType::PartOf => "part_of",
+            EdgeType::CausedBy => "caused_by",
+            EdgeType::UsedWith => "used_with",
+            EdgeType::Replaces => "replaces",
+            EdgeType::Improves => "improves",
+            EdgeType::HasProperty => "has_property",
+            EdgeType::TemporalBefore => "temporal_before",
+            EdgeType::Custom(value) => value.as_str(),
+        }
+    }
 }
 
 /// Statistics about the knowledge graph.
@@ -705,6 +759,14 @@ mod tests {
     }
 
     #[test]
+    fn test_node_type_from_kind_and_key_normalizes_kind() {
+        let node = NodeType::from_kind_and_key(" Person ", "alice").unwrap();
+        assert_eq!(node.kind(), "person");
+        assert_eq!(node.key(), "alice");
+        assert!(NodeType::from_kind_and_key("unknown", "alice").is_none());
+    }
+
+    #[test]
     fn test_edge_types() {
         let mut kg = KnowledgeGraph::new();
         kg.add_node(NodeType::Entity("a".to_string()));
@@ -730,6 +792,15 @@ mod tests {
         assert!(edge_kinds.contains(&"relates_to"));
         assert!(edge_kinds.contains(&"depends_on"));
         assert!(edge_kinds.contains(&"prefers"));
+    }
+
+    #[test]
+    fn test_edge_type_relation_roundtrip_names() {
+        let edge = EdgeType::from_relation(" Used_With ");
+        assert_eq!(edge.relation_name(), "used_with");
+
+        let custom = EdgeType::from_relation("supports");
+        assert_eq!(custom.relation_name(), "supports");
     }
 
     #[test]
