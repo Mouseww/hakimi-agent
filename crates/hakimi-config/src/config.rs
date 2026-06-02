@@ -261,9 +261,17 @@ pub struct DisplayConfig {
     #[serde(default = "default_true")]
     pub streaming: bool,
 
+    /// Static message locale. Environment variables can override it at runtime.
+    #[serde(default = "default_language")]
+    pub language: String,
+
     /// UI skin name.
     #[serde(default = "default_skin")]
     pub skin: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 fn default_skin() -> String {
@@ -275,6 +283,7 @@ impl Default for DisplayConfig {
         Self {
             compact: false,
             streaming: true,
+            language: default_language(),
             skin: "default".to_string(),
         }
     }
@@ -1514,6 +1523,7 @@ mod tests {
             hakimi_common::DEFAULT_FALLBACK_CONTEXT_LENGTH
         );
         assert!(config.display.streaming);
+        assert_eq!(config.display.language, "en");
         assert_eq!(config.display.skin, "default");
         assert_eq!(config.delegation.max_iterations, 45);
         assert!(config.mcp_servers.is_empty());
@@ -1932,6 +1942,7 @@ terminal:
 display:
   streaming: true
   compact: false
+  language: "zh-CN"
   skin: "dark"
 
 delegation:
@@ -1975,6 +1986,7 @@ gateways:
         assert_eq!(config.terminal.env_type, "docker");
         assert_eq!(config.terminal.timeout, 120);
         assert_eq!(config.terminal.docker_image, "python:3.11");
+        assert_eq!(config.display.language, "zh-CN");
         assert_eq!(config.display.skin, "dark");
         assert_eq!(config.delegation.model, "gpt-4o-mini");
         assert!(!config.compression.enabled);

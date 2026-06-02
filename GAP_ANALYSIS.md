@@ -347,11 +347,10 @@ Generated: 2026-05-31
 - **Hermes location**: `tools/cronjob_tools.py` (`_scan_cron_prompt`, `_scan_cron_skill_assembled`), `cron/scheduler.py` (`CronPromptInjectionBlocked`)
 - **Status**: ✅ Done in v0.3.72 — unsafe jobs are blocked, disabled on scheduled execution, and reported through gateway queue
 
-#### 32. i18n (Internationalization)
+#### 32. ~~i18n (Internationalization)~~ ✅ DONE
 - **What**: Lightweight i18n for static user-facing messages
 - **Hermes location**: `agent/i18n.py`
-- **Details**: Locale YAML catalogs. Dotted key paths. Fallback to English. Used for approval prompts, gateway replies, restart notices.
-- **Priority**: **Medium** — Multi-language support
+- **Status**: ✅ Done in v0.3.203 — `hakimi-i18n` now supports Hermes-compatible language aliases, `HAKIMI_LANGUAGE` / `HERMES_LANGUAGE` override precedence, `display.language` config defaults, YAML catalog directory loading, dotted key paths, English fallback, and named placeholders for static user-facing messages.
 
 #### 33. Onboarding Hints
 - **What**: Contextual first-touch hints instead of blocking questionnaires
@@ -637,7 +636,7 @@ Generated: 2026-05-31
 | 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,sms,matrix,wecom,dingtalk}.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 30 | ✅ 6 adapter implementations now have YAML config and gateway startup registration, with queued outbound delivery mapped through configured bot IDs |
 | 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 36 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron status/add/edit`, standalone `hakimi cron status/tick` management, strict/assembled cron prompt scanner, skill-loaded scheduled runs, explicit gateway delivery targets |
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs`, `hakimi-cli/src/entry.rs` | 22 | ✅ Shared `~/.hakimi/checkpoints/store` shadow git snapshots with per-project refs/indexes, validated IDs/paths, status/list/diff/rollback, and real gateway `/checkpoints` responses |
-| 16 | i18n | `hakimi-i18n/src/lib.rs` | 10 | ✅ Locale YAML catalogs, dotted key paths, English fallback |
+| 16 | i18n | `hakimi-i18n/src/lib.rs`, `hakimi-config/src/config.rs` | 15 | ✅ Locale YAML catalogs, Hermes-compatible language aliases, env/config resolution, directory loading, dotted key paths, English fallback, and named placeholders |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
 | 18 | Gateway Media Delivery | `hakimi-core/src/loop_impl.rs`, `hakimi-cli/src/entry.rs`, `hakimi-gateway/src/telegram.rs` | 4 | ✅ `MEDIA:` / `IMAGE:` tool results now stream through gateway side-channel; Telegram uploads local images and generated TTS audio directly |
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
@@ -731,7 +730,7 @@ Generated: 2026-05-31
 | 107 | TUI Gateway Status Panel | `hakimi-tui/src/app.rs`, `hakimi-tui/Cargo.toml` | 3 | ✅ `/gateway` and `/gw` now render a local read-only status panel for configured adapters, cached `~/.hakimi/channel_directory.json` targets, lifecycle log paths, and recent `gateway-events.log` entries; `/platforms` maps to the same channel view without entering the agent/model loop |
 
 ### Summary
-- **Total tests**: 1605 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1610 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
