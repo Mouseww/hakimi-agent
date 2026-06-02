@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.223-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.224-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1703-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1705-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1703 |
+| 测试数量 | ~500 | 1705 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -89,7 +89,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **代码执行**：Python/JS/Bash 沙箱运行
 - **媒体**：图片分析、视频分析、语音合成、带静音幻觉过滤和超大 WAV 分块的语音转文字
 - **记忆**：持久化记忆 + FTS5 全文检索 + `hakimi knowledge` / TUI `/knowledge` / 网关 `/knowledge` 图谱操作
-- **效率**：待办清单、支持 Profile 路由、工作日志、事件轨迹、诊断、通知订阅与 swarm 图创建的 Kanban 看板、定时任务
+- **效率**：待办清单、支持 Profile 路由、工作日志、事件轨迹、诊断、通知订阅、swarm 图创建与 dashboard 只读快照的 Kanban 看板、定时任务
 - **元能力**：子 Agent 委派、Mixture-of-Agents 多模型推理、技能系统、插件机制
 - **评测**：Hermes 兼容的 ShareGPT JSONL 轨迹保存，覆盖完成与失败轮次
 
@@ -107,7 +107,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - MCP 协议客户端 — stdio / HTTP / SSE 传输，支持 CLI/网关目录搜索与配置片段生成，并支持 stdio 服务端发起 sampling 时转发工具 schema 与返回 `tool_use` handoff
 - HTTP 插件系统，YAML 模板
 - HTTP API 发现端点 — OpenAI 兼容 `/v1/models`、`/v1/capabilities`、`/v1/skills`、`/v1/toolsets`、文本 `/v1/chat/completions` 在 `stream=true` 时返回 completed SSE snapshot、`/v1/responses` 支持 SQLite 持久化 `previous_response_id` 链式续写并返回 completed SSE snapshot，带实时生命周期 SSE 的可轮询且可取消 `/v1/runs`，以及会话生命周期/消息/搜索能力发现，方便外部 UI 探测能力
-- WebUI 管理 API — `/api/status`、`/api/sessions` 创建/更新/删除/fork 以及消息/搜索检查、`/api/mcp/servers`、`/api/credentials/pool` 和 `/api/webhooks` 提供脱敏运行状态，并支持运行期作用域的管理写入
+- WebUI 管理 API — `/api/status`、`/api/sessions` 创建/更新/删除/fork 以及消息/搜索检查、`/api/mcp/servers`、`/api/credentials/pool`、`/api/webhooks` 和只读 Kanban `/api/kanban` 看板/任务快照提供脱敏运行状态，并支持运行期作用域的管理写入
 - Skills Hub — 社区技能市场
 - 静态 i18n 基础设施 — 支持 `display.language`、`HAKIMI_LANGUAGE` / `HERMES_LANGUAGE`、Hermes 兼容语言别名、YAML catalog 目录加载、英文 fallback 和静态用户文案的命名占位符
 - CLI Skin Engine — `hakimi skin list|inspect|set|path` 与网关 `/skin` 可发现内置和 `~/.hakimi/skins/*.yaml` 主题，缺失字段继承 `default`，持久化 `display.skin`，并把选中的 branding/colors/logo/hero 应用到 CLI 启动横幅，同时驱动 TUI 思考态 spinner faces/verbs/wings，以及状态栏、输入区、响应框和工具面板配色
@@ -206,7 +206,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1703 |
+| 测试数量 | ~500 | 1705 |
 
 ---
 
@@ -237,7 +237,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 网关目标目录 + send_message 频道解析
 - [x] MCP 客户端 + CLI/网关服务器目录
 - [x] HTTP API 模型/能力发现端点 + 文本 Chat Completions/Responses SSE 快照 + 可取消 Runs 实时生命周期事件
-- [x] WebUI 管理 API 摘要 + 运行期写入
+- [x] WebUI 管理 API 摘要 + 运行期写入 + Kanban 只读快照
 - [x] 插件系统 + HTTP 模板
 - [x] Profile 分发包安装/更新/info，并保护用户数据
 - [x] CLI Skin Engine，支持内置/用户 YAML 主题、`display.skin` 持久化、启动横幅主题化和 TUI spinner 与界面主题化
@@ -253,7 +253,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 元技能自动提取
 - [x] 浏览器自动化 (Chromium + Playwright 缓存发现 + CDP 就绪探针)
 - [x] Computer Use 就绪面
-- [x] Kanban 看板 + Profile 路由 + 工作日志 + 通知游标 + swarm 图
+- [x] Kanban 看板 + Profile 路由 + 工作日志 + 通知游标 + swarm 图 + dashboard 只读快照
 - [x] 网关语音回复模式
 - [x] TUI 语音就绪诊断与媒体工具配置对齐
 - [x] 语音环境诊断与 STT 静音幻觉过滤

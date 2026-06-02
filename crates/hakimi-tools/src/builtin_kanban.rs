@@ -2041,6 +2041,66 @@ fn show_task_json(store: &KanbanStore, task_id: &str) -> Result<String> {
     .to_string())
 }
 
+pub fn kanban_dashboard_boards() -> Result<JsonValue> {
+    serde_json::from_str(&board_list_json()?)
+        .map_err(|err| HakimiError::Tool(format!("kanban board list serialization error: {err}")))
+}
+
+pub fn kanban_dashboard_snapshot(
+    board: Option<&str>,
+    status: Option<&str>,
+    assignee: Option<&str>,
+    limit: usize,
+) -> Result<JsonValue> {
+    let board = dashboard_board_slug(board)?;
+    let store = KanbanStore::for_board(board.as_deref())?;
+    let board_slug = board.unwrap_or(current_board_slug()?);
+    let current = current_board_slug()?;
+    let limit = limit.clamp(1, MAX_LIMIT);
+    let tasks = store.list_tasks(status, assignee, limit)?;
+    let diagnostics = store.diagnostics(None)?;
+
+    Ok(json!({
+        "object": "hakimi.dashboard.kanban",
+        "board": board_summary(&board_slug, &current)?,
+        "filters": {
+            "status": status.and_then(non_empty_str),
+            "assignee": assignee.and_then(non_empty_str),
+            "limit": limit
+        },
+        "count": tasks.len(),
+        "tasks": tasks,
+        "diagnostics": diagnostics,
+        "diagnostic_count": diagnostics.len(),
+        "write_operations": false
+    }))
+}
+
+pub fn kanban_dashboard_task(
+    board: Option<&str>,
+    task_id: &str,
+    event_limit: usize,
+) -> Result<JsonValue> {
+    let board = dashboard_board_slug(board)?;
+    let store = KanbanStore::for_board(board.as_deref())?;
+    let board_slug = board.unwrap_or(current_board_slug()?);
+    let current = current_board_slug()?;
+    let event_limit = event_limit.clamp(1, MAX_LIMIT);
+    let task = store.get_task_required(task_id)?;
+
+    Ok(json!({
+        "object": "hakimi.dashboard.kanban.task",
+        "board": board_summary(&board_slug, &current)?,
+        "task": task,
+        "comments": store.comments(task_id)?,
+        "parents": store.parents(task_id)?,
+        "children": store.children(task_id)?,
+        "events": store.events(task_id, event_limit)?,
+        "diagnostics": store.diagnostics(Some(task_id))?,
+        "write_operations": false
+    }))
+}
+
 fn json_result<T: Serialize>(result: Result<T>) -> Result<String> {
     result.map(|value| json!(value).to_string())
 }
@@ -2731,6 +2791,17 @@ fn board_summary(slug: &str, current: &str) -> Result<JsonValue> {
         "db_path": stats["db_path"],
         "by_status": stats["by_status"],
     }))
+}
+
+fn dashboard_board_slug(board: Option<&str>) -> Result<Option<String>> {
+    let Some(raw) = board.and_then(non_empty_str) else {
+        return Ok(None);
+    };
+    let slug = normalize_board_slug(raw)?;
+    if slug != DEFAULT_BOARD && !board_exists(&slug) {
+        return Err(HakimiError::Tool(format!("kanban board not found: {slug}")));
+    }
+    Ok(Some(slug))
 }
 
 fn now_epoch() -> i64 {

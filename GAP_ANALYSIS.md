@@ -511,8 +511,8 @@ Generated: 2026-06-02
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. Kanban Multi-Agent Coordination
-- **Status**: SQLite-backed tasks/comments/dependency links/events exist, and the agent tool surface exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_swarm_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim`; gateway `/kanban` now performs real board operations, supports explicit `--board <slug>` routing, exposes event trails/diagnostics, routes tasks to profiles/assignees, creates Hermes-style swarm root/worker/verifier/synthesizer graphs, persists durable worker logs, tracks durable notification subscriptions, advances unread claim cursors, and provides `/kanban boards list|show|create|switch` for isolated board selection.
-- **What's missing**: dispatcher-spawned workers and dashboard-level management.
+- **Status**: SQLite-backed tasks/comments/dependency links/events exist, and the agent tool surface exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_swarm_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim`; gateway `/kanban` now performs real board operations, supports explicit `--board <slug>` routing, exposes event trails/diagnostics, routes tasks to profiles/assignees, creates Hermes-style swarm root/worker/verifier/synthesizer graphs, persists durable worker logs, tracks durable notification subscriptions, advances unread claim cursors, provides `/kanban boards list|show|create|switch` for isolated board selection, and exposes read-only dashboard snapshots through `/api/kanban`, `/api/kanban/boards`, and `/api/kanban/tasks/{id}`.
+- **What's missing**: dispatcher-spawned workers, writable dashboard Kanban management, and the full dashboard UI.
 - **Hermes reference**: `tools/kanban_tools.py`, `hermes_cli/kanban.py`, `hermes_cli/kanban_db.py`
 
 ### 4. MCP Client
@@ -537,7 +537,7 @@ Generated: 2026-06-02
 
 ### 8. CLI Commands
 - **Status**: 39 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/profile`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、`/undo`、基于真实 shadow-git store 的 `/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`、`profile`
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher 与 dashboard 管理面
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher 与可写 dashboard 管理面
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 10. Delegation
@@ -556,8 +556,8 @@ Generated: 2026-06-02
 - **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original Rust-native feature
 
 ### 13. REST API Server
-- **Status**: Basic endpoints (health, chat, sessions, session create/update/delete/fork lifecycle management, sanitized session messages, FTS-backed session search, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, `/v1/skills` loaded-skill metadata, `/v1/toolsets` grouped tool schema discovery, text `/v1/chat/completions` with OpenAI-style completed SSE snapshots for `stream=true`, `/v1/responses` with SQLite-backed `previous_response_id` chaining plus GET/DELETE retrieval and completed SSE snapshots for `stream=true`, pollable `/v1/runs` text submissions with background server-agent execution, `/v1/runs/{id}/stop` cancellation, and `/v1/runs/{id}/events` historical replay plus live lifecycle SSE, plus dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
-- **What's missing**: Token-live Responses/Chat Completions streaming, session chat/stream execution, run approval resolution, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
+- **Status**: Basic endpoints (health, chat, sessions, session create/update/delete/fork lifecycle management, sanitized session messages, FTS-backed session search, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, `/v1/skills` loaded-skill metadata, `/v1/toolsets` grouped tool schema discovery, text `/v1/chat/completions` with OpenAI-style completed SSE snapshots for `stream=true`, `/v1/responses` with SQLite-backed `previous_response_id` chaining plus GET/DELETE retrieval and completed SSE snapshots for `stream=true`, pollable `/v1/runs` text submissions with background server-agent execution, `/v1/runs/{id}/stop` cancellation, and `/v1/runs/{id}/events` historical replay plus live lifecycle SSE, plus dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets; Kanban dashboard reads expose board snapshots, board inventory, task comments, links, events, and diagnostics without enabling write operations.
+- **What's missing**: Token-live Responses/Chat Completions streaming, session chat/stream execution, run approval resolution, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, writable Kanban dashboard management, and HTTP/SSE MCP dashboard writes
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
@@ -742,9 +742,10 @@ Generated: 2026-06-02
 | 114 | Gateway Stream Flood Backoff | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Gateway streaming previews now double the edit interval on flood/rate-limit edit failures, cap the backoff at `gateways.streaming.edit_backoff_max_ms`, reset after successful edits, and disable previews after `max_flood_strikes` so final delivery still sends the full answer |
 | 115 | Gateway Native Draft Transport | `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}`, `hakimi-cli/src/entry.rs` | 8 | ✅ `gateways.streaming.transport` now supports `edit`, `auto`, `draft`, and `off`; Telegram private chats can receive native `sendMessageDraft` previews with automatic fallback to progressive edits, draft segment rotation around tool/media/delegate boundaries, and UTF-8-safe truncation |
 | 116 | Knowledge Graph Operator Surface | `hakimi-knowledge/src/{commands.rs,graph.rs}`, `hakimi-cli/src/{knowledge.rs,lib.rs,entry.rs}`, `hakimi-tui/src/app.rs`, `hakimi-common/src/slash_commands.rs` | 9 | ✅ `hakimi knowledge stats/list/search/context/add/relate/path` plus TUI/gateway `/knowledge ...` expose the persisted `~/.hakimi/knowledge.json` graph for operator inspection and small updates without entering the model loop; node/relation string mapping and command rendering stay centralized in `hakimi-knowledge` |
+| 117 | Dashboard Kanban Read API | `hakimi-server/src/api.rs`, `hakimi-tools/src/builtin_kanban.rs` | 2 | ✅ `/api/kanban`, `/api/kanban/boards`, and `/api/kanban/tasks/{id}` expose dashboard-safe board snapshots, board inventory, task comments, dependency links, event trails, and diagnostics while rejecting unknown boards and keeping Kanban write operations disabled on the HTTP dashboard surface |
 
 ### Summary
-- **Total tests**: 1703 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1705 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

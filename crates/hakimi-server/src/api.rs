@@ -23,6 +23,9 @@
 //! - `DELETE /credentials/pool/:provider/:index` — Remove a runtime credential
 //! - `GET  /webhooks`        — Dashboard webhook gateway summary
 //! - `POST /webhooks`        — Update runtime webhook gateway config
+//! - `GET  /kanban`          — Dashboard Kanban board snapshot
+//! - `GET  /kanban/boards`   — Dashboard Kanban board inventory
+//! - `GET  /kanban/tasks/:id` — Dashboard Kanban task detail
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
 //! - `GET  /v1/skills`       — List loaded runtime skills without skill bodies
@@ -431,6 +434,22 @@ pub struct WebhookUpdate {
     pub port: Option<u16>,
     pub path: Option<String>,
     pub secret: Option<String>,
+}
+
+/// Query parameters for GET /kanban.
+#[derive(Debug, Deserialize)]
+pub struct KanbanDashboardQuery {
+    pub board: Option<String>,
+    pub status: Option<String>,
+    pub assignee: Option<String>,
+    pub limit: Option<usize>,
+}
+
+/// Query parameters for GET /kanban/tasks/:id.
+#[derive(Debug, Deserialize)]
+pub struct KanbanTaskDashboardQuery {
+    pub board: Option<String>,
+    pub event_limit: Option<usize>,
 }
 
 /// Generic error response.
@@ -1087,7 +1106,10 @@ pub fn build_router(state: AppState) -> Router {
             delete(delete_credential_pool_entry),
         )
         .route("/webhooks", get(list_webhooks))
-        .route("/webhooks", post(update_webhook));
+        .route("/webhooks", post(update_webhook))
+        .route("/kanban", get(kanban_dashboard))
+        .route("/kanban/boards", get(kanban_boards))
+        .route("/kanban/tasks/{id}", get(kanban_task_detail));
 
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
@@ -1207,6 +1229,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
         "credential_pools_write": true,
         "webhooks_read": true,
         "webhooks_write": true,
+        "kanban_read": true,
+        "kanban_write": false,
         "write_operations": true,
         "persistence": "runtime"
     });
@@ -1271,6 +1295,9 @@ fn capability_endpoints() -> BTreeMap<&'static str, JsonValue> {
         ),
         ("webhooks", "GET", "/api/webhooks"),
         ("webhook_update", "POST", "/api/webhooks"),
+        ("kanban", "GET", "/api/kanban"),
+        ("kanban_boards", "GET", "/api/kanban/boards"),
+        ("kanban_task", "GET", "/api/kanban/tasks/{id}"),
     ]
     .into_iter()
     .map(|(name, method, path)| (name, api_endpoint(method, path)))
@@ -1873,6 +1900,21 @@ fn api_error(status: StatusCode, error: impl Into<String>) -> (StatusCode, Json<
     )
 }
 
+fn kanban_dashboard_error(err: hakimi_common::HakimiError) -> (StatusCode, Json<ErrorResponse>) {
+    let message = err.to_string();
+    let status = if message.contains("not found") {
+        StatusCode::NOT_FOUND
+    } else if message.contains("invalid")
+        || message.contains("required")
+        || message.contains("status")
+    {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    };
+    api_error(status, message)
+}
+
 fn mcp_server_summary(name: &str, server: &hakimi_config::McpServerConfig) -> serde_json::Value {
     json!({
         "name": name,
@@ -1979,7 +2021,8 @@ async fn dashboard_status(State(state): State<AppState>) -> Json<serde_json::Val
             "persistence": "runtime",
             "mcp_servers": "/api/mcp/servers",
             "credential_pool": "/api/credentials/pool",
-            "webhooks": "/api/webhooks"
+            "webhooks": "/api/webhooks",
+            "kanban": "/api/kanban"
         }
     }))
 }
@@ -2229,6 +2272,41 @@ async fn update_webhook(
     }
 
     Ok(Json(webhook_summary(webhook)))
+}
+
+/// GET /kanban — dashboard-safe Kanban task snapshot.
+async fn kanban_dashboard(
+    Query(query): Query<KanbanDashboardQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    hakimi_tools::kanban_dashboard_snapshot(
+        query.board.as_deref(),
+        query.status.as_deref(),
+        query.assignee.as_deref(),
+        bounded_limit(query.limit, 50, 200),
+    )
+    .map(Json)
+    .map_err(kanban_dashboard_error)
+}
+
+/// GET /kanban/boards — dashboard-safe Kanban board inventory.
+async fn kanban_boards() -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    hakimi_tools::kanban_dashboard_boards()
+        .map(Json)
+        .map_err(kanban_dashboard_error)
+}
+
+/// GET /kanban/tasks/:id — dashboard-safe Kanban task detail.
+async fn kanban_task_detail(
+    Path(id): Path<String>,
+    Query(query): Query<KanbanTaskDashboardQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    hakimi_tools::kanban_dashboard_task(
+        query.board.as_deref(),
+        id.trim(),
+        bounded_limit(query.event_limit, 50, 200),
+    )
+    .map(Json)
+    .map_err(kanban_dashboard_error)
 }
 
 /// POST /chat — send a message to the agent and get a response.
@@ -3424,12 +3502,50 @@ mod tests {
     use hakimi_common::ToolContext;
     use hakimi_session::{MessageOps, SessionDB, SessionOps};
     use serde_json::json;
+    use std::ffi::OsString;
     use std::pin::Pin;
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use tower::ServiceExt;
 
     // ---------- helpers ----------
+
+    static KANBAN_ENV_LOCK: Mutex<()> = Mutex::const_new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        old: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+            let old = std::env::var_os(key);
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, old }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let old = std::env::var_os(key);
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, old }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            unsafe {
+                if let Some(old) = &self.old {
+                    std::env::set_var(self.key, old);
+                } else {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
 
     /// A minimal mock tool for testing /tools endpoint.
     struct MockTool;
@@ -3822,6 +3938,8 @@ mod tests {
         );
         assert_eq!(capabilities["dashboard_admin"]["status"], true);
         assert_eq!(capabilities["dashboard_admin"]["mcp_servers_read"], true);
+        assert_eq!(capabilities["dashboard_admin"]["kanban_read"], true);
+        assert_eq!(capabilities["dashboard_admin"]["kanban_write"], false);
         assert_eq!(
             capabilities["endpoints"]["dashboard_status"],
             json!({"method": "GET", "path": "/api/status"})
@@ -3834,6 +3952,18 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["mcp_server_add"],
             json!({"method": "POST", "path": "/api/mcp/servers"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["kanban"],
+            json!({"method": "GET", "path": "/api/kanban"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["kanban_boards"],
+            json!({"method": "GET", "path": "/api/kanban/boards"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["kanban_task"],
+            json!({"method": "GET", "path": "/api/kanban/tasks/{id}"})
         );
     }
 
@@ -4846,6 +4976,139 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_kanban_snapshot_boards_and_task_detail() {
+        let _lock = KANBAN_ENV_LOCK.lock().await;
+        let db_path = std::env::temp_dir().join(format!(
+            "hakimi-kanban-dashboard-{}-{}.db",
+            std::process::id(),
+            unix_timestamp_millis()
+        ));
+        let home_path = std::env::temp_dir().join(format!(
+            "hakimi-kanban-home-{}-{}",
+            std::process::id(),
+            unix_timestamp_millis()
+        ));
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&home_path);
+
+        let _db = EnvVarGuard::set("HAKIMI_KANBAN_DB", db_path.as_os_str());
+        let _home = EnvVarGuard::set("HAKIMI_KANBAN_HOME", home_path.as_os_str());
+        let _hermes_db = EnvVarGuard::remove("HERMES_KANBAN_DB");
+        let _hermes_home = EnvVarGuard::remove("HERMES_KANBAN_HOME");
+        let _board = EnvVarGuard::remove("HAKIMI_KANBAN_BOARD");
+        let _hermes_board = EnvVarGuard::remove("HERMES_KANBAN_BOARD");
+
+        let created = hakimi_tools::kanban_response(Some("create Dashboard task"));
+        let created: serde_json::Value = serde_json::from_str(&created).unwrap();
+        let task_id = created["id"].as_str().unwrap().to_string();
+        let comment_command = format!("comment {task_id} Reviewed from dashboard test");
+        let comment = hakimi_tools::kanban_response(Some(&comment_command));
+        let comment: serde_json::Value = serde_json::from_str(&comment).unwrap();
+        assert_eq!(comment["body"], "Reviewed from dashboard test");
+
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/api/kanban?status=todo&limit=5")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let snapshot: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(snapshot["object"], "hakimi.dashboard.kanban");
+        assert_eq!(snapshot["board"]["slug"], "default");
+        assert_eq!(snapshot["filters"]["status"], "todo");
+        assert_eq!(snapshot["count"], 1);
+        assert_eq!(snapshot["tasks"][0]["id"], task_id);
+        assert_eq!(snapshot["tasks"][0]["title"], "Dashboard task");
+        assert_eq!(snapshot["write_operations"], false);
+
+        let req = Request::builder()
+            .uri("/api/kanban/boards")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let boards: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(boards["current"], "default");
+        assert_eq!(boards["boards"][0]["slug"], "default");
+
+        let req = Request::builder()
+            .uri(format!("/api/kanban/tasks/{task_id}?event_limit=5"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(detail["object"], "hakimi.dashboard.kanban.task");
+        assert_eq!(detail["task"]["id"], task_id);
+        assert_eq!(
+            detail["comments"][0]["body"],
+            "Reviewed from dashboard test"
+        );
+        assert!(detail["events"].as_array().unwrap().len() >= 2);
+        assert_eq!(detail["write_operations"], false);
+
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_file(std::path::PathBuf::from(format!(
+            "{}-wal",
+            db_path.display()
+        )));
+        let _ = std::fs::remove_file(std::path::PathBuf::from(format!(
+            "{}-shm",
+            db_path.display()
+        )));
+        let _ = std::fs::remove_dir_all(&home_path);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_kanban_unknown_board_returns_404() {
+        let _lock = KANBAN_ENV_LOCK.lock().await;
+        let db_path = std::env::temp_dir().join(format!(
+            "hakimi-kanban-dashboard-missing-{}-{}.db",
+            std::process::id(),
+            unix_timestamp_millis()
+        ));
+        let home_path = std::env::temp_dir().join(format!(
+            "hakimi-kanban-home-missing-{}-{}",
+            std::process::id(),
+            unix_timestamp_millis()
+        ));
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&home_path);
+
+        let _db = EnvVarGuard::set("HAKIMI_KANBAN_DB", db_path.as_os_str());
+        let _home = EnvVarGuard::set("HAKIMI_KANBAN_HOME", home_path.as_os_str());
+        let _hermes_db = EnvVarGuard::remove("HERMES_KANBAN_DB");
+        let _hermes_home = EnvVarGuard::remove("HERMES_KANBAN_HOME");
+        let _board = EnvVarGuard::remove("HAKIMI_KANBAN_BOARD");
+        let _hermes_board = EnvVarGuard::remove("HERMES_KANBAN_BOARD");
+
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .uri("/api/kanban?board=missing-board")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&home_path);
     }
 
     #[tokio::test]
