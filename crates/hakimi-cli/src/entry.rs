@@ -7331,15 +7331,15 @@ mod tests {
     #[test]
     fn openrouter_account_api_base_normalizes_common_base_urls() {
         assert_eq!(
-            openrouter_account_api_base(""),
+            super::openrouter_account_api_base(""),
             "https://openrouter.ai/api/v1"
         );
         assert_eq!(
-            openrouter_account_api_base("https://openrouter.ai/api"),
+            super::openrouter_account_api_base("https://openrouter.ai/api"),
             "https://openrouter.ai/api/v1"
         );
         assert_eq!(
-            openrouter_account_api_base("https://openrouter.ai/api/v1"),
+            super::openrouter_account_api_base("https://openrouter.ai/api/v1"),
             "https://openrouter.ai/api/v1"
         );
     }
