@@ -43,7 +43,7 @@ pub fn render(frame: &mut Frame, app: &App) {
 /// Render the header bar with title and model info.
 fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     let thinking_indicator = if app.is_thinking {
-        format!("  {} Thinking...", app.spinner_frame())
+        format!("  {}", app.thinking_label())
     } else {
         String::new()
     };

@@ -1,12 +1,15 @@
 //! Application state and event handling for the Hakimi TUI.
 
 use crate::{
-    AgentCommand, AgentEvent, ChatMessage, SPINNER_FRAMES, ToolActivity, ToolStatus,
+    AgentCommand, AgentEvent, ChatMessage, ToolActivity, ToolStatus,
     clipboard::{copy_assistant_response, write_clipboard_text},
 };
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use hakimi_common::{SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix};
+use hakimi_common::{
+    SkinRuntime, SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix,
+    load_skin_runtime,
+};
 use hakimi_config::{HakimiConfig, VoiceConfig};
 use hakimi_cron::persistence::PersistentCronStore;
 use hakimi_cron::{CronJob, CronRepeat, CronSchedule, parse_schedule, validate_cron_prompt};
@@ -109,6 +112,12 @@ fn default_memory_dir_path() -> PathBuf {
     dirs::home_dir()
         .map(|home| home.join(".hakimi").join("memory"))
         .unwrap_or_else(|| PathBuf::from(".hakimi/memory"))
+}
+
+fn default_hakimi_home_path() -> PathBuf {
+    dirs::home_dir()
+        .map(|home| home.join(".hakimi"))
+        .unwrap_or_else(|| PathBuf::from(".hakimi"))
 }
 
 fn display_config_value(value: &str, fallback: &str) -> String {
@@ -1884,6 +1893,8 @@ pub struct App {
     pub is_thinking: bool,
     /// Current spinner frame index.
     pub spinner_index: usize,
+    /// Runtime skin values used by lightweight TUI display surfaces.
+    pub skin_runtime: SkinRuntime,
     /// Whether the application should exit.
     pub should_quit: bool,
     /// Channel to send commands to the agent task.
@@ -1939,6 +1950,7 @@ impl App {
             show_tools_panel: true,
             is_thinking: false,
             spinner_index: 0,
+            skin_runtime: SkinRuntime::default(),
             should_quit: false,
             cmd_tx,
             event_rx,
@@ -1965,6 +1977,9 @@ impl App {
         self.config_summary =
             TuiConfigSummary::from_config(config, &self.model_name, default_config_path());
         self.gateway_status = TuiGatewayStatus::from_config(config);
+        self.skin_runtime = load_skin_runtime(&config.display.skin, &default_hakimi_home_path())
+            .unwrap_or_else(|_| SkinRuntime::default());
+        self.spinner_index = 0;
         self
     }
 
@@ -2606,7 +2621,7 @@ impl App {
     /// Advance the spinner animation.
     pub fn tick(&mut self) {
         if self.is_thinking {
-            self.spinner_index = (self.spinner_index + 1) % SPINNER_FRAMES.len();
+            self.spinner_index = (self.spinner_index + 1) % self.skin_runtime.animation_len();
         }
     }
 
@@ -2627,8 +2642,13 @@ impl App {
     }
 
     /// Get the current spinner frame character.
-    pub fn spinner_frame(&self) -> &str {
-        SPINNER_FRAMES[self.spinner_index]
+    pub fn spinner_frame(&self) -> String {
+        self.skin_runtime.spinner_frame(self.spinner_index)
+    }
+
+    /// Get the current thinking label from the active skin.
+    pub fn thinking_label(&self) -> String {
+        self.skin_runtime.thinking_label(self.spinner_index)
     }
 }
 
@@ -4137,7 +4157,7 @@ mod tests {
         app.tick();
         assert_eq!(
             app.spinner_index,
-            (initial + 1) % crate::SPINNER_FRAMES.len()
+            (initial + 1) % app.skin_runtime.animation_len()
         );
     }
 
@@ -4152,7 +4172,21 @@ mod tests {
     fn spinner_frame_returns_valid_frame() {
         let (app, _cmd_rx, _event_tx) = make_app();
         let frame = app.spinner_frame();
-        assert!(crate::SPINNER_FRAMES.contains(&frame));
+        assert!(crate::SPINNER_FRAMES.contains(&frame.as_str()));
+    }
+
+    #[test]
+    fn with_config_applies_skin_spinner_runtime() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        let mut config = HakimiConfig::default();
+        config.display.skin = "ares".to_string();
+
+        app = app.with_config(&config);
+
+        assert!(app.skin_runtime.animation_len() > 1);
+        assert!(app.spinner_frame().contains("(⚔)"));
+        assert!(app.thinking_label().contains("forging"));
+        assert_ne!(app.spinner_frame(), crate::SPINNER_FRAMES[0]);
     }
 
     // ---------------------------------------------------------------

@@ -146,7 +146,7 @@ Generated: 2026-06-02
 - **Single-query mode** — `--query` flag
 - **YOLO mode** — `--yolo` auto-accept
 - **Serve mode** — `--serve` HTTP API server
-- **CLI Skin Engine** — `hakimi skin list|inspect|set|path` plus gateway `/skin` discover built-in and user `~/.hakimi/skins/*.yaml` themes, inherit missing values from `default`, persist `display.skin`, and apply selected branding/colors/logo/hero to the CLI startup banner
+- **CLI Skin Engine** — `hakimi skin list|inspect|set|path` plus gateway `/skin` discover built-in and user `~/.hakimi/skins/*.yaml` themes, inherit missing values from `default`, persist `display.skin`, apply selected branding/colors/logo/hero to the CLI startup banner, and drive TUI thinking spinner faces/verbs/wings
 
 ### Server
 - **REST API** — Health, chat, sessions, session create/update/delete/fork, session messages/search, tools, config endpoints, OpenAI-style discovery, Chat Completions/Responses surfaces with completed SSE snapshots, and dashboard admin summaries plus runtime-scoped writes for status/MCP/credential pools/webhooks (Axum)
@@ -383,8 +383,8 @@ Generated: 2026-06-02
 #### 38. Skin Engine (CLI Theming) — PARTIAL
 - **What**: Data-driven CLI theming system
 - **Hermes location**: `hermes_cli/skin_engine.py`
-- **Status**: Partial in v0.3.218 — `hakimi-cli::skin` loads built-in skins plus user YAML files from `~/.hakimi/skins`, inherits missing values from the `default` skin, exposes `hakimi skin list|inspect|set|path`, lets gateway `/skin` inspect or validate themes while pointing users to the persistent top-level command, and renders the local CLI startup banner with selected branding, truecolor banner colors, prompt symbol, logo, and hero art.
-- **Remaining**: Apply selected skin values to response boxes, spinner faces/verbs/wings, and TUI status/menu styling.
+- **Status**: Partial in v0.3.221 — `hakimi-cli::skin` loads built-in skins plus user YAML files from `~/.hakimi/skins`, inherits missing values from the `default` skin, exposes `hakimi skin list|inspect|set|path`, lets gateway `/skin` inspect or validate themes while pointing users to the persistent top-level command, renders the local CLI startup banner with selected branding, truecolor banner colors, prompt symbol, logo, and hero art, and applies Hermes-style spinner faces, verbs, and wings to the TUI thinking state through `display.skin`.
+- **Remaining**: Apply selected skin values to response boxes plus broader TUI status/menu styling.
 - **Priority**: **Medium** — CLI customization
 
 #### 39. Gateway Streaming Consumer
@@ -738,12 +738,12 @@ Generated: 2026-06-02
 | 110 | Onboarding Hints | `hakimi-config/src/config.rs`, `hakimi-cli/src/onboarding.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Hermes-style first-touch hints persist `onboarding.seen` flags, detect legacy `~/.openclaw/` state at local interactive startup, and show a one-time gateway concurrent-input `/stop` tip without repeating in later turns |
 | 111 | HTTP Session Lifecycle API | `hakimi-server/src/api.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ `/api/sessions` now creates API-visible session rows, `PATCH/DELETE /api/sessions/{id}` updates client-safe metadata or deletes sessions plus messages, and `/api/sessions/{id}/fork` branches a session with copied transcript and parent linkage |
 | 112 | Gateway Streaming Platform Policy | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ `gateways.streaming.platforms.<platform>` can disable progressive previews or override edit cadence, buffer threshold, and fresh-final behavior per platform while keeping unconfigured platforms on the existing global defaults |
-| 113 | CLI Skin Engine | `hakimi-cli/src/skin.rs`, `hakimi-cli/src/{lib.rs,entry.rs}` | 9 | 🟡 `hakimi skin list|inspect|set|path` and gateway `/skin` manage built-in/user YAML skins with default inheritance, skin-name traversal guards, and `display.skin` persistence; local CLI startup banners now consume selected branding, truecolor banner colors, prompt symbol, logo, and hero art; response boxes, spinner, and TUI theme application remain future work |
+| 113 | CLI Skin Engine | `hakimi-cli/src/skin.rs`, `hakimi-cli/src/{lib.rs,entry.rs}`, `hakimi-common/src/skin.rs`, `hakimi-tui/src/app.rs` | 13 | 🟡 `hakimi skin list|inspect|set|path` and gateway `/skin` manage built-in/user YAML skins with default inheritance, skin-name traversal guards, and `display.skin` persistence; local CLI startup banners consume selected branding, truecolor banner colors, prompt symbol, logo, and hero art; TUI thinking state now consumes Hermes-style spinner faces, verbs, and wings; response boxes and broader TUI theme application remain future work |
 | 114 | Gateway Stream Flood Backoff | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Gateway streaming previews now double the edit interval on flood/rate-limit edit failures, cap the backoff at `gateways.streaming.edit_backoff_max_ms`, reset after successful edits, and disable previews after `max_flood_strikes` so final delivery still sends the full answer |
 | 115 | Gateway Native Draft Transport | `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}`, `hakimi-cli/src/entry.rs` | 8 | ✅ `gateways.streaming.transport` now supports `edit`, `auto`, `draft`, and `off`; Telegram private chats can receive native `sendMessageDraft` previews with automatic fallback to progressive edits, draft segment rotation around tool/media/delegate boundaries, and UTF-8-safe truncation |
 
 ### Summary
-- **Total tests**: 1685 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1689 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
