@@ -1330,6 +1330,13 @@ pub struct GatewayStreamingConfig {
     /// Minimum interval between progressive gateway message edits.
     #[serde(default = "default_gateway_streaming_edit_interval_ms")]
     pub edit_interval_ms: u64,
+    /// Maximum adaptive interval after repeated flood-control edit failures.
+    #[serde(default = "default_gateway_streaming_edit_backoff_max_ms")]
+    pub edit_backoff_max_ms: u64,
+    /// Consecutive flood-control edit failures before previews are disabled
+    /// for the current streamed response.
+    #[serde(default = "default_gateway_streaming_max_flood_strikes")]
+    pub max_flood_strikes: u32,
     /// Flush a progressive edit once this many new visible characters are buffered.
     /// `0` disables the character threshold and relies on the edit interval.
     #[serde(default = "default_gateway_streaming_buffer_threshold_chars")]
@@ -1353,6 +1360,12 @@ pub struct GatewayStreamingPlatformConfig {
     /// Platform-specific edit cadence override in milliseconds.
     #[serde(default)]
     pub edit_interval_ms: Option<u64>,
+    /// Platform-specific adaptive edit backoff ceiling in milliseconds.
+    #[serde(default)]
+    pub edit_backoff_max_ms: Option<u64>,
+    /// Platform-specific consecutive flood-control failure threshold.
+    #[serde(default)]
+    pub max_flood_strikes: Option<u32>,
     /// Platform-specific visible-character flush threshold.
     #[serde(default)]
     pub buffer_threshold_chars: Option<usize>,
@@ -1363,6 +1376,14 @@ pub struct GatewayStreamingPlatformConfig {
 
 fn default_gateway_streaming_edit_interval_ms() -> u64 {
     800
+}
+
+fn default_gateway_streaming_edit_backoff_max_ms() -> u64 {
+    10_000
+}
+
+fn default_gateway_streaming_max_flood_strikes() -> u32 {
+    3
 }
 
 fn default_gateway_streaming_buffer_threshold_chars() -> usize {
@@ -1377,6 +1398,8 @@ impl Default for GatewayStreamingConfig {
     fn default() -> Self {
         Self {
             edit_interval_ms: default_gateway_streaming_edit_interval_ms(),
+            edit_backoff_max_ms: default_gateway_streaming_edit_backoff_max_ms(),
+            max_flood_strikes: default_gateway_streaming_max_flood_strikes(),
             buffer_threshold_chars: default_gateway_streaming_buffer_threshold_chars(),
             fresh_final_after_seconds: default_gateway_fresh_final_after_seconds(),
             platforms: HashMap::new(),
@@ -2092,6 +2115,8 @@ gateways:
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.gateways.streaming.edit_interval_ms, 800);
+        assert_eq!(config.gateways.streaming.edit_backoff_max_ms, 10_000);
+        assert_eq!(config.gateways.streaming.max_flood_strikes, 3);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 24);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
         assert!(config.gateways.streaming.platforms.is_empty());
@@ -2138,16 +2163,35 @@ gateways:
     }
 
     #[test]
+    fn test_gateway_streaming_accepts_backoff_settings() {
+        let yaml = r#"
+gateways:
+  streaming:
+    edit_interval_ms: 700
+    edit_backoff_max_ms: 5000
+    max_flood_strikes: 2
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.gateways.streaming.edit_interval_ms, 700);
+        assert_eq!(config.gateways.streaming.edit_backoff_max_ms, 5000);
+        assert_eq!(config.gateways.streaming.max_flood_strikes, 2);
+    }
+
+    #[test]
     fn test_gateway_streaming_platform_overrides() {
         let yaml = r#"
 gateways:
   streaming:
     edit_interval_ms: 900
+    edit_backoff_max_ms: 8000
+    max_flood_strikes: 4
     buffer_threshold_chars: 24
     fresh_final_after_seconds: 60
     platforms:
       telegram:
         edit_interval_ms: 1100
+        edit_backoff_max_ms: 9000
+        max_flood_strikes: 5
         buffer_threshold_chars: 48
       whatsapp:
         enabled: false
@@ -2158,6 +2202,8 @@ gateways:
         let telegram = config.gateways.streaming.platforms.get("telegram").unwrap();
         assert_eq!(telegram.enabled, None);
         assert_eq!(telegram.edit_interval_ms, Some(1100));
+        assert_eq!(telegram.edit_backoff_max_ms, Some(9000));
+        assert_eq!(telegram.max_flood_strikes, Some(5));
         assert_eq!(telegram.buffer_threshold_chars, Some(48));
         assert_eq!(telegram.fresh_final_after_seconds, None);
 
@@ -2280,6 +2326,8 @@ gateways:
         assert_eq!(config.tools.output.max_bytes, 123_456);
         assert!(!config.gateways.filter_silence_narration);
         assert_eq!(config.gateways.streaming.edit_interval_ms, 1200);
+        assert_eq!(config.gateways.streaming.edit_backoff_max_ms, 10_000);
+        assert_eq!(config.gateways.streaming.max_flood_strikes, 3);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 40);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 45);
         assert_eq!(

@@ -2872,6 +2872,8 @@ enum GatewayFinalDelivery {
 struct GatewayStreamingPolicy {
     content_preview_enabled: bool,
     edit_interval_ms: u64,
+    edit_backoff_max_ms: u64,
+    max_flood_strikes: u32,
     buffer_threshold_chars: usize,
     fresh_final_after_seconds: u64,
 }
@@ -2893,6 +2895,12 @@ fn effective_gateway_streaming_policy(
         edit_interval_ms: platform_config
             .and_then(|policy| policy.edit_interval_ms)
             .unwrap_or(config.edit_interval_ms),
+        edit_backoff_max_ms: platform_config
+            .and_then(|policy| policy.edit_backoff_max_ms)
+            .unwrap_or(config.edit_backoff_max_ms),
+        max_flood_strikes: platform_config
+            .and_then(|policy| policy.max_flood_strikes)
+            .unwrap_or(config.max_flood_strikes),
         buffer_threshold_chars: platform_config
             .and_then(|policy| policy.buffer_threshold_chars)
             .unwrap_or(config.buffer_threshold_chars),
@@ -2940,7 +2948,7 @@ fn plan_gateway_final_delivery(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct GatewayStreamUiState {
     current_text: String,
     last_edit_text: String,
@@ -3040,6 +3048,73 @@ enum GatewayUiContentTarget {
     NewMessage(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GatewayStreamBackoffState {
+    base_edit_interval: std::time::Duration,
+    current_edit_interval: std::time::Duration,
+    max_edit_interval: std::time::Duration,
+    max_flood_strikes: u32,
+    flood_strikes: u32,
+    previews_enabled: bool,
+}
+
+impl GatewayStreamBackoffState {
+    fn new(policy: &GatewayStreamingPolicy) -> Self {
+        let base_edit_interval = std::time::Duration::from_millis(policy.edit_interval_ms);
+        let max_edit_interval =
+            std::time::Duration::from_millis(policy.edit_backoff_max_ms).max(base_edit_interval);
+        Self {
+            base_edit_interval,
+            current_edit_interval: base_edit_interval,
+            max_edit_interval,
+            max_flood_strikes: policy.max_flood_strikes,
+            flood_strikes: 0,
+            previews_enabled: true,
+        }
+    }
+
+    fn current_edit_interval(&self) -> std::time::Duration {
+        self.current_edit_interval
+    }
+
+    fn previews_enabled(&self) -> bool {
+        self.previews_enabled
+    }
+
+    fn record_edit_success(&mut self) {
+        self.flood_strikes = 0;
+        self.current_edit_interval = self.base_edit_interval;
+    }
+
+    fn record_flood_edit_failure(&mut self) -> bool {
+        self.flood_strikes = self.flood_strikes.saturating_add(1);
+        if self.max_flood_strikes == 0 || self.flood_strikes >= self.max_flood_strikes {
+            self.disable_previews();
+            return false;
+        }
+        self.current_edit_interval = self
+            .current_edit_interval
+            .saturating_mul(2)
+            .min(self.max_edit_interval);
+        true
+    }
+
+    fn disable_previews(&mut self) {
+        self.previews_enabled = false;
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct GatewayStreamRenderResult {
+    rendered_any: bool,
+    retry_after_backoff: bool,
+}
+
+fn is_gateway_flood_error(err: &anyhow::Error) -> bool {
+    let err = err.to_string().to_ascii_lowercase();
+    err.contains("flood") || err.contains("retry after") || err.contains("rate")
+}
+
 struct GatewayStreamRenderEnv<'a> {
     gateway: &'a hakimi_gateway::Gateway,
     platform: &'a str,
@@ -3051,24 +3126,49 @@ async fn render_gateway_stream_content(
     env: &GatewayStreamRenderEnv<'_>,
     current_message_id: &mut Option<i64>,
     ui_state: &mut GatewayStreamUiState,
+    backoff_state: &mut GatewayStreamBackoffState,
     rendered_content: &mut bool,
     first_rendered_at: &mut Option<std::time::Instant>,
-) -> bool {
+) -> GatewayStreamRenderResult {
     let max_message_chars = env.gateway.max_message_chars(env.platform, env.bot_id);
-    let mut rendered_any = false;
+    let mut result = GatewayStreamRenderResult::default();
 
-    while let Some(target) = ui_state.render_pending(max_message_chars) {
+    if !backoff_state.previews_enabled() {
+        return result;
+    }
+    loop {
+        let previous_state = ui_state.clone();
+        let Some(target) = ui_state.render_pending(max_message_chars) else {
+            break;
+        };
         *rendered_content = true;
         first_rendered_at.get_or_insert_with(std::time::Instant::now);
-        rendered_any = true;
 
         match target {
             GatewayUiContentTarget::EditCurrent(text) => {
                 if let Some(active_msg_id) = *current_message_id {
-                    let _ = env
+                    match env
                         .gateway
                         .edit_message(env.platform, env.bot_id, env.chat_id, active_msg_id, &text)
-                        .await;
+                        .await
+                    {
+                        Ok(()) => {
+                            result.rendered_any = true;
+                            backoff_state.record_edit_success();
+                        }
+                        Err(err) => {
+                            *ui_state = previous_state;
+                            if is_gateway_flood_error(&err)
+                                && backoff_state.record_flood_edit_failure()
+                            {
+                                result.retry_after_backoff = true;
+                            } else {
+                                backoff_state.disable_previews();
+                                *current_message_id = None;
+                            }
+                            return result;
+                        }
+                    }
                 }
             }
             GatewayUiContentTarget::NewMessage(text) => {
@@ -3081,11 +3181,13 @@ async fn render_gateway_stream_content(
                     media: None,
                 };
                 *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
+                result.rendered_any = true;
+                backoff_state.record_edit_success();
             }
         }
     }
 
-    rendered_any
+    result
 }
 
 fn split_stream_chunks(text: &str, max_chars: Option<usize>) -> Vec<String> {
@@ -3372,6 +3474,10 @@ gateways:
   streaming:
     # Minimum interval between progressive gateway message edits.
     edit_interval_ms: 800
+    # Maximum edit interval after repeated flood-control errors.
+    edit_backoff_max_ms: 10000
+    # Disable previews for the current response after this many flood errors.
+    max_flood_strikes: 3
     # Flush once this many new visible chars are buffered; 0 = interval-only.
     buffer_threshold_chars: 24
     # Send long-running previews as fresh final messages after this many seconds.
@@ -5314,8 +5420,7 @@ Just send a message to chat with me!"
                 let chat_id_cb = chat_id.clone();
                 let gateway_cb = gateway_clone.clone();
                 let content_preview_enabled = streaming_policy.content_preview_enabled;
-                let edit_interval =
-                    std::time::Duration::from_millis(streaming_policy.edit_interval_ms);
+                let mut backoff_state = GatewayStreamBackoffState::new(&streaming_policy);
                 let buffer_threshold_chars = streaming_policy.buffer_threshold_chars;
                 let (ui_tx, mut ui_rx) =
                     tokio::sync::mpsc::unbounded_channel::<GatewayStreamUiEvent>();
@@ -5346,14 +5451,20 @@ Just send a message to chat with me!"
                                     tokio::select! {
                                         _ = deadline.as_mut() => {
                                             next_edit_deadline = None;
-                                            let _ = render_gateway_stream_content(
+                                            let render_result = render_gateway_stream_content(
                                                 &render_env,
                                                 &mut current_message_id,
                                                 &mut ui_state,
+                                                &mut backoff_state,
                                                 &mut rendered_content,
                                                 &mut first_rendered_at,
                                             )
                                             .await;
+                                            if render_result.retry_after_backoff {
+                                                next_edit_deadline = Some(Box::pin(tokio::time::sleep(
+                                                    backoff_state.current_edit_interval(),
+                                                )));
+                                            }
                                             continue;
                                         }
                                         event = ui_rx.recv() => {
@@ -5390,35 +5501,52 @@ Just send a message to chat with me!"
                                 }
 
                                 ui_state.push_content(&text);
-                                let should_render_now = ui_state.needs_new_message
-                                    || edit_interval.is_zero()
-                                    || ui_state
-                                        .should_flush_buffered_content(buffer_threshold_chars);
+                                let waiting_for_backoff = next_edit_deadline.is_some();
+                                let should_render_now = backoff_state.previews_enabled()
+                                    && !waiting_for_backoff
+                                    && (ui_state.needs_new_message
+                                        || backoff_state.current_edit_interval().is_zero()
+                                        || ui_state
+                                            .should_flush_buffered_content(buffer_threshold_chars));
                                 if should_render_now {
                                     next_edit_deadline = None;
-                                    let _ = render_gateway_stream_content(
+                                    let render_result = render_gateway_stream_content(
                                         &render_env,
                                         &mut current_message_id,
                                         &mut ui_state,
+                                        &mut backoff_state,
                                         &mut rendered_content,
                                         &mut first_rendered_at,
                                     )
                                     .await;
-                                } else if next_edit_deadline.is_none() {
-                                    next_edit_deadline =
-                                        Some(Box::pin(tokio::time::sleep(edit_interval)));
+                                    if render_result.retry_after_backoff {
+                                        next_edit_deadline = Some(Box::pin(tokio::time::sleep(
+                                            backoff_state.current_edit_interval(),
+                                        )));
+                                    }
+                                } else if backoff_state.previews_enabled()
+                                    && next_edit_deadline.is_none()
+                                {
+                                    next_edit_deadline = Some(Box::pin(tokio::time::sleep(
+                                        backoff_state.current_edit_interval(),
+                                    )));
                                 }
                             }
                             GatewayStreamUiEvent::Tool(text) => {
                                 next_edit_deadline = None;
-                                let _ = render_gateway_stream_content(
+                                let render_result = render_gateway_stream_content(
                                     &render_env,
                                     &mut current_message_id,
                                     &mut ui_state,
+                                    &mut backoff_state,
                                     &mut rendered_content,
                                     &mut first_rendered_at,
                                 )
                                 .await;
+                                if render_result.retry_after_backoff {
+                                    backoff_state.disable_previews();
+                                    current_message_id = None;
+                                }
                                 if !text.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
                                         platform: platform_cb.clone(),
@@ -5439,14 +5567,19 @@ Just send a message to chat with me!"
                             }
                             GatewayStreamUiEvent::Media(media) => {
                                 next_edit_deadline = None;
-                                let _ = render_gateway_stream_content(
+                                let render_result = render_gateway_stream_content(
                                     &render_env,
                                     &mut current_message_id,
                                     &mut ui_state,
+                                    &mut backoff_state,
                                     &mut rendered_content,
                                     &mut first_rendered_at,
                                 )
                                 .await;
+                                if render_result.retry_after_backoff {
+                                    backoff_state.disable_previews();
+                                    current_message_id = None;
+                                }
                                 if !media.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
                                         platform: platform_cb.clone(),
@@ -5464,14 +5597,19 @@ Just send a message to chat with me!"
                             }
                             GatewayStreamUiEvent::Delegate(event) => {
                                 next_edit_deadline = None;
-                                let _ = render_gateway_stream_content(
+                                let render_result = render_gateway_stream_content(
                                     &render_env,
                                     &mut current_message_id,
                                     &mut ui_state,
+                                    &mut backoff_state,
                                     &mut rendered_content,
                                     &mut first_rendered_at,
                                 )
                                 .await;
+                                if render_result.retry_after_backoff {
+                                    backoff_state.disable_previews();
+                                    current_message_id = None;
+                                }
                                 let task_id = event.task_id.clone();
                                 let bubble = delegate_bubbles.entry(task_id).or_default();
                                 bubble.push(event);
@@ -5510,6 +5648,7 @@ Just send a message to chat with me!"
                         &render_env,
                         &mut current_message_id,
                         &mut ui_state,
+                        &mut backoff_state,
                         &mut rendered_content,
                         &mut first_rendered_at,
                     )
@@ -7303,6 +7442,8 @@ roles:
 
         assert!(policy.content_preview_enabled);
         assert_eq!(policy.edit_interval_ms, 800);
+        assert_eq!(policy.edit_backoff_max_ms, 10_000);
+        assert_eq!(policy.max_flood_strikes, 3);
         assert_eq!(policy.buffer_threshold_chars, 24);
         assert_eq!(policy.fresh_final_after_seconds, 60);
     }
@@ -7314,11 +7455,15 @@ roles:
 gateways:
   streaming:
     edit_interval_ms: 800
+    edit_backoff_max_ms: 10000
+    max_flood_strikes: 3
     buffer_threshold_chars: 24
     fresh_final_after_seconds: 60
     platforms:
       Telegram:
         edit_interval_ms: 1100
+        edit_backoff_max_ms: 9000
+        max_flood_strikes: 5
         buffer_threshold_chars: 48
       sms:
         enabled: false
@@ -7330,14 +7475,87 @@ gateways:
         let telegram = effective_gateway_streaming_policy(&config.gateways.streaming, "telegram");
         assert!(telegram.content_preview_enabled);
         assert_eq!(telegram.edit_interval_ms, 1100);
+        assert_eq!(telegram.edit_backoff_max_ms, 9000);
+        assert_eq!(telegram.max_flood_strikes, 5);
         assert_eq!(telegram.buffer_threshold_chars, 48);
         assert_eq!(telegram.fresh_final_after_seconds, 60);
 
         let sms = effective_gateway_streaming_policy(&config.gateways.streaming, "SMS");
         assert!(!sms.content_preview_enabled);
         assert_eq!(sms.edit_interval_ms, 800);
+        assert_eq!(sms.edit_backoff_max_ms, 10_000);
+        assert_eq!(sms.max_flood_strikes, 3);
         assert_eq!(sms.buffer_threshold_chars, 24);
         assert_eq!(sms.fresh_final_after_seconds, 0);
+    }
+
+    #[test]
+    fn gateway_streaming_backoff_doubles_until_flood_limit() {
+        let config: hakimi_config::HakimiConfig = serde_yaml::from_str(
+            r#"
+gateways:
+  streaming:
+    edit_interval_ms: 800
+    edit_backoff_max_ms: 3000
+    max_flood_strikes: 3
+"#,
+        )
+        .unwrap();
+        let policy = effective_gateway_streaming_policy(&config.gateways.streaming, "telegram");
+        let mut backoff = GatewayStreamBackoffState::new(&policy);
+
+        assert_eq!(
+            backoff.current_edit_interval(),
+            std::time::Duration::from_millis(800)
+        );
+        assert!(backoff.record_flood_edit_failure());
+        assert_eq!(
+            backoff.current_edit_interval(),
+            std::time::Duration::from_millis(1600)
+        );
+        assert!(backoff.record_flood_edit_failure());
+        assert_eq!(
+            backoff.current_edit_interval(),
+            std::time::Duration::from_millis(3000)
+        );
+        assert!(!backoff.record_flood_edit_failure());
+        assert!(!backoff.previews_enabled());
+    }
+
+    #[test]
+    fn gateway_streaming_backoff_resets_after_success() {
+        let policy = effective_gateway_streaming_policy(
+            &hakimi_config::HakimiConfig::default().gateways.streaming,
+            "telegram",
+        );
+        let mut backoff = GatewayStreamBackoffState::new(&policy);
+
+        assert!(backoff.record_flood_edit_failure());
+        assert_eq!(
+            backoff.current_edit_interval(),
+            std::time::Duration::from_millis(1600)
+        );
+        backoff.record_edit_success();
+
+        assert!(backoff.previews_enabled());
+        assert_eq!(
+            backoff.current_edit_interval(),
+            std::time::Duration::from_millis(800)
+        );
+        assert_eq!(backoff.flood_strikes, 0);
+    }
+
+    #[test]
+    fn gateway_flood_error_matches_rate_limit_terms() {
+        assert!(is_gateway_flood_error(&anyhow::anyhow!(
+            "Telegram flood control: retry after 2s"
+        )));
+        assert!(is_gateway_flood_error(&anyhow::anyhow!(
+            "rate limit exceeded"
+        )));
+        assert!(!is_gateway_flood_error(&anyhow::anyhow!(
+            "message edit not supported"
+        )));
     }
 
     #[test]
