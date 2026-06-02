@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.212-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.213-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1643-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1649-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -111,6 +111,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Dashboard admin API — `/api/status`, `/api/sessions` create/update/delete/fork plus message/search inspection, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose redacted operational state plus runtime-scoped admin writes for WebUI/admin panels
 - Skills Hub — install community skills with `/skills install`
 - Static i18n foundation — `display.language`, `HAKIMI_LANGUAGE` / `HERMES_LANGUAGE`, Hermes-compatible language aliases, YAML catalog directory loading, English fallback, and named placeholders for static user-facing messages
+- CLI Skin Engine — `hakimi skin list|inspect|set|path` plus gateway `/skin` discover built-in and `~/.hakimi/skins/*.yaml` themes, inherit missing values from `default`, and persist `display.skin`
 - Isolated profiles — manage named workspaces, clone/export profile archives, install/update shareable `distribution.yaml` profile distributions, create `~/.hakimi/bin/<profile>` wrapper aliases, and use gateway `/profile`
 - 10 curated MCP catalog entries: GitHub, filesystem, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking, and the Hermes-reviewed n8n bridge
 
@@ -232,6 +233,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Dashboard admin API summaries + runtime writes
 - [x] Plugin system + HTTP templates
 - [x] Profile distributions with install/update/info and protected user data
+- [x] CLI skin engine with built-in/user YAML themes and `display.skin` persistence
 - [x] ratatui TUI with local slash commands, sanitized config browser, and gateway status panel
 - [x] Smart context compression (3-tier)
 - [x] Error classifier + credential pool

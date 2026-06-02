@@ -3165,6 +3165,13 @@ pub struct ProfileCommandArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct SkinCommandArgs {
+    /// Skin action and arguments, e.g. `list`, `inspect ares`, or `set mono`.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
 pub struct BackupCommandArgs {
     /// Optional output file or directory for the backup archive.
     pub output: Option<std::path::PathBuf>,
@@ -3195,6 +3202,8 @@ pub enum TopLevelCommand {
     Skills(SkillCommandArgs),
     /// Manage isolated Hakimi profiles.
     Profile(ProfileCommandArgs),
+    /// Manage CLI skins and terminal branding.
+    Skin(SkinCommandArgs),
     /// Back up Hakimi user state.
     Backup(BackupCommandArgs),
     /// Import a Hakimi user-state backup.
@@ -4898,6 +4907,7 @@ async fn start_gateway(
 • `/profile` - List, create, and select isolated profiles\n\
 • `/providers` - List supported LLM providers\n\
 • `/platforms` - List connected gateway platforms\n\n\
+• `/skin [list|inspect|set]` - Inspect configured CLI skins\n\n\
 **Operations**\n\
 • `/cron` - List/status/add/edit/pause/resume/run/remove scheduled jobs\n\
 • `/doctor` - Run setup and runtime diagnostics\n\
@@ -5160,7 +5170,11 @@ Just send a message to chat with me!"
                     Some(Command::Pairing(_)) => "🔗 Gateway pairing mode activated. Scan QR code to connect device.".to_string(),
                     Some(Command::Platforms(_)) => "🌐 **Connected Platforms:**\n- Telegram\n- Discord\n- Signal\n- DingTalk\n- WeCom\n- Feishu/Lark\n- Matrix\n- Slack\n- Webhook\n- QQBot".to_string(),
                     Some(Command::Providers(_)) => "🔌 **Supported LLM Providers:**\n- `openrouter` (Default)\n- `anthropic`\n- `openai`\n- `xai`\n- `google`\n- `deepseek`\n- `ollama`\n- `llama-cpp`".to_string(),
-                    Some(Command::Skin(cmd)) => format!("🎨 Skin theme set to {}.", cmd.as_deref().unwrap_or("default")),
+                    Some(Command::Skin(cmd)) => crate::skin::gateway_skin_response(
+                        cmd.as_deref(),
+                        &config.display.skin,
+                        &hakimi_home_dir(),
+                    ),
                     Some(Command::Tips(_)) => "💡 **Tip:** Use `/tools` to see all available capabilities, and `/skills` to use powerful multi-step workflows.".to_string(),
                     Some(Command::ToolsConfig(_)) => "⚙️ Tools configuration interface opened.".to_string(),
                     Some(Command::Uninstall(_)) => "🗑️ Uninstall sequence initiated. Run `curl -sL <script> | bash` to completely remove Hakimi.".to_string(),
@@ -6278,6 +6292,18 @@ pub async fn run() -> Result<()> {
             "{}",
             crate::profiles::profile_response(&profile_args.args, &hakimi_home_dir())
         );
+        return Ok(());
+    }
+    if let Some(TopLevelCommand::Skin(skin_args)) = &args.command {
+        let mut config = load_config();
+        let result =
+            crate::skin::skin_command_response(&skin_args.args, &mut config, &hakimi_home_dir());
+        if result.changed {
+            let path = write_config_file(&config)?;
+            println!("{}\nConfig updated: {}", result.message, path.display());
+        } else {
+            println!("{}", result.message);
+        }
         return Ok(());
     }
     if let Some(TopLevelCommand::Backup(backup_args)) = &args.command {

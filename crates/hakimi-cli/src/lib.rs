@@ -9,6 +9,7 @@ pub mod onboarding;
 pub mod profiles;
 pub mod setup_wizard;
 pub mod skills;
+pub mod skin;
 
 use std::fmt;
 

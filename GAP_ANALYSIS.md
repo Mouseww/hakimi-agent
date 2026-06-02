@@ -146,6 +146,7 @@ Generated: 2026-06-02
 - **Single-query mode** — `--query` flag
 - **YOLO mode** — `--yolo` auto-accept
 - **Serve mode** — `--serve` HTTP API server
+- **CLI Skin Engine** — `hakimi skin list|inspect|set|path` plus gateway `/skin` discover built-in and user `~/.hakimi/skins/*.yaml` themes, inherit missing values from `default`, and persist `display.skin`
 
 ### Server
 - **REST API** — Health, chat, sessions, session create/update/delete/fork, session messages/search, tools, config endpoints, OpenAI-style discovery, Chat Completions/Responses surfaces with completed SSE snapshots, and dashboard admin summaries plus runtime-scoped writes for status/MCP/credential pools/webhooks (Axum)
@@ -379,10 +380,11 @@ Generated: 2026-06-02
 - **Hermes location**: `tools/checkpoint_manager.py`
 - **Status**: ✅ Done in v0.3.177 — `checkpoint` now uses a shared `~/.hakimi/checkpoints/store` shadow git repository with per-project refs and index files, validates checkpoint IDs and relative paths, supports list/status/diff/rollback including single-file paths, and keeps gateway `/checkpoints` backed by the same store instead of placeholder text.
 
-#### 38. Skin Engine (CLI Theming)
+#### 38. Skin Engine (CLI Theming) — PARTIAL
 - **What**: Data-driven CLI theming system
 - **Hermes location**: `hermes_cli/skin_engine.py`
-- **Details**: Customize banner colors, spinner faces/verbs/wings, tool prefix, response box, branding text. Config-driven via `display.skin`.
+- **Status**: Partial in v0.3.213 — `hakimi-cli::skin` loads built-in skins plus user YAML files from `~/.hakimi/skins`, inherits missing values from the `default` skin, exposes `hakimi skin list|inspect|set|path`, and lets gateway `/skin` inspect or validate themes while pointing users to the persistent top-level command.
+- **Remaining**: Apply selected skin values to banner rendering, response boxes, spinner faces/verbs/wings, and TUI status/menu styling.
 - **Priority**: **Medium** — CLI customization
 
 #### 39. Gateway Streaming Consumer
@@ -735,9 +737,10 @@ Generated: 2026-06-02
 | 110 | Onboarding Hints | `hakimi-config/src/config.rs`, `hakimi-cli/src/onboarding.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Hermes-style first-touch hints persist `onboarding.seen` flags, detect legacy `~/.openclaw/` state at local interactive startup, and show a one-time gateway concurrent-input `/stop` tip without repeating in later turns |
 | 111 | HTTP Session Lifecycle API | `hakimi-server/src/api.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ `/api/sessions` now creates API-visible session rows, `PATCH/DELETE /api/sessions/{id}` updates client-safe metadata or deletes sessions plus messages, and `/api/sessions/{id}/fork` branches a session with copied transcript and parent linkage |
 | 112 | Gateway Streaming Platform Policy | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ `gateways.streaming.platforms.<platform>` can disable progressive previews or override edit cadence, buffer threshold, and fresh-final behavior per platform while keeping unconfigured platforms on the existing global defaults |
+| 113 | CLI Skin Engine | `hakimi-cli/src/skin.rs`, `hakimi-cli/src/{lib.rs,entry.rs}` | 6 | 🟡 `hakimi skin list|inspect|set|path` and gateway `/skin` manage built-in/user YAML skins with default inheritance, skin-name traversal guards, and `display.skin` persistence; renderer-level banner/spinner/TUI theme application remains future work |
 
 ### Summary
-- **Total tests**: 1643 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1649 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
