@@ -484,7 +484,7 @@ impl KanbanStore {
         validate_status(status)?;
         match status {
             "blocked" => Err(HakimiError::Tool(
-                "blocked dashboard updates require blocked_reason".into(),
+                "blocked dashboard update blocked_reason is required".into(),
             )),
             "done" => self.complete_task(task_id, None),
             "ready" | "todo" | "triage" | "running" | "review" | "archived" => {
@@ -2154,7 +2154,7 @@ pub fn kanban_dashboard_create_task(
                 .as_deref()
                 .and_then(non_empty_str)
                 .ok_or_else(|| {
-                    HakimiError::Tool("blocked dashboard tasks require blocked_reason".into())
+                    HakimiError::Tool("blocked dashboard task blocked_reason is required".into())
                 })?
                 .to_string(),
         )
@@ -2206,7 +2206,7 @@ pub fn kanban_dashboard_update_task(
                 .is_none()
         {
             return Err(HakimiError::Tool(
-                "blocked dashboard updates require blocked_reason".into(),
+                "blocked dashboard update blocked_reason is required".into(),
             ));
         }
     }
@@ -2222,7 +2222,9 @@ pub fn kanban_dashboard_update_task(
                     .as_deref()
                     .and_then(non_empty_str)
                     .ok_or_else(|| {
-                        HakimiError::Tool("blocked dashboard updates require blocked_reason".into())
+                        HakimiError::Tool(
+                            "blocked dashboard update blocked_reason is required".into(),
+                        )
                     })?;
                 store.block_task(task_id, reason)?;
             }
