@@ -353,11 +353,10 @@ Generated: 2026-06-02
 - **Hermes location**: `agent/i18n.py`
 - **Status**: ✅ Done in v0.3.203 — `hakimi-i18n` now supports Hermes-compatible language aliases, `HAKIMI_LANGUAGE` / `HERMES_LANGUAGE` override precedence, `display.language` config defaults, YAML catalog directory loading, dotted key paths, English fallback, and named placeholders for static user-facing messages.
 
-#### 33. Onboarding Hints
+#### 33. ~~Onboarding Hints~~ ✅ DONE
 - **What**: Contextual first-touch hints instead of blocking questionnaires
 - **Hermes location**: `agent/onboarding.py`
-- **Details**: One-time hints triggered by behavior forks. Tracked in config.yaml under `onboarding.seen.<flag>`.
-- **Priority**: **Medium** — User experience
+- **Status**: ✅ Done in v0.3.209 — `hakimi-config` persists `onboarding.seen.<flag>` state, CLI startup shows a one-time OpenClaw residue migration hint, gateway concurrent-input handling shows a one-time `/stop` tip, and both paths write back to `~/.hakimi/config.yaml` without repeating the notice.
 
 #### 34. ~~Doctor Diagnostics~~ ✅ DONE
 - **What**: CLI command to diagnose setup issues
@@ -732,9 +731,10 @@ Generated: 2026-06-02
 
 | 108 | QQBot Gateway Adapter | `hakimi-gateway/src/qqbot.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | 🟡 Official QQ Bot v2 REST outbound text gateway supports app credential token caching, C2C/group/guild target prefixes, optional Markdown payloads, home-channel routing, config/env overrides, and UTF-8-safe 4000-character chunking; WebSocket ingress, media upload, keyboards, and QR onboarding remain future slices |
 | 109 | Weixin/iLink Gateway Alias | `hakimi-gateway/src/clawbot.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 5 | ✅ `gateways.weixin` and `WEIXIN_*` env aliases expose Hermes-style Weixin routing while reusing the existing Rust-native iLink login, polling, context-token, sendmessage, QR-notification, home-channel, and allowlist implementation instead of duplicating protocol code |
+| 110 | Onboarding Hints | `hakimi-config/src/config.rs`, `hakimi-cli/src/onboarding.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Hermes-style first-touch hints persist `onboarding.seen` flags, detect legacy `~/.openclaw/` state at local interactive startup, and show a one-time gateway concurrent-input `/stop` tip without repeating in later turns |
 
 ### Summary
-- **Total tests**: 1626 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1630 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

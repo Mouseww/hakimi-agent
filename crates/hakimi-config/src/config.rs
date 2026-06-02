@@ -365,6 +365,24 @@ impl Default for MemoryConfig {
     }
 }
 
+/// Contextual one-time onboarding hint state.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OnboardingConfig {
+    /// Stable hint flags already shown to the user.
+    #[serde(default)]
+    pub seen: HashMap<String, bool>,
+}
+
+impl OnboardingConfig {
+    pub fn is_seen(&self, flag: &str) -> bool {
+        self.seen.get(flag).copied().unwrap_or(false)
+    }
+
+    pub fn mark_seen(&mut self, flag: impl Into<String>) {
+        self.seen.insert(flag.into(), true);
+    }
+}
+
 /// Embedding configuration section.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingConfig {
@@ -570,6 +588,10 @@ pub struct HakimiConfig {
     /// Memory configuration.
     #[serde(default)]
     pub memory: MemoryConfig,
+
+    /// One-time contextual onboarding hints.
+    #[serde(default)]
+    pub onboarding: OnboardingConfig,
 
     /// Embedding configuration.
     #[serde(default)]
@@ -1649,6 +1671,7 @@ mod tests {
         assert_eq!(config.delegation.max_iterations, 45);
         assert!(config.mcp_servers.is_empty());
         assert!(config.credential_pools.is_empty());
+        assert!(config.onboarding.seen.is_empty());
         assert!(config.embedding.enabled);
         assert_eq!(config.embedding.provider, "openai-compatible");
         assert_eq!(config.embedding.model, "BAAI/bge-m3");
@@ -1764,6 +1787,23 @@ mcp_servers:
         assert_eq!(fs.command, "npx");
         assert_eq!(fs.args.len(), 3);
         assert_eq!(fs.env.get("NODE_ENV").unwrap(), "production");
+    }
+
+    #[test]
+    fn test_onboarding_seen_roundtrip() {
+        let yaml = r#"
+onboarding:
+  seen:
+    busy_input_prompt: true
+    openclaw_residue_cleanup: false
+"#;
+        let mut config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.onboarding.is_seen("busy_input_prompt"));
+        assert!(!config.onboarding.is_seen("openclaw_residue_cleanup"));
+        assert!(!config.onboarding.is_seen("missing"));
+
+        config.onboarding.mark_seen("openclaw_residue_cleanup");
+        assert!(config.onboarding.is_seen("openclaw_residue_cleanup"));
     }
 
     #[test]

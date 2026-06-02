@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.208-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.209-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1626-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1630-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,12 +59,13 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1626 |
+| Tests | ~500 | 1630 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
 - Multi-key credential pool with circuit breakers
 - 3-tier context compression (no manual window management)
+- Contextual first-touch onboarding hints tracked in `onboarding.seen`
 - Decision tree conversation history with backtracking
 - Intent reasoning engine — predicts what tools you need
 - Role adaptation — automatically switches between Coder, Researcher, Writer modes
@@ -120,6 +121,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - **SSRF protection** — blocks private/metadata URL fetches
 - **Command safety guard** — blocks malicious shell patterns
 - **Tool loop guardrails** — warns on repeated no-progress read-only calls and blocks runaway exact-call loops
+- **One-time onboarding hints** — first-touch CLI/gateway tips persist under `onboarding.seen`
 - **Write safe-root sandbox** — config-protected directories
 - **Read credential guard** — protects config files
 - **Shared shadow-git checkpoints** — `checkpoint` and gateway `/checkpoints` snapshots live under `~/.hakimi/checkpoints/store`, not the project `.git`
@@ -196,7 +198,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1626 |
+| Tests | ~500 | 1630 |
 
 ---
 

@@ -461,6 +461,9 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
     yaml.push_str("  model: \"\"\n");
     yaml.push_str("  context_length: 128000\n");
 
+    yaml.push_str("\nonboarding:\n");
+    yaml.push_str("  seen: {}\n");
+
     // MCP servers section
     if !config.mcp_servers.is_empty() {
         yaml.push_str("\nmcp_servers:\n");
@@ -658,6 +661,7 @@ mod tests {
         let parsed: hakimi_config::HakimiConfig = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(parsed.agent.max_turns, 90);
         assert!(parsed.display.streaming);
+        assert!(parsed.onboarding.seen.is_empty());
     }
 
     #[test]

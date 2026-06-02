@@ -3319,6 +3319,10 @@ embedding:
   batch_size: 32
   normalize: true
 
+onboarding:
+  # One-time first-touch hints already shown.
+  seen: {}
+
 gateways:
   # Drop bare silence narration such as "*(silent)*", ".", or "no reply".
   filter_silence_narration: true
@@ -3443,6 +3447,21 @@ fn hakimi_config_path() -> std::path::PathBuf {
     dirs::home_dir()
         .map(|h| h.join(".hakimi").join("config.yaml"))
         .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/config.yaml"))
+}
+
+fn maybe_show_startup_onboarding_hints(config: &mut hakimi_config::HakimiConfig) {
+    if crate::onboarding::should_show(config, crate::onboarding::OPENCLAW_RESIDUE_FLAG)
+        && crate::onboarding::detect_openclaw_residue(None)
+    {
+        println!("{}", crate::onboarding::openclaw_residue_hint_cli());
+        if let Err(err) = crate::onboarding::mark_seen(
+            config,
+            &hakimi_config_path(),
+            crate::onboarding::OPENCLAW_RESIDUE_FLAG,
+        ) {
+            warn!(error = %err, "failed to persist onboarding hint state");
+        }
+    }
 }
 
 fn prompt_text(label: &str, default: &str) -> Result<String> {
@@ -4454,6 +4473,8 @@ async fn start_gateway(
         Arc::new(Mutex::new(HashMap::new()));
     let gateway_access = Arc::new(GatewayIngressPolicy::from_config(&config));
     let skill_store_ref = Arc::new(skill_store);
+    let onboarding_state = Arc::new(Mutex::new(config.clone()));
+    let onboarding_config_path = Arc::new(hakimi_config_path());
 
     // 3. Connect all platforms.
     gateway.connect_all().await?;
@@ -4728,6 +4749,8 @@ async fn start_gateway(
         let active_tasks = active_tasks.clone();
         let voice_states = voice_states.clone();
         let last_usage = last_usage.clone();
+        let onboarding_state = onboarding_state.clone();
+        let onboarding_config_path = onboarding_config_path.clone();
 
         let config_clone = config.clone();
         tokio::spawn(async move {
@@ -5198,6 +5221,36 @@ Just send a message to chat with me!"
 
                 (a, base_history_len, concurrent)
             };
+
+            if is_concurrent_turn {
+                let hint = {
+                    let mut onboarding_config = onboarding_state.lock().await;
+                    if crate::onboarding::should_show(
+                        &onboarding_config,
+                        crate::onboarding::BUSY_INPUT_FLAG,
+                    ) {
+                        match crate::onboarding::mark_seen(
+                            &mut onboarding_config,
+                            onboarding_config_path.as_ref().as_path(),
+                            crate::onboarding::BUSY_INPUT_FLAG,
+                        ) {
+                            Ok(true) => {
+                                Some(crate::onboarding::busy_input_hint_gateway().to_string())
+                            }
+                            Ok(false) => None,
+                            Err(err) => {
+                                warn!(error = %err, "failed to persist gateway onboarding hint state");
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                };
+                if let Some(hint) = hint {
+                    send_gateway_text(&gateway_clone, &platform, &bot_id, &chat_id, hint).await;
+                }
+            }
 
             let (response_text, err_msg, stream_snapshot) = {
                 let platform_cb = platform.clone();
@@ -6197,7 +6250,7 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let config = load_config();
+    let mut config = load_config();
 
     if args.setup || matches!(&args.command, Some(TopLevelCommand::Setup)) {
         return run_setup_wizard(config);
@@ -6211,6 +6264,10 @@ pub async fn run() -> Result<()> {
     }
     if matches!(args.gateway, Some(GatewayMode::Status)) {
         return gateway_service_status();
+    }
+
+    if !args.serve && args.gateway.is_none() && args.query.is_none() {
+        maybe_show_startup_onboarding_hints(&mut config);
     }
 
     let agent = build_agent(&args, &config).await?;
