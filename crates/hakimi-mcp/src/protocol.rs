@@ -142,7 +142,9 @@ impl ClientCapabilities {
     pub fn with_sampling() -> Self {
         Self {
             roots: None,
-            sampling: Some(SamplingCapability::default()),
+            sampling: Some(SamplingCapability {
+                tools: Some(SamplingToolsCapability::default()),
+            }),
         }
     }
 }
@@ -247,6 +249,12 @@ pub enum ContentBlock {
     },
     #[serde(rename = "resource")]
     Resource { resource: Value },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
 }
 
 /// Result of the `tools/call` request.
@@ -300,9 +308,17 @@ pub struct SamplingMessage {
 
 /// Result returned to an MCP `sampling/createMessage` request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SamplingResultContent {
+    Block(ContentBlock),
+    Blocks(Vec<ContentBlock>),
+}
+
+/// Result returned to an MCP `sampling/createMessage` request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMessageResult {
     pub role: String,
-    pub content: ContentBlock,
+    pub content: SamplingResultContent,
     pub model: String,
     #[serde(rename = "stopReason", skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
@@ -376,6 +392,7 @@ mod tests {
         assert_eq!(v["protocolVersion"], "2024-11-05");
         assert_eq!(v["clientInfo"]["name"], "test");
         assert!(v["capabilities"]["sampling"].is_object());
+        assert!(v["capabilities"]["sampling"]["tools"].is_object());
     }
 
     #[test]
@@ -431,6 +448,28 @@ mod tests {
         let s = serde_json::to_string(&block).unwrap();
         assert!(s.contains("\"type\":\"image\""));
         assert!(s.contains("\"mimeType\":\"image/png\""));
+    }
+
+    #[test]
+    fn test_sampling_result_tool_use_content_serializes_as_array() {
+        let result = CreateMessageResult {
+            role: "assistant".to_string(),
+            content: SamplingResultContent::Blocks(vec![ContentBlock::ToolUse {
+                id: "call_1".to_string(),
+                name: "read_file".to_string(),
+                input: json!({"path": "README.md"}),
+            }]),
+            model: "test-model".to_string(),
+            stop_reason: Some("toolUse".to_string()),
+        };
+
+        let v = serde_json::to_value(result).unwrap();
+
+        assert_eq!(v["content"][0]["type"], "tool_use");
+        assert_eq!(v["content"][0]["id"], "call_1");
+        assert_eq!(v["content"][0]["name"], "read_file");
+        assert_eq!(v["content"][0]["input"]["path"], "README.md");
+        assert_eq!(v["stopReason"], "toolUse");
     }
 
     #[test]

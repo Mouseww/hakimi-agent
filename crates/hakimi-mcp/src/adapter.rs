@@ -116,6 +116,12 @@ impl hakimi_tools::Tool for McpToolAdapter {
                     }
                     output.push_str("[resource]");
                 }
+                ContentBlock::ToolUse { id, name, .. } => {
+                    if !output.is_empty() {
+                        output.push('\n');
+                    }
+                    output.push_str(&format!("[tool_use: {name} ({id})]"));
+                }
             }
         }
 
@@ -182,6 +188,12 @@ mod tests {
                         output.push('\n');
                     }
                     output.push_str("[resource]");
+                }
+                ContentBlock::ToolUse { id, name, .. } => {
+                    if !output.is_empty() {
+                        output.push('\n');
+                    }
+                    output.push_str(&format!("[tool_use: {name} ({id})]"));
                 }
             }
         }

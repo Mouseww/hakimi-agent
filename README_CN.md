@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.210-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.211-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1636-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1640-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1636 |
+| 测试数量 | ~500 | 1640 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -104,7 +104,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - TUI `/config [field]` 可查看脱敏运行配置摘要；`/gateway [cmd]` 可查看已配置适配器、缓存频道目标和生命周期事件；`/sessions [cmd]` 可浏览已保存 SQLite 会话；`/skills [cmd]` 可浏览/搜索本地 Skills Hub 元数据；`/cron [cmd]` 可在本地管理持久化 cron 数据库；`/undo [N]` 可把近期提示词放回输入框继续编辑；`/checkpoints [cmd]` 可在不进入模型循环的情况下查看和管理共享 shadow-git 检查点；`/voice status` 与可配置 Ctrl+B/Ctrl+字母按键录音共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验、超大 WAV 分块 STT 派发、本地 TTS 播放启动、支持录音后端和自动 transcript 提交的 `voice_capture` 工具、连续重启录音、二次按键取消录音、三次无语音自动退出，以及 Hermes 风格开始/停止提示音
 
 **可扩展**
-- MCP 协议客户端 — stdio / HTTP / SSE 传输，并支持 CLI/网关目录搜索与配置片段生成
+- MCP 协议客户端 — stdio / HTTP / SSE 传输，支持 CLI/网关目录搜索与配置片段生成，并支持 stdio 服务端发起 sampling 时转发工具 schema 与返回 `tool_use` handoff
 - HTTP 插件系统，YAML 模板
 - HTTP API 发现端点 — OpenAI 兼容 `/v1/models`、`/v1/capabilities`、`/v1/skills`、`/v1/toolsets`、文本 `/v1/chat/completions` 在 `stream=true` 时返回 completed SSE snapshot、`/v1/responses` 支持 SQLite 持久化 `previous_response_id` 链式续写并返回 completed SSE snapshot，带实时生命周期 SSE 的可轮询且可取消 `/v1/runs`，以及会话生命周期/消息/搜索能力发现，方便外部 UI 探测能力
 - WebUI 管理 API — `/api/status`、`/api/sessions` 创建/更新/删除/fork 以及消息/搜索检查、`/api/mcp/servers`、`/api/credentials/pool` 和 `/api/webhooks` 提供脱敏运行状态，并支持运行期作用域的管理写入
@@ -205,7 +205,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1636 |
+| 测试数量 | ~500 | 1640 |
 
 ---
 
