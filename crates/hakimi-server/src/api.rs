@@ -33,7 +33,7 @@
 //! - `POST /v1/runs/:id/stop` — Cancel an asynchronous run
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -568,7 +568,7 @@ impl ResponsesStore {
         Self::with_path(path, max_entries)
     }
 
-    pub fn with_path(path: impl AsRef<Path>, max_entries: usize) -> anyhow::Result<Self> {
+    pub fn with_path(path: impl AsRef<FsPath>, max_entries: usize) -> anyhow::Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
@@ -792,7 +792,7 @@ fn default_response_store_path() -> PathBuf {
 }
 
 #[cfg(unix)]
-fn restrict_response_store_permissions(path: &Path) {
+fn restrict_response_store_permissions(path: &FsPath) {
     use std::os::unix::fs::PermissionsExt;
 
     for candidate in [
@@ -809,7 +809,7 @@ fn restrict_response_store_permissions(path: &Path) {
 }
 
 #[cfg(not(unix))]
-fn restrict_response_store_permissions(_path: &Path) {}
+fn restrict_response_store_permissions(_path: &FsPath) {}
 
 struct RunControl {
     interrupt: std::sync::Arc<AtomicBool>,
