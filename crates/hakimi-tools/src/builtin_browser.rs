@@ -271,16 +271,13 @@ fn browser_cdp_endpoint_from_args(args: &JsonValue) -> Option<BrowserCdpEndpoint
 }
 
 fn browser_cdp_endpoint_from_env() -> Option<BrowserCdpEndpoint> {
-    browser_cdp_endpoint_from_pairs(
-        [
-            (
-                "HAKIMI_BROWSER_CDP_URL",
-                std::env::var("HAKIMI_BROWSER_CDP_URL").ok(),
-            ),
-            ("BROWSER_CDP_URL", std::env::var("BROWSER_CDP_URL").ok()),
-        ]
-        .into_iter(),
-    )
+    browser_cdp_endpoint_from_pairs([
+        (
+            "HAKIMI_BROWSER_CDP_URL",
+            std::env::var("HAKIMI_BROWSER_CDP_URL").ok(),
+        ),
+        ("BROWSER_CDP_URL", std::env::var("BROWSER_CDP_URL").ok()),
+    ])
 }
 
 fn browser_cdp_endpoint_from_pairs(
