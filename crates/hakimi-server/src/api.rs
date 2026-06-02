@@ -24,7 +24,7 @@
 //! - `GET  /v1/skills`       — List loaded runtime skills without skill bodies
 //! - `GET  /v1/toolsets`     — List registered toolsets and their tool schemas
 //! - `POST /v1/chat/completions` — OpenAI-compatible non-streaming chat
-//! - `POST /v1/responses`    — OpenAI Responses-compatible non-streaming chat
+//! - `POST /v1/responses`    — OpenAI Responses-compatible chat/SSE snapshots
 //! - `GET  /v1/responses/:id` — Retrieve a stored Responses API result
 //! - `DELETE /v1/responses/:id` — Delete a stored Responses API result
 //! - `POST /v1/runs`         — Submit an asynchronous text run
@@ -411,6 +411,10 @@ pub struct ErrorResponse {
 struct StoredResponse {
     response: JsonValue,
     messages: Vec<ChatCompletionsMessage>,
+}
+
+struct ResponsesExecution {
+    response: JsonValue,
 }
 
 #[derive(Debug, Clone)]
@@ -865,7 +869,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "chat_completions": true,
             "chat_completions_streaming": false,
             "responses_api": true,
-            "responses_streaming": false,
+            "responses_streaming": true,
+            "responses_streaming_mode": "completed_sse_snapshot",
             "skills_api": true,
             "toolsets_api": true,
             "session_resources": true,
@@ -1144,6 +1149,108 @@ fn response_message_id() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or_default();
     format!("msg_{nanos}")
+}
+
+fn response_text_chunks(value: &str, max_chars: usize) -> Vec<String> {
+    let max_chars = max_chars.max(1);
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut count = 0;
+
+    for ch in value.chars() {
+        current.push(ch);
+        count += 1;
+        if count >= max_chars {
+            chunks.push(std::mem::take(&mut current));
+            count = 0;
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
+fn sse_event(event: &str, data: JsonValue) -> String {
+    format!("event: {event}\ndata: {data}\n\n")
+}
+
+fn responses_sse_body(response: &JsonValue) -> String {
+    let response_id = response
+        .get("id")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let created_at = response
+        .get("created_at")
+        .and_then(JsonValue::as_u64)
+        .unwrap_or_default();
+    let model = response
+        .get("model")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let output_text = response
+        .get("output_text")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let item_id = response
+        .get("output")
+        .and_then(JsonValue::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("id"))
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+
+    let mut body = String::new();
+    body.push_str(&sse_event(
+        "response.created",
+        json!({
+            "type": "response.created",
+            "response": {
+                "id": response_id,
+                "object": "response",
+                "created_at": created_at,
+                "status": "in_progress",
+                "model": model
+            }
+        }),
+    ));
+
+    for chunk in response_text_chunks(output_text, 2048) {
+        body.push_str(&sse_event(
+            "response.output_text.delta",
+            json!({
+                "type": "response.output_text.delta",
+                "response_id": response_id,
+                "item_id": item_id,
+                "output_index": 0,
+                "content_index": 0,
+                "delta": chunk
+            }),
+        ));
+    }
+
+    body.push_str(&sse_event(
+        "response.completed",
+        json!({
+            "type": "response.completed",
+            "response": response
+        }),
+    ));
+    body.push_str("data: [DONE]\n\n");
+    body
+}
+
+fn responses_sse_response(response: &JsonValue) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/event-stream; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        responses_sse_body(response),
+    )
+        .into_response()
 }
 
 fn run_id() -> String {
@@ -1759,18 +1866,10 @@ async fn chat_completions(
     }
 }
 
-/// POST /v1/responses — OpenAI Responses-compatible non-streaming chat.
-async fn responses(
-    State(state): State<AppState>,
-    Json(req): Json<ResponsesRequest>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    if request_bool(req.stream.as_ref(), false) {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "stream=true is not yet supported on /v1/responses",
-        ));
-    }
-
+async fn execute_responses_request(
+    state: &AppState,
+    req: ResponsesRequest,
+) -> Result<ResponsesExecution, (StatusCode, Json<ErrorResponse>)> {
     let mut new_messages = Vec::new();
     if let Some(instructions) = req
         .instructions
@@ -1875,7 +1974,7 @@ async fn responses(
                 .await
                 .insert(id, response.clone(), stored_messages);
 
-            Ok(Json(response))
+            Ok(ResponsesExecution { response })
         }
         Err(e) => {
             let msg = format!("Agent error: {e}");
@@ -1885,6 +1984,21 @@ async fn responses(
                 Json(ErrorResponse { error: msg }),
             ))
         }
+    }
+}
+
+/// POST /v1/responses — OpenAI Responses-compatible chat with optional SSE snapshot output.
+async fn responses(
+    State(state): State<AppState>,
+    Json(req): Json<ResponsesRequest>,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let stream = request_bool(req.stream.as_ref(), false);
+    let result = execute_responses_request(&state, req).await?;
+
+    if stream {
+        Ok(responses_sse_response(&result.response))
+    } else {
+        Ok(Json(result.response).into_response())
     }
 }
 
@@ -2739,6 +2853,11 @@ mod tests {
         assert_eq!(capabilities["features"]["tools_api"], true);
         assert_eq!(capabilities["features"]["chat_completions"], true);
         assert_eq!(capabilities["features"]["responses_api"], true);
+        assert_eq!(capabilities["features"]["responses_streaming"], true);
+        assert_eq!(
+            capabilities["features"]["responses_streaming_mode"],
+            "completed_sse_snapshot"
+        );
         assert_eq!(capabilities["features"]["skills_api"], true);
         assert_eq!(capabilities["features"]["toolsets_api"], true);
         assert_eq!(capabilities["features"]["run_submission"], true);
@@ -3116,7 +3235,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_v1_responses_rejects_streaming_for_now() {
+    async fn test_v1_responses_streaming_returns_sse_snapshot_and_store() {
         let state = test_state();
         let app = build_router(state);
 
@@ -3132,8 +3251,43 @@ mod tests {
                 .to_string(),
             ))
             .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let content_type = resp
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("text/event-stream"));
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let events = String::from_utf8(body.to_vec()).unwrap();
+        assert!(events.contains("event: response.created"));
+        assert!(events.contains("event: response.output_text.delta"));
+        assert!(events.contains("event: response.completed"));
+        assert!(events.contains("data: [DONE]"));
+        assert!(
+            events.contains("stub response to: Conversation supplied through OpenAI Responses API")
+        );
+
+        let completed_line = events
+            .lines()
+            .find(|line| {
+                line.starts_with("data: {") && line.contains("\"type\":\"response.completed\"")
+            })
+            .expect("completed response event should include the full response");
+        let completed: serde_json::Value =
+            serde_json::from_str(completed_line.trim_start_matches("data: ")).unwrap();
+        let response_id = completed["response"]["id"].as_str().unwrap();
+
+        let get_req = Request::builder()
+            .uri(format!("/v1/responses/{response_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let get_resp = app.oneshot(get_req).await.unwrap();
+        assert_eq!(get_resp.status(), http::StatusCode::OK);
     }
 
     #[tokio::test]
