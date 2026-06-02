@@ -90,7 +90,7 @@ fn load_config(runtime_home: &hakimi_common::RuntimeHome) -> hakimi_config::Haki
     let config_path = runtime_home.config_path();
 
     if !hakimi_dir.exists()
-        && let Err(e) = std::fs::create_dir_all(&hakimi_dir)
+        && let Err(e) = std::fs::create_dir_all(hakimi_dir)
     {
         warn!(path = %hakimi_dir.display(), error = %e, "failed to create .hakimi directory");
     }
