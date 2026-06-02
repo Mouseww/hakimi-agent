@@ -2,6 +2,7 @@
 
 use crate::app::App;
 use crate::{Role, ToolStatus};
+use hakimi_common::SkinRuntime;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -111,6 +112,26 @@ fn assistant_prefix_label(raw: &str) -> String {
     format!("{label:>3}│ ")
 }
 
+fn tool_name_from_message_content(content: &str) -> Option<&str> {
+    let rest = content.strip_prefix('[')?;
+    let end = rest.find(']')?;
+    let name = rest[..end].trim();
+    if name.is_empty() { None } else { Some(name) }
+}
+
+fn tool_prefix_label(skin: &SkinRuntime, tool_name: Option<&str>) -> String {
+    let tool_prefix = skin.tool_prefix.trim();
+    let tool_prefix = if tool_prefix.is_empty() {
+        "│"
+    } else {
+        tool_prefix
+    };
+    match tool_name.and_then(|name| skin.tool_emoji(name)) {
+        Some(emoji) => format!("{emoji} Tool{tool_prefix} "),
+        None => format!("Tool{tool_prefix} "),
+    }
+}
+
 /// Render the full TUI layout.
 pub fn render(frame: &mut Frame, app: &App) {
     let palette = TuiPalette::from_app(app);
@@ -217,20 +238,15 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPa
                         .fg(palette.label)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Role::Tool => {
-                    let tool_prefix = app.skin_runtime.tool_prefix.trim();
-                    let tool_prefix = if tool_prefix.is_empty() {
-                        "│"
-                    } else {
-                        tool_prefix
-                    };
-                    Span::styled(
-                        format!("Tool{tool_prefix} "),
-                        Style::default()
-                            .fg(palette.warn)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                }
+                Role::Tool => Span::styled(
+                    tool_prefix_label(
+                        &app.skin_runtime,
+                        tool_name_from_message_content(&msg.content),
+                    ),
+                    Style::default()
+                        .fg(palette.warn)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Role::System => Span::styled(
                     "Sys │ ",
                     Style::default()
@@ -320,9 +336,16 @@ fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPal
         .take(area.height.saturating_sub(3) as usize)
         .map(|activity| {
             let status_icon = match activity.status {
-                ToolStatus::Running => Span::styled("⟳ ", Style::default().fg(palette.warn)),
+                ToolStatus::Running => Span::styled(
+                    format!("{} ", app.spinner_frame()),
+                    Style::default().fg(palette.warn),
+                ),
                 ToolStatus::Success => Span::styled("✓ ", Style::default().fg(palette.ok)),
                 ToolStatus::Error => Span::styled("✗ ", Style::default().fg(palette.error)),
+            };
+            let emoji_span = match app.skin_runtime.tool_emoji(&activity.name) {
+                Some(emoji) => Span::styled(format!("{emoji} "), Style::default().fg(palette.warn)),
+                None => Span::raw(""),
             };
 
             let name_span = Span::styled(
@@ -337,7 +360,12 @@ fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPal
                 Style::default().fg(palette.dim),
             );
 
-            ListItem::new(Line::from(vec![status_icon, name_span, args_span]))
+            ListItem::new(Line::from(vec![
+                status_icon,
+                emoji_span,
+                name_span,
+                args_span,
+            ]))
         })
         .collect();
 
@@ -533,6 +561,20 @@ mod tests {
     }
 
     #[test]
+    fn tool_message_label_uses_skin_emoji_when_present() {
+        let mut skin = hakimi_common::SkinRuntime::default();
+        skin.tool_prefix = "::".to_string();
+        skin.tool_emojis.insert("bash".to_string(), "⚔".to_string());
+
+        assert_eq!(
+            tool_name_from_message_content("[bash] call: ls"),
+            Some("bash")
+        );
+        assert_eq!(tool_prefix_label(&skin, Some("bash")), "⚔ Tool:: ");
+        assert_eq!(tool_prefix_label(&skin, Some("read_file")), "Tool:: ");
+    }
+
+    #[test]
     fn render_does_not_panic_with_default_state() {
         let app = make_app();
         let backend = TestBackend::new(80, 24);
@@ -645,8 +687,28 @@ mod tests {
     fn render_uses_skin_tool_prefix_for_tool_messages() {
         let mut app = make_app();
         app.skin_runtime.tool_prefix = "::".to_string();
+        app.skin_runtime
+            .tool_emojis
+            .insert("bash".to_string(), "⚔".to_string());
         app.messages
             .push(crate::ChatMessage::tool("bash", "tool output"));
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_uses_skin_tool_emojis_for_activity_panel() {
+        let mut app = make_app();
+        app.skin_runtime
+            .tool_emojis
+            .insert("web_search".to_string(), "🔮".to_string());
+        app.tool_activity.push(crate::ToolActivity {
+            name: "web_search".to_string(),
+            arguments_summary: "rust".to_string(),
+            status: crate::ToolStatus::Running,
+            timestamp: chrono::Utc::now(),
+        });
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();

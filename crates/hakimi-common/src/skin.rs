@@ -13,6 +13,7 @@ pub struct SkinRuntime {
     pub colors: BTreeMap<String, String>,
     pub branding: BTreeMap<String, String>,
     pub tool_prefix: String,
+    pub tool_emojis: BTreeMap<String, String>,
     pub spinner: SkinSpinner,
 }
 
@@ -73,6 +74,13 @@ impl SkinRuntime {
             .map(String::as_str)
             .filter(|value| !value.trim().is_empty())
     }
+
+    pub fn tool_emoji(&self, tool_name: &str) -> Option<&str> {
+        self.tool_emojis
+            .get(tool_name.trim())
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+    }
 }
 
 pub fn skins_dir(home: &Path) -> PathBuf {
@@ -118,12 +126,21 @@ pub fn load_skin_runtime(name: &str, home: &Path) -> Result<SkinRuntime> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or(default.tool_prefix);
+    let mut tool_emojis = default.tool_emojis;
+    for (key, value) in raw.tool_emojis {
+        let key = key.trim();
+        let value = value.trim();
+        if !key.is_empty() && !value.is_empty() {
+            tool_emojis.insert(key.to_string(), value.to_string());
+        }
+    }
 
     Ok(SkinRuntime {
         name,
         colors,
         branding,
         tool_prefix,
+        tool_emojis,
         spinner: raw.spinner.into_runtime_spinner(),
     })
 }
@@ -174,6 +191,7 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("help_header".to_string(), "Available Commands".to_string()),
             ]),
             tool_prefix: "┊".to_string(),
+            tool_emojis: BTreeMap::new(),
             spinner: SkinSpinner {
                 frames: DEFAULT_SPINNER_FRAMES
                     .iter()
@@ -227,6 +245,12 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("help_header".to_string(), "Ares Commands".to_string()),
             ]),
             tool_prefix: "╎".to_string(),
+            tool_emojis: BTreeMap::from([
+                ("terminal".to_string(), "⚔".to_string()),
+                ("bash".to_string(), "⚔".to_string()),
+                ("read_file".to_string(), "⛨".to_string()),
+                ("web_search".to_string(), "🔎".to_string()),
+            ]),
             spinner: SkinSpinner {
                 frames: ["(⚔)", "(⛨)", "(▲)", "(⌁)", "(<>)"]
                     .into_iter()
@@ -285,6 +309,7 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("help_header".to_string(), "Available Commands".to_string()),
             ]),
             tool_prefix: "┊".to_string(),
+            tool_emojis: BTreeMap::new(),
             spinner: SkinSpinner {
                 frames: ["-", "\\", "|", "/"]
                     .into_iter()
@@ -325,6 +350,7 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("help_header".to_string(), "Available Commands".to_string()),
             ]),
             tool_prefix: "┊".to_string(),
+            tool_emojis: BTreeMap::new(),
             spinner: SkinSpinner {
                 frames: ["◐", "◓", "◑", "◒"]
                     .into_iter()
@@ -365,6 +391,7 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("help_header".to_string(), "Available Commands".to_string()),
             ]),
             tool_prefix: "│".to_string(),
+            tool_emojis: BTreeMap::new(),
             spinner: SkinSpinner {
                 frames: ["·", "•", "●", "•"]
                     .into_iter()
@@ -389,6 +416,8 @@ struct RawSkinRuntime {
     branding: BTreeMap<String, String>,
     #[serde(default)]
     tool_prefix: Option<String>,
+    #[serde(default)]
+    tool_emojis: BTreeMap<String, String>,
     #[serde(default)]
     spinner: RawSkinSpinner,
 }
@@ -528,6 +557,7 @@ spinner:
         assert_eq!(skin.color("banner_title"), Some("#87af87"));
         assert_eq!(skin.branding("agent_name"), Some("Hakimi Agent"));
         assert_eq!(skin.tool_prefix, "┊");
+        assert!(skin.tool_emoji("terminal").is_none());
         assert_eq!(skin.spinner_frame(0), "<(g)>");
         assert_eq!(skin.thinking_label(1), "<(*)> checking snow");
 
@@ -553,6 +583,7 @@ spinner:
         assert!(skin.animation_len() > 1);
         assert_eq!(skin.color("status_bar_bg"), Some("#2a1212"));
         assert_eq!(skin.branding("agent_name"), Some("Ares Agent"));
+        assert_eq!(skin.tool_emoji("terminal"), Some("⚔"));
         assert!(skin.spinner_frame(0).contains("(⚔)"));
         assert!(skin.thinking_label(0).contains("forging"));
         assert_ne!(skin.spinner_frame(0), "⠋");
@@ -605,6 +636,30 @@ tool_prefix: ">>"
         let skin = load_skin_runtime("glacier", &home).unwrap();
 
         assert_eq!(skin.tool_prefix, ">>");
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn runtime_skin_reads_hermes_tool_emojis() {
+        let home = temp_home();
+        write_user_skin(
+            &home,
+            "glacier",
+            r#"
+name: glacier
+tool_emojis:
+  terminal: "⚔"
+  web_search: "🔮"
+  empty: ""
+"#,
+        );
+
+        let skin = load_skin_runtime("glacier", &home).unwrap();
+
+        assert_eq!(skin.tool_emoji("terminal"), Some("⚔"));
+        assert_eq!(skin.tool_emoji("web_search"), Some("🔮"));
+        assert!(skin.tool_emoji("empty").is_none());
+        assert!(skin.tool_emoji("missing").is_none());
         let _ = fs::remove_dir_all(home);
     }
 }

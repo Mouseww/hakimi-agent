@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.225-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.226-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1708-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1711-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1708 |
+| 测试数量 | ~500 | 1711 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -110,7 +110,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - WebUI 管理 API — `/api/status`、`/api/sessions` 创建/更新/删除/fork 以及消息/搜索检查、`/api/mcp/servers`、`/api/credentials/pool`、`/api/webhooks` 和只读 Kanban `/api/kanban` 看板/任务快照提供脱敏运行状态，并支持运行期作用域的管理写入
 - Skills Hub — 社区技能市场
 - 静态 i18n 基础设施 — 支持 `display.language`、`HAKIMI_LANGUAGE` / `HERMES_LANGUAGE`、Hermes 兼容语言别名、YAML catalog 目录加载、英文 fallback 和静态用户文案的命名占位符
-- CLI Skin Engine — `hakimi skin list|inspect|set|path` 与网关 `/skin` 可发现内置和 `~/.hakimi/skins/*.yaml` 主题，缺失字段继承 `default`，持久化 `display.skin`，并把选中的 branding/colors/logo/hero 应用到 CLI 启动横幅，同时驱动 TUI 思考态 spinner faces/verbs/wings，以及状态栏、session、选择态、补全提示、帮助标题、输入区、响应框、工具前缀和工具面板配色
+- CLI Skin Engine — `hakimi skin list|inspect|set|path` 与网关 `/skin` 可发现内置和 `~/.hakimi/skins/*.yaml` 主题，缺失字段继承 `default`，持久化 `display.skin`，并把选中的 branding/colors/logo/hero 应用到 CLI 启动横幅，同时驱动 TUI 思考态 spinner faces/verbs/wings，以及状态栏、session、选择态、补全提示、帮助标题、输入区、响应框、工具前缀、工具 emoji 标签、运行中工具进度和工具面板配色
 - 隔离 Profile — 管理命名工作区、克隆/导出 Profile 归档、安装/更新带 `distribution.yaml` 的可分享 Profile 分发包、创建 `~/.hakimi/bin/<profile>` 包装别名，并通过网关 `/profile` 操作
 - 10 个精选 MCP 目录项：GitHub、文件系统、Brave Search、PostgreSQL、Puppeteer、记忆、fetch、SQLite、思维链，以及 Hermes 审核过的 n8n bridge
 
@@ -206,7 +206,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1708 |
+| 测试数量 | ~500 | 1711 |
 
 ---
 
@@ -240,7 +240,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] WebUI 管理 API 摘要 + 运行期写入 + Kanban 只读快照
 - [x] 插件系统 + HTTP 模板
 - [x] Profile 分发包安装/更新/info，并保护用户数据
-- [x] CLI Skin Engine，支持内置/用户 YAML 主题、`display.skin` 持久化、启动横幅主题化和 TUI spinner、状态栏、补全、帮助与界面主题化
+- [x] CLI Skin Engine，支持内置/用户 YAML 主题、`display.skin` 持久化、启动横幅主题化和 TUI spinner、状态栏、补全、帮助、工具 emoji/进度与界面主题化
 - [x] ratatui TUI 界面、本地 slash 命令、脱敏配置浏览与网关状态面
 - [x] 智能上下文压缩（3 层）
 - [x] 错误分类器 + 凭证池
