@@ -2477,8 +2477,8 @@ impl Tool for BrowserCdpTool {
 
     fn description(&self) -> &str {
         "Inspect or dispatch a Chrome DevTools Protocol command through HAKIMI_BROWSER_CDP_URL, BROWSER_CDP_URL, or an explicit endpoint. \
-         Use action='status' for readiness metadata, action='probe' for browser version/target counts, or action='dispatch' with method/params. \
-         Pass target_id for page-scoped CDP methods; frame_id supervisor routing remains future browser-backend work."
+         Use action='status' for readiness metadata, action='probe' for browser version/target counts, action='frames' for page frame trees, or action='dispatch' with method/params. \
+         Pass target_id for page-scoped CDP methods; frame_id dispatch routing remains future supervisor-backend work."
     }
 
     fn emoji(&self) -> &str {
@@ -2491,8 +2491,8 @@ impl Tool for BrowserCdpTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["status", "probe", "dispatch"],
-                    "description": "status reports configured endpoint metadata without connecting. probe briefly connects and reads browser version/targets. dispatch sends a raw CDP method. Default: status."
+                    "enum": ["status", "probe", "frames", "dispatch"],
+                    "description": "status reports configured endpoint metadata without connecting. probe briefly connects and reads browser version/targets. frames reads Page.getFrameTree for page targets. dispatch sends a raw CDP method. Default: status."
                 },
                 "endpoint": {
                     "type": "string",
@@ -2513,11 +2513,11 @@ impl Tool for BrowserCdpTool {
                 },
                 "target_id": {
                     "type": "string",
-                    "description": "Optional target/tab id for page-scoped dispatch. The tool attaches with Target.attachToTarget before sending the method."
+                    "description": "Optional target/tab id for page-scoped dispatch or action='frames'. The tool attaches with Target.attachToTarget before sending page-scoped methods."
                 },
                 "frame_id": {
                     "type": "string",
-                    "description": "Reserved for future supervisor-backed OOPIF/frame routing. Currently returns a clear unsupported-routing response."
+                    "description": "Reserved for future supervisor-backed OOPIF/frame dispatch routing. Use action='frames' to inspect frame ids and frame trees."
                 },
                 "timeout_ms": {
                     "type": "integer",
@@ -2542,9 +2542,9 @@ impl Tool for BrowserCdpTool {
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("status");
-        if action != "status" && action != "probe" && action != "dispatch" {
+        if action != "status" && action != "probe" && action != "frames" && action != "dispatch" {
             return Err(HakimiError::Tool(format!(
-                "invalid browser_cdp action: {action}; expected status, probe, or dispatch"
+                "invalid browser_cdp action: {action}; expected status, probe, frames, or dispatch"
             )));
         }
 
@@ -2558,6 +2558,7 @@ impl Tool for BrowserCdpTool {
                 "error": "No CDP endpoint configured. Set HAKIMI_BROWSER_CDP_URL or BROWSER_CDP_URL, or pass endpoint explicitly.",
                 "dispatch_ready": false,
                 "raw_cdp_dispatch": false,
+                "frame_tree_ready": false,
                 "cloud_providers": provider_status,
                 "next_step": "Start Chrome/Chromium with --remote-debugging-port or use a CDP-capable provider, then run browser_cdp with action='probe'."
             })
@@ -2575,6 +2576,7 @@ impl Tool for BrowserCdpTool {
                 "error": error,
                 "dispatch_ready": false,
                 "raw_cdp_dispatch": false,
+                "frame_tree_ready": false,
                 "cloud_providers": provider_status
             })
             .to_string());
@@ -2589,14 +2591,155 @@ impl Tool for BrowserCdpTool {
                 "endpoint": endpoint_display,
                 "dispatch_ready": true,
                 "raw_cdp_dispatch": true,
+                "frame_tree_ready": true,
                 "probe_available": true,
                 "cloud_providers": provider_status,
-                "note": "Endpoint syntax is valid. Use action='probe' to verify live connectivity or action='dispatch' with a CDP method."
+                "note": "Endpoint syntax is valid. Use action='probe' to verify live connectivity, action='frames' to inspect page frame trees, or action='dispatch' with a CDP method."
             })
             .to_string());
         }
 
         let timeout = std::time::Duration::from_millis(browser_cdp_timeout_ms(args));
+        if action == "frames" {
+            let target_id = browser_cdp_target_id_from_args(args);
+            let endpoint_url = endpoint.endpoint.clone();
+            let endpoint_source = endpoint.source.clone();
+            let endpoint_display_for_frames = endpoint_display.clone();
+            let frames = tokio::time::timeout(timeout, async {
+                let (mut browser, mut handler) =
+                    Browser::connect(endpoint_url).await.map_err(|e| {
+                        HakimiError::Tool(format!(
+                            "failed to connect to CDP endpoint {}: {e}",
+                            endpoint_display_for_frames
+                        ))
+                    })?;
+                let handler_task = tokio::spawn(async move {
+                    while let Some(event) = handler.next().await {
+                        if let Err(e) = event {
+                            warn!(error = %e, "browser CDP frames handler error");
+                            break;
+                        }
+                    }
+                });
+
+                let targets = match browser.fetch_targets().await {
+                    Ok(targets) => targets,
+                    Err(e) => {
+                        handler_task.abort();
+                        return Err(HakimiError::Tool(format!(
+                            "CDP Target.getTargets failed before frame inspection: {e}"
+                        )));
+                    }
+                };
+                let page_target_count = targets
+                    .iter()
+                    .filter(|target| target.r#type.as_str() == "page")
+                    .count();
+                let selected_target_ids = if let Some(target_id) = target_id.clone() {
+                    let Some(target) = targets
+                        .iter()
+                        .find(|target| target.target_id.as_ref() == target_id)
+                    else {
+                        handler_task.abort();
+                        return Err(HakimiError::Tool(format!(
+                            "CDP target_id {target_id} was not found; omit target_id to inspect all page targets"
+                        )));
+                    };
+                    if target.r#type.as_str() != "page" {
+                        handler_task.abort();
+                        return Err(HakimiError::Tool(format!(
+                            "CDP target_id {target_id} has type '{}' and cannot provide a Page frame tree",
+                            target.r#type.as_str()
+                        )));
+                    }
+                    vec![target_id]
+                } else {
+                    targets
+                        .iter()
+                        .filter(|target| target.r#type.as_str() == "page")
+                        .map(|target| target.target_id.as_ref().to_string())
+                        .collect::<Vec<_>>()
+                };
+
+                let mut frame_trees = Vec::new();
+                for page_target_id in &selected_target_ids {
+                    let attach = AttachToTargetParams::builder()
+                        .target_id(TargetId::from(page_target_id.to_string()))
+                        .flatten(true)
+                        .build()
+                        .map_err(HakimiError::Tool)?;
+                    if let Err(e) = browser.execute(attach).await {
+                        handler_task.abort();
+                        return Err(HakimiError::Tool(format!(
+                            "CDP Target.attachToTarget failed for {page_target_id}: {e}"
+                        )));
+                    }
+
+                    let page = match browser
+                        .get_page(TargetId::from(page_target_id.to_string()))
+                        .await
+                    {
+                        Ok(page) => page,
+                        Err(e) => {
+                            handler_task.abort();
+                            return Err(HakimiError::Tool(format!(
+                                "CDP target {page_target_id} could not be opened as a page after attach: {e}"
+                            )));
+                        }
+                    };
+                    let command = RawBrowserCdpCommand::new("Page.getFrameTree", json!({}));
+                    let frame_tree = match page.execute(command).await {
+                        Ok(response) => response.result,
+                        Err(e) => {
+                            handler_task.abort();
+                            return Err(HakimiError::Tool(format!(
+                                "CDP Page.getFrameTree failed for target {page_target_id}: {e}"
+                            )));
+                        }
+                    };
+                    frame_trees.push(json!({
+                        "target_id": page_target_id,
+                        "frame_tree": frame_tree
+                    }));
+                }
+                handler_task.abort();
+
+                Ok::<JsonValue, HakimiError>(json!({
+                    "success": true,
+                    "configured": true,
+                    "action": "frames",
+                    "source": endpoint_source,
+                    "endpoint": endpoint_display_for_frames,
+                    "target_id": target_id,
+                    "page_target_count": page_target_count,
+                    "frame_tree_count": frame_trees.len(),
+                    "frame_tree_ready": true,
+                    "frame_routing_ready": false,
+                    "raw_cdp_dispatch": true,
+                    "frame_trees": frame_trees,
+                    "note": "Frame trees are visible for page targets. Direct frame_id dispatch remains future supervisor-backed routing work."
+                }))
+            })
+            .await;
+
+            return match frames {
+                Ok(Ok(payload)) => Ok(payload.to_string()),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Ok(json!({
+                    "success": false,
+                    "configured": true,
+                    "action": "frames",
+                    "source": endpoint.source,
+                    "endpoint": endpoint_display,
+                    "error": format!("CDP frame inspection timed out after {} ms", timeout.as_millis()),
+                    "frame_tree_ready": false,
+                    "raw_cdp_dispatch": true,
+                    "frame_routing_ready": false
+                })
+                .to_string()),
+            };
+        }
+
         if action == "dispatch" {
             let method = browser_cdp_method_from_args(args).map_err(HakimiError::Tool)?;
             let params = browser_cdp_params_from_args(args).map_err(HakimiError::Tool)?;
@@ -2611,7 +2754,7 @@ impl Tool for BrowserCdpTool {
                     "frame_id": frame_id,
                     "raw_cdp_dispatch": true,
                     "frame_routing_ready": false,
-                    "error": "browser_cdp frame_id routing requires the future supervisor-backed browser backend. Omit frame_id for browser-level dispatch or pass target_id for page-level dispatch."
+                    "error": "browser_cdp frame_id dispatch routing requires the future supervisor-backed browser backend. Use action='frames' to inspect frame ids, omit frame_id for browser-level dispatch, or pass target_id for page-level dispatch."
                 })
                 .to_string());
             }
@@ -2703,11 +2846,12 @@ impl Tool for BrowserCdpTool {
                     "source": endpoint_source,
                     "endpoint": endpoint_display_for_dispatch,
                     "method": method,
-                    "target_id": target_id,
-                    "raw_cdp_dispatch": true,
-                    "frame_routing_ready": false,
-                    "result": result
-                }))
+                "target_id": target_id,
+                "raw_cdp_dispatch": true,
+                "frame_routing_ready": false,
+                "frame_tree_ready": true,
+                "result": result
+            }))
             })
             .await;
 
@@ -2715,14 +2859,15 @@ impl Tool for BrowserCdpTool {
                 Ok(Ok(payload)) => Ok(payload.to_string()),
                 Ok(Err(error)) => Err(error),
                 Err(_) => Ok(json!({
-                    "success": false,
-                    "configured": true,
-                    "action": "dispatch",
-                    "source": endpoint.source,
-                    "endpoint": endpoint_display,
-                    "error": format!("CDP dispatch timed out after {} ms", timeout.as_millis()),
+                        "success": false,
+                        "configured": true,
+                        "action": "dispatch",
+                        "source": endpoint.source,
+                        "endpoint": endpoint_display,
+                        "error": format!("CDP dispatch timed out after {} ms", timeout.as_millis()),
                     "raw_cdp_dispatch": true,
-                    "frame_routing_ready": false
+                    "frame_routing_ready": false,
+                    "frame_tree_ready": true
                 })
                 .to_string()),
             };
@@ -2780,8 +2925,9 @@ impl Tool for BrowserCdpTool {
                 "page_target_count": targets.iter().filter(|target| target.r#type.as_str() == "page").count(),
                 "dispatch_ready": true,
                 "raw_cdp_dispatch": true,
+                "frame_tree_ready": true,
                 "frame_routing_ready": false,
-                "note": "CDP endpoint is reachable. Use action='dispatch' for browser-level methods or pass target_id for page-scoped methods."
+                "note": "CDP endpoint is reachable. Use action='frames' to inspect page frame trees, action='dispatch' for browser-level methods, or pass target_id for page-scoped methods."
             }))
         })
         .await;
@@ -2797,7 +2943,8 @@ impl Tool for BrowserCdpTool {
                 "endpoint": endpoint_display,
                 "error": format!("CDP probe timed out after {} ms", timeout.as_millis()),
                 "dispatch_ready": false,
-                "raw_cdp_dispatch": false
+                "raw_cdp_dispatch": false,
+                "frame_tree_ready": false
             })
             .to_string()),
         }
@@ -2834,6 +2981,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|value| value == "dispatch")
+        );
+        assert!(
+            schema["properties"]["action"]["enum"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "frames")
         );
         assert!(schema["properties"]["endpoint"].is_object());
         assert!(schema["properties"]["cloud_provider"].is_object());
