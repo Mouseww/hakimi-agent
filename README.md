@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.219-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.220-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1680-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1685-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1680 |
+| Tests | ~500 | 1685 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -85,7 +85,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 **Built-in Tools (63+)**
 - **Files**: read, write, search, patch with safe-root sandbox
 - **Shell**: terminal, background processes
-- **Web**: search, extract, browser automation (Chromium with screenshot vision capture, Playwright cache/headless-shell discovery, raw CDP dispatch, and cloud-provider readiness status)
+- **Web**: search, extract, browser automation (Chromium with screenshot vision capture, Playwright cache/headless-shell discovery, raw CDP dispatch, cloud-provider readiness status, and provider CDP endpoint routing)
 - **Desktop**: Hermes-style `computer_use` readiness surface with safe wait, macOS screenshot/list-app discovery, and guarded action schema
 - **Code**: Python/JS/Bash execution with sandbox
 - **Media**: vision analysis, video analysis, TTS, transcription with silence-hallucination filtering and oversized WAV chunking
@@ -199,7 +199,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1680 |
+| Tests | ~500 | 1685 |
 
 ---
 
@@ -244,7 +244,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Decision tree backtracking
 - [x] Role adaptation
 - [x] Meta-skill auto-extraction
-- [x] Browser automation (Chromium + Playwright cache discovery + CDP readiness probe + cloud-provider readiness status)
+- [x] Browser automation (Chromium + Playwright cache discovery + CDP readiness probe + cloud-provider readiness status + provider CDP endpoint routing)
 - [x] Computer Use readiness surface
 - [x] Kanban task boards + notification cursors + swarm graphs
 - [x] Gateway voice-response mode

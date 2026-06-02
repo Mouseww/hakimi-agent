@@ -287,13 +287,55 @@ fn browser_cdp_endpoint_from_args(args: &JsonValue) -> Option<BrowserCdpEndpoint
 }
 
 fn browser_cdp_endpoint_from_env() -> Option<BrowserCdpEndpoint> {
-    browser_cdp_endpoint_from_pairs([
+    browser_cdp_endpoint_from_pairs(browser_cdp_generic_endpoint_pairs())
+}
+
+fn browser_cdp_generic_endpoint_pairs() -> [(&'static str, Option<String>); 2] {
+    [
         (
             "HAKIMI_BROWSER_CDP_URL",
             std::env::var("HAKIMI_BROWSER_CDP_URL").ok(),
         ),
         ("BROWSER_CDP_URL", std::env::var("BROWSER_CDP_URL").ok()),
-    ])
+    ]
+}
+
+fn browser_cdp_provider_endpoint_pairs() -> [(&'static str, Option<String>); 9] {
+    [
+        (
+            "HAKIMI_BROWSER_USE_CDP_URL",
+            std::env::var("HAKIMI_BROWSER_USE_CDP_URL").ok(),
+        ),
+        (
+            "BROWSER_USE_CDP_URL",
+            std::env::var("BROWSER_USE_CDP_URL").ok(),
+        ),
+        (
+            "BROWSERUSE_CDP_URL",
+            std::env::var("BROWSERUSE_CDP_URL").ok(),
+        ),
+        (
+            "HAKIMI_BROWSERBASE_CDP_URL",
+            std::env::var("HAKIMI_BROWSERBASE_CDP_URL").ok(),
+        ),
+        (
+            "BROWSERBASE_CDP_URL",
+            std::env::var("BROWSERBASE_CDP_URL").ok(),
+        ),
+        (
+            "BROWSERBASE_CONNECT_URL",
+            std::env::var("BROWSERBASE_CONNECT_URL").ok(),
+        ),
+        (
+            "HAKIMI_FIRECRAWL_CDP_URL",
+            std::env::var("HAKIMI_FIRECRAWL_CDP_URL").ok(),
+        ),
+        ("FIRECRAWL_CDP_URL", std::env::var("FIRECRAWL_CDP_URL").ok()),
+        (
+            "FIRECRAWL_CONNECT_URL",
+            std::env::var("FIRECRAWL_CONNECT_URL").ok(),
+        ),
+    ]
 }
 
 fn browser_cdp_endpoint_from_pairs(
@@ -322,7 +364,90 @@ fn browser_cdp_endpoint_from_value(value: &str, source: &str) -> Option<BrowserC
 }
 
 fn resolve_browser_cdp_endpoint(args: &JsonValue) -> Option<BrowserCdpEndpoint> {
-    browser_cdp_endpoint_from_args(args).or_else(browser_cdp_endpoint_from_env)
+    resolve_browser_cdp_endpoint_from_sources(
+        args,
+        browser_cdp_generic_endpoint_pairs(),
+        browser_cdp_provider_endpoint_pairs(),
+    )
+}
+
+fn resolve_browser_cdp_endpoint_from_sources(
+    args: &JsonValue,
+    generic_pairs: impl IntoIterator<Item = (&'static str, Option<String>)>,
+    provider_pairs: impl IntoIterator<Item = (&'static str, Option<String>)>,
+) -> Option<BrowserCdpEndpoint> {
+    browser_cdp_endpoint_from_args(args)
+        .or_else(|| browser_cdp_endpoint_from_pairs(generic_pairs))
+        .or_else(|| resolve_browser_cdp_provider_endpoint(args, provider_pairs))
+}
+
+fn resolve_browser_cdp_provider_endpoint(
+    args: &JsonValue,
+    provider_pairs: impl IntoIterator<Item = (&'static str, Option<String>)>,
+) -> Option<BrowserCdpEndpoint> {
+    let pairs = provider_pairs.into_iter().collect::<Vec<_>>();
+    let selected = resolve_browser_cloud_provider(args);
+
+    match selected.as_deref() {
+        Some("local" | "camofox") => return None,
+        Some(provider) if browser_cloud_provider_cdp_env_names(provider).is_some() => {
+            return browser_cdp_endpoint_from_provider_pairs(
+                provider,
+                pairs.iter().map(|(name, value)| (*name, value.clone())),
+            );
+        }
+        Some(_) | None => {}
+    }
+
+    for provider in ["browser-use", "browserbase"] {
+        if let Some(endpoint) = browser_cdp_endpoint_from_provider_pairs(
+            provider,
+            pairs.iter().map(|(name, value)| (*name, value.clone())),
+        ) {
+            return Some(endpoint);
+        }
+    }
+
+    None
+}
+
+fn browser_cdp_endpoint_from_provider_pairs(
+    provider: &str,
+    pairs: impl IntoIterator<Item = (&'static str, Option<String>)>,
+) -> Option<BrowserCdpEndpoint> {
+    let env_names = browser_cloud_provider_cdp_env_names(provider)?;
+    for (name, value) in pairs {
+        if !env_names.contains(&name) {
+            continue;
+        }
+        if let Some(value) = value
+            && let Some(endpoint) = browser_cdp_endpoint_from_value(&value, name)
+        {
+            return Some(endpoint);
+        }
+    }
+    None
+}
+
+fn browser_cloud_provider_cdp_env_names(provider: &str) -> Option<&'static [&'static str]> {
+    match provider {
+        "browser-use" => Some(&[
+            "HAKIMI_BROWSER_USE_CDP_URL",
+            "BROWSER_USE_CDP_URL",
+            "BROWSERUSE_CDP_URL",
+        ]),
+        "browserbase" => Some(&[
+            "HAKIMI_BROWSERBASE_CDP_URL",
+            "BROWSERBASE_CDP_URL",
+            "BROWSERBASE_CONNECT_URL",
+        ]),
+        "firecrawl" => Some(&[
+            "HAKIMI_FIRECRAWL_CDP_URL",
+            "FIRECRAWL_CDP_URL",
+            "FIRECRAWL_CONNECT_URL",
+        ]),
+        _ => None,
+    }
 }
 
 fn browser_cloud_provider_from_args(args: &JsonValue) -> Option<String> {
@@ -2827,6 +2952,108 @@ mod tests {
         assert_eq!(status["selected_provider"], "vendor-x");
         assert_eq!(status["selected_provider_known"], false);
         assert!(status["providers"].as_array().unwrap().len() >= 4);
+    }
+
+    #[test]
+    fn test_browser_cdp_provider_endpoint_pair_mapping() {
+        let endpoint = browser_cdp_endpoint_from_provider_pairs(
+            "browser-use",
+            [
+                (
+                    "BROWSER_USE_CDP_URL",
+                    Some("wss://browser-use/session".to_string()),
+                ),
+                (
+                    "BROWSERBASE_CDP_URL",
+                    Some("wss://browserbase/session".to_string()),
+                ),
+                (
+                    "FIRECRAWL_CDP_URL",
+                    Some("wss://firecrawl/session".to_string()),
+                ),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(endpoint.endpoint, "wss://browser-use/session");
+        assert_eq!(endpoint.source, "BROWSER_USE_CDP_URL");
+    }
+
+    #[test]
+    fn test_browser_cdp_explicit_provider_uses_matching_endpoint_only() {
+        let endpoint = resolve_browser_cdp_endpoint_from_sources(
+            &json!({"cloud_provider": "firecrawl"}),
+            [],
+            [
+                (
+                    "BROWSER_USE_CDP_URL",
+                    Some("wss://browser-use/session".to_string()),
+                ),
+                (
+                    "FIRECRAWL_CDP_URL",
+                    Some("wss://firecrawl/session".to_string()),
+                ),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(endpoint.endpoint, "wss://firecrawl/session");
+        assert_eq!(endpoint.source, "FIRECRAWL_CDP_URL");
+    }
+
+    #[test]
+    fn test_browser_cdp_auto_prefers_browser_use_over_browserbase() {
+        let endpoint = resolve_browser_cdp_endpoint_from_sources(
+            &json!({}),
+            [],
+            [
+                (
+                    "BROWSERBASE_CDP_URL",
+                    Some("wss://browserbase/session".to_string()),
+                ),
+                (
+                    "BROWSER_USE_CDP_URL",
+                    Some("wss://browser-use/session".to_string()),
+                ),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(endpoint.endpoint, "wss://browser-use/session");
+        assert_eq!(endpoint.source, "BROWSER_USE_CDP_URL");
+    }
+
+    #[test]
+    fn test_browser_cdp_auto_does_not_select_firecrawl() {
+        let endpoint = resolve_browser_cdp_endpoint_from_sources(
+            &json!({}),
+            [],
+            [(
+                "FIRECRAWL_CDP_URL",
+                Some("wss://firecrawl/session".to_string()),
+            )],
+        );
+
+        assert!(endpoint.is_none());
+    }
+
+    #[test]
+    fn test_browser_cdp_explicit_endpoint_overrides_provider_route() {
+        let endpoint = resolve_browser_cdp_endpoint_from_sources(
+            &json!({
+                "endpoint": "wss://explicit/session",
+                "cloud_provider": "browserbase"
+            }),
+            [],
+            [(
+                "BROWSERBASE_CDP_URL",
+                Some("wss://browserbase/session".to_string()),
+            )],
+        )
+        .unwrap();
+
+        assert_eq!(endpoint.endpoint, "wss://explicit/session");
+        assert_eq!(endpoint.source, "argument:endpoint");
     }
 
     #[test]
