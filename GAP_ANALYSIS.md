@@ -560,8 +560,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
-- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/config` sanitized runtime configuration summaries, `/sessions`, `/skills`, `/cron`, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
-- **What's missing**: Rich interactive session picker, write-side config editor, theme/skin support, gateway status panel
+- **Status**: Basic Ratatui TUI with chat, tools panel, status bar, `/config` sanitized runtime configuration summaries, `/gateway` configured-adapter/channel/lifecycle-event status, `/sessions`, `/skills`, `/cron`, `/history`, `/undo`, `/copy`, shared-catalog slash command autocomplete, `/voice` readiness diagnostics, configurable voice record-key hints, shared audio environment checks, TTS/transcription tool registration with shared `voice.*` config, and continuous push-to-talk voice capture with restart/no-speech exit semantics.
+- **What's missing**: Rich interactive session picker, write-side config editor, theme/skin support
 - **Hermes reference**: `ui-tui/` (Ink/React), `tui_gateway/`, `hermes_cli/curses_ui.py`
 
 ### 15. Error Handling
@@ -591,7 +591,7 @@ Generated: 2026-05-31
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~80** (up from ~30)
+**Fully present in Hakimi: ~81** (up from ~30)
 **Partially implemented: ~10**
 **Missing entirely: ~67+**
 
@@ -605,11 +605,11 @@ Generated: 2026-05-31
 7. Kanban dispatcher/swarm completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
-10. TUI config/gateway management surfaces
+10. TUI session picker/config editor/theme surfaces
 
 ---
 
-## IMPLEMENTATION STATUS (Updated: 2026-06-01)
+## IMPLEMENTATION STATUS (Updated: 2026-06-02)
 
 ### Phase 1: Critical Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
@@ -728,9 +728,10 @@ Generated: 2026-05-31
 | 104 | HTTP API Runs Events | `hakimi-server/src/api.rs` | 2 | ✅ `/v1/runs/{id}/events` returns stored queued/running/completed/failed/cancelled lifecycle events as SSE snapshots, and `/v1/capabilities` advertises the events route for external UI discovery |
 | 105 | TUI Cron Manager | `hakimi-tui/src/app.rs`, `hakimi-tui/Cargo.toml` | 5 | ✅ `/cron` now runs locally in the TUI, lists/statuses persistent `~/.hakimi/cron.db` jobs, creates guarded scheduled prompts, and supports pause/resume/run/remove without entering the agent/model loop |
 | 106 | TUI Config Browser | `hakimi-tui/src/{app.rs,main.rs}` | 3 | ✅ `/config [field]` and `/cfg` now render a local sanitized configuration summary for model/runtime/display/compression/safety/integration/voice settings, redacting secret values and staying outside the model loop |
+| 107 | TUI Gateway Status Panel | `hakimi-tui/src/app.rs`, `hakimi-tui/Cargo.toml` | 3 | ✅ `/gateway` and `/gw` now render a local read-only status panel for configured adapters, cached `~/.hakimi/channel_directory.json` targets, lifecycle log paths, and recent `gateway-events.log` entries; `/platforms` maps to the same channel view without entering the agent/model loop |
 
 ### Summary
-- **Total tests**: 1595 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1598 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

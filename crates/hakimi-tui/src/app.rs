@@ -12,6 +12,8 @@ use hakimi_cron::persistence::PersistentCronStore;
 use hakimi_cron::{CronJob, CronRepeat, CronSchedule, parse_schedule, validate_cron_prompt};
 use hakimi_session::{SessionDB, SessionMeta, SessionOps};
 use hakimi_skills::{SkillHub, SkillHubEntry, SkillUsageStore};
+use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 
@@ -28,6 +30,8 @@ const SKILL_BROWSER_MAX_LIMIT: usize = 100;
 const CRON_LIST_DEFAULT_LIMIT: usize = 20;
 const CRON_LIST_MAX_LIMIT: usize = 100;
 const CRON_PROMPT_PREVIEW_CHARS: usize = 96;
+const GATEWAY_EVENTS_DEFAULT_LIMIT: usize = 8;
+const GATEWAY_EVENTS_MAX_LIMIT: usize = 50;
 const COMPLETION_HINT_LIMIT: usize = 5;
 const COMPLETION_HINT_CHARS: usize = 96;
 const VOICE_MAX_CONSECUTIVE_NO_SPEECH: u8 = 3;
@@ -192,6 +196,263 @@ fn enabled_gateway_names(config: &HakimiConfig) -> Vec<String> {
         names.push("feishu".to_string());
     }
     names
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TuiGatewayStatus {
+    enabled_gateways: Vec<String>,
+    allow_all: bool,
+    allowed_users: usize,
+    filter_silence_narration: bool,
+    channel_directory_path: PathBuf,
+    events_log_path: PathBuf,
+}
+
+impl Default for TuiGatewayStatus {
+    fn default() -> Self {
+        Self::from_config(&HakimiConfig::default())
+    }
+}
+
+impl TuiGatewayStatus {
+    pub fn from_config(config: &HakimiConfig) -> Self {
+        Self {
+            enabled_gateways: enabled_gateway_names(config),
+            allow_all: config.gateways.allow_all,
+            allowed_users: config.gateways.allowed_users.len(),
+            filter_silence_narration: config.gateways.filter_silence_narration,
+            channel_directory_path: hakimi_tools::channel_directory_path(),
+            events_log_path: hakimi_gateway::gateway_events_log_path(),
+        }
+    }
+
+    pub fn with_paths(
+        mut self,
+        channel_directory_path: impl Into<PathBuf>,
+        events_log_path: impl Into<PathBuf>,
+    ) -> Self {
+        self.channel_directory_path = channel_directory_path.into();
+        self.events_log_path = events_log_path.into();
+        self
+    }
+
+    fn enabled_gateways_label(&self) -> String {
+        format_name_list(self.enabled_gateways.clone())
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct TuiChannelDirectory {
+    #[serde(default)]
+    updated_at: Option<String>,
+    #[serde(default)]
+    platforms: BTreeMap<String, Vec<hakimi_tools::ChannelDirectoryEntry>>,
+}
+
+fn load_tui_channel_directory(path: &Path) -> Result<Option<TuiChannelDirectory>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let contents = std::fs::read_to_string(path).map_err(|err| {
+        format!(
+            "Failed to read channel directory `{}`: {err}",
+            path.display()
+        )
+    })?;
+    serde_json::from_str::<TuiChannelDirectory>(&contents)
+        .map(Some)
+        .map_err(|err| {
+            format!(
+                "Failed to parse channel directory `{}`: {err}",
+                path.display()
+            )
+        })
+}
+
+fn gateway_target_label(platform: &str, entry: &hakimi_tools::ChannelDirectoryEntry) -> String {
+    if platform == "discord" && !entry.channel_type.trim().is_empty() {
+        format!("#{}", entry.name.trim_start_matches('#'))
+    } else if entry.name.trim().is_empty() {
+        entry.id.clone()
+    } else {
+        entry.name.clone()
+    }
+}
+
+fn render_tui_gateway_channels(status: &TuiGatewayStatus) -> String {
+    let directory = match load_tui_channel_directory(&status.channel_directory_path) {
+        Ok(Some(directory)) => directory,
+        Ok(None) => {
+            return format!(
+                "No cached gateway channel directory found at `{}`.\nStart the gateway or use send_message(action=\"list\") after gateway startup to populate it.",
+                status.channel_directory_path.display()
+            );
+        }
+        Err(message) => return message,
+    };
+
+    let total_targets = directory.platforms.values().map(Vec::len).sum::<usize>();
+    if total_targets == 0 {
+        return format!(
+            "No cached gateway channels found in `{}`.",
+            status.channel_directory_path.display()
+        );
+    }
+
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "Gateway channels: {total_targets} cached targets across {} platforms",
+        directory.platforms.len()
+    ));
+    lines.push(format!(
+        "Directory: {}",
+        status.channel_directory_path.display()
+    ));
+    if let Some(updated_at) = directory.updated_at.as_deref() {
+        lines.push(format!("Updated: {updated_at}"));
+    }
+    lines.push(String::new());
+
+    for (platform, entries) in directory.platforms {
+        if entries.is_empty() {
+            continue;
+        }
+        lines.push(format!("{platform}:"));
+        for entry in entries {
+            let kind = if entry.channel_type.trim().is_empty() {
+                "channel"
+            } else {
+                entry.channel_type.trim()
+            };
+            let home = if entry.is_home { " home" } else { "" };
+            let bot = if entry.bot_id.trim().is_empty() {
+                String::new()
+            } else {
+                format!(" bot={}", entry.bot_id.trim())
+            };
+            lines.push(format!(
+                "  {platform}:{} -> {} ({kind}{home}{bot})",
+                gateway_target_label(&platform, &entry),
+                compact_one_line(&entry.id, 96)
+            ));
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn parse_gateway_events_limit(raw: Option<&str>) -> Result<usize, String> {
+    let value = raw.unwrap_or_default().trim();
+    if value.is_empty() {
+        return Ok(GATEWAY_EVENTS_DEFAULT_LIMIT);
+    }
+    match value.parse::<usize>() {
+        Ok(limit) if (1..=GATEWAY_EVENTS_MAX_LIMIT).contains(&limit) => Ok(limit),
+        _ => Err(format!(
+            "usage: /gateway events [1-{GATEWAY_EVENTS_MAX_LIMIT}]"
+        )),
+    }
+}
+
+fn render_tui_gateway_events(status: &TuiGatewayStatus, raw_limit: Option<&str>) -> String {
+    let limit = match parse_gateway_events_limit(raw_limit) {
+        Ok(limit) => limit,
+        Err(message) => return message,
+    };
+    match hakimi_gateway::read_recent_lines(&status.events_log_path, limit) {
+        Ok(events) if events.trim().is_empty() => format!(
+            "No gateway lifecycle events found at `{}`.",
+            status.events_log_path.display()
+        ),
+        Ok(events) => format!(
+            "Recent gateway lifecycle events (last {limit}):\n{}\n\nLog: {}",
+            events,
+            status.events_log_path.display()
+        ),
+        Err(err) => format!(
+            "Failed to read gateway lifecycle events `{}`: {err}",
+            status.events_log_path.display()
+        ),
+    }
+}
+
+fn render_tui_gateway_summary(status: &TuiGatewayStatus) -> String {
+    let channel_summary = match load_tui_channel_directory(&status.channel_directory_path) {
+        Ok(Some(directory)) => {
+            let target_count = directory.platforms.values().map(Vec::len).sum::<usize>();
+            format!(
+                "{} platforms, {} targets",
+                directory.platforms.len(),
+                target_count
+            )
+        }
+        Ok(None) => "not cached".to_string(),
+        Err(_) => "unreadable".to_string(),
+    };
+    let events_summary = match hakimi_gateway::read_recent_lines(&status.events_log_path, 1) {
+        Ok(events) if events.trim().is_empty() => "no events".to_string(),
+        Ok(_) => "events present".to_string(),
+        Err(_) => "unreadable".to_string(),
+    };
+
+    [
+        "Hakimi TUI gateway status:".to_string(),
+        format!("configured adapters: {}", status.enabled_gateways_label()),
+        format!(
+            "access policy: allow_all={} allowed_users={} silence_filter={}",
+            on_off(status.allow_all),
+            status.allowed_users,
+            on_off(status.filter_silence_narration)
+        ),
+        format!(
+            "channels: {channel_summary} ({})",
+            status.channel_directory_path.display()
+        ),
+        format!(
+            "lifecycle log: {events_summary} ({})",
+            status.events_log_path.display()
+        ),
+        "Use `/gateway channels`, `/gateway events [N]`, `/gateway config`, or `/gateway path` for details.".to_string(),
+    ]
+    .join("\n")
+}
+
+fn render_tui_gateway_config(status: &TuiGatewayStatus) -> String {
+    [
+        "Gateway config summary:".to_string(),
+        format!("configured adapters: {}", status.enabled_gateways_label()),
+        format!("allow_all: {}", on_off(status.allow_all)),
+        format!("allowed_users: {}", status.allowed_users),
+        format!(
+            "filter_silence_narration: {}",
+            on_off(status.filter_silence_narration)
+        ),
+        "This TUI surface is read-only; use config.yaml or gateway CLI commands for changes."
+            .to_string(),
+    ]
+    .join("\n")
+}
+
+fn render_tui_gateway_command(arg: Option<&str>, status: &TuiGatewayStatus) -> String {
+    let raw = arg.unwrap_or_default().trim();
+    let (action, rest) = match raw.split_once(char::is_whitespace) {
+        Some((action, rest)) => (action, Some(rest.trim())),
+        None if raw.is_empty() => ("status", None),
+        None => (raw, None),
+    };
+
+    match action.to_ascii_lowercase().as_str() {
+        "" | "status" | "summary" | "show" => render_tui_gateway_summary(status),
+        "channels" | "channel" | "targets" | "directory" => render_tui_gateway_channels(status),
+        "events" | "event" | "logs" | "log" => render_tui_gateway_events(status, rest),
+        "config" => render_tui_gateway_config(status),
+        "path" | "paths" => format!(
+            "Gateway paths:\nchannel_directory: {}\nlifecycle_log: {}",
+            status.channel_directory_path.display(),
+            status.events_log_path.display()
+        ),
+        _ => "Usage: /gateway [status|channels|events [N]|config|path]".to_string(),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1567,6 +1828,7 @@ enum TuiCommand {
     Undo(Option<String>),
     Skills(Option<String>),
     Cron(Option<String>),
+    Gateway(Option<String>),
     Copy(Option<String>),
     Checkpoints(Option<String>),
     Clear,
@@ -1590,6 +1852,10 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "undo" => Some(TuiCommand::Undo(arg)),
         "skills" => Some(TuiCommand::Skills(arg)),
         "cron" => Some(TuiCommand::Cron(arg)),
+        "gateway" => Some(TuiCommand::Gateway(arg)),
+        "platforms" => Some(TuiCommand::Gateway(Some(
+            arg.unwrap_or_else(|| "channels".to_string()),
+        ))),
         "copy" => Some(TuiCommand::Copy(arg)),
         "checkpoints" => Some(TuiCommand::Checkpoints(arg)),
         "clear" => Some(TuiCommand::Clear),
@@ -1636,6 +1902,8 @@ pub struct App {
     pub skills_dir_path: PathBuf,
     /// Local cron database used by TUI cron management commands.
     pub cron_db_path: PathBuf,
+    /// Local read-only gateway status paths and config summary.
+    pub gateway_status: TuiGatewayStatus,
     /// Sanitized snapshot of the current TUI configuration.
     pub config_summary: TuiConfigSummary,
     /// Total tokens used this session.
@@ -1680,6 +1948,7 @@ impl App {
             session_db_path: default_session_db_path(),
             skills_dir_path: default_skills_dir_path(),
             cron_db_path: default_cron_db_path(),
+            gateway_status: TuiGatewayStatus::default(),
             config_summary,
             total_tokens: 0,
             api_calls: 0,
@@ -1695,6 +1964,12 @@ impl App {
     pub fn with_config(mut self, config: &HakimiConfig) -> Self {
         self.config_summary =
             TuiConfigSummary::from_config(config, &self.model_name, default_config_path());
+        self.gateway_status = TuiGatewayStatus::from_config(config);
+        self
+    }
+
+    pub fn with_gateway_status(mut self, status: TuiGatewayStatus) -> Self {
+        self.gateway_status = status;
         self
     }
 
@@ -1916,7 +2191,7 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
+                    "Commands:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
                 ));
             }
             Some(TuiCommand::Config(arg)) => {
@@ -1966,6 +2241,10 @@ impl App {
             }
             Some(TuiCommand::Cron(arg)) => {
                 let output = render_tui_cron_command(arg.as_deref(), &self.cron_db_path);
+                self.messages.push(ChatMessage::system(output));
+            }
+            Some(TuiCommand::Gateway(arg)) => {
+                let output = render_tui_gateway_command(arg.as_deref(), &self.gateway_status);
                 self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::Copy(arg)) => {
@@ -2404,6 +2683,23 @@ mod tests {
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         }
+    }
+
+    fn make_gateway_status() -> (TuiGatewayStatus, PathBuf, PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("hakimi-tui-gateway-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let channel_path = dir.join("channel_directory.json");
+        let events_path = dir.join("gateway-events.log");
+        let mut config = HakimiConfig::default();
+        config.gateways.slack.enabled = true;
+        config.gateways.allowed_users.push("slack:U123".to_string());
+        let status = TuiGatewayStatus::from_config(&config)
+            .with_paths(channel_path.clone(), events_path.clone());
+        (status, channel_path, events_path, dir)
+    }
+
+    fn cleanup_gateway_status_dir(dir: &Path) {
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn make_session_db() -> (SessionDB, String) {
@@ -2910,6 +3206,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_tui_command_accepts_gateway_aliases() {
+        assert_eq!(
+            parse_tui_command("/gw events 2"),
+            Some(TuiCommand::Gateway(Some("events 2".to_string())))
+        );
+        assert_eq!(
+            parse_tui_command("/platforms"),
+            Some(TuiCommand::Gateway(Some("channels".to_string())))
+        );
+    }
+
+    #[test]
     fn render_tui_config_summary_redacts_secrets() {
         let mut config = HakimiConfig::default();
         config.model.default = "anthropic/claude-sonnet-4".to_string();
@@ -2958,6 +3266,66 @@ mod tests {
         assert!(message.content.contains("provider=openrouter"));
         assert!(cmd_rx.try_recv().is_err());
         assert!(!app.is_thinking);
+    }
+
+    #[test]
+    fn render_tui_gateway_channels_reads_cached_directory() {
+        let (status, channel_path, _events_path, dir) = make_gateway_status();
+        std::fs::write(
+            &channel_path,
+            r#"{
+  "updated_at": "2026-06-02T08:00:00Z",
+  "platforms": {
+    "slack": [
+      {
+        "platform": "slack",
+        "id": "C123456789",
+        "name": "home",
+        "bot_id": "slack",
+        "type": "home",
+        "is_home": true
+      }
+    ]
+  }
+}"#,
+        )
+        .unwrap();
+
+        let output = render_tui_gateway_command(Some("channels"), &status);
+
+        assert!(output.contains("Gateway channels: 1 cached targets"));
+        assert!(output.contains("slack:home -> C123456789"));
+        assert!(output.contains("Updated: 2026-06-02T08:00:00Z"));
+
+        cleanup_gateway_status_dir(&dir);
+    }
+
+    #[test]
+    fn slash_gateway_events_uses_local_status_without_model_call() {
+        let (status, _channel_path, events_path, dir) = make_gateway_status();
+        std::fs::write(
+            &events_path,
+            "ts=1 event=connect.start platform=slack bot_id=slack chat_id=- detail=starting\n\
+             ts=2 event=route.success platform=slack bot_id=slack chat_id=C123 detail=delivered\n",
+        )
+        .unwrap();
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app = app.with_gateway_status(status);
+
+        for c in "/gateway events 1".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("Recent gateway lifecycle events"));
+        assert!(message.content.contains("route.success"));
+        assert!(!message.content.contains("connect.start"));
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(!app.is_thinking);
+
+        cleanup_gateway_status_dir(&dir);
     }
 
     #[test]
