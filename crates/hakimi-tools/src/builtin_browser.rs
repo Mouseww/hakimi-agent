@@ -371,6 +371,7 @@ fn resolve_browser_cdp_endpoint(args: &JsonValue) -> Option<BrowserCdpEndpoint> 
         })
 }
 
+#[cfg(test)]
 fn resolve_browser_cdp_endpoint_from_sources(
     args: &JsonValue,
     generic_pairs: impl IntoIterator<Item = (&'static str, Option<String>)>,
