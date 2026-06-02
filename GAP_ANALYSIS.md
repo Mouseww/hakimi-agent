@@ -30,7 +30,7 @@ Generated: 2026-06-02
 - **Home Assistant tools** — `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` via HA REST API with guarded service calls
 - **video_analyze** — Video analysis request payloads for HTTP/HTTPS, `file://`, and local video files with MIME detection and size guardrails
 - **Browser automation (basic)** — Optional `browser` feature with shared Chromium session controls, explicit browser executable env support, and Playwright `chromium-*` / `chromium_headless_shell-*` cache discovery: `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_back`, `browser_press`, `browser_get_images`, `browser_console`, `browser_dialog`, `browser_screenshot`, and `browser_vision`
-- **Kanban tools (basic)** — `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim` persist tasks, comments, status transitions, liveness, dependency links, event trails, diagnostics, profile routing, worker logs, notification subscriptions, unread claim cursors, and isolated board routing in SQLite
+- **Kanban tools (basic)** — `kanban_show`, `kanban_list`, `kanban_create`, `kanban_swarm_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim` persist tasks, swarm graphs, comments, status transitions, liveness, dependency links, event trails, diagnostics, profile routing, worker logs, notification subscriptions, unread claim cursors, and isolated board routing in SQLite
 
 ### Runtime Environment
 - **Linux install/gateway path hygiene** — The real binary stays under `~/.hakimi/bin/hakimi`, `/usr/local/bin/hakimi` is maintained as a symlink/launcher, and managed systemd gateway units prefer the canonical binary path with a stable service PATH (`~/.hakimi/bin:~/.cargo/bin:/usr/local/bin:/usr/bin:/bin`).
@@ -234,7 +234,7 @@ Generated: 2026-06-02
 #### 12. Kanban Multi-Agent Coordination
 - **What**: Durable SQLite-backed board for multi-agent task collaboration
 - **Hermes location**: `tools/kanban_tools.py`, `hermes_cli/kanban.py`, `hermes_cli/kanban_db.py`
-- **Details**: Hakimi now covers 17 Hermes-aligned structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat/events/diagnostics/assign/worker-log/notify operations, explicit board routing, profile/assignee routing, durable worker logs, notification subscriptions with unread claim cursors, and `/kanban boards list|show|create|switch` on isolated SQLite boards. Remaining parity is dispatcher-spawned workers, swarm creation, and dashboard-level management.
+- **Details**: Hakimi now covers 18 Hermes-aligned structured tool calls plus gateway `/kanban` CRUD/status/link/heartbeat/events/diagnostics/assign/worker-log/notify/swarm operations, explicit board routing, profile/assignee routing, durable worker logs, notification subscriptions with unread claim cursors, Hermes-style swarm topology creation, and `/kanban boards list|show|create|switch` on isolated SQLite boards. Remaining parity is dispatcher-spawned workers and dashboard-level management.
 - **Priority**: **High** — Multi-agent orchestration
 
 #### 13. Gateway Platform Adapters (5+ missing)
@@ -509,8 +509,8 @@ Generated: 2026-06-02
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
 ### 3. Kanban Multi-Agent Coordination
-- **Status**: SQLite-backed tasks/comments/dependency links/events exist, and the agent tool surface exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim`; gateway `/kanban` now performs real board operations, supports explicit `--board <slug>` routing, exposes event trails/diagnostics, routes tasks to profiles/assignees, persists durable worker logs, tracks durable notification subscriptions, advances unread claim cursors, and provides `/kanban boards list|show|create|switch` for isolated board selection.
-- **What's missing**: dispatcher-spawned workers, swarm creation, and dashboard-level management.
+- **Status**: SQLite-backed tasks/comments/dependency links/events exist, and the agent tool surface exposes `kanban_show`, `kanban_list`, `kanban_create`, `kanban_swarm_create`, `kanban_complete`, `kanban_block`, `kanban_unblock`, `kanban_comment`, `kanban_heartbeat`, `kanban_link`, `kanban_events`, `kanban_diagnostics`, `kanban_assign`, `kanban_worker_log`, `kanban_notify_subscribe`, `kanban_notify_list`, `kanban_notify_unsubscribe`, and `kanban_notify_claim`; gateway `/kanban` now performs real board operations, supports explicit `--board <slug>` routing, exposes event trails/diagnostics, routes tasks to profiles/assignees, creates Hermes-style swarm root/worker/verifier/synthesizer graphs, persists durable worker logs, tracks durable notification subscriptions, advances unread claim cursors, and provides `/kanban boards list|show|create|switch` for isolated board selection.
+- **What's missing**: dispatcher-spawned workers and dashboard-level management.
 - **Hermes reference**: `tools/kanban_tools.py`, `hermes_cli/kanban.py`, `hermes_cli/kanban_db.py`
 
 ### 4. MCP Client
@@ -535,7 +535,7 @@ Generated: 2026-06-02
 
 ### 8. CLI Commands
 - **Status**: 39 个 slash 命令可解析；gateway 已具备 `/cron` 管理、`/plugins`、`/profile`、`/mcp list`、`/kanban` 基础看板操作、`/memory`、`/undo`、基于真实 shadow-git store 的 `/checkpoints`、`/logs`、`/platforms`、`/providers` 等基础响应；顶层 CLI 已覆盖 `doctor`、`setup`、`cron`、`plugins`、`profile`
-- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher/board/swarm 管理面
+- **What's missing**: 大量命令仍停留在占位文本或只读视图，尤其是 `/setup`、`/mcp` 等尚未形成与 Hermes 对齐的完整管理闭环；`/kanban` 仍缺少 Hermes 的完整 dispatcher 与 dashboard 管理面
 - **Hermes reference**: `hermes_cli/commands.py` (central COMMAND_REGISTRY)
 
 ### 10. Delegation
@@ -601,7 +601,7 @@ Generated: 2026-06-02
 4. CLI command completeness (32+ missing commands)
 5. Bedrock transport
 6. ACP adapter / IDE integration
-7. Kanban dispatcher/swarm completion
+7. Kanban dispatcher/dashboard completion
 8. Remote MCP sampling + richer server-initiated flows
 9. Observability / usage pricing and account usage display
 10. TUI session picker/config editor/theme surfaces
@@ -681,7 +681,7 @@ Generated: 2026-06-02
 | 58 | Skills Hub Live Source Adapters | `hakimi-skills/src/hub.rs`, `hakimi-cli/src/skills.rs` | 3 | ✅ Source refresh accepts `github:owner/repo/path`, GitHub tree URLs, and `well-known:domain`, discovers GitHub `SKILL.md` directories through safe Contents API calls, extracts frontmatter metadata, and caches them through the existing hub index path |
 | 59 | URL Safety for Web/Media Fetches | `hakimi-tools/src/url_safety.rs`, `hakimi-tools/src/{builtin_web_extract,builtin_vision_analyze,builtin_video_analyze}.rs` | 10 | ✅ Web/media tools reject localhost/private/link-local/CGNAT/metadata targets before fetch and stop unsafe redirects; trusted local deployments can opt into private targets while metadata endpoints stay blocked, including bracketed IPv6 literals and IPv4-mapped metadata addresses |
 | 60 | Tirith-Style Command Content Guard | `hakimi-tools/src/command_safety.rs`, `hakimi-tools/src/{builtin_terminal,builtin_process}.rs` | 13 | ✅ Terminal/process shell boundaries block remote script pipe/substitution, encoded shell payload, terminal control-character, invisible/bidirectional Unicode, Unicode URL-host, sudo-stdin, and catastrophic host-command payloads before spawning |
-| 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 24 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, event trails, diagnostics, profile routing, worker logs, 17 Hermes-aligned `kanban_*` tools, gateway `/kanban` CRUD/status/link/events/diagnostics/assign/worker-log/notify operations, durable notification subscriptions, unread claim cursors, and isolated board routing |
+| 61 | Kanban Board Tool Surface | `hakimi-tools/src/builtin_kanban.rs`, `hakimi-cli/src/entry.rs`, server/TUI registration | 26 | ✅ SQLite-backed tasks, comments, status transitions, dependency links, heartbeats, event trails, diagnostics, profile routing, worker logs, 18 Hermes-aligned `kanban_*` tools including `kanban_swarm_create`, gateway `/kanban` CRUD/status/link/events/diagnostics/assign/worker-log/notify/swarm operations, durable notification subscriptions, unread claim cursors, swarm graph creation, and isolated board routing |
 | 62 | Compact Read-File Gutter | `hakimi-tools/src/builtin_read_file.rs` | 1 | ✅ `read_file` matches Hermes latest compact `N|content` line-number format and no longer emits fixed-width padded gutters |
 | 63 | Credential Pool Dead-Entry Cleanup | `hakimi-core/src/credential_pool.rs`, `hakimi-config/src/config.rs` | 3 | ✅ Dead credentials carry status timestamps; stale dead manual entries prune after 24h while singleton-seeded OAuth entries stay quarantined for explicit re-auth sync |
 | 64 | TUI Slash Command Autocomplete | `hakimi-common/src/slash_commands.rs`, `hakimi-cli/src/lib.rs`, `hakimi-tui/src/app.rs`, `hakimi-tui/src/ui.rs` | 14 | ✅ Shared slash command catalog, alias-aware parser, Tab completion for command prefixes, bounded ambiguous-match hints, and preserved Tab tools-panel toggling for normal input |
@@ -734,7 +734,7 @@ Generated: 2026-06-02
 | 110 | Onboarding Hints | `hakimi-config/src/config.rs`, `hakimi-cli/src/onboarding.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Hermes-style first-touch hints persist `onboarding.seen` flags, detect legacy `~/.openclaw/` state at local interactive startup, and show a one-time gateway concurrent-input `/stop` tip without repeating in later turns |
 
 ### Summary
-- **Total tests**: 1630 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1632 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

@@ -17,6 +17,7 @@ const MAX_LIMIT: usize = 200;
 const DEFAULT_LOG_TAIL_BYTES: usize = 16 * 1024;
 const MAX_LOG_TAIL_BYTES: usize = 128 * 1024;
 const DEFAULT_BOARD: &str = "default";
+const SWARM_BLACKBOARD_PREFIX: &str = "[swarm:blackboard] ";
 const DEFAULT_NOTIFY_EVENT_KINDS: &[&str] =
     &["completed", "blocked", "gave_up", "crashed", "timed_out"];
 const VALID_STATUSES: &[&str] = &[
@@ -192,6 +193,34 @@ struct NotifyTarget {
     chat_id: String,
     thread_id: Option<String>,
     notifier_profile: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SwarmWorkerSpec {
+    profile: String,
+    title: String,
+    body: Option<String>,
+    skills: Vec<String>,
+    priority: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+struct CreateSwarm {
+    goal: String,
+    workers: Vec<SwarmWorkerSpec>,
+    verifier_profile: String,
+    synthesizer_profile: String,
+    root_title: Option<String>,
+    priority: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KanbanSwarmCreated {
+    pub root_id: String,
+    pub worker_ids: Vec<String>,
+    pub verifier_id: String,
+    pub synthesizer_id: String,
+    pub blackboard_prefix: &'static str,
 }
 
 pub struct KanbanStore {
@@ -612,6 +641,146 @@ impl KanbanStore {
             })),
         )?;
         Ok(link)
+    }
+
+    fn create_swarm(&self, input: CreateSwarm) -> Result<KanbanSwarmCreated> {
+        let goal = required_text(&input.goal, "swarm goal")?;
+        if input.workers.is_empty() {
+            return Err(HakimiError::Tool(
+                "kanban swarm requires at least one worker".into(),
+            ));
+        }
+
+        let verifier_profile = require_profile_text(&input.verifier_profile, "verifier_profile")?;
+        let synthesizer_profile =
+            require_profile_text(&input.synthesizer_profile, "synthesizer_profile")?;
+        let title = input
+            .root_title
+            .as_deref()
+            .and_then(non_empty_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| swarm_root_title(goal));
+        let root = self.create_task(CreateTask {
+            title,
+            body: Some(format!(
+                "Kanban Swarm v1 planning/root card. This card is completed immediately so parallel workers can start while it remains the shared blackboard and audit anchor.\n\nGoal:\n{goal}"
+            )),
+            assignee: Some("swarm-orchestrator".to_string()),
+            status: "todo".to_string(),
+            priority: input.priority,
+        })?;
+        self.complete_task(
+            &root.id,
+            Some("Swarm topology planned; root remains the shared blackboard."),
+        )?;
+
+        let context_suffix = swarm_context(&root.id, goal);
+        let mut worker_ids = Vec::new();
+        let mut worker_payload = Vec::new();
+        for (index, spec) in input.workers.iter().enumerate() {
+            let profile = require_profile_text(&spec.profile, "worker.profile")?;
+            let worker_title = required_text(&spec.title, "worker.title")?;
+            let body = spec
+                .body
+                .as_deref()
+                .and_then(non_empty_str)
+                .unwrap_or(worker_title);
+            let skills_note = if spec.skills.is_empty() {
+                String::new()
+            } else {
+                format!("\nSuggested skills: {}", spec.skills.join(", "))
+            };
+            let worker = self.create_task(CreateTask {
+                title: worker_title.to_string(),
+                body: Some(format!("{body}{skills_note}{context_suffix}")),
+                assignee: Some(profile.to_string()),
+                status: "ready".to_string(),
+                priority: spec.priority.unwrap_or(input.priority),
+            })?;
+            self.link_tasks(&root.id, &worker.id, Some("swarm_worker"))?;
+            worker_payload.push(json!({
+                "id": worker.id.as_str(),
+                "profile": profile,
+                "title": worker_title,
+                "skills": &spec.skills,
+                "index": index,
+            }));
+            worker_ids.push(worker.id);
+        }
+
+        let verifier = self.create_task(CreateTask {
+            title: "Verify swarm outputs".to_string(),
+            body: Some(format!(
+                "Review every worker handoff and blackboard update. Complete only when evidence is sufficient; otherwise block with exact missing work.{context_suffix}"
+            )),
+            assignee: Some(verifier_profile.to_string()),
+            status: "todo".to_string(),
+            priority: input.priority,
+        })?;
+        for worker_id in &worker_ids {
+            self.link_tasks(worker_id, &verifier.id, Some("swarm_verifier_gate"))?;
+        }
+
+        let synthesizer = self.create_task(CreateTask {
+            title: "Synthesize swarm outputs".to_string(),
+            body: Some(format!(
+                "Synthesize the verified worker outputs into the final deliverable. Do not start until the verifier has passed the gate.{context_suffix}"
+            )),
+            assignee: Some(synthesizer_profile.to_string()),
+            status: "todo".to_string(),
+            priority: input.priority,
+        })?;
+        self.link_tasks(&verifier.id, &synthesizer.id, Some("swarm_synthesis_gate"))?;
+
+        let created = KanbanSwarmCreated {
+            root_id: root.id,
+            worker_ids,
+            verifier_id: verifier.id,
+            synthesizer_id: synthesizer.id,
+            blackboard_prefix: SWARM_BLACKBOARD_PREFIX,
+        };
+        let topology = json!({
+            "kind": "kanban_swarm_v1",
+            "goal": goal,
+            "root_id": created.root_id.as_str(),
+            "worker_ids": &created.worker_ids,
+            "workers": worker_payload,
+            "verifier_id": created.verifier_id.as_str(),
+            "verifier_profile": verifier_profile,
+            "synthesizer_id": created.synthesizer_id.as_str(),
+            "synthesizer_profile": synthesizer_profile,
+        });
+        self.add_swarm_blackboard_update(
+            &created.root_id,
+            "swarm-orchestrator",
+            "topology",
+            topology.clone(),
+        )?;
+        self.record_event(
+            &created.root_id,
+            "swarm_created",
+            Some("swarm-orchestrator"),
+            Some(goal),
+            Some(topology),
+        )?;
+        Ok(created)
+    }
+
+    fn add_swarm_blackboard_update(
+        &self,
+        root_id: &str,
+        author: &str,
+        key: &str,
+        value: JsonValue,
+    ) -> Result<KanbanComment> {
+        let key = required_text(key, "blackboard key")?;
+        let payload = serde_json::to_string(&json!({"key": key, "value": value}))
+            .map_err(|err| HakimiError::Tool(format!("kanban swarm payload error: {err}")))?;
+        self.add_comment(
+            root_id,
+            &format!("{SWARM_BLACKBOARD_PREFIX}{payload}"),
+            Some(author),
+        )
     }
 
     fn update_status(
@@ -1211,6 +1380,7 @@ enum KanbanToolKind {
     Show,
     List,
     Create,
+    SwarmCreate,
     Complete,
     Block,
     Unblock,
@@ -1242,6 +1412,7 @@ pub fn kanban_tools() -> Vec<Arc<dyn Tool>> {
         Arc::new(KanbanTool::new(KanbanToolKind::Show)),
         Arc::new(KanbanTool::new(KanbanToolKind::List)),
         Arc::new(KanbanTool::new(KanbanToolKind::Create)),
+        Arc::new(KanbanTool::new(KanbanToolKind::SwarmCreate)),
         Arc::new(KanbanTool::new(KanbanToolKind::Complete)),
         Arc::new(KanbanTool::new(KanbanToolKind::Block)),
         Arc::new(KanbanTool::new(KanbanToolKind::Unblock)),
@@ -1266,6 +1437,7 @@ impl Tool for KanbanTool {
             KanbanToolKind::Show => "kanban_show",
             KanbanToolKind::List => "kanban_list",
             KanbanToolKind::Create => "kanban_create",
+            KanbanToolKind::SwarmCreate => "kanban_swarm_create",
             KanbanToolKind::Complete => "kanban_complete",
             KanbanToolKind::Block => "kanban_block",
             KanbanToolKind::Unblock => "kanban_unblock",
@@ -1292,6 +1464,9 @@ impl Tool for KanbanTool {
             KanbanToolKind::Show => "Show a Kanban task with comments and dependency links.",
             KanbanToolKind::List => "List durable Kanban tasks with status and assignee filters.",
             KanbanToolKind::Create => "Create a durable SQLite-backed Kanban task.",
+            KanbanToolKind::SwarmCreate => {
+                "Create a Hermes-style Kanban swarm graph with parallel workers, verifier, synthesizer, and blackboard."
+            }
             KanbanToolKind::Complete => {
                 "Mark a Kanban task done and optionally append a handoff summary."
             }
@@ -1321,6 +1496,7 @@ impl Tool for KanbanTool {
 
     fn emoji(&self) -> &str {
         match self.kind {
+            KanbanToolKind::SwarmCreate => "\u{1f578}",
             KanbanToolKind::Complete => "\u{2714}",
             KanbanToolKind::Block => "\u{23f8}",
             KanbanToolKind::Unblock => "\u{25b6}",
@@ -1369,6 +1545,33 @@ impl Tool for KanbanTool {
                     "board": board_schema_prop()
                 },
                 "required": ["title"]
+            }),
+            KanbanToolKind::SwarmCreate => json!({
+                "type": "object",
+                "properties": {
+                    "goal": {"type": "string"},
+                    "workers": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "profile": {"type": "string"},
+                                "title": {"type": "string"},
+                                "body": {"type": "string"},
+                                "skills": {"type": "array", "items": {"type": "string"}},
+                                "priority": {"type": "integer"}
+                            },
+                            "required": ["profile", "title"]
+                        }
+                    },
+                    "verifier_profile": {"type": "string"},
+                    "synthesizer_profile": {"type": "string"},
+                    "root_title": {"type": "string"},
+                    "priority": {"type": "integer"},
+                    "board": board_schema_prop()
+                },
+                "required": ["goal", "workers", "verifier_profile", "synthesizer_profile"]
             }),
             KanbanToolKind::Complete => task_id_note_schema("summary"),
             KanbanToolKind::Block => json!({
@@ -1520,6 +1723,10 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                 status: "todo".to_string(),
                 priority: 0,
             }))
+        }
+        "swarm" => {
+            let args = parts.collect::<Vec<_>>();
+            json_result(create_swarm_from_slash(store, &args))
         }
         "complete" => match parts.next() {
             Some(task_id) => {
@@ -1714,6 +1921,9 @@ fn execute_kanban_tool(
                 }),
             )
         }
+        KanbanToolKind::SwarmCreate => {
+            json_result(store.create_swarm(create_swarm_from_args(args)?))
+        }
         KanbanToolKind::Complete => {
             let task_id = require_str(args, "task_id")?;
             let summary = args.get("summary").and_then(JsonValue::as_str);
@@ -1842,6 +2052,173 @@ fn require_str<'a>(args: &'a JsonValue, name: &str) -> Result<&'a str> {
         .ok_or_else(|| HakimiError::Tool(format!("missing required parameter: {name}")))
 }
 
+fn create_swarm_from_args(args: &JsonValue) -> Result<CreateSwarm> {
+    let workers = args
+        .get("workers")
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| HakimiError::Tool("missing required parameter: workers".into()))?
+        .iter()
+        .map(swarm_worker_from_value)
+        .collect::<Result<Vec<_>>>()?;
+    Ok(CreateSwarm {
+        goal: require_str(args, "goal")?.to_string(),
+        workers,
+        verifier_profile: require_str(args, "verifier_profile")?.to_string(),
+        synthesizer_profile: require_str(args, "synthesizer_profile")?.to_string(),
+        root_title: args
+            .get("root_title")
+            .and_then(JsonValue::as_str)
+            .map(str::to_string),
+        priority: args
+            .get("priority")
+            .and_then(JsonValue::as_i64)
+            .unwrap_or(0),
+    })
+}
+
+fn swarm_worker_from_value(value: &JsonValue) -> Result<SwarmWorkerSpec> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| HakimiError::Tool("kanban swarm worker must be an object".into()))?;
+    let profile = object
+        .get("profile")
+        .and_then(JsonValue::as_str)
+        .and_then(non_empty_str)
+        .ok_or_else(|| HakimiError::Tool("kanban swarm worker profile is required".into()))?;
+    let title = object
+        .get("title")
+        .and_then(JsonValue::as_str)
+        .and_then(non_empty_str)
+        .ok_or_else(|| HakimiError::Tool("kanban swarm worker title is required".into()))?;
+    let skills = object
+        .get("skills")
+        .and_then(JsonValue::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(JsonValue::as_str)
+                .filter_map(non_empty_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok(SwarmWorkerSpec {
+        profile: profile.to_string(),
+        title: title.to_string(),
+        body: object
+            .get("body")
+            .and_then(JsonValue::as_str)
+            .map(str::to_string),
+        skills,
+        priority: object.get("priority").and_then(JsonValue::as_i64),
+    })
+}
+
+fn create_swarm_from_slash(store: &KanbanStore, args: &[&str]) -> Result<KanbanSwarmCreated> {
+    let mut workers = Vec::new();
+    let mut verifier_profile = None;
+    let mut synthesizer_profile = None;
+    let mut root_title = None;
+    let mut priority = 0;
+    let mut goal_parts = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index] {
+            "--worker" | "-w" => {
+                index += 1;
+                let raw = args.get(index).copied().ok_or_else(|| {
+                    HakimiError::Tool(
+                        "usage: /kanban swarm --worker <profile:title[:skill,skill]> --verifier <profile> --synthesizer <profile> <goal>".into(),
+                    )
+                })?;
+                workers.push(parse_swarm_worker(raw)?);
+            }
+            "--verifier" => {
+                index += 1;
+                verifier_profile = args.get(index).copied().map(str::to_string);
+            }
+            "--synthesizer" => {
+                index += 1;
+                synthesizer_profile = args.get(index).copied().map(str::to_string);
+            }
+            "--root-title" => {
+                index += 1;
+                root_title = args.get(index).copied().map(str::to_string);
+            }
+            "--priority" => {
+                index += 1;
+                let raw = args.get(index).copied().ok_or_else(|| {
+                    HakimiError::Tool("usage: /kanban swarm --priority <integer>".into())
+                })?;
+                priority = raw.parse::<i64>().map_err(|_| {
+                    HakimiError::Tool("kanban swarm priority must be an integer".into())
+                })?;
+            }
+            value => goal_parts.push(value),
+        }
+        index += 1;
+    }
+    store.create_swarm(CreateSwarm {
+        goal: goal_parts.join(" "),
+        workers,
+        verifier_profile: verifier_profile.unwrap_or_default(),
+        synthesizer_profile: synthesizer_profile.unwrap_or_default(),
+        root_title,
+        priority,
+    })
+}
+
+fn parse_swarm_worker(raw: &str) -> Result<SwarmWorkerSpec> {
+    let mut parts = raw.splitn(3, ':').map(str::trim);
+    let profile = parts
+        .next()
+        .and_then(non_empty_str)
+        .ok_or_else(|| HakimiError::Tool("kanban swarm worker profile is required".into()))?;
+    let title = parts.next().and_then(non_empty_str).ok_or_else(|| {
+        HakimiError::Tool(
+            "kanban swarm worker must be profile:title or profile:title:skill,skill".into(),
+        )
+    })?;
+    let skills = parts
+        .next()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(non_empty_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok(SwarmWorkerSpec {
+        profile: profile.to_string(),
+        title: title.to_string(),
+        body: Some(title.to_string()),
+        skills,
+        priority: None,
+    })
+}
+
+fn required_text<'a>(value: &'a str, field_name: &str) -> Result<&'a str> {
+    non_empty_str(value).ok_or_else(|| HakimiError::Tool(format!("{field_name} is required")))
+}
+
+fn require_profile_text<'a>(value: &'a str, field_name: &str) -> Result<&'a str> {
+    let text = required_text(value, field_name)?;
+    normalize_profile_arg(Some(text))?;
+    Ok(text)
+}
+
+fn swarm_root_title(goal: &str) -> String {
+    let first_line = goal.lines().next().unwrap_or(goal).trim();
+    let preview = first_line.chars().take(80).collect::<String>();
+    format!("Swarm: {preview}")
+}
+
+fn swarm_context(root_id: &str, goal: &str) -> String {
+    format!(
+        "\n\n## Swarm protocol\n- Swarm root / shared blackboard: `{root_id}`.\n- Read sibling and parent handoffs from Kanban context before working.\n- Put machine-readable facts in completion metadata.\n- Put cross-worker notes on the root task using structured comments.\n- Goal: {goal}\n"
+    )
+}
+
 fn task_id_note_schema(note_name: &str) -> JsonValue {
     let mut properties = serde_json::Map::new();
     properties.insert("task_id".to_string(), json!({"type": "string"}));
@@ -1951,6 +2328,7 @@ fn kanban_help() -> String {
         "  `list [status]`",
         "  `show <id>`",
         "  `create <title>`",
+        "  `swarm --worker <profile:title[:skill,skill]> --verifier <profile> --synthesizer <profile> <goal>`",
         "  `comment <id> <body>`",
         "  `complete <id> [summary]`",
         "  `block <id> <reason>`",
@@ -2499,8 +2877,9 @@ mod tests {
             .iter()
             .map(|tool| tool.name().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(names.len(), 17);
+        assert_eq!(names.len(), 18);
         assert!(names.contains(&"kanban_create".to_string()));
+        assert!(names.contains(&"kanban_swarm_create".to_string()));
         assert!(names.contains(&"kanban_heartbeat".to_string()));
         assert!(names.contains(&"kanban_link".to_string()));
         assert!(names.contains(&"kanban_events".to_string()));
@@ -2537,6 +2916,108 @@ mod tests {
             execute_kanban_tool(KanbanToolKind::List, &json!({"assignee": "worker"}), &store)
                 .unwrap();
         assert!(listed.contains("Via tool"));
+    }
+
+    #[test]
+    fn swarm_create_builds_parallel_worker_graph() {
+        let (_dir, store) = store();
+        let created = store
+            .create_swarm(CreateSwarm {
+                goal: "Compare two Rust-native gateway designs".to_string(),
+                workers: vec![
+                    SwarmWorkerSpec {
+                        profile: "researcher".to_string(),
+                        title: "Research gateway options".to_string(),
+                        body: None,
+                        skills: vec!["web-research".to_string()],
+                        priority: Some(2),
+                    },
+                    SwarmWorkerSpec {
+                        profile: "coder".to_string(),
+                        title: "Prototype gateway API".to_string(),
+                        body: Some("Draft the minimal API surface.".to_string()),
+                        skills: Vec::new(),
+                        priority: None,
+                    },
+                ],
+                verifier_profile: "reviewer".to_string(),
+                synthesizer_profile: "writer".to_string(),
+                root_title: None,
+                priority: 1,
+            })
+            .unwrap();
+
+        assert_eq!(created.worker_ids.len(), 2);
+        assert_eq!(
+            store.get_task_required(&created.root_id).unwrap().status,
+            "done"
+        );
+        for worker_id in &created.worker_ids {
+            let worker = store.get_task_required(worker_id).unwrap();
+            assert_eq!(worker.status, "ready");
+            assert!(worker.body.unwrap().contains("Swarm protocol"));
+            assert!(
+                store
+                    .parents(worker_id)
+                    .unwrap()
+                    .iter()
+                    .any(
+                        |link| link.parent_id == created.root_id && link.relation == "swarm_worker"
+                    )
+            );
+        }
+
+        let verifier_parents = store.parents(&created.verifier_id).unwrap();
+        assert_eq!(verifier_parents.len(), 2);
+        assert!(
+            verifier_parents
+                .iter()
+                .all(|link| link.relation == "swarm_verifier_gate")
+        );
+        let synthesizer_parents = store.parents(&created.synthesizer_id).unwrap();
+        assert_eq!(synthesizer_parents.len(), 1);
+        assert_eq!(synthesizer_parents[0].parent_id, created.verifier_id);
+
+        let comments = store.comments(&created.root_id).unwrap();
+        assert!(
+            comments
+                .iter()
+                .any(|comment| comment.body.starts_with(SWARM_BLACKBOARD_PREFIX))
+        );
+        let events = store.events(&created.root_id, DEFAULT_LIMIT).unwrap();
+        assert!(events.iter().any(|event| event.kind == "swarm_created"));
+    }
+
+    #[test]
+    fn swarm_tool_and_slash_create_same_topology_shape() {
+        let (_dir, store) = store();
+        let from_tool = execute_kanban_tool(
+            KanbanToolKind::SwarmCreate,
+            &json!({
+                "goal": "Create a short migration plan",
+                "workers": [
+                    {"profile": "planner", "title": "Plan migration", "skills": ["planning"]},
+                    {"profile": "tester", "title": "Check risks"}
+                ],
+                "verifier_profile": "reviewer",
+                "synthesizer_profile": "writer"
+            }),
+            &store,
+        )
+        .unwrap();
+        let from_tool: JsonValue = serde_json::from_str(&from_tool).unwrap();
+        assert_eq!(from_tool["worker_ids"].as_array().unwrap().len(), 2);
+        assert_eq!(from_tool["blackboard_prefix"], SWARM_BLACKBOARD_PREFIX);
+
+        let from_slash = kanban_response_with_store(
+            Some(
+                "swarm --worker planner:Plan:planning --worker tester:Risks --verifier reviewer --synthesizer writer Summarize rollout",
+            ),
+            &store,
+        );
+        let from_slash: JsonValue = serde_json::from_str(&from_slash).unwrap();
+        assert_eq!(from_slash["worker_ids"].as_array().unwrap().len(), 2);
+        assert!(from_slash["root_id"].as_str().unwrap().starts_with("kb-"));
     }
 
     #[test]
