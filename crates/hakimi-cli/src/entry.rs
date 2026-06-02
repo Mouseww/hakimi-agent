@@ -2868,6 +2868,40 @@ enum GatewayFinalDelivery {
     FreshFinal { old_message_id: i64, text: String },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GatewayStreamingPolicy {
+    content_preview_enabled: bool,
+    edit_interval_ms: u64,
+    buffer_threshold_chars: usize,
+    fresh_final_after_seconds: u64,
+}
+
+fn effective_gateway_streaming_policy(
+    config: &hakimi_config::GatewayStreamingConfig,
+    platform: &str,
+) -> GatewayStreamingPolicy {
+    let platform_config = config
+        .platforms
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(platform))
+        .map(|(_, policy)| policy);
+
+    GatewayStreamingPolicy {
+        content_preview_enabled: platform_config
+            .and_then(|policy| policy.enabled)
+            .unwrap_or(true),
+        edit_interval_ms: platform_config
+            .and_then(|policy| policy.edit_interval_ms)
+            .unwrap_or(config.edit_interval_ms),
+        buffer_threshold_chars: platform_config
+            .and_then(|policy| policy.buffer_threshold_chars)
+            .unwrap_or(config.buffer_threshold_chars),
+        fresh_final_after_seconds: platform_config
+            .and_then(|policy| policy.fresh_final_after_seconds)
+            .unwrap_or(config.fresh_final_after_seconds),
+    }
+}
+
 fn plan_gateway_final_delivery(
     snapshot: &GatewayStreamRenderSnapshot,
     final_text: &str,
@@ -3333,6 +3367,12 @@ gateways:
     buffer_threshold_chars: 24
     # Send long-running previews as fresh final messages after this many seconds.
     fresh_final_after_seconds: 60
+    # Per-platform preview overrides. Useful for permanent-message channels.
+    platforms:
+      sms:
+        enabled: false
+      email:
+        enabled: false
   clawbot:
     enabled: false
     mode: "http_bridge"   # http_bridge | weclawbot_api | ilink_native
@@ -5252,14 +5292,17 @@ Just send a message to chat with me!"
                 }
             }
 
+            let streaming_policy =
+                effective_gateway_streaming_policy(&config.gateways.streaming, &platform);
             let (response_text, err_msg, stream_snapshot) = {
                 let platform_cb = platform.clone();
                 let bot_id_cb = bot_id.clone();
                 let chat_id_cb = chat_id.clone();
                 let gateway_cb = gateway_clone.clone();
+                let content_preview_enabled = streaming_policy.content_preview_enabled;
                 let edit_interval =
-                    std::time::Duration::from_millis(config.gateways.streaming.edit_interval_ms);
-                let buffer_threshold_chars = config.gateways.streaming.buffer_threshold_chars;
+                    std::time::Duration::from_millis(streaming_policy.edit_interval_ms);
+                let buffer_threshold_chars = streaming_policy.buffer_threshold_chars;
                 let (ui_tx, mut ui_rx) =
                     tokio::sync::mpsc::unbounded_channel::<GatewayStreamUiEvent>();
 
@@ -5501,7 +5544,9 @@ Just send a message to chat with me!"
                         }
                         return;
                     }
-                    let _ = ui_tx.send(GatewayStreamUiEvent::Content(token));
+                    if content_preview_enabled {
+                        let _ = ui_tx.send(GatewayStreamUiEvent::Content(token));
+                    }
                 };
                 turn_agent.set_streaming_callback(Some(std::sync::Arc::new(callback)));
 
@@ -5617,7 +5662,7 @@ Just send a message to chat with me!"
             let final_text = err_msg.unwrap_or(response_text);
 
             let fresh_final_after =
-                std::time::Duration::from_secs(config.gateways.streaming.fresh_final_after_seconds);
+                std::time::Duration::from_secs(streaming_policy.fresh_final_after_seconds);
             match plan_gateway_final_delivery(
                 &stream_snapshot,
                 &final_text,
@@ -6320,15 +6365,16 @@ mod tests {
         PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
         VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
         create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
-        cron_success_output_should_deliver, gateway_bot_id_for_platform,
-        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
-        gateway_usage_response, gateway_voice_response, is_top_level_cron_tick,
-        parse_gateway_undo_turns, plan_gateway_final_delivery, queue_cron_delivery,
-        render_gateway_undo_response, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
-        restore_hakimi_state_backup, restore_voice_history_text, rewind_gateway_history,
-        split_stream_chunks, top_level_cron_response_for_path, top_level_mcp_response,
-        update_shim_paths, update_target_from_candidate,
+        cron_success_output_should_deliver, effective_gateway_streaming_policy,
+        gateway_bot_id_for_platform, gateway_cron_response_for_path,
+        gateway_cron_response_for_path_with_delivery, gateway_mcp_response,
+        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
+        gateway_voice_response, is_top_level_cron_tick, parse_gateway_undo_turns,
+        plan_gateway_final_delivery, queue_cron_delivery, render_gateway_undo_response,
+        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
+        restore_voice_history_text, rewind_gateway_history, split_stream_chunks,
+        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
+        update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::{Message, Usage};
@@ -7222,6 +7268,50 @@ roles:
         let mut state = GatewayStreamUiState::default();
         state.push_content("buffered");
         assert!(!state.should_flush_buffered_content(0));
+    }
+
+    #[test]
+    fn gateway_streaming_policy_inherits_global_defaults() {
+        let config = hakimi_config::HakimiConfig::default();
+        let policy = effective_gateway_streaming_policy(&config.gateways.streaming, "telegram");
+
+        assert!(policy.content_preview_enabled);
+        assert_eq!(policy.edit_interval_ms, 800);
+        assert_eq!(policy.buffer_threshold_chars, 24);
+        assert_eq!(policy.fresh_final_after_seconds, 60);
+    }
+
+    #[test]
+    fn gateway_streaming_policy_applies_platform_overrides_case_insensitively() {
+        let config: hakimi_config::HakimiConfig = serde_yaml::from_str(
+            r#"
+gateways:
+  streaming:
+    edit_interval_ms: 800
+    buffer_threshold_chars: 24
+    fresh_final_after_seconds: 60
+    platforms:
+      Telegram:
+        edit_interval_ms: 1100
+        buffer_threshold_chars: 48
+      sms:
+        enabled: false
+        fresh_final_after_seconds: 0
+"#,
+        )
+        .unwrap();
+
+        let telegram = effective_gateway_streaming_policy(&config.gateways.streaming, "telegram");
+        assert!(telegram.content_preview_enabled);
+        assert_eq!(telegram.edit_interval_ms, 1100);
+        assert_eq!(telegram.buffer_threshold_chars, 48);
+        assert_eq!(telegram.fresh_final_after_seconds, 60);
+
+        let sms = effective_gateway_streaming_policy(&config.gateways.streaming, "SMS");
+        assert!(!sms.content_preview_enabled);
+        assert_eq!(sms.edit_interval_ms, 800);
+        assert_eq!(sms.buffer_threshold_chars, 24);
+        assert_eq!(sms.fresh_final_after_seconds, 0);
     }
 
     #[test]

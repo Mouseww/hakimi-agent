@@ -1338,6 +1338,27 @@ pub struct GatewayStreamingConfig {
     /// many seconds. `0` disables the fresh-final path.
     #[serde(default = "default_gateway_fresh_final_after_seconds")]
     pub fresh_final_after_seconds: u64,
+    /// Per-platform overrides for gateway streaming previews.
+    #[serde(default)]
+    pub platforms: HashMap<String, GatewayStreamingPlatformConfig>,
+}
+
+/// Per-platform gateway streaming preview policy.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GatewayStreamingPlatformConfig {
+    /// Enable progressive token previews for this platform. `None` inherits the
+    /// global gateway streaming behavior.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// Platform-specific edit cadence override in milliseconds.
+    #[serde(default)]
+    pub edit_interval_ms: Option<u64>,
+    /// Platform-specific visible-character flush threshold.
+    #[serde(default)]
+    pub buffer_threshold_chars: Option<usize>,
+    /// Platform-specific fresh-final threshold in seconds.
+    #[serde(default)]
+    pub fresh_final_after_seconds: Option<u64>,
 }
 
 fn default_gateway_streaming_edit_interval_ms() -> u64 {
@@ -1358,6 +1379,7 @@ impl Default for GatewayStreamingConfig {
             edit_interval_ms: default_gateway_streaming_edit_interval_ms(),
             buffer_threshold_chars: default_gateway_streaming_buffer_threshold_chars(),
             fresh_final_after_seconds: default_gateway_fresh_final_after_seconds(),
+            platforms: HashMap::new(),
         }
     }
 }
@@ -2072,6 +2094,7 @@ gateways:
         assert_eq!(config.gateways.streaming.edit_interval_ms, 800);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 24);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
+        assert!(config.gateways.streaming.platforms.is_empty());
     }
 
     #[test]
@@ -2112,6 +2135,38 @@ gateways:
         assert_eq!(config.gateways.streaming.edit_interval_ms, 1500);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 0);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 60);
+    }
+
+    #[test]
+    fn test_gateway_streaming_platform_overrides() {
+        let yaml = r#"
+gateways:
+  streaming:
+    edit_interval_ms: 900
+    buffer_threshold_chars: 24
+    fresh_final_after_seconds: 60
+    platforms:
+      telegram:
+        edit_interval_ms: 1100
+        buffer_threshold_chars: 48
+      whatsapp:
+        enabled: false
+      slack:
+        fresh_final_after_seconds: 0
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        let telegram = config.gateways.streaming.platforms.get("telegram").unwrap();
+        assert_eq!(telegram.enabled, None);
+        assert_eq!(telegram.edit_interval_ms, Some(1100));
+        assert_eq!(telegram.buffer_threshold_chars, Some(48));
+        assert_eq!(telegram.fresh_final_after_seconds, None);
+
+        let whatsapp = config.gateways.streaming.platforms.get("whatsapp").unwrap();
+        assert_eq!(whatsapp.enabled, Some(false));
+        assert_eq!(whatsapp.edit_interval_ms, None);
+
+        let slack = config.gateways.streaming.platforms.get("slack").unwrap();
+        assert_eq!(slack.fresh_final_after_seconds, Some(0));
     }
 
     #[test]
@@ -2190,6 +2245,11 @@ gateways:
     edit_interval_ms: 1200
     buffer_threshold_chars: 40
     fresh_final_after_seconds: 45
+    platforms:
+      telegram:
+        edit_interval_ms: 1000
+      sms:
+        enabled: false
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.model.default, "claude-sonnet-4-20250514");
@@ -2222,6 +2282,26 @@ gateways:
         assert_eq!(config.gateways.streaming.edit_interval_ms, 1200);
         assert_eq!(config.gateways.streaming.buffer_threshold_chars, 40);
         assert_eq!(config.gateways.streaming.fresh_final_after_seconds, 45);
+        assert_eq!(
+            config
+                .gateways
+                .streaming
+                .platforms
+                .get("telegram")
+                .unwrap()
+                .edit_interval_ms,
+            Some(1000)
+        );
+        assert_eq!(
+            config
+                .gateways
+                .streaming
+                .platforms
+                .get("sms")
+                .unwrap()
+                .enabled,
+            Some(false)
+        );
     }
 
     #[test]

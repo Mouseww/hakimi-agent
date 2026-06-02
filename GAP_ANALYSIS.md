@@ -388,7 +388,7 @@ Generated: 2026-06-02
 #### 39. Gateway Streaming Consumer
 - **What**: Bridges sync agent callbacks to async platform delivery with progressive message editing
 - **Hermes location**: `gateway/stream_consumer.py`
-- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup, configurable edit interval/buffer threshold, UTF-8-safe overflow chunking for long outbound/streamed text, and a default-on silence-narration filter for loop-prone bare tokens. Remaining parity is native draft transport, flood-control backoff, and per-platform display policy.
+- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup, configurable global/per-platform edit interval, buffer threshold, fresh-final thresholds, explicit per-platform preview disablement for permanent-message channels, UTF-8-safe overflow chunking for long outbound/streamed text, and a default-on silence-narration filter for loop-prone bare tokens. Remaining parity is native draft transport and flood-control backoff.
 - **Priority**: **Medium** — Real-time streaming UX on messaging platforms
 
 #### 40. Usage Pricing / Account Usage Tracking
@@ -665,6 +665,7 @@ Generated: 2026-06-02
 | 42 | MCP Sampling createMessage | `hakimi-mcp/src/{protocol.rs,sampling.rs,client.rs}`, `hakimi-cli/src/entry.rs` | 11 | ✅ Stdio MCP clients advertise sampling plus tools capability, answer server-initiated `sampling/createMessage` through Hakimi's configured LLM transport and active model, forward MCP tool schemas into model calls, map inbound `tool_use` / `tool_result` content blocks, and return model tool calls as MCP `tool_use` blocks with JSON-RPC errors for unsupported client requests |
 | 43 | Gateway Fresh-Final Streaming | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}` | 2 | ✅ Long-lived gateway stream previews can finish as fresh final messages through `gateways.streaming.fresh_final_after_seconds`; Telegram deletes stale previews best-effort |
 | 44 | Gateway Stream Pacing | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 4 | ✅ Gateway progressive edits honor `gateways.streaming.edit_interval_ms` and `buffer_threshold_chars`, and flush pending assistant text before tool/media/delegate boundaries |
+| 44a | Gateway Stream Platform Policy | `hakimi-cli/src/entry.rs`, `hakimi-config/src/config.rs` | 3 | ✅ `gateways.streaming.platforms.<platform>` applies case-insensitive per-platform preview enablement, edit cadence, buffer threshold, and fresh-final overrides without changing default global streaming behavior |
 | 45 | Credential Pool Terminal Auth Quarantine | `hakimi-core/src/credential_pool.rs` | 7 | ✅ Terminal 401 OAuth reasons mark credentials `dead`, prevent cooldown re-entry, expose dead/exhausted stats separately, and support explicit revive after re-auth |
 | 46 | Skills Guard | `hakimi-skills/src/{safety.rs,loader.rs}` | 6 | ✅ Skill markdown is scanned before parsing; dangerous injection/exfiltration/persistence/destructive/invisible-Unicode/credential patterns and symlinked skill paths are blocked before prompt injection |
 | 47 | Skills Provenance Metadata | `hakimi-skills/src/{skill.rs,loader.rs,store.rs}`, `hakimi-cli/src/entry.rs` | 3 | ✅ Skill loading preserves Hermes-style `metadata.hermes`, explicit `provenance` frontmatter, and `.hub/lock.json` source/trust records, then surfaces normalized provenance labels in summaries and gateway `/skills` |
@@ -733,9 +734,10 @@ Generated: 2026-06-02
 | 109 | Weixin/iLink Gateway Alias | `hakimi-gateway/src/clawbot.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 5 | ✅ `gateways.weixin` and `WEIXIN_*` env aliases expose Hermes-style Weixin routing while reusing the existing Rust-native iLink login, polling, context-token, sendmessage, QR-notification, home-channel, and allowlist implementation instead of duplicating protocol code |
 | 110 | Onboarding Hints | `hakimi-config/src/config.rs`, `hakimi-cli/src/onboarding.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Hermes-style first-touch hints persist `onboarding.seen` flags, detect legacy `~/.openclaw/` state at local interactive startup, and show a one-time gateway concurrent-input `/stop` tip without repeating in later turns |
 | 111 | HTTP Session Lifecycle API | `hakimi-server/src/api.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ `/api/sessions` now creates API-visible session rows, `PATCH/DELETE /api/sessions/{id}` updates client-safe metadata or deletes sessions plus messages, and `/api/sessions/{id}/fork` branches a session with copied transcript and parent linkage |
+| 112 | Gateway Streaming Platform Policy | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ `gateways.streaming.platforms.<platform>` can disable progressive previews or override edit cadence, buffer threshold, and fresh-final behavior per platform while keeping unconfigured platforms on the existing global defaults |
 
 ### Summary
-- **Total tests**: 1640 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1643 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
