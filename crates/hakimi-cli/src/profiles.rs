@@ -483,6 +483,7 @@ impl ProfileManager {
             bail!("Cannot install a distribution as `default`; choose a named profile");
         }
         check_distribution_version(&manifest)?;
+        validate_distribution_owned_paths(&manifest)?;
 
         let profile_dir = self.profile_dir(&profile_name);
         if profile_dir.exists() && !force {
@@ -1309,6 +1310,11 @@ fn distribution_owned_paths(manifest: &ProfileDistributionManifest) -> Result<Ve
         paths.push(path);
     }
     Ok(paths)
+}
+
+fn validate_distribution_owned_paths(manifest: &ProfileDistributionManifest) -> Result<()> {
+    distribution_owned_paths(manifest)?;
+    Ok(())
 }
 
 fn copy_distribution_entry(
