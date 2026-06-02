@@ -43,6 +43,16 @@ pub trait SessionOps {
         system_prompt: Option<&str>,
     ) -> Result<String>;
 
+    fn create_session_with_id(
+        &self,
+        id: &str,
+        source: &str,
+        user_id: Option<&str>,
+        model: Option<&str>,
+        system_prompt: Option<&str>,
+        parent_session_id: Option<&str>,
+    ) -> Result<String>;
+
     fn get_session(&self, id: &str) -> Result<Option<SessionMeta>>;
 
     fn update_session_totals(&self, id: &str, usage: &Usage, api_calls: i32) -> Result<()>;
@@ -50,6 +60,10 @@ pub trait SessionOps {
     fn end_session(&self, id: &str, reason: &str) -> Result<()>;
 
     fn set_title(&self, session_id: &str, title: &str) -> Result<()>;
+
+    fn clear_title(&self, session_id: &str) -> Result<()>;
+
+    fn delete_session(&self, id: &str) -> Result<bool>;
 
     fn get_session_with_messages(
         &self,
@@ -100,18 +114,39 @@ impl SessionOps for SessionDB {
         system_prompt: Option<&str>,
     ) -> Result<String> {
         let id = Uuid::new_v4().to_string();
+        self.create_session_with_id(&id, source, user_id, model, system_prompt, None)
+    }
+
+    fn create_session_with_id(
+        &self,
+        id: &str,
+        source: &str,
+        user_id: Option<&str>,
+        model: Option<&str>,
+        system_prompt: Option<&str>,
+        parent_session_id: Option<&str>,
+    ) -> Result<String> {
         let now = Utc::now().to_rfc3339();
 
         let conn = self.conn().lock().unwrap();
         conn.execute(
-            "INSERT INTO sessions (id, source, user_id, model, system_prompt, started_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![id, source, user_id, model, system_prompt, now],
+            "INSERT INTO sessions
+                (id, source, user_id, model, system_prompt, parent_session_id, started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                id,
+                source,
+                user_id,
+                model,
+                system_prompt,
+                parent_session_id,
+                now
+            ],
         )
         .context("Failed to create session")?;
 
         debug!("Created session {id} from source={source}");
-        Ok(id)
+        Ok(id.to_string())
     }
 
     /// Fetch a single session by ID.
@@ -217,6 +252,37 @@ impl SessionOps for SessionDB {
             anyhow::bail!("Session {session_id} not found for set_title");
         }
         Ok(())
+    }
+
+    fn clear_title(&self, session_id: &str) -> Result<()> {
+        let conn = self.conn().lock().unwrap();
+        let updated = conn
+            .execute(
+                "UPDATE sessions SET title = NULL WHERE id = ?1",
+                params![session_id],
+            )
+            .context("Failed to clear session title")?;
+
+        if updated == 0 {
+            anyhow::bail!("Session {session_id} not found for clear_title");
+        }
+        Ok(())
+    }
+
+    fn delete_session(&self, id: &str) -> Result<bool> {
+        let mut conn = self.conn().lock().unwrap();
+        let tx = conn
+            .transaction()
+            .context("Failed to start session delete transaction")?;
+        tx.execute("DELETE FROM messages WHERE session_id = ?1", params![id])
+            .context("Failed to delete session messages")?;
+        let deleted = tx
+            .execute("DELETE FROM sessions WHERE id = ?1", params![id])
+            .context("Failed to delete session")?
+            > 0;
+        tx.commit()
+            .context("Failed to commit session delete transaction")?;
+        Ok(deleted)
     }
 
     fn get_session_with_messages(

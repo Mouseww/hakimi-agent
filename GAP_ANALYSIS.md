@@ -148,7 +148,7 @@ Generated: 2026-06-02
 - **Serve mode** — `--serve` HTTP API server
 
 ### Server
-- **REST API** — Health, chat, sessions, session messages/search, tools, config endpoints, OpenAI-style discovery, Chat Completions/Responses surfaces with completed SSE snapshots, and dashboard admin summaries plus runtime-scoped writes for status/MCP/credential pools/webhooks (Axum)
+- **REST API** — Health, chat, sessions, session create/update/delete/fork, session messages/search, tools, config endpoints, OpenAI-style discovery, Chat Completions/Responses surfaces with completed SSE snapshots, and dashboard admin summaries plus runtime-scoped writes for status/MCP/credential pools/webhooks (Axum)
 
 ### TUI
 - **Ratatui TUI** — Terminal UI with chat panel, tools activity panel, status bar
@@ -554,8 +554,8 @@ Generated: 2026-06-02
 - **Hermes reference**: No direct equivalent in Hermes — this is a Hakimi-original feature that needs completion
 
 ### 13. REST API Server
-- **Status**: Basic endpoints (health, chat, sessions, sanitized session messages, FTS-backed session search, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, `/v1/skills` loaded-skill metadata, `/v1/toolsets` grouped tool schema discovery, text `/v1/chat/completions` with OpenAI-style completed SSE snapshots for `stream=true`, `/v1/responses` with SQLite-backed `previous_response_id` chaining plus GET/DELETE retrieval and completed SSE snapshots for `stream=true`, pollable `/v1/runs` text submissions with background server-agent execution, `/v1/runs/{id}/stop` cancellation, and `/v1/runs/{id}/events` historical replay plus live lifecycle SSE, plus dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
-- **What's missing**: Token-live Responses/Chat Completions streaming, run approval resolution, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
+- **Status**: Basic endpoints (health, chat, sessions, session create/update/delete/fork lifecycle management, sanitized session messages, FTS-backed session search, tools, config), Bearer-guarded routes when `HAKIMI_WEBUI_PASSWORD` is configured, OpenAI-compatible `/v1/models`, machine-readable `/v1/capabilities`, `/v1/skills` loaded-skill metadata, `/v1/toolsets` grouped tool schema discovery, text `/v1/chat/completions` with OpenAI-style completed SSE snapshots for `stream=true`, `/v1/responses` with SQLite-backed `previous_response_id` chaining plus GET/DELETE retrieval and completed SSE snapshots for `stream=true`, pollable `/v1/runs` text submissions with background server-agent execution, `/v1/runs/{id}/stop` cancellation, and `/v1/runs/{id}/events` historical replay plus live lifecycle SSE, plus dashboard admin summaries/runtime writes for MCP stdio servers, credential pools, and webhook configuration without exposing secrets
+- **What's missing**: Token-live Responses/Chat Completions streaming, session chat/stream execution, run approval resolution, WebSocket streaming, richer authorization, rate limiting, session-scoped agents, PTY terminal endpoint, media handling, webhook callbacks, durable dashboard config writes, and HTTP/SSE MCP dashboard writes
 - **Hermes reference**: `gateway/platforms/api_server.py`, `hermes_cli/web_server.py`
 
 ### 14. TUI
@@ -732,9 +732,10 @@ Generated: 2026-06-02
 | 108 | QQBot Gateway Adapter | `hakimi-gateway/src/qqbot.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | 🟡 Official QQ Bot v2 REST outbound text gateway supports app credential token caching, C2C/group/guild target prefixes, optional Markdown payloads, home-channel routing, config/env overrides, and UTF-8-safe 4000-character chunking; WebSocket ingress, media upload, keyboards, and QR onboarding remain future slices |
 | 109 | Weixin/iLink Gateway Alias | `hakimi-gateway/src/clawbot.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 5 | ✅ `gateways.weixin` and `WEIXIN_*` env aliases expose Hermes-style Weixin routing while reusing the existing Rust-native iLink login, polling, context-token, sendmessage, QR-notification, home-channel, and allowlist implementation instead of duplicating protocol code |
 | 110 | Onboarding Hints | `hakimi-config/src/config.rs`, `hakimi-cli/src/onboarding.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Hermes-style first-touch hints persist `onboarding.seen` flags, detect legacy `~/.openclaw/` state at local interactive startup, and show a one-time gateway concurrent-input `/stop` tip without repeating in later turns |
+| 111 | HTTP Session Lifecycle API | `hakimi-server/src/api.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ `/api/sessions` now creates API-visible session rows, `PATCH/DELETE /api/sessions/{id}` updates client-safe metadata or deletes sessions plus messages, and `/api/sessions/{id}/fork` branches a session with copied transcript and parent linkage |
 
 ### Summary
-- **Total tests**: 1632 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1636 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

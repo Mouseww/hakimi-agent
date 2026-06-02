@@ -4,9 +4,13 @@
 //! - `GET  /health`          — Health check
 //! - `POST /chat`            — Send a message, get a response
 //! - `GET  /sessions`        — List recent sessions
+//! - `POST /sessions`        — Create an empty API-visible session
 //! - `GET  /sessions/:id`    — Get session details
+//! - `PATCH /sessions/:id`   — Update client-safe session metadata
+//! - `DELETE /sessions/:id`  — Delete a session and its messages
 //! - `GET  /sessions/search` — Search saved session messages
 //! - `GET  /sessions/:id/messages` — Get sanitized session messages
+//! - `POST /sessions/:id/fork` — Branch a session and carry messages forward
 //! - `GET  /tools`           — List available tools
 //! - `GET  /config`          — Get current config (sanitized)
 //! - `POST /config`          — Update config
@@ -47,7 +51,7 @@ use axum::{
         IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
     },
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
 };
 use futures::{StreamExt, stream};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -252,6 +256,26 @@ pub struct SessionSearchResultInfo {
 #[derive(Debug, Deserialize)]
 pub struct SessionMessagesQuery {
     pub limit: Option<usize>,
+}
+
+/// Request body for POST /sessions.
+#[derive(Debug, Deserialize)]
+pub struct SessionCreateRequest {
+    pub id: Option<String>,
+    pub session_id: Option<String>,
+    pub source: Option<String>,
+    pub user_id: Option<String>,
+    pub model: Option<String>,
+    pub system_prompt: Option<String>,
+    pub title: Option<String>,
+}
+
+/// Request body for POST /sessions/:id/fork.
+#[derive(Debug, Deserialize)]
+pub struct SessionForkRequest {
+    pub id: Option<String>,
+    pub session_id: Option<String>,
+    pub title: Option<String>,
 }
 
 /// Response body for GET /sessions/:id/messages.
@@ -1042,9 +1066,13 @@ pub fn build_router(state: AppState) -> Router {
     let mut api_routes = Router::new()
         .route("/chat", post(chat))
         .route("/sessions", get(list_sessions))
+        .route("/sessions", post(create_session))
         .route("/sessions/search", get(search_sessions))
         .route("/sessions/{id}", get(get_session))
+        .route("/sessions/{id}", patch(update_session))
+        .route("/sessions/{id}", delete(delete_session))
         .route("/sessions/{id}/messages", get(get_session_messages))
+        .route("/sessions/{id}/fork", post(fork_session))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
         .route("/config", post(update_config))
@@ -1166,6 +1194,12 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "skills_api": true,
             "toolsets_api": true,
             "session_resources": true,
+            "session_create": true,
+            "session_update": true,
+            "session_delete": true,
+            "session_fork": true,
+            "session_chat": false,
+            "session_chat_streaming": false,
             "session_messages": true,
             "session_search": true,
             "tools_api": true,
@@ -1206,8 +1240,12 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "run_stop": {"method": "POST", "path": "/v1/runs/{id}/stop"},
             "chat": {"method": "POST", "path": "/api/chat"},
             "sessions": {"method": "GET", "path": "/api/sessions"},
+            "session_create": {"method": "POST", "path": "/api/sessions"},
             "session": {"method": "GET", "path": "/api/sessions/{id}"},
+            "session_update": {"method": "PATCH", "path": "/api/sessions/{id}"},
+            "session_delete": {"method": "DELETE", "path": "/api/sessions/{id}"},
             "session_messages": {"method": "GET", "path": "/api/sessions/{id}/messages"},
+            "session_fork": {"method": "POST", "path": "/api/sessions/{id}/fork"},
             "session_search": {"method": "GET", "path": "/api/sessions/search?q=<query>"},
             "tools": {"method": "GET", "path": "/api/tools"},
             "config": {"method": "GET", "path": "/api/config"},
@@ -1233,6 +1271,30 @@ fn auth_required() -> bool {
 
 fn bounded_limit(limit: Option<usize>, default: usize, max: usize) -> usize {
     limit.unwrap_or(default).clamp(1, max)
+}
+
+fn generated_api_session_id() -> String {
+    format!("api_{}", run_id().trim_start_matches("run_"))
+}
+
+fn validate_api_session_id(id: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let id = id.trim();
+    if id.is_empty() || id.chars().any(|ch| matches!(ch, '\r' | '\n' | '\0')) {
+        return Err(api_error(StatusCode::BAD_REQUEST, "invalid session id"));
+    }
+    if id.chars().count() > 256 {
+        return Err(api_error(StatusCode::BAD_REQUEST, "session id too long"));
+    }
+    Ok(())
+}
+
+fn requested_session_id(primary: Option<&str>, fallback: Option<&str>) -> String {
+    primary
+        .or(fallback)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(generated_api_session_id)
 }
 
 fn request_bool(value: Option<&JsonValue>, default: bool) -> bool {
@@ -2629,6 +2691,95 @@ async fn list_sessions(
     }
 }
 
+/// POST /sessions — create an empty API-visible session row.
+async fn create_session(
+    State(state): State<AppState>,
+    Json(req): Json<SessionCreateRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+
+    let id = requested_session_id(req.id.as_deref(), req.session_id.as_deref());
+    validate_api_session_id(&id)?;
+
+    let default_model = {
+        let agent = state.agent.lock().await;
+        agent.model().to_string()
+    };
+    let source = req
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("api_server");
+    let model = req
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(default_model.as_str());
+
+    let db = state.session_db.lock().await;
+    if db
+        .get_session(&id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get session: {e}"),
+            )
+        })?
+        .is_some()
+    {
+        return Err(api_error(
+            StatusCode::CONFLICT,
+            format!("Session already exists: {id}"),
+        ));
+    }
+
+    db.create_session_with_id(
+        &id,
+        source,
+        req.user_id.as_deref(),
+        Some(model),
+        req.system_prompt.as_deref(),
+        None,
+    )
+    .map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to create session: {e}"),
+        )
+    })?;
+
+    if let Some(title) = req.title.as_deref() {
+        if let Err(e) = db.set_title(&id, title) {
+            let _ = db.delete_session(&id);
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                format!("Failed to set session title: {e}"),
+            ));
+        }
+    }
+
+    let session = db
+        .get_session(&id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get session: {e}"),
+            )
+        })?
+        .map(SessionInfo::from)
+        .ok_or_else(|| api_error(StatusCode::INTERNAL_SERVER_ERROR, "created session missing"))?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "object": "hakimi.session",
+            "session": session
+        })),
+    ))
+}
+
 /// GET /sessions/:id — get details for a specific session.
 async fn get_session(
     State(state): State<AppState>,
@@ -2652,6 +2803,246 @@ async fn get_session(
             }),
         )),
     }
+}
+
+/// PATCH /sessions/:id — update client-safe session metadata.
+async fn update_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<JsonValue>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+
+    let id = id.trim().to_string();
+    validate_api_session_id(&id)?;
+    let JsonValue::Object(fields) = body else {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "session update body must be a JSON object",
+        ));
+    };
+
+    let allowed = ["title", "end_reason"];
+    let unknown = fields
+        .keys()
+        .filter(|key| !allowed.contains(&key.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unknown.is_empty() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            format!("Unsupported session fields: {}", unknown.join(", ")),
+        ));
+    }
+
+    let db = state.session_db.lock().await;
+    if db
+        .get_session(&id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get session: {e}"),
+            )
+        })?
+        .is_none()
+    {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("Session not found: {id}"),
+        ));
+    }
+
+    if let Some(title) = fields.get("title") {
+        match title {
+            JsonValue::Null => db.clear_title(&id),
+            JsonValue::String(value) => db.set_title(&id, value),
+            _ => Err(anyhow::anyhow!("title must be a string or null")),
+        }
+        .map_err(|e| {
+            api_error(
+                StatusCode::BAD_REQUEST,
+                format!("Failed to update title: {e}"),
+            )
+        })?;
+    }
+
+    if let Some(end_reason) = fields.get("end_reason") {
+        match end_reason {
+            JsonValue::Null => {}
+            JsonValue::String(reason) if reason.trim().is_empty() => {}
+            JsonValue::String(reason) => db.end_session(&id, reason.trim()).map_err(|e| {
+                api_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to end session: {e}"),
+                )
+            })?,
+            _ => {
+                return Err(api_error(
+                    StatusCode::BAD_REQUEST,
+                    "end_reason must be a string or null",
+                ));
+            }
+        }
+    }
+
+    let session = db
+        .get_session(&id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get session: {e}"),
+            )
+        })?
+        .map(SessionInfo::from)
+        .ok_or_else(|| api_error(StatusCode::INTERNAL_SERVER_ERROR, "updated session missing"))?;
+
+    Ok(Json(json!({
+        "object": "hakimi.session",
+        "session": session
+    })))
+}
+
+/// DELETE /sessions/:id — remove a session and its stored messages.
+async fn delete_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+
+    let id = id.trim().to_string();
+    validate_api_session_id(&id)?;
+    let deleted = state
+        .session_db
+        .lock()
+        .await
+        .delete_session(&id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to delete session: {e}"),
+            )
+        })?;
+    if !deleted {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("Session not found: {id}"),
+        ));
+    }
+
+    Ok(Json(json!({
+        "object": "hakimi.session.deleted",
+        "id": id,
+        "deleted": true
+    })))
+}
+
+/// POST /sessions/:id/fork — create a child session carrying the transcript forward.
+async fn fork_session(
+    State(state): State<AppState>,
+    Path(source_id): Path<String>,
+    Json(req): Json<SessionForkRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::{MessageOps, SessionOps};
+
+    let source_id = source_id.trim().to_string();
+    validate_api_session_id(&source_id)?;
+    let fork_id = requested_session_id(req.id.as_deref(), req.session_id.as_deref());
+    validate_api_session_id(&fork_id)?;
+
+    let db = state.session_db.lock().await;
+    let source = db
+        .get_session(&source_id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get session: {e}"),
+            )
+        })?
+        .ok_or_else(|| {
+            api_error(
+                StatusCode::NOT_FOUND,
+                format!("Session not found: {source_id}"),
+            )
+        })?;
+    if db
+        .get_session(&fork_id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get session: {e}"),
+            )
+        })?
+        .is_some()
+    {
+        return Err(api_error(
+            StatusCode::CONFLICT,
+            format!("Session already exists: {fork_id}"),
+        ));
+    }
+
+    let messages = db.get_messages(&source_id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session messages: {e}"),
+        )
+    })?;
+    db.end_session(&source_id, "branched").map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to mark source session branched: {e}"),
+        )
+    })?;
+    db.create_session_with_id(
+        &fork_id,
+        "api_server",
+        source.user_id.as_deref(),
+        source.model.as_deref(),
+        source.system_prompt.as_deref(),
+        Some(&source_id),
+    )
+    .map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to fork session: {e}"),
+        )
+    })?;
+
+    for message in messages {
+        db.save_message(&fork_id, &message).map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to copy fork messages: {e}"),
+            )
+        })?;
+    }
+    if let Some(title) = req.title.as_deref() {
+        if let Err(e) = db.set_title(&fork_id, title) {
+            let _ = db.delete_session(&fork_id);
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                format!("Failed to set fork title: {e}"),
+            ));
+        }
+    }
+
+    let session = db
+        .get_session(&fork_id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get forked session: {e}"),
+            )
+        })?
+        .map(SessionInfo::from)
+        .ok_or_else(|| api_error(StatusCode::INTERNAL_SERVER_ERROR, "forked session missing"))?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "object": "hakimi.session",
+            "session": session
+        })),
+    ))
 }
 
 /// GET /sessions/search — search saved message content across sessions.
@@ -3309,6 +3700,12 @@ mod tests {
         assert_eq!(capabilities["runtime"]["split_runtime"], false);
         assert_eq!(capabilities["features"]["chat"], true);
         assert_eq!(capabilities["features"]["session_resources"], true);
+        assert_eq!(capabilities["features"]["session_create"], true);
+        assert_eq!(capabilities["features"]["session_update"], true);
+        assert_eq!(capabilities["features"]["session_delete"], true);
+        assert_eq!(capabilities["features"]["session_fork"], true);
+        assert_eq!(capabilities["features"]["session_chat"], false);
+        assert_eq!(capabilities["features"]["session_chat_streaming"], false);
         assert_eq!(capabilities["features"]["session_messages"], true);
         assert_eq!(capabilities["features"]["session_search"], true);
         assert_eq!(capabilities["features"]["tools_api"], true);
@@ -3377,6 +3774,22 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["chat"],
             json!({"method": "POST", "path": "/api/chat"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["session_create"],
+            json!({"method": "POST", "path": "/api/sessions"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["session_update"],
+            json!({"method": "PATCH", "path": "/api/sessions/{id}"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["session_delete"],
+            json!({"method": "DELETE", "path": "/api/sessions/{id}"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["session_fork"],
+            json!({"method": "POST", "path": "/api/sessions/{id}/fork"})
         );
         assert_eq!(
             capabilities["endpoints"]["session_messages"],
@@ -4538,6 +4951,173 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
 
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_create_session_endpoint_accepts_client_session_id() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/sessions")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "id": "api-session-1",
+                    "title": "API session",
+                    "model": "session-model",
+                    "system_prompt": "Use session controls."
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(created["object"], "hakimi.session");
+        assert_eq!(created["session"]["id"], "api-session-1");
+        assert_eq!(created["session"]["source"], "api_server");
+        assert_eq!(created["session"]["title"], "API session");
+        assert_eq!(created["session"]["model"], "session-model");
+
+        let db = state.session_db.lock().await;
+        let meta = db
+            .get_session("api-session-1")
+            .unwrap()
+            .expect("created session should persist");
+        assert_eq!(meta.system_prompt.as_deref(), Some("Use session controls."));
+    }
+
+    #[tokio::test]
+    async fn test_update_session_endpoint_sets_title_and_end_reason() {
+        let state = test_state();
+        let session_id = {
+            let db = state.session_db.lock().await;
+            db.create_session("api-test", Some("user1"), Some("test-model"), None)
+                .unwrap()
+        };
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/sessions/{session_id}"))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "title": "Reviewed session",
+                    "end_reason": "archived"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let updated: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(updated["object"], "hakimi.session");
+        assert_eq!(updated["session"]["title"], "Reviewed session");
+
+        let db = state.session_db.lock().await;
+        let meta = db.get_session(&session_id).unwrap().unwrap();
+        assert_eq!(meta.title.as_deref(), Some("Reviewed session"));
+        assert_eq!(meta.end_reason.as_deref(), Some("archived"));
+        assert!(meta.ended_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_delete_session_endpoint_removes_session_and_messages() {
+        let state = test_state();
+        let session_id = {
+            let db = state.session_db.lock().await;
+            let session_id = db
+                .create_session("api-test", Some("user1"), Some("test-model"), None)
+                .unwrap();
+            db.save_message(&session_id, &hakimi_common::Message::user("delete me"))
+                .unwrap();
+            session_id
+        };
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/sessions/{session_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let deleted: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(deleted["object"], "hakimi.session.deleted");
+        assert_eq!(deleted["deleted"], true);
+
+        let db = state.session_db.lock().await;
+        assert!(db.get_session(&session_id).unwrap().is_none());
+        assert!(db.get_messages(&session_id).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_fork_session_endpoint_copies_transcript_and_sets_parent() {
+        let state = test_state();
+        let source_id = {
+            let db = state.session_db.lock().await;
+            let session_id = db
+                .create_session("api-test", Some("user1"), Some("test-model"), None)
+                .unwrap();
+            db.set_title(&session_id, "Source session").unwrap();
+            db.save_message(&session_id, &hakimi_common::Message::user("branch point"))
+                .unwrap();
+            db.save_message(
+                &session_id,
+                &hakimi_common::Message::assistant("branch reply"),
+            )
+            .unwrap();
+            session_id
+        };
+        let app = build_router(state.clone());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/api/sessions/{source_id}/fork"))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "id": "api-fork-1",
+                    "title": "Forked session"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let forked: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(forked["object"], "hakimi.session");
+        assert_eq!(forked["session"]["id"], "api-fork-1");
+        assert_eq!(forked["session"]["message_count"], 2);
+
+        let db = state.session_db.lock().await;
+        let source = db.get_session(&source_id).unwrap().unwrap();
+        assert_eq!(source.end_reason.as_deref(), Some("branched"));
+        let fork = db.get_session("api-fork-1").unwrap().unwrap();
+        assert_eq!(fork.parent_session_id.as_deref(), Some(source_id.as_str()));
+        assert_eq!(fork.title.as_deref(), Some("Forked session"));
+        let fork_messages = db.get_messages("api-fork-1").unwrap();
+        assert_eq!(fork_messages.len(), 2);
+        assert_eq!(fork_messages[0].content.as_deref(), Some("branch point"));
     }
 
     #[tokio::test]
