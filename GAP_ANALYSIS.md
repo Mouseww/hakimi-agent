@@ -1,6 +1,6 @@
 # GAP ANALYSIS: Hermes Agent vs Hakimi Agent
 
-Generated: 2026-05-31
+Generated: 2026-06-02
 
 ---
 
@@ -114,6 +114,7 @@ Generated: 2026-05-31
 - **WhatsApp Business Cloud adapter** — Meta Graph API outbound text gateway with env/config credentials, home-channel delivery, and UTF-8-safe 4096-character chunking
 - **Matrix adapter** — Matrix room send gateway with homeserver, access token, and room configuration
 - **BlueBubbles/iMessage adapter** — BlueBubbles REST outbound text gateway with env/config credentials, chat GUID/address resolution, optional new-chat creation, Markdown cleanup, and UTF-8-safe message chunking
+- **QQBot adapter** — Official QQ Bot v2 REST outbound text gateway with app credential token caching, C2C/group/guild target routing, optional Markdown payloads, home-channel delivery, and UTF-8-safe message chunking
 - **DingTalk adapter** — DingTalk custom robot webhook gateway
 - **WeCom adapter** — WeCom application message gateway
 - **Feishu/Lark adapter** — Feishu/Lark IM outbound gateway with app credentials and home-channel routing
@@ -239,8 +240,8 @@ Generated: 2026-05-31
 #### 13. Gateway Platform Adapters (5+ missing)
 - **What**: Remaining gateway platforms beyond Telegram/Discord/Slack/Webhook/MSGraph webhook/Signal/SMS/Email/WhatsApp/Home Assistant/Matrix/DingTalk/WeCom/Feishu/BlueBubbles/ClawBot
 - **Hermes location**: `gateway/platforms/`
-- **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Microsoft Graph webhook ingress, Signal, SMS/Twilio outbound text, Email/SMTP outbound text, WhatsApp Business Cloud API outbound text, Home Assistant persistent notifications, Matrix, DingTalk, WeCom, Feishu/Lark outbound text, BlueBubbles/iMessage outbound text, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling; Microsoft Graph webhook uses `MSGRAPH_WEBHOOK_CLIENT_STATE`, optional accepted resources, source CIDR allowlists, validation-token handshakes, duplicate notification suppression, and prompt templating; Feishu uses Hermes-compatible app credentials and `FEISHU_HOME_CHANNEL` routing for tenant-token IM sends; SMS uses Twilio-compatible account credentials, E.164 sender/recipient numbers, `SMS_HOME_CHANNEL`, Markdown cleanup, and safe message chunking; Email uses `EMAIL_SMTP_HOST`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, optional `EMAIL_HOME_CHANNEL`, STARTTLS SMTP delivery, and safe message chunking; WhatsApp uses `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and optional `WHATSAPP_HOME_CHANNEL` for Graph API delivery; Home Assistant uses `HASS_URL` / `HASS_TOKEN` or config credentials for persistent notification delivery; BlueBubbles uses `BLUEBUBBLES_SERVER_URL`, `BLUEBUBBLES_PASSWORD`, and optional `BLUEBUBBLES_HOME_CHANNEL` for local iMessage delivery.
-- **Missing**: weixin, qqbot, yuanbao, full api_server streaming/session surface, API run SSE events, IMAP email inbound/attachments
+- **Details**: Hakimi now covers Telegram, Discord, Slack, Mattermost, Webhook, Microsoft Graph webhook ingress, Signal, SMS/Twilio outbound text, Email/SMTP outbound text, WhatsApp Business Cloud API outbound text, Home Assistant persistent notifications, Matrix, DingTalk, WeCom, Feishu/Lark outbound text, BlueBubbles/iMessage outbound text, QQBot outbound text, and ClawBot/WeChat as config-driven runtime adapters. Mattermost supports Hermes-style server URL/token/channel configuration, outbound REST posts, and optional inbound channel polling; Microsoft Graph webhook uses `MSGRAPH_WEBHOOK_CLIENT_STATE`, optional accepted resources, source CIDR allowlists, validation-token handshakes, duplicate notification suppression, and prompt templating; Feishu uses Hermes-compatible app credentials and `FEISHU_HOME_CHANNEL` routing for tenant-token IM sends; SMS uses Twilio-compatible account credentials, E.164 sender/recipient numbers, `SMS_HOME_CHANNEL`, Markdown cleanup, and safe message chunking; Email uses `EMAIL_SMTP_HOST`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, optional `EMAIL_HOME_CHANNEL`, STARTTLS SMTP delivery, and safe message chunking; WhatsApp uses `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and optional `WHATSAPP_HOME_CHANNEL` for Graph API delivery; Home Assistant uses `HASS_URL` / `HASS_TOKEN` or config credentials for persistent notification delivery; BlueBubbles uses `BLUEBUBBLES_SERVER_URL`, `BLUEBUBBLES_PASSWORD`, and optional `BLUEBUBBLES_HOME_CHANNEL` for local iMessage delivery; QQBot uses `QQ_APP_ID`, `QQ_CLIENT_SECRET`, optional `QQ_HOME_CHANNEL`, chat-type prefixes, and cached official app access tokens for REST sends.
+- **Missing**: weixin, yuanbao, QQBot WebSocket ingress/media/keyboards/onboarding, full api_server streaming/session surface, API run SSE events, IMAP email inbound/attachments
 - **Priority**: **High** — Platform reach
 
 #### 14. Bedrock Transport
@@ -524,8 +525,8 @@ Generated: 2026-05-31
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 6. Gateway
-- **Status**: 17 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Microsoft Graph webhook, Signal, SMS/Twilio, Email/SMTP, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, BlueBubbles/iMessage, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound/streamed overflow chunking, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
-- **What's missing**: 5+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and flood-control backoff
+- **Status**: 18 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Microsoft Graph webhook, Signal, SMS/Twilio, Email/SMTP, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, BlueBubbles/iMessage, QQBot outbound, and ClawBot/WeChat) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, outbound/streamed overflow chunking, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, and ClawBot allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
+- **What's missing**: 4+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, QQBot ingress/media/keyboards/onboarding, and flood-control backoff
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -580,7 +581,7 @@ Generated: 2026-05-31
 |----------|----------------|-----------------|----------------|----------------|
 | Core Tools | 40+ | 29 | 1 | 11+ |
 | Transports | 4 | 4 | 0 | 0 |
-| Gateway Platforms | 20+ | 15 | 1 | 5+ |
+| Gateway Platforms | 20+ | 15 | 2 | 4+ |
 | CLI Commands | 50+ | 16 | 0 | 34+ |
 | Agent Internals | 25+ | 18 | 4 | 2+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
@@ -633,7 +634,7 @@ Generated: 2026-05-31
 ### Phase 3: Medium Gaps — ALL COMPLETE ✅
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
-| 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,sms,matrix,wecom,dingtalk}.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 30 | ✅ 6 adapter implementations now have YAML config and gateway startup registration, with queued outbound delivery mapped through configured bot IDs |
+| 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,sms,matrix,wecom,dingtalk,qqbot}.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 38 | ✅ 7 adapter implementations now have YAML config and gateway startup registration, with queued outbound delivery mapped through configured bot IDs |
 | 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 36 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron status/add/edit`, standalone `hakimi cron status/tick` management, strict/assembled cron prompt scanner, skill-loaded scheduled runs, explicit gateway delivery targets |
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs`, `hakimi-cli/src/entry.rs` | 22 | ✅ Shared `~/.hakimi/checkpoints/store` shadow git snapshots with per-project refs/indexes, validated IDs/paths, status/list/diff/rollback, and real gateway `/checkpoints` responses |
 | 16 | i18n | `hakimi-i18n/src/lib.rs`, `hakimi-config/src/config.rs` | 15 | ✅ Locale YAML catalogs, Hermes-compatible language aliases, env/config resolution, directory loading, dotted key paths, English fallback, and named placeholders |
@@ -729,8 +730,10 @@ Generated: 2026-05-31
 | 106 | TUI Config Browser | `hakimi-tui/src/{app.rs,main.rs}` | 3 | ✅ `/config [field]` and `/cfg` now render a local sanitized configuration summary for model/runtime/display/compression/safety/integration/voice settings, redacting secret values and staying outside the model loop |
 | 107 | TUI Gateway Status Panel | `hakimi-tui/src/app.rs`, `hakimi-tui/Cargo.toml` | 3 | ✅ `/gateway` and `/gw` now render a local read-only status panel for configured adapters, cached `~/.hakimi/channel_directory.json` targets, lifecycle log paths, and recent `gateway-events.log` entries; `/platforms` maps to the same channel view without entering the agent/model loop |
 
+| 108 | QQBot Gateway Adapter | `hakimi-gateway/src/qqbot.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 8 | 🟡 Official QQ Bot v2 REST outbound text gateway supports app credential token caching, C2C/group/guild target prefixes, optional Markdown payloads, home-channel routing, config/env overrides, and UTF-8-safe 4000-character chunking; WebSocket ingress, media upload, keyboards, and QR onboarding remain future slices |
+
 ### Summary
-- **Total tests**: 1610 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1618 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

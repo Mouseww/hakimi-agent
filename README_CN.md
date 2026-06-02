@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.203-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.204-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1610-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1618-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1610 |
+| 测试数量 | ~500 | 1618 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -93,7 +93,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **评测**：Hermes 兼容的 ShareGPT JSONL 轨迹保存，覆盖完成与失败轮次
 
 **多平台网关**
-- Telegram · Discord · Slack · Mattermost · Webhook · Microsoft Graph webhook · Signal · SMS/Twilio · Email/SMTP · WhatsApp Business Cloud · Home Assistant · Matrix · 钉钉 · 企业微信 · 飞书/Lark · BlueBubbles/iMessage · WeChat
+- Telegram · Discord · Slack · Mattermost · Webhook · Microsoft Graph webhook · Signal · SMS/Twilio · Email/SMTP · WhatsApp Business Cloud · Home Assistant · Matrix · 钉钉 · 企业微信 · 飞书/Lark · BlueBubbles/iMessage · QQBot 出站 · WeChat
 - 配置驱动多适配器接入：聊天平台和 Webhook 网关可同时运行
 - 实时流式输出，长回复会按平台限制做 UTF-8 安全分片
 - 持久化生命周期诊断会把适配器、连接、路由、过滤和编辑事件写入 `~/.hakimi/logs/gateway-events.log`；`/logs`、`/logs events`、`/logs gateway` 可直接读取近期日志，不再依赖外部 `tail`
@@ -154,7 +154,7 @@ hakimi-agent/
 ├── hakimi-knowledge/    # 知识图谱 (petgraph)
 ├── hakimi-skills/        # 技能系统 + 元技能提炼
 ├── hakimi-cron/          # 持久化定时任务调度器
-├── hakimi-gateway/       # 17 个运行时可启用的平台适配器
+├── hakimi-gateway/       # 18 个运行时可启用的平台适配器
 ├── hakimi-mcp/           # MCP 客户端 (stdio/HTTP/SSE)
 ├── hakimi-cli/           # REPL CLI + 安装向导 + 诊断
 └── hakimi-tui/           # ratatui 终端界面
@@ -203,7 +203,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1610 |
+| 测试数量 | ~500 | 1618 |
 
 ---
 
@@ -230,7 +230,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Agent 主循环 + 工具调度
 - [x] OpenAI / Anthropic / Gemini 传输层 + SSE 流式
 - [x] 61+ 内置工具
-- [x] 17 个运行时可启用的平台适配器
+- [x] 18 个运行时可启用的平台适配器
 - [x] 网关目标目录 + send_message 频道解析
 - [x] MCP 客户端 + CLI/网关服务器目录
 - [x] HTTP API 模型/能力发现端点 + 文本 Chat Completions + Responses SSE 快照 + 可取消 Runs 生命周期事件

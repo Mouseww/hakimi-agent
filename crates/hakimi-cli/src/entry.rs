@@ -2374,6 +2374,57 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    if config.gateways.qqbot.enabled {
+        let app_id = env_or_config_value("QQ_APP_ID", &config.gateways.qqbot.app_id);
+        let client_secret =
+            env_or_config_value("QQ_CLIENT_SECRET", &config.gateways.qqbot.client_secret);
+
+        if let (Some(app_id), Some(client_secret)) = (app_id, client_secret) {
+            let bot_id = config.gateways.qqbot.bot_id.clone();
+            let home_channel =
+                env_or_config_value("QQ_HOME_CHANNEL", &config.gateways.qqbot.home_channel)
+                    .unwrap_or_default();
+            let default_chat_type = env_or_config_value(
+                "QQ_DEFAULT_CHAT_TYPE",
+                &config.gateways.qqbot.default_chat_type,
+            )
+            .unwrap_or_else(|| "c2c".to_string());
+            let markdown_support = std::env::var("QQ_MARKDOWN_SUPPORT")
+                .ok()
+                .map(|value| {
+                    matches!(
+                        value.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes" | "on"
+                    )
+                })
+                .unwrap_or(config.gateways.qqbot.markdown_support);
+            let qqbot = hakimi_gateway::QQBotAdapter::new(hakimi_gateway::QQBotAdapterConfig {
+                bot_id: bot_id.clone(),
+                app_id,
+                client_secret,
+                home_channel: home_channel.clone(),
+                default_chat_type: default_chat_type.clone(),
+                markdown_support,
+                base_url: env_or_config_value("QQ_API_BASE", &config.gateways.qqbot.base_url),
+                token_url: env_or_config_value("QQ_TOKEN_URL", &config.gateways.qqbot.token_url),
+            });
+            gateway.add_adapter(Box::new(qqbot));
+            bot_ids.insert("qqbot".to_string(), bot_id.clone());
+            if !home_channel.trim().is_empty() {
+                channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                    "qqbot",
+                    &home_channel,
+                    "home",
+                    default_chat_type.trim(),
+                    &bot_id,
+                ));
+            }
+            info!("qqbot gateway registered");
+        } else {
+            warn!("qqbot gateway enabled but required app_id/client_secret is missing");
+        }
+    }
+
     if config.gateways.sms.enabled {
         let account_sid =
             env_or_config_value("TWILIO_ACCOUNT_SID", &config.gateways.sms.account_sid);
@@ -4953,7 +5004,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Pairing(_)) => "🔗 Gateway pairing mode activated. Scan QR code to connect device.".to_string(),
-                    Some(Command::Platforms(_)) => "🌐 **Connected Platforms:**\n- Telegram\n- Discord\n- Signal\n- DingTalk\n- WeCom\n- Feishu/Lark\n- Matrix\n- Slack\n- Webhook".to_string(),
+                    Some(Command::Platforms(_)) => "🌐 **Connected Platforms:**\n- Telegram\n- Discord\n- Signal\n- DingTalk\n- WeCom\n- Feishu/Lark\n- Matrix\n- Slack\n- Webhook\n- QQBot".to_string(),
                     Some(Command::Providers(_)) => "🔌 **Supported LLM Providers:**\n- `openrouter` (Default)\n- `anthropic`\n- `openai`\n- `xai`\n- `google`\n- `deepseek`\n- `ollama`\n- `llama-cpp`".to_string(),
                     Some(Command::Skin(cmd)) => format!("🎨 Skin theme set to {}.", cmd.as_deref().unwrap_or("default")),
                     Some(Command::Tips(_)) => "💡 **Tip:** Use `/tools` to see all available capabilities, and `/skills` to use powerful multi-step workflows.".to_string(),

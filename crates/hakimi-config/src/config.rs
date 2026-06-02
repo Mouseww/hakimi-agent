@@ -612,6 +612,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub bluebubbles: BlueBubblesGatewayConfig,
     #[serde(default)]
+    pub qqbot: QQBotGatewayConfig,
+    #[serde(default)]
     pub slack: SlackGatewayConfig,
     #[serde(default)]
     pub discord: DiscordGatewayConfig,
@@ -655,6 +657,7 @@ impl Default for GatewaysConfig {
             telegram: TelegramGatewayConfig::default(),
             clawbot: ClawBotGatewayConfig::default(),
             bluebubbles: BlueBubblesGatewayConfig::default(),
+            qqbot: QQBotGatewayConfig::default(),
             slack: SlackGatewayConfig::default(),
             discord: DiscordGatewayConfig::default(),
             mattermost: MattermostGatewayConfig::default(),
@@ -669,6 +672,53 @@ impl Default for GatewaysConfig {
             dingtalk: DingTalkGatewayConfig::default(),
             wecom: WeComGatewayConfig::default(),
             feishu: FeishuGatewayConfig::default(),
+        }
+    }
+}
+
+/// QQBot gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QQBotGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_qqbot_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub app_id: String,
+    #[serde(default)]
+    pub client_secret: String,
+    #[serde(default)]
+    pub home_channel: String,
+    #[serde(default = "default_qqbot_chat_type")]
+    pub default_chat_type: String,
+    #[serde(default = "default_true")]
+    pub markdown_support: bool,
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub token_url: String,
+}
+
+fn default_qqbot_bot_id() -> String {
+    "qqbot".to_string()
+}
+
+fn default_qqbot_chat_type() -> String {
+    "c2c".to_string()
+}
+
+impl Default for QQBotGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_qqbot_bot_id(),
+            app_id: String::new(),
+            client_secret: String::new(),
+            home_channel: String::new(),
+            default_chat_type: default_qqbot_chat_type(),
+            markdown_support: true,
+            base_url: String::new(),
+            token_url: String::new(),
         }
     }
 }
@@ -1712,6 +1762,16 @@ gateways:
     password: "bb-redacted"
     home_channel: "iMessage;-;user@example.com"
     allow_new_chat: true
+  qqbot:
+    enabled: true
+    bot_id: "ops-qq"
+    app_id: "qq-app"
+    client_secret: "qq-secret"
+    home_channel: "group:qq-home"
+    default_chat_type: "group"
+    markdown_support: false
+    base_url: "https://api.qq.test"
+    token_url: "https://token.qq.test"
   sms:
     enabled: true
     bot_id: "ops-sms"
@@ -1806,6 +1866,13 @@ gateways:
             "iMessage;-;user@example.com"
         );
         assert!(config.gateways.bluebubbles.allow_new_chat);
+        assert!(config.gateways.qqbot.enabled);
+        assert_eq!(config.gateways.qqbot.bot_id, "ops-qq");
+        assert_eq!(config.gateways.qqbot.app_id, "qq-app");
+        assert_eq!(config.gateways.qqbot.home_channel, "group:qq-home");
+        assert_eq!(config.gateways.qqbot.default_chat_type, "group");
+        assert!(!config.gateways.qqbot.markdown_support);
+        assert_eq!(config.gateways.qqbot.base_url, "https://api.qq.test");
         assert!(config.gateways.sms.enabled);
         assert_eq!(config.gateways.sms.bot_id, "ops-sms");
         assert_eq!(config.gateways.sms.account_sid, "ACredacted");

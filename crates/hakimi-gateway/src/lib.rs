@@ -15,6 +15,7 @@ pub mod lifecycle;
 mod matrix;
 mod mattermost;
 mod msgraph_webhook;
+mod qqbot;
 mod signal;
 mod slack;
 mod sms;
@@ -34,6 +35,7 @@ pub use lifecycle::{gateway_events_log_path, read_recent_gateway_events, read_re
 pub use matrix::{MatrixAdapter, MatrixAdapterConfig};
 pub use mattermost::{MattermostAdapter, MattermostAdapterConfig};
 pub use msgraph_webhook::{MSGraphWebhookAdapter, MSGraphWebhookAdapterConfig};
+pub use qqbot::{QQBotAdapter, QQBotAdapterConfig};
 pub use signal::{SignalAdapter, SignalAdapterConfig};
 pub use slack::{SlackAdapter, SlackAdapterConfig, SlackBlock, SlackTextObject};
 pub use sms::{SmsAdapter, SmsAdapterConfig};
