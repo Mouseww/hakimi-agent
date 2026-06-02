@@ -1327,6 +1327,11 @@ impl Default for FeishuGatewayConfig {
 /// Runtime streaming behavior for gateway chat platforms.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayStreamingConfig {
+    /// Streaming preview transport. `edit` preserves the legacy progressive
+    /// message-edit path; `auto` prefers native drafts when an adapter supports
+    /// them; `draft` requests drafts and falls back to edit when unsupported.
+    #[serde(default = "default_gateway_streaming_transport")]
+    pub transport: GatewayStreamingTransport,
     /// Minimum interval between progressive gateway message edits.
     #[serde(default = "default_gateway_streaming_edit_interval_ms")]
     pub edit_interval_ms: u64,
@@ -1357,6 +1362,9 @@ pub struct GatewayStreamingPlatformConfig {
     /// global gateway streaming behavior.
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Platform-specific streaming preview transport.
+    #[serde(default)]
+    pub transport: Option<GatewayStreamingTransport>,
     /// Platform-specific edit cadence override in milliseconds.
     #[serde(default)]
     pub edit_interval_ms: Option<u64>,
@@ -1372,6 +1380,24 @@ pub struct GatewayStreamingPlatformConfig {
     /// Platform-specific fresh-final threshold in seconds.
     #[serde(default)]
     pub fresh_final_after_seconds: Option<u64>,
+}
+
+/// Gateway streaming preview transport selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GatewayStreamingTransport {
+    /// Use native draft previews when available, otherwise use message edits.
+    Auto,
+    /// Request native draft previews and fall back to edits when unsupported.
+    Draft,
+    /// Use the legacy send+edit preview path.
+    Edit,
+    /// Disable content previews while still delivering final responses.
+    Off,
+}
+
+fn default_gateway_streaming_transport() -> GatewayStreamingTransport {
+    GatewayStreamingTransport::Edit
 }
 
 fn default_gateway_streaming_edit_interval_ms() -> u64 {
@@ -1397,6 +1423,7 @@ fn default_gateway_fresh_final_after_seconds() -> u64 {
 impl Default for GatewayStreamingConfig {
     fn default() -> Self {
         Self {
+            transport: default_gateway_streaming_transport(),
             edit_interval_ms: default_gateway_streaming_edit_interval_ms(),
             edit_backoff_max_ms: default_gateway_streaming_edit_backoff_max_ms(),
             max_flood_strikes: default_gateway_streaming_max_flood_strikes(),
@@ -2114,6 +2141,10 @@ gateways:
   streaming: {}
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.gateways.streaming.transport,
+            GatewayStreamingTransport::Edit
+        );
         assert_eq!(config.gateways.streaming.edit_interval_ms, 800);
         assert_eq!(config.gateways.streaming.edit_backoff_max_ms, 10_000);
         assert_eq!(config.gateways.streaming.max_flood_strikes, 3);
@@ -2167,11 +2198,16 @@ gateways:
         let yaml = r#"
 gateways:
   streaming:
+    transport: auto
     edit_interval_ms: 700
     edit_backoff_max_ms: 5000
     max_flood_strikes: 2
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.gateways.streaming.transport,
+            GatewayStreamingTransport::Auto
+        );
         assert_eq!(config.gateways.streaming.edit_interval_ms, 700);
         assert_eq!(config.gateways.streaming.edit_backoff_max_ms, 5000);
         assert_eq!(config.gateways.streaming.max_flood_strikes, 2);
@@ -2182,6 +2218,7 @@ gateways:
         let yaml = r#"
 gateways:
   streaming:
+    transport: auto
     edit_interval_ms: 900
     edit_backoff_max_ms: 8000
     max_flood_strikes: 4
@@ -2189,18 +2226,26 @@ gateways:
     fresh_final_after_seconds: 60
     platforms:
       telegram:
+        transport: draft
         edit_interval_ms: 1100
         edit_backoff_max_ms: 9000
         max_flood_strikes: 5
         buffer_threshold_chars: 48
       whatsapp:
         enabled: false
+        transport: off
       slack:
+        transport: edit
         fresh_final_after_seconds: 0
 "#;
         let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.gateways.streaming.transport,
+            GatewayStreamingTransport::Auto
+        );
         let telegram = config.gateways.streaming.platforms.get("telegram").unwrap();
         assert_eq!(telegram.enabled, None);
+        assert_eq!(telegram.transport, Some(GatewayStreamingTransport::Draft));
         assert_eq!(telegram.edit_interval_ms, Some(1100));
         assert_eq!(telegram.edit_backoff_max_ms, Some(9000));
         assert_eq!(telegram.max_flood_strikes, Some(5));
@@ -2209,9 +2254,11 @@ gateways:
 
         let whatsapp = config.gateways.streaming.platforms.get("whatsapp").unwrap();
         assert_eq!(whatsapp.enabled, Some(false));
+        assert_eq!(whatsapp.transport, Some(GatewayStreamingTransport::Off));
         assert_eq!(whatsapp.edit_interval_ms, None);
 
         let slack = config.gateways.streaming.platforms.get("slack").unwrap();
+        assert_eq!(slack.transport, Some(GatewayStreamingTransport::Edit));
         assert_eq!(slack.fresh_final_after_seconds, Some(0));
     }
 

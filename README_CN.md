@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.215-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.216-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1660-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1668-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1660 |
+| 测试数量 | ~500 | 1668 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -96,7 +96,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 **多平台网关**
 - Telegram · Discord · Slack · Mattermost · Webhook · Microsoft Graph webhook · Signal · SMS/Twilio · Email/SMTP · WhatsApp Business Cloud · Home Assistant · Matrix · 钉钉 · 企业微信 · 飞书/Lark · BlueBubbles/iMessage · QQBot 出站 · WeChat · Weixin/iLink 别名
 - 配置驱动多适配器接入：聊天平台和 Webhook 网关可同时运行
-- 实时流式输出，支持 flood-control 退避、按平台配置 preview 策略，长回复会按平台限制做 UTF-8 安全分片
+- 实时流式输出，支持 progressive edits、Telegram 原生草稿 preview、flood-control 退避、按平台配置 preview 策略，长回复会按平台限制做 UTF-8 安全分片
 - 持久化生命周期诊断会把适配器、连接、路由、过滤和编辑事件写入 `~/.hakimi/logs/gateway-events.log`；`/logs`、`/logs events`、`/logs gateway` 可直接读取近期日志，不再依赖外部 `tail`
 - 网关 `/undo [N]` 可回退近期内存会话轮次，并回显目标提示词，方便编辑后重发
 - 聊天里直接创建定时任务 `/cron add`
@@ -206,7 +206,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1660 |
+| 测试数量 | ~500 | 1668 |
 
 ---
 

@@ -96,7 +96,7 @@ Generated: 2026-06-02
 - **Cron prompt injection scanning** — Strict create/store/run-time scan plus looser assembled-skill scan mirroring Hermes cron security
 
 ### Gateway
-- **PlatformAdapter trait** — connect, send_message, disconnect, take_receiver
+- **PlatformAdapter trait** — connect, send_message, send_draft, disconnect, take_receiver, and draft-streaming capability discovery
 - **Gateway** — Central message routing, adapter registration, and cached home-target directory for outbound delivery
 - **Gateway ingress access policy** — Config-driven allowlist merges global gateway users, Telegram user IDs, role allowlists, and ClawBot sender IDs before command/agent handling
 - **Gateway fresh-final streaming** — Configurable `gateways.streaming.fresh_final_after_seconds` sends long streamed completions as a fresh final message and lets Telegram clean up stale preview bubbles
@@ -390,7 +390,7 @@ Generated: 2026-06-02
 #### 39. Gateway Streaming Consumer
 - **What**: Bridges sync agent callbacks to async platform delivery with progressive message editing
 - **Hermes location**: `gateway/stream_consumer.py`
-- **Details**: Hakimi now has progressive gateway edits, tool/media/delegate side-channel segmentation, final delivery de-duplication, Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup, configurable global/per-platform edit interval, adaptive flood-control backoff and strike limits, buffer threshold, fresh-final thresholds, explicit per-platform preview disablement for permanent-message channels, UTF-8-safe overflow chunking for long outbound/streamed text, and a default-on silence-narration filter for loop-prone bare tokens. Remaining parity is native draft transport.
+- **Details**: Hakimi now has progressive gateway edits, native Telegram draft previews with edit fallback, tool/media/delegate side-channel segmentation, final delivery de-duplication, Hermes-style fresh-final completion via `gateways.streaming.fresh_final_after_seconds` with Telegram stale-preview cleanup, configurable global/per-platform edit interval, adaptive flood-control backoff and strike limits, buffer threshold, fresh-final thresholds, explicit per-platform preview disablement for permanent-message channels, UTF-8-safe overflow chunking for long outbound/streamed text, and a default-on silence-narration filter for loop-prone bare tokens. Remaining parity is richer platform draft capability discovery and transport-specific lifecycle hooks.
 - **Priority**: **Medium** — Real-time streaming UX on messaging platforms
 
 #### 40. Usage Pricing / Account Usage Tracking
@@ -526,8 +526,8 @@ Generated: 2026-06-02
 - **Hermes reference**: `agent/skill_commands.py`, `agent/skill_preprocessing.py`, `agent/skill_utils.py`, `agent/skill_provenance.py`, `tools/skills_guard.py`, `tools/skills_hub.py`, `tools/skills_sync.py`, `tools/skill_usage.py`
 
 ### 6. Gateway
-- **Status**: 19 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Microsoft Graph webhook, Signal, SMS/Twilio, Email/SMTP, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, BlueBubbles/iMessage, QQBot outbound, ClawBot/WeChat, and Weixin/iLink) plus config-driven ingress access policy, fresh-final streaming, configurable stream pacing, adaptive stream-edit flood-control backoff, outbound/streamed overflow chunking, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, ClawBot, and Weixin allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
-- **What's missing**: 4+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, native draft transport, and QQBot ingress/media/keyboards/onboarding
+- **Status**: 19 runtime-exposed platform entries (Telegram, Discord, Slack, Mattermost, Webhook, Microsoft Graph webhook, Signal, SMS/Twilio, Email/SMTP, WhatsApp Business Cloud, Home Assistant, Matrix, DingTalk, WeCom, Feishu/Lark, BlueBubbles/iMessage, QQBot outbound, ClawBot/WeChat, and Weixin/iLink) plus config-driven ingress access policy, native Telegram draft streaming previews, fresh-final streaming, configurable stream pacing, adaptive stream-edit flood-control backoff, outbound/streamed overflow chunking, outbound silence-narration filtering, and persistent lifecycle diagnostics. Gateway messages are checked against global, Telegram, role, ClawBot, and Weixin allowlists before slash-command or agent execution; empty allowlists preserve the existing open-gateway behavior. Gateway `/logs` can now read lifecycle events and legacy gateway logs through Rust file I/O instead of a platform-specific `tail` process.
+- **What's missing**: 4+ other platforms, gateway hooks system, pairing, mirror, delivery abstraction, restart/drain, deeper shutdown forensics, runtime footer, display config, session context management, sticker cache, richer platform draft capability discovery, and QQBot ingress/media/keyboards/onboarding
 - **Hermes reference**: `gateway/` (entire directory)
 
 ### 7. Plugin System
@@ -740,9 +740,10 @@ Generated: 2026-06-02
 | 112 | Gateway Streaming Platform Policy | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ `gateways.streaming.platforms.<platform>` can disable progressive previews or override edit cadence, buffer threshold, and fresh-final behavior per platform while keeping unconfigured platforms on the existing global defaults |
 | 113 | CLI Skin Engine | `hakimi-cli/src/skin.rs`, `hakimi-cli/src/{lib.rs,entry.rs}` | 6 | 🟡 `hakimi skin list|inspect|set|path` and gateway `/skin` manage built-in/user YAML skins with default inheritance, skin-name traversal guards, and `display.skin` persistence; renderer-level banner/spinner/TUI theme application remains future work |
 | 114 | Gateway Stream Flood Backoff | `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 4 | ✅ Gateway streaming previews now double the edit interval on flood/rate-limit edit failures, cap the backoff at `gateways.streaming.edit_backoff_max_ms`, reset after successful edits, and disable previews after `max_flood_strikes` so final delivery still sends the full answer |
+| 115 | Gateway Native Draft Transport | `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}`, `hakimi-cli/src/entry.rs` | 8 | ✅ `gateways.streaming.transport` now supports `edit`, `auto`, `draft`, and `off`; Telegram private chats can receive native `sendMessageDraft` previews with automatic fallback to progressive edits, draft segment rotation around tool/media/delegate boundaries, and UTF-8-safe truncation |
 
 ### Summary
-- **Total tests**: 1660 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1668 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

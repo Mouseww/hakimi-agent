@@ -546,6 +546,50 @@ impl PlatformAdapter for TelegramAdapter {
         Ok(())
     }
 
+    fn supports_draft_streaming(&self, chat_id: &str, chat_type: Option<&str>) -> bool {
+        if matches!(
+            chat_type.map(|kind| kind.to_ascii_lowercase()),
+            Some(kind) if kind == "dm" || kind == "private"
+        ) {
+            return true;
+        }
+
+        // Telegram private chat IDs are positive user IDs. Groups/channels are
+        // negative IDs, so an unknown chat type can still safely enable drafts
+        // for positive numeric IDs and fall back on API rejection otherwise.
+        chat_type.is_none()
+            && chat_id
+                .parse::<i64>()
+                .is_ok_and(|parsed_chat_id| parsed_chat_id > 0)
+    }
+
+    async fn send_draft(&self, chat_id: &str, draft_id: i64, text: &str) -> Result<()> {
+        let text = truncate_draft_text(&normalize_outbound_text(text));
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "draft_id": draft_id,
+            "text": text,
+        });
+
+        let resp: TgResponse<serde_json::Value> = self
+            .client
+            .post(self.api_url("sendMessageDraft"))
+            .json(&body)
+            .send()
+            .await
+            .context("failed to send Telegram draft")?
+            .json()
+            .await
+            .context("failed to parse sendMessageDraft response")?;
+        if !resp.ok {
+            anyhow::bail!(
+                "Telegram sendMessageDraft failed: {}",
+                resp.description.unwrap_or_else(|| "unknown error".into())
+            );
+        }
+        Ok(())
+    }
+
     async fn send_message_get_id(&self, chat_id: &str, text: &str) -> Result<Option<i64>> {
         let text = normalize_outbound_text(text);
         let body = serde_json::json!({
@@ -741,6 +785,10 @@ async fn poll_once(client: &reqwest::Client, api_url: &str, offset: i64) -> Resu
 
 fn normalize_outbound_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn truncate_draft_text(text: &str) -> String {
+    text.chars().take(MAX_MESSAGE_LENGTH).collect()
 }
 
 fn method_name(kind: TelegramMediaKind) -> &'static str {
@@ -1168,6 +1216,27 @@ mod tests {
     fn test_adapter_name() {
         let adapter = TelegramAdapter::from_token("default", "test:token");
         assert_eq!(adapter.name(), "telegram");
+    }
+
+    #[test]
+    fn telegram_draft_support_is_private_chat_only() {
+        let adapter = TelegramAdapter::from_token("default", "test:token");
+
+        assert!(adapter.supports_draft_streaming("123", Some("private")));
+        assert!(adapter.supports_draft_streaming("123", Some("dm")));
+        assert!(adapter.supports_draft_streaming("123", None));
+        assert!(!adapter.supports_draft_streaming("-100123", None));
+        assert!(!adapter.supports_draft_streaming("-100123", Some("group")));
+        assert!(!adapter.supports_draft_streaming("channel", None));
+    }
+
+    #[test]
+    fn telegram_draft_truncation_is_utf8_safe() {
+        let text = "好".repeat(MAX_MESSAGE_LENGTH + 2);
+        let truncated = truncate_draft_text(&text);
+
+        assert_eq!(truncated.chars().count(), MAX_MESSAGE_LENGTH);
+        assert!(truncated.ends_with('好'));
     }
 
     #[test]

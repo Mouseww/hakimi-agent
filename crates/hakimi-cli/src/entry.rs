@@ -2871,6 +2871,7 @@ enum GatewayFinalDelivery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GatewayStreamingPolicy {
     content_preview_enabled: bool,
+    transport: hakimi_config::GatewayStreamingTransport,
     edit_interval_ms: u64,
     edit_backoff_max_ms: u64,
     max_flood_strikes: u32,
@@ -2889,6 +2890,9 @@ fn effective_gateway_streaming_policy(
         .map(|(_, policy)| policy);
 
     GatewayStreamingPolicy {
+        transport: platform_config
+            .and_then(|policy| policy.transport)
+            .unwrap_or(config.transport),
         content_preview_enabled: platform_config
             .and_then(|policy| policy.enabled)
             .unwrap_or(true),
@@ -2907,6 +2911,26 @@ fn effective_gateway_streaming_policy(
         fresh_final_after_seconds: platform_config
             .and_then(|policy| policy.fresh_final_after_seconds)
             .unwrap_or(config.fresh_final_after_seconds),
+    }
+    .normalize_preview_transport()
+}
+
+impl GatewayStreamingPolicy {
+    fn normalize_preview_transport(mut self) -> Self {
+        if self.transport == hakimi_config::GatewayStreamingTransport::Off {
+            self.content_preview_enabled = false;
+            self.transport = hakimi_config::GatewayStreamingTransport::Edit;
+        }
+        self
+    }
+
+    fn requests_draft_transport(&self) -> bool {
+        self.content_preview_enabled
+            && matches!(
+                self.transport,
+                hakimi_config::GatewayStreamingTransport::Auto
+                    | hakimi_config::GatewayStreamingTransport::Draft
+            )
     }
 }
 
@@ -3104,6 +3128,60 @@ impl GatewayStreamBackoffState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GatewayStreamDraftState {
+    enabled: bool,
+    draft_id: i64,
+}
+
+impl GatewayStreamDraftState {
+    fn resolve(
+        policy: &GatewayStreamingPolicy,
+        gateway: &hakimi_gateway::Gateway,
+        platform: &str,
+        bot_id: &str,
+        chat_id: &str,
+    ) -> Self {
+        let enabled = policy.requests_draft_transport()
+            && gateway.supports_draft_streaming(platform, bot_id, chat_id, None);
+        Self {
+            enabled,
+            draft_id: if enabled {
+                next_gateway_stream_draft_id()
+            } else {
+                0
+            },
+        }
+    }
+
+    #[cfg(test)]
+    fn disabled() -> Self {
+        Self {
+            enabled: false,
+            draft_id: 0,
+        }
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn disable(&mut self) {
+        self.enabled = false;
+    }
+
+    fn start_new_segment(&mut self) {
+        if self.enabled {
+            self.draft_id = next_gateway_stream_draft_id();
+        }
+    }
+}
+
+fn next_gateway_stream_draft_id() -> i64 {
+    static NEXT_DRAFT_ID: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+    NEXT_DRAFT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct GatewayStreamRenderResult {
     rendered_any: bool,
@@ -3126,6 +3204,7 @@ async fn render_gateway_stream_content(
     env: &GatewayStreamRenderEnv<'_>,
     current_message_id: &mut Option<i64>,
     ui_state: &mut GatewayStreamUiState,
+    draft_state: &mut GatewayStreamDraftState,
     backoff_state: &mut GatewayStreamBackoffState,
     rendered_content: &mut bool,
     first_rendered_at: &mut Option<std::time::Instant>,
@@ -3146,6 +3225,31 @@ async fn render_gateway_stream_content(
 
         match target {
             GatewayUiContentTarget::EditCurrent(text) => {
+                if draft_state.is_enabled() && current_message_id.is_none() {
+                    match env
+                        .gateway
+                        .send_draft(
+                            env.platform,
+                            env.bot_id,
+                            env.chat_id,
+                            draft_state.draft_id,
+                            &text,
+                        )
+                        .await
+                    {
+                        Ok(()) => {
+                            result.rendered_any = true;
+                            backoff_state.record_edit_success();
+                        }
+                        Err(err) => {
+                            *ui_state = previous_state;
+                            draft_state.disable();
+                            warn!(error = %err, "gateway draft stream failed; falling back to edit transport");
+                            continue;
+                        }
+                    }
+                    continue;
+                }
                 if let Some(active_msg_id) = *current_message_id {
                     match env
                         .gateway
@@ -3172,6 +3276,31 @@ async fn render_gateway_stream_content(
                 }
             }
             GatewayUiContentTarget::NewMessage(text) => {
+                if draft_state.is_enabled() {
+                    match env
+                        .gateway
+                        .send_draft(
+                            env.platform,
+                            env.bot_id,
+                            env.chat_id,
+                            draft_state.draft_id,
+                            &text,
+                        )
+                        .await
+                    {
+                        Ok(()) => {
+                            result.rendered_any = true;
+                            backoff_state.record_edit_success();
+                        }
+                        Err(err) => {
+                            *ui_state = previous_state;
+                            draft_state.disable();
+                            warn!(error = %err, "gateway draft stream failed; falling back to edit transport");
+                            continue;
+                        }
+                    }
+                    continue;
+                }
                 let msg = hakimi_gateway::GatewayMessage {
                     platform: env.platform.to_string(),
                     bot_id: env.bot_id.to_string(),
@@ -3188,6 +3317,32 @@ async fn render_gateway_stream_content(
     }
 
     result
+}
+
+async fn commit_gateway_stream_draft_segment(
+    env: &GatewayStreamRenderEnv<'_>,
+    current_message_id: &mut Option<i64>,
+    ui_state: &GatewayStreamUiState,
+    draft_state: &mut GatewayStreamDraftState,
+    rendered_content: &mut bool,
+    first_rendered_at: &mut Option<std::time::Instant>,
+) {
+    if !draft_state.is_enabled() || ui_state.current_text.trim().is_empty() {
+        return;
+    }
+
+    let msg = hakimi_gateway::GatewayMessage {
+        platform: env.platform.to_string(),
+        bot_id: env.bot_id.to_string(),
+        chat_id: env.chat_id.to_string(),
+        user_id: String::new(),
+        text: ui_state.current_text.clone(),
+        media: None,
+    };
+    *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
+    *rendered_content = true;
+    first_rendered_at.get_or_insert_with(std::time::Instant::now);
+    draft_state.start_new_segment();
 }
 
 fn split_stream_chunks(text: &str, max_chars: Option<usize>) -> Vec<String> {
@@ -3472,6 +3627,8 @@ gateways:
   # Drop bare silence narration such as "*(silent)*", ".", or "no reply".
   filter_silence_narration: true
   streaming:
+    # Preview transport: edit, auto, draft, or off.
+    transport: edit
     # Minimum interval between progressive gateway message edits.
     edit_interval_ms: 800
     # Maximum edit interval after repeated flood-control errors.
@@ -5423,6 +5580,7 @@ Just send a message to chat with me!"
                 let chat_id_cb = chat_id.clone();
                 let gateway_cb = gateway_clone.clone();
                 let content_preview_enabled = streaming_policy.content_preview_enabled;
+                let streaming_policy_for_updater = streaming_policy.clone();
                 let mut backoff_state = GatewayStreamBackoffState::new(&streaming_policy);
                 let buffer_threshold_chars = streaming_policy.buffer_threshold_chars;
                 let (ui_tx, mut ui_rx) =
@@ -5435,6 +5593,13 @@ Just send a message to chat with me!"
                         bot_id: &bot_id_cb,
                         chat_id: &chat_id_cb,
                     };
+                    let mut draft_state = GatewayStreamDraftState::resolve(
+                        &streaming_policy_for_updater,
+                        &gateway_cb,
+                        &platform_cb,
+                        &bot_id_cb,
+                        &chat_id_cb,
+                    );
                     let mut current_message_id = None;
                     let mut ui_state = GatewayStreamUiState::default();
                     let mut rendered_content = false;
@@ -5458,6 +5623,7 @@ Just send a message to chat with me!"
                                                 &render_env,
                                                 &mut current_message_id,
                                                 &mut ui_state,
+                                                &mut draft_state,
                                                 &mut backoff_state,
                                                 &mut rendered_content,
                                                 &mut first_rendered_at,
@@ -5517,6 +5683,7 @@ Just send a message to chat with me!"
                                         &render_env,
                                         &mut current_message_id,
                                         &mut ui_state,
+                                        &mut draft_state,
                                         &mut backoff_state,
                                         &mut rendered_content,
                                         &mut first_rendered_at,
@@ -5541,6 +5708,7 @@ Just send a message to chat with me!"
                                     &render_env,
                                     &mut current_message_id,
                                     &mut ui_state,
+                                    &mut draft_state,
                                     &mut backoff_state,
                                     &mut rendered_content,
                                     &mut first_rendered_at,
@@ -5549,6 +5717,15 @@ Just send a message to chat with me!"
                                 if render_result.retry_after_backoff {
                                     backoff_state.disable_previews();
                                 }
+                                commit_gateway_stream_draft_segment(
+                                    &render_env,
+                                    &mut current_message_id,
+                                    &ui_state,
+                                    &mut draft_state,
+                                    &mut rendered_content,
+                                    &mut first_rendered_at,
+                                )
+                                .await;
                                 if !text.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
                                         platform: platform_cb.clone(),
@@ -5573,6 +5750,7 @@ Just send a message to chat with me!"
                                     &render_env,
                                     &mut current_message_id,
                                     &mut ui_state,
+                                    &mut draft_state,
                                     &mut backoff_state,
                                     &mut rendered_content,
                                     &mut first_rendered_at,
@@ -5581,6 +5759,15 @@ Just send a message to chat with me!"
                                 if render_result.retry_after_backoff {
                                     backoff_state.disable_previews();
                                 }
+                                commit_gateway_stream_draft_segment(
+                                    &render_env,
+                                    &mut current_message_id,
+                                    &ui_state,
+                                    &mut draft_state,
+                                    &mut rendered_content,
+                                    &mut first_rendered_at,
+                                )
+                                .await;
                                 if !media.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
                                         platform: platform_cb.clone(),
@@ -5602,6 +5789,7 @@ Just send a message to chat with me!"
                                     &render_env,
                                     &mut current_message_id,
                                     &mut ui_state,
+                                    &mut draft_state,
                                     &mut backoff_state,
                                     &mut rendered_content,
                                     &mut first_rendered_at,
@@ -5610,6 +5798,15 @@ Just send a message to chat with me!"
                                 if render_result.retry_after_backoff {
                                     backoff_state.disable_previews();
                                 }
+                                commit_gateway_stream_draft_segment(
+                                    &render_env,
+                                    &mut current_message_id,
+                                    &ui_state,
+                                    &mut draft_state,
+                                    &mut rendered_content,
+                                    &mut first_rendered_at,
+                                )
+                                .await;
                                 let task_id = event.task_id.clone();
                                 let bubble = delegate_bubbles.entry(task_id).or_default();
                                 bubble.push(event);
@@ -5648,6 +5845,7 @@ Just send a message to chat with me!"
                         &render_env,
                         &mut current_message_id,
                         &mut ui_state,
+                        &mut draft_state,
                         &mut backoff_state,
                         &mut rendered_content,
                         &mut first_rendered_at,
@@ -6526,20 +6724,21 @@ mod tests {
     use super::{
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
         GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamBackoffState,
-        GatewayStreamRenderSnapshot, GatewayStreamUiState, GatewayUiContentTarget,
-        GatewayUsageSnapshot, McpCommandArgs, PluginCommandArgs, ProfileCommandArgs,
-        TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX, VOICE_USER_MESSAGE_PREFIX,
-        VoiceRuntimeState, build_cron_delegation_goal, create_hakimi_state_backup,
-        cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
-        effective_gateway_streaming_policy, gateway_bot_id_for_platform,
-        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
-        gateway_usage_response, gateway_voice_response, is_gateway_flood_error,
-        is_top_level_cron_tick, parse_gateway_undo_turns, plan_gateway_final_delivery,
-        queue_cron_delivery, render_gateway_undo_response, resolve_clawbot_gateway_config,
-        resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
-        rewind_gateway_history, split_stream_chunks, top_level_cron_response_for_path,
-        top_level_mcp_response, update_shim_paths, update_target_from_candidate,
+        GatewayStreamDraftState, GatewayStreamRenderSnapshot, GatewayStreamUiState,
+        GatewayStreamingPolicy, GatewayUiContentTarget, GatewayUsageSnapshot, McpCommandArgs,
+        PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
+        VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
+        create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
+        cron_success_output_should_deliver, effective_gateway_streaming_policy,
+        gateway_bot_id_for_platform, gateway_cron_response_for_path,
+        gateway_cron_response_for_path_with_delivery, gateway_mcp_response,
+        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
+        gateway_voice_response, is_gateway_flood_error, is_top_level_cron_tick,
+        parse_gateway_undo_turns, plan_gateway_final_delivery, queue_cron_delivery,
+        render_gateway_undo_response, resolve_clawbot_gateway_config, resolve_hakimi_update_target,
+        restore_hakimi_state_backup, restore_voice_history_text, rewind_gateway_history,
+        split_stream_chunks, top_level_cron_response_for_path, top_level_mcp_response,
+        update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::{Message, Usage};
@@ -7441,6 +7640,11 @@ roles:
         let policy = effective_gateway_streaming_policy(&config.gateways.streaming, "telegram");
 
         assert!(policy.content_preview_enabled);
+        assert_eq!(
+            policy.transport,
+            hakimi_config::GatewayStreamingTransport::Edit
+        );
+        assert!(!policy.requests_draft_transport());
         assert_eq!(policy.edit_interval_ms, 800);
         assert_eq!(policy.edit_backoff_max_ms, 10_000);
         assert_eq!(policy.max_flood_strikes, 3);
@@ -7454,6 +7658,7 @@ roles:
             r#"
 gateways:
   streaming:
+    transport: auto
     edit_interval_ms: 800
     edit_backoff_max_ms: 10000
     max_flood_strikes: 3
@@ -7461,12 +7666,14 @@ gateways:
     fresh_final_after_seconds: 60
     platforms:
       Telegram:
+        transport: draft
         edit_interval_ms: 1100
         edit_backoff_max_ms: 9000
         max_flood_strikes: 5
         buffer_threshold_chars: 48
       sms:
         enabled: false
+        transport: off
         fresh_final_after_seconds: 0
 "#,
         )
@@ -7474,6 +7681,11 @@ gateways:
 
         let telegram = effective_gateway_streaming_policy(&config.gateways.streaming, "telegram");
         assert!(telegram.content_preview_enabled);
+        assert_eq!(
+            telegram.transport,
+            hakimi_config::GatewayStreamingTransport::Draft
+        );
+        assert!(telegram.requests_draft_transport());
         assert_eq!(telegram.edit_interval_ms, 1100);
         assert_eq!(telegram.edit_backoff_max_ms, 9000);
         assert_eq!(telegram.max_flood_strikes, 5);
@@ -7482,11 +7694,73 @@ gateways:
 
         let sms = effective_gateway_streaming_policy(&config.gateways.streaming, "SMS");
         assert!(!sms.content_preview_enabled);
+        assert_eq!(
+            sms.transport,
+            hakimi_config::GatewayStreamingTransport::Edit
+        );
+        assert!(!sms.requests_draft_transport());
         assert_eq!(sms.edit_interval_ms, 800);
         assert_eq!(sms.edit_backoff_max_ms, 10_000);
         assert_eq!(sms.max_flood_strikes, 3);
         assert_eq!(sms.buffer_threshold_chars, 24);
         assert_eq!(sms.fresh_final_after_seconds, 0);
+    }
+
+    #[test]
+    fn gateway_streaming_policy_off_transport_disables_previews() {
+        let config: hakimi_config::HakimiConfig = serde_yaml::from_str(
+            r#"
+gateways:
+  streaming:
+    transport: off
+    edit_interval_ms: 0
+"#,
+        )
+        .unwrap();
+
+        let policy = effective_gateway_streaming_policy(&config.gateways.streaming, "telegram");
+        assert!(!policy.content_preview_enabled);
+        assert_eq!(
+            policy.transport,
+            hakimi_config::GatewayStreamingTransport::Edit
+        );
+        assert!(!policy.requests_draft_transport());
+        assert_eq!(policy.edit_interval_ms, 0);
+    }
+
+    #[test]
+    fn gateway_stream_draft_state_disables_without_supported_adapter() {
+        let gateway = hakimi_gateway::Gateway::new();
+        let policy = GatewayStreamingPolicy {
+            content_preview_enabled: true,
+            transport: hakimi_config::GatewayStreamingTransport::Draft,
+            edit_interval_ms: 800,
+            edit_backoff_max_ms: 10_000,
+            max_flood_strikes: 3,
+            buffer_threshold_chars: 24,
+            fresh_final_after_seconds: 60,
+        };
+
+        let draft_state =
+            GatewayStreamDraftState::resolve(&policy, &gateway, "telegram", "default", "123");
+
+        assert!(!draft_state.is_enabled());
+        assert_eq!(draft_state.draft_id, 0);
+    }
+
+    #[test]
+    fn gateway_stream_draft_state_segment_rotation_uses_new_id() {
+        let mut draft_state = GatewayStreamDraftState::disabled();
+        assert!(!draft_state.is_enabled());
+
+        draft_state.enabled = true;
+        draft_state.start_new_segment();
+        let first_id = draft_state.draft_id;
+        draft_state.start_new_segment();
+
+        assert!(draft_state.is_enabled());
+        assert!(first_id > 0);
+        assert!(draft_state.draft_id > first_id);
     }
 
     #[test]

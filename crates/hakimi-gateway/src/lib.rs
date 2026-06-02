@@ -197,6 +197,21 @@ pub trait PlatformAdapter: Send + Sync {
         Ok(())
     }
 
+    /// Return whether this adapter supports native streaming draft previews for
+    /// a chat. The default is false; callers fall back to progressive edits.
+    fn supports_draft_streaming(&self, _chat_id: &str, _chat_type: Option<&str>) -> bool {
+        false
+    }
+
+    /// Send or update a native streaming draft preview.
+    ///
+    /// Drafts are transient previews, not durable messages. A successful draft
+    /// call does not return a message ID, and the caller still sends the final
+    /// answer through the normal message path.
+    async fn send_draft(&self, _chat_id: &str, _draft_id: i64, _text: &str) -> anyhow::Result<()> {
+        anyhow::bail!("Draft streaming not supported on this platform")
+    }
+
     /// Edit an existing message (for streaming progressive updates).
     /// Returns Ok(message_id) on success, Err if not supported.
     async fn edit_message(
@@ -567,6 +582,78 @@ impl Gateway {
         adapter.download_media(media_id).await
     }
 
+    /// Return whether a platform adapter supports native streaming drafts for
+    /// the provided chat.
+    pub fn supports_draft_streaming(
+        &self,
+        platform: &str,
+        bot_id: &str,
+        chat_id: &str,
+        chat_type: Option<&str>,
+    ) -> bool {
+        self.adapters
+            .iter()
+            .find(|a| a.name() == platform && a.bot_id() == bot_id)
+            .is_some_and(|adapter| adapter.supports_draft_streaming(chat_id, chat_type))
+    }
+
+    /// Send or update a native streaming draft preview through a platform adapter.
+    pub async fn send_draft(
+        &self,
+        platform: &str,
+        bot_id: &str,
+        chat_id: &str,
+        draft_id: i64,
+        text: &str,
+    ) -> anyhow::Result<()> {
+        let adapter = self
+            .adapters
+            .iter()
+            .find(|a| a.name() == platform && a.bot_id() == bot_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no adapter for platform '{}' with bot_id '{}'",
+                    platform,
+                    bot_id
+                )
+            })?;
+
+        if self.filter_silence_narration && is_silence_narration(text) {
+            tracing::warn!(
+                platform = %platform,
+                chat_id = %chat_id,
+                "dropped silence-narration gateway draft"
+            );
+            lifecycle::record_gateway_event(
+                "draft.filtered_silence",
+                Some(platform),
+                Some(bot_id),
+                Some(chat_id),
+                format!("draft_id={draft_id}"),
+            );
+            return Ok(());
+        }
+
+        let result = adapter.send_draft(chat_id, draft_id, text).await;
+        match &result {
+            Ok(()) => lifecycle::record_gateway_event(
+                "draft.ok",
+                Some(platform),
+                Some(bot_id),
+                Some(chat_id),
+                format!("draft_id={draft_id}"),
+            ),
+            Err(err) => lifecycle::record_gateway_event(
+                "draft.error",
+                Some(platform),
+                Some(bot_id),
+                Some(chat_id),
+                err.to_string(),
+            ),
+        }
+        result
+    }
+
     /// Edit an existing message by ID.
     pub async fn edit_message(
         &self,
@@ -790,6 +877,7 @@ mod tests {
     struct RecordingAdapter {
         calls: Arc<Mutex<Vec<String>>>,
         max_chars: Option<usize>,
+        draft_supported: bool,
     }
 
     #[async_trait]
@@ -815,6 +903,10 @@ mod tests {
             self.max_chars
         }
 
+        fn supports_draft_streaming(&self, _chat_id: &str, _chat_type: Option<&str>) -> bool {
+            self.draft_supported
+        }
+
         async fn send_media(
             &self,
             _chat_id: &str,
@@ -825,6 +917,19 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(format!("{media}|{caption}"));
+            Ok(())
+        }
+
+        async fn send_draft(
+            &self,
+            _chat_id: &str,
+            draft_id: i64,
+            text: &str,
+        ) -> anyhow::Result<()> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("draft:{draft_id}:{text}"));
             Ok(())
         }
 
@@ -969,6 +1074,55 @@ mod tests {
         assert_eq!(message_id, Some(42));
         let calls = calls.lock().unwrap();
         assert_eq!(calls.as_slice(), ["你好", "世界", "!"]);
+    }
+
+    #[test]
+    fn gateway_reports_adapter_draft_support() {
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(RecordingAdapter {
+            draft_supported: true,
+            ..RecordingAdapter::default()
+        }));
+
+        assert!(gateway.supports_draft_streaming("test", "bot", "chat", None));
+        assert!(!gateway.supports_draft_streaming("missing", "bot", "chat", None));
+    }
+
+    #[tokio::test]
+    async fn gateway_send_draft_routes_to_adapter() {
+        let adapter = RecordingAdapter {
+            draft_supported: true,
+            ..RecordingAdapter::default()
+        };
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+
+        gateway
+            .send_draft("test", "bot", "chat", 7, "partial answer")
+            .await
+            .unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.as_slice(), ["draft:7:partial answer"]);
+    }
+
+    #[tokio::test]
+    async fn gateway_send_draft_respects_silence_filter() {
+        let adapter = RecordingAdapter {
+            draft_supported: true,
+            ..RecordingAdapter::default()
+        };
+        let calls = adapter.calls.clone();
+        let mut gateway = Gateway::new();
+        gateway.add_adapter(Box::new(adapter));
+
+        gateway
+            .send_draft("test", "bot", "chat", 8, "*(silent)*")
+            .await
+            .unwrap();
+
+        assert!(calls.lock().unwrap().is_empty());
     }
 
     #[test]
