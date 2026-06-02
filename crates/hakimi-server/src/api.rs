@@ -23,7 +23,7 @@
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
 //! - `GET  /v1/skills`       — List loaded runtime skills without skill bodies
 //! - `GET  /v1/toolsets`     — List registered toolsets and their tool schemas
-//! - `POST /v1/chat/completions` — OpenAI-compatible non-streaming chat
+//! - `POST /v1/chat/completions` — OpenAI-compatible chat/SSE snapshots
 //! - `POST /v1/responses`    — OpenAI Responses-compatible chat/SSE snapshots
 //! - `GET  /v1/responses/:id` — Retrieve a stored Responses API result
 //! - `DELETE /v1/responses/:id` — Delete a stored Responses API result
@@ -1157,7 +1157,8 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
         "features": {
             "chat": true,
             "chat_completions": true,
-            "chat_completions_streaming": false,
+            "chat_completions_streaming": true,
+            "chat_completions_streaming_mode": "completed_sse_snapshot",
             "responses_api": true,
             "responses_streaming": true,
             "responses_streaming_mode": "completed_sse_snapshot",
@@ -1467,6 +1468,85 @@ fn response_text_chunks(value: &str, max_chars: usize) -> Vec<String> {
 
 fn sse_event(event: &str, data: JsonValue) -> String {
     format!("event: {event}\ndata: {data}\n\n")
+}
+
+fn sse_data(data: JsonValue) -> String {
+    format!("data: {data}\n\n")
+}
+
+fn chat_completion_sse_body(completion: &JsonValue) -> String {
+    let completion_id = completion
+        .get("id")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let created = completion
+        .get("created")
+        .and_then(JsonValue::as_u64)
+        .unwrap_or_default();
+    let model = completion
+        .get("model")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+    let content = completion
+        .get("choices")
+        .and_then(JsonValue::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
+
+    let mut body = String::new();
+    body.push_str(&sse_data(json!({
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "delta": {"role": "assistant"},
+            "finish_reason": null
+        }]
+    })));
+
+    for chunk in response_text_chunks(content, 2048) {
+        body.push_str(&sse_data(json!({
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": {"content": chunk},
+                "finish_reason": null
+            }]
+        })));
+    }
+
+    body.push_str(&sse_data(json!({
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop"
+        }]
+    })));
+    body.push_str("data: [DONE]\n\n");
+    body
+}
+
+fn chat_completion_sse_response(completion: &JsonValue) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/event-stream; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        chat_completion_sse_body(completion),
+    )
+        .into_response()
 }
 
 fn responses_sse_body(response: &JsonValue) -> String {
@@ -2094,18 +2174,12 @@ async fn chat(
     }
 }
 
-/// POST /v1/chat/completions — OpenAI-compatible non-streaming chat.
+/// POST /v1/chat/completions — OpenAI-compatible chat with optional SSE snapshot output.
 async fn chat_completions(
     State(state): State<AppState>,
     Json(req): Json<ChatCompletionsRequest>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    if request_bool(req.stream.as_ref(), false) {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "stream=true is not yet supported on /v1/chat/completions",
-        ));
-    }
-
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let stream = request_bool(req.stream.as_ref(), false);
     let prompt = chat_completions_prompt(&req.messages)?;
     info!(
         message_count = req.messages.len(),
@@ -2134,7 +2208,7 @@ async fn chat_completions(
     match agent.run_conversation(&prompt).await {
         Ok(result) => {
             let created = unix_timestamp_secs();
-            Ok(Json(json!({
+            let completion = json!({
                 "id": chat_completion_id(),
                 "object": "chat.completion",
                 "created": created,
@@ -2152,7 +2226,12 @@ async fn chat_completions(
                     "completion_tokens": result.usage.completion_tokens,
                     "total_tokens": result.usage.total_tokens
                 }
-            })))
+            });
+            if stream {
+                Ok(chat_completion_sse_response(&completion))
+            } else {
+                Ok(Json(completion).into_response())
+            }
         }
         Err(e) => {
             let msg = format!("Agent error: {e}");
@@ -3234,6 +3313,11 @@ mod tests {
         assert_eq!(capabilities["features"]["session_search"], true);
         assert_eq!(capabilities["features"]["tools_api"], true);
         assert_eq!(capabilities["features"]["chat_completions"], true);
+        assert_eq!(capabilities["features"]["chat_completions_streaming"], true);
+        assert_eq!(
+            capabilities["features"]["chat_completions_streaming_mode"],
+            "completed_sse_snapshot"
+        );
         assert_eq!(capabilities["features"]["responses_api"], true);
         assert_eq!(capabilities["features"]["responses_streaming"], true);
         assert_eq!(
@@ -3446,9 +3530,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_v1_chat_completions_rejects_streaming_for_now() {
+    async fn test_v1_chat_completions_streaming_returns_sse_snapshot() {
         let state = test_state();
-        let app = build_router(state);
+        let app = build_router(state.clone());
 
         let req = Request::builder()
             .method("POST")
@@ -3463,7 +3547,31 @@ mod tests {
             ))
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let content_type = resp
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(content_type.starts_with("text/event-stream"));
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let events = String::from_utf8(body.to_vec()).unwrap();
+        assert!(events.contains("\"object\":\"chat.completion.chunk\""));
+        assert!(events.contains("\"delta\":{\"role\":\"assistant\"}"));
+        assert!(events.contains("\"delta\":{\"content\":\""));
+        assert!(events.contains("Conversation supplied through OpenAI Chat Completions"));
+        assert!(events.contains("\"finish_reason\":\"stop\""));
+        assert!(events.ends_with("data: [DONE]\n\n"));
+
+        let agent = state.agent.lock().await;
+        assert!(
+            agent.messages().is_empty(),
+            "streaming chat completions should not mutate the shared /api/chat history"
+        );
     }
 
     #[tokio::test]
