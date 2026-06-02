@@ -196,6 +196,7 @@ struct GatewayIngressPolicy {
     global_allowed: Vec<String>,
     telegram_allowed: Vec<String>,
     clawbot_allowed: Vec<String>,
+    weixin_allowed: Vec<String>,
 }
 
 impl GatewayIngressPolicy {
@@ -203,6 +204,7 @@ impl GatewayIngressPolicy {
         let mut global_allowed = Vec::new();
         let mut telegram_allowed = Vec::new();
         let mut clawbot_allowed = Vec::new();
+        let mut weixin_allowed = Vec::new();
         extend_string_allowlist(&mut global_allowed, &config.gateways.allowed_users);
         extend_i64_allowlist(
             &mut telegram_allowed,
@@ -210,6 +212,7 @@ impl GatewayIngressPolicy {
             &config.gateways.telegram.allowed_users,
         );
         extend_string_allowlist(&mut clawbot_allowed, &config.gateways.clawbot.allowed_users);
+        extend_string_allowlist(&mut weixin_allowed, &config.gateways.weixin.allowed_users);
         if let Some(default_role) = config.roles.get("default") {
             extend_i64_allowlist(
                 &mut telegram_allowed,
@@ -226,6 +229,7 @@ impl GatewayIngressPolicy {
             global_allowed,
             telegram_allowed,
             clawbot_allowed,
+            weixin_allowed,
         }
     }
 
@@ -264,6 +268,18 @@ impl GatewayIngressPolicy {
                 has_policy = true;
                 if gateway_allowlist_allows(
                     &self.clawbot_allowed,
+                    platform,
+                    bot_id,
+                    user_id,
+                    chat_id,
+                ) {
+                    return true;
+                }
+            }
+            value if value.eq_ignore_ascii_case("weixin") && !self.weixin_allowed.is_empty() => {
+                has_policy = true;
+                if gateway_allowlist_allows(
+                    &self.weixin_allowed,
                     platform,
                     bot_id,
                     user_id,
@@ -2108,6 +2124,7 @@ fn register_configured_gateway_adapters(
     if clawbot_config.enabled {
         let bot_id = clawbot_config.bot_id.clone();
         let clawbot = hakimi_gateway::ClawBotAdapter::new(hakimi_gateway::ClawBotAdapterConfig {
+            platform_name: "clawbot".to_string(),
             mode: parse_clawbot_mode(&clawbot_config.mode),
             bot_id: bot_id.clone(),
             base_url: clawbot_config.base_url,
@@ -2128,6 +2145,70 @@ fn register_configured_gateway_adapters(
         gateway.add_adapter(Box::new(clawbot));
         bot_ids.insert("clawbot".to_string(), bot_id);
         info!("clawbot gateway registered");
+    }
+
+    if config.gateways.weixin.enabled {
+        let bot_id = config.gateways.weixin.bot_id.clone();
+        let home_channel =
+            env_or_config_value("WEIXIN_HOME_CHANNEL", &config.gateways.weixin.home_channel)
+                .unwrap_or_default();
+        let weixin = hakimi_gateway::ClawBotAdapter::new(hakimi_gateway::ClawBotAdapterConfig {
+            platform_name: "weixin".to_string(),
+            mode: hakimi_gateway::ClawBotMode::IlinkNative,
+            bot_id: bot_id.clone(),
+            base_url: env_or_config_value("WEIXIN_BASE_URL", &config.gateways.weixin.base_url)
+                .unwrap_or_else(|| "https://ilinkai.weixin.qq.com".to_string()),
+            token: env_or_config_value("WEIXIN_TOKEN", &config.gateways.weixin.token)
+                .unwrap_or_default(),
+            poll_path: "/messages".to_string(),
+            send_path: "/send_message".to_string(),
+            edit_path: "/edit_message".to_string(),
+            poll_interval_ms: config.gateways.weixin.poll_interval_ms,
+            poll_limit: 50,
+            token_store: env_or_config_value(
+                "WEIXIN_TOKEN_STORE",
+                &config.gateways.weixin.token_store,
+            )
+            .unwrap_or_else(|| "~/.hakimi/weixin".to_string()),
+            channel_version: env_or_config_value(
+                "WEIXIN_CHANNEL_VERSION",
+                &config.gateways.weixin.channel_version,
+            )
+            .unwrap_or_else(|| "1.0.2".to_string()),
+            app_client_version: env_or_config_value(
+                "WEIXIN_APP_CLIENT_VERSION",
+                &config.gateways.weixin.app_client_version,
+            )
+            .unwrap_or_else(|| "2.4.3".to_string()),
+            login_notify_platform: env_or_config_value(
+                "WEIXIN_LOGIN_NOTIFY_PLATFORM",
+                &config.gateways.weixin.login_notify_platform,
+            )
+            .unwrap_or_default(),
+            login_notify_bot_id: env_or_config_value(
+                "WEIXIN_LOGIN_NOTIFY_BOT_ID",
+                &config.gateways.weixin.login_notify_bot_id,
+            )
+            .unwrap_or_default(),
+            login_notify_chat_id: env_or_config_value(
+                "WEIXIN_LOGIN_NOTIFY_CHAT_ID",
+                &config.gateways.weixin.login_notify_chat_id,
+            )
+            .unwrap_or_default(),
+            allowed_users: config.gateways.weixin.allowed_users.clone(),
+        });
+        gateway.add_adapter(Box::new(weixin));
+        bot_ids.insert("weixin".to_string(), bot_id.clone());
+        if !home_channel.trim().is_empty() {
+            channel_entries.push(hakimi_tools::ChannelDirectoryEntry::home(
+                "weixin",
+                &home_channel,
+                "home",
+                "wechat",
+                &bot_id,
+            ));
+        }
+        info!("weixin gateway registered");
     }
 
     if config.gateways.slack.enabled {
@@ -3262,6 +3343,16 @@ gateways:
     token_store: "~/.hakimi/clawbot"
     channel_version: "1.0.2"
     app_client_version: "2.4.3"
+  weixin:
+    enabled: false
+    bot_id: "weixin"
+    base_url: "https://ilinkai.weixin.qq.com"
+    token: ""
+    token_store: "~/.hakimi/weixin"
+    channel_version: "1.0.2"
+    app_client_version: "2.4.3"
+    poll_interval_ms: 1000
+    home_channel: ""
 
 voice:
   # Shared TTS/STT and interactive voice settings.
@@ -6242,6 +6333,7 @@ mod tests {
             ("telegram".to_string(), "telegram_bot".to_string()),
             ("slack".to_string(), "ops-slack".to_string()),
             ("matrix".to_string(), "matrix-main".to_string()),
+            ("weixin".to_string(), "wx-main".to_string()),
         ]);
 
         assert_eq!(
@@ -6253,6 +6345,7 @@ mod tests {
             gateway_bot_id_for_platform(&bot_ids, "matrix"),
             "matrix-main"
         );
+        assert_eq!(gateway_bot_id_for_platform(&bot_ids, "weixin"), "wx-main");
         assert_eq!(gateway_bot_id_for_platform(&bot_ids, "wecom"), "wecom");
     }
 
@@ -6369,6 +6462,17 @@ mod tests {
         assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_abc")));
         assert!(!policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_other",)));
         assert!(policy.allows(&gateway_test_message("telegram", "telegram_bot", "42")));
+    }
+
+    #[test]
+    fn gateway_ingress_policy_uses_weixin_allowlist() {
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.gateways.weixin.allowed_users = vec!["wxid_abc".to_string()];
+        let policy = GatewayIngressPolicy::from_config(&config);
+
+        assert!(policy.allows(&gateway_test_message("weixin", "weixin", "wxid_abc")));
+        assert!(!policy.allows(&gateway_test_message("weixin", "weixin", "wxid_other",)));
+        assert!(policy.allows(&gateway_test_message("clawbot", "clawbot", "wxid_1")));
     }
 
     #[test]

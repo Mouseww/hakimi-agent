@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.204-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.205-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1618-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1623-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1618 |
+| Tests | ~500 | 1623 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -94,7 +94,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - **Evaluation**: Hermes-compatible ShareGPT JSONL trajectory saving for completed and failed turns
 
 **Multi-Platform Gateway**
-- Telegram · Discord · Slack · Mattermost · Webhook · Microsoft Graph webhook · Signal · SMS/Twilio · Email/SMTP · WhatsApp Business Cloud · Home Assistant · Matrix · DingTalk · WeCom · Feishu/Lark · BlueBubbles/iMessage · QQBot outbound · WeChat (via iLink/ClawBot)
+- Telegram · Discord · Slack · Mattermost · Webhook · Microsoft Graph webhook · Signal · SMS/Twilio · Email/SMTP · WhatsApp Business Cloud · Home Assistant · Matrix · DingTalk · WeCom · Feishu/Lark · BlueBubbles/iMessage · QQBot outbound · WeChat (via iLink/ClawBot) · Weixin/iLink alias
 - Config-driven multi-adapter fan-in: run chat and webhook gateways simultaneously
 - Real-time streaming with progressive edits and UTF-8-safe overflow chunking for long replies
 - Persistent lifecycle diagnostics record adapter, connect, route, filter, and edit events to `~/.hakimi/logs/gateway-events.log`; `/logs`, `/logs events`, and `/logs gateway` read recent logs without shelling out to `tail`
@@ -141,7 +141,7 @@ hakimi-agent/
 ├── hakimi-knowledge/    # Knowledge graph (petgraph)
 ├── hakimi-skills/        # Skill system + meta-skill extraction
 ├── hakimi-cron/          # Persistent cron scheduler
-├── hakimi-gateway/       # 18 runtime-exposed platform adapters
+├── hakimi-gateway/       # 19 runtime-exposed platform adapters
 ├── hakimi-mcp/           # MCP client (stdio/HTTP/SSE)
 ├── hakimi-cli/           # REPL CLI + setup wizard + doctor
 └── hakimi-tui/           # ratatui terminal UI
@@ -196,7 +196,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1618 |
+| Tests | ~500 | 1623 |
 
 ---
 
@@ -223,7 +223,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Core agent loop + tool dispatch
 - [x] OpenAI / Anthropic / Gemini transports + SSE streaming
 - [x] 61+ built-in tools
-- [x] 18 runtime-exposed platform adapters
+- [x] 19 runtime-exposed platform adapters
 - [x] Gateway target directory + send_message channel resolution
 - [x] MCP client + CLI/gateway server catalog
 - [x] HTTP API model/capability discovery + text Chat Completions + Responses SSE snapshots + cancellable Runs lifecycle events

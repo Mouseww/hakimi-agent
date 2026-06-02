@@ -610,6 +610,8 @@ pub struct GatewaysConfig {
     #[serde(default)]
     pub clawbot: ClawBotGatewayConfig,
     #[serde(default)]
+    pub weixin: WeixinGatewayConfig,
+    #[serde(default)]
     pub bluebubbles: BlueBubblesGatewayConfig,
     #[serde(default)]
     pub qqbot: QQBotGatewayConfig,
@@ -656,6 +658,7 @@ impl Default for GatewaysConfig {
             streaming: GatewayStreamingConfig::default(),
             telegram: TelegramGatewayConfig::default(),
             clawbot: ClawBotGatewayConfig::default(),
+            weixin: WeixinGatewayConfig::default(),
             bluebubbles: BlueBubblesGatewayConfig::default(),
             qqbot: QQBotGatewayConfig::default(),
             slack: SlackGatewayConfig::default(),
@@ -1337,6 +1340,74 @@ impl Default for GatewayStreamingConfig {
     }
 }
 
+/// Weixin/iLink gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeixinGatewayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_weixin_bot_id")]
+    pub bot_id: String,
+    #[serde(default = "default_weixin_base_url")]
+    pub base_url: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default = "default_weixin_token_store")]
+    pub token_store: String,
+    #[serde(default = "default_clawbot_channel_version")]
+    pub channel_version: String,
+    #[serde(default = "default_clawbot_app_client_version")]
+    pub app_client_version: String,
+    #[serde(default = "default_clawbot_poll_interval_ms")]
+    pub poll_interval_ms: u64,
+    #[serde(default)]
+    pub home_channel: String,
+    /// Optional platform that receives iLink login QR notifications.
+    #[serde(default)]
+    pub login_notify_platform: String,
+    /// Optional bot id for login QR notifications.
+    #[serde(default)]
+    pub login_notify_bot_id: String,
+    /// Optional chat id for login QR notifications.
+    #[serde(default)]
+    pub login_notify_chat_id: String,
+    /// List of allowed sender IDs (empty = allow all unless a global gateway
+    /// allowlist is configured).
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
+}
+
+fn default_weixin_bot_id() -> String {
+    "weixin".to_string()
+}
+
+fn default_weixin_base_url() -> String {
+    "https://ilinkai.weixin.qq.com".to_string()
+}
+
+fn default_weixin_token_store() -> String {
+    "~/.hakimi/weixin".to_string()
+}
+
+impl Default for WeixinGatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_id: default_weixin_bot_id(),
+            base_url: default_weixin_base_url(),
+            token: String::new(),
+            token_store: default_weixin_token_store(),
+            channel_version: default_clawbot_channel_version(),
+            app_client_version: default_clawbot_app_client_version(),
+            poll_interval_ms: default_clawbot_poll_interval_ms(),
+            home_channel: String::new(),
+            login_notify_platform: String::new(),
+            login_notify_bot_id: String::new(),
+            login_notify_chat_id: String::new(),
+            allowed_users: Vec::new(),
+        }
+    }
+}
+
 /// WeChat ClawBot bridge gateway configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClawBotGatewayConfig {
@@ -1588,6 +1659,13 @@ mod tests {
         assert!(config.gateways.filter_silence_narration);
         assert!(!config.gateways.clawbot.enabled);
         assert_eq!(config.gateways.clawbot.bot_id, "clawbot");
+        assert!(!config.gateways.weixin.enabled);
+        assert_eq!(config.gateways.weixin.bot_id, "weixin");
+        assert_eq!(
+            config.gateways.weixin.base_url,
+            "https://ilinkai.weixin.qq.com"
+        );
+        assert_eq!(config.gateways.weixin.token_store, "~/.hakimi/weixin");
         assert!(!config.gateways.bluebubbles.enabled);
         assert_eq!(config.gateways.bluebubbles.bot_id, "bluebubbles");
         assert!(!config.gateways.bluebubbles.allow_new_chat);
@@ -1713,6 +1791,38 @@ gateways:
         assert_eq!(config.gateways.clawbot.edit_path, "/wx/edit");
         assert_eq!(config.gateways.clawbot.poll_interval_ms, 300);
         assert_eq!(config.gateways.clawbot.poll_limit, 20);
+    }
+
+    #[test]
+    fn test_deserialize_with_weixin_gateway() {
+        let yaml = r#"
+gateways:
+  weixin:
+    enabled: true
+    bot_id: "wx-main"
+    base_url: "https://ilink.test"
+    token: "wx-redacted"
+    token_store: "~/.hakimi/weixin-test"
+    channel_version: "2.2.0"
+    app_client_version: "2.2.0"
+    poll_interval_ms: 750
+    home_channel: "wxid_home"
+    allowed_users: ["wxid_abc"]
+"#;
+        let config: HakimiConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.gateways.weixin.enabled);
+        assert_eq!(config.gateways.weixin.bot_id, "wx-main");
+        assert_eq!(config.gateways.weixin.base_url, "https://ilink.test");
+        assert_eq!(config.gateways.weixin.token, "wx-redacted");
+        assert_eq!(config.gateways.weixin.token_store, "~/.hakimi/weixin-test");
+        assert_eq!(config.gateways.weixin.channel_version, "2.2.0");
+        assert_eq!(config.gateways.weixin.app_client_version, "2.2.0");
+        assert_eq!(config.gateways.weixin.poll_interval_ms, 750);
+        assert_eq!(config.gateways.weixin.home_channel, "wxid_home");
+        assert_eq!(
+            config.gateways.weixin.allowed_users,
+            vec!["wxid_abc".to_string()]
+        );
     }
 
     #[test]

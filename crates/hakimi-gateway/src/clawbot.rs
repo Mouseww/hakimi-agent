@@ -44,6 +44,9 @@ pub enum ClawBotMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClawBotAdapterConfig {
+    /// Gateway platform name exposed to routing, usually `clawbot`.
+    #[serde(default = "default_clawbot_platform_name")]
+    pub platform_name: String,
     /// Adapter mode: http_bridge | weclawbot_api | ilink_native.
     #[serde(default)]
     pub mode: ClawBotMode,
@@ -98,6 +101,10 @@ fn default_clawbot_bot_id() -> String {
     "clawbot".to_string()
 }
 
+fn default_clawbot_platform_name() -> String {
+    "clawbot".to_string()
+}
+
 fn default_base_url() -> String {
     HTTP_BRIDGE_BASE_URL.to_string()
 }
@@ -137,6 +144,7 @@ fn default_app_client_version() -> String {
 impl Default for ClawBotAdapterConfig {
     fn default() -> Self {
         Self {
+            platform_name: default_clawbot_platform_name(),
             mode: ClawBotMode::HttpBridge,
             bot_id: default_clawbot_bot_id(),
             base_url: default_base_url(),
@@ -159,6 +167,7 @@ impl Default for ClawBotAdapterConfig {
 
 pub struct ClawBotAdapter {
     config: ClawBotAdapterConfig,
+    platform_name: String,
     client: Client,
     msg_tx: mpsc::UnboundedSender<GatewayMessage>,
     msg_rx: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
@@ -173,6 +182,7 @@ impl ClawBotAdapter {
         {
             config.base_url = ILINK_BASE_URL.to_string();
         }
+        let platform_name = normalize_platform_name(&config.platform_name);
         let state = load_ilink_state(&config).unwrap_or_else(|err| {
             warn!(error = %err, "failed to load iLink state; starting fresh");
             IlinkStoredState::default()
@@ -180,6 +190,7 @@ impl ClawBotAdapter {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             config,
+            platform_name,
             client: Client::builder()
                 .timeout(Duration::from_secs(45))
                 .build()
@@ -216,9 +227,11 @@ impl ClawBotAdapter {
                             if let Some(next_offset) = envelope.next_offset.clone() {
                                 offset = Some(next_offset);
                             }
-                            if let Some(msg) =
-                                convert_bridge_message(&config.bot_id, &envelope.value)
-                                && msg_tx.send(msg).is_err()
+                            if let Some(msg) = convert_bridge_message(
+                                &config.platform_name,
+                                &config.bot_id,
+                                &envelope.value,
+                            ) && msg_tx.send(msg).is_err()
                             {
                                 error!("ClawBot receiver dropped; stopping poll loop");
                                 return;
@@ -295,7 +308,7 @@ impl ClawBotAdapter {
 #[async_trait]
 impl PlatformAdapter for ClawBotAdapter {
     fn name(&self) -> &str {
-        "clawbot"
+        &self.platform_name
     }
 
     fn bot_id(&self) -> &str {
@@ -684,7 +697,11 @@ fn parse_bridge_poll_batch(body: Value) -> PollBatch {
     }
 }
 
-fn convert_bridge_message(bot_id: &str, value: &Value) -> Option<GatewayMessage> {
+fn convert_bridge_message(
+    platform_name: &str,
+    bot_id: &str,
+    value: &Value,
+) -> Option<GatewayMessage> {
     let text = extract_string(value, &["text", "content", "message", "msg", "body"])?;
     let chat_id = extract_string(
         value,
@@ -714,7 +731,7 @@ fn convert_bridge_message(bot_id: &str, value: &Value) -> Option<GatewayMessage>
     let media = extract_string(value, &["media", "media_id", "file_id", "image", "url"]);
 
     Some(GatewayMessage {
-        platform: "clawbot".to_string(),
+        platform: normalize_platform_name(platform_name),
         bot_id: bot_id.to_string(),
         chat_id,
         user_id,
@@ -839,7 +856,7 @@ async fn ilink_poll_once(
     .context("failed to poll iLink getupdates")?;
     let body = ensure_success_json(resp, "iLink getupdates").await?;
     let (next_cursor, messages, context_updates, typing_updates) =
-        parse_ilink_updates(&config.bot_id, &body);
+        parse_ilink_updates(&config.platform_name, &config.bot_id, &body);
     {
         let mut guard = state
             .lock()
@@ -865,7 +882,7 @@ type IlinkParseResult = (
     Vec<(String, String)>,
 );
 
-fn parse_ilink_updates(bot_id: &str, body: &Value) -> IlinkParseResult {
+fn parse_ilink_updates(platform_name: &str, bot_id: &str, body: &Value) -> IlinkParseResult {
     let next_cursor = extract_string(body, &["get_updates_buf", "next_buf", "cursor"]);
     let msgs = body.get("msgs").or_else(|| body.get("messages"));
     let values = match msgs {
@@ -895,7 +912,7 @@ fn parse_ilink_updates(bot_id: &str, body: &Value) -> IlinkParseResult {
             typing_tickets.push((chat_id.clone(), typing_ticket));
         }
         out.push(GatewayMessage {
-            platform: "clawbot".to_string(),
+            platform: normalize_platform_name(platform_name),
             bot_id: bot_id.to_string(),
             chat_id: chat_id.clone(),
             user_id: chat_id,
@@ -948,6 +965,15 @@ fn build_ilink_sendmessage_payload(
 
 fn base_info(channel_version: &str) -> Value {
     serde_json::json!({ "channel_version": channel_version })
+}
+
+fn normalize_platform_name(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        "clawbot".to_string()
+    } else {
+        value.to_ascii_lowercase()
+    }
 }
 
 fn ilink_auth_headers(
@@ -1102,6 +1128,7 @@ mod tests {
     #[test]
     fn default_config_is_local_bridge() {
         let cfg = ClawBotAdapterConfig::default();
+        assert_eq!(cfg.platform_name, "clawbot");
         assert_eq!(cfg.mode, ClawBotMode::HttpBridge);
         assert_eq!(cfg.bot_id, "clawbot");
         assert_eq!(cfg.base_url, HTTP_BRIDGE_BASE_URL);
@@ -1127,6 +1154,18 @@ mod tests {
     }
 
     #[test]
+    fn adapter_name_can_be_weixin_alias() {
+        let adapter = ClawBotAdapter::new(ClawBotAdapterConfig {
+            platform_name: "weixin".to_string(),
+            bot_id: "weixin-main".to_string(),
+            mode: ClawBotMode::IlinkNative,
+            ..Default::default()
+        });
+        assert_eq!(adapter.name(), "weixin");
+        assert_eq!(adapter.bot_id(), "weixin-main");
+    }
+
+    #[test]
     fn joins_base_url_and_path() {
         assert_eq!(join_url("http://x/", "/send"), "http://x/send");
         assert_eq!(join_url("http://x", "send"), "http://x/send");
@@ -1144,7 +1183,7 @@ mod tests {
         let batch = parse_bridge_poll_batch(body);
         assert_eq!(batch.next_offset.as_deref(), Some("42"));
         assert_eq!(batch.messages.len(), 2);
-        let first = convert_bridge_message("bot", &batch.messages[0].value).unwrap();
+        let first = convert_bridge_message("clawbot", "bot", &batch.messages[0].value).unwrap();
         assert_eq!(first.platform, "clawbot");
         assert_eq!(first.bot_id, "bot");
         assert_eq!(first.chat_id, "room1");
@@ -1160,11 +1199,25 @@ mod tests {
             "message": "ping",
             "media_id": "file-1"
         });
-        let msg = convert_bridge_message("wx", &value).unwrap();
+        let msg = convert_bridge_message("clawbot", "wx", &value).unwrap();
         assert_eq!(msg.chat_id, "group@chatroom");
         assert_eq!(msg.user_id, "wxid_abc");
         assert_eq!(msg.text, "ping");
         assert_eq!(msg.media.as_deref(), Some("file-1"));
+    }
+
+    #[test]
+    fn converts_bridge_messages_with_weixin_platform_alias() {
+        let value = serde_json::json!({
+            "chat_id": "wxid_home",
+            "user_id": "wxid_sender",
+            "text": "ping"
+        });
+        let msg = convert_bridge_message("weixin", "weixin-main", &value).unwrap();
+        assert_eq!(msg.platform, "weixin");
+        assert_eq!(msg.bot_id, "weixin-main");
+        assert_eq!(msg.chat_id, "wxid_home");
+        assert_eq!(msg.user_id, "wxid_sender");
     }
 
     #[test]
@@ -1201,7 +1254,8 @@ mod tests {
                 }
             ]
         });
-        let (cursor, messages, contexts, typing_tickets) = parse_ilink_updates("bot", &body);
+        let (cursor, messages, contexts, typing_tickets) =
+            parse_ilink_updates("clawbot", "bot", &body);
         assert_eq!(cursor.as_deref(), Some("next-cursor"));
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].chat_id, "user@im.wechat");
@@ -1214,6 +1268,24 @@ mod tests {
             typing_tickets,
             vec![("user@im.wechat".to_string(), "typing-1".to_string())]
         );
+    }
+
+    #[test]
+    fn parses_ilink_updates_with_weixin_platform_alias() {
+        let body = serde_json::json!({
+            "msgs": [{
+                "from_user_id": "wxid_abc",
+                "context_token": "ctx",
+                "message_type": 1,
+                "item_list": [{"type": 1, "text_item": {"text": "ping"}}]
+            }]
+        });
+        let (_, messages, contexts, _) = parse_ilink_updates("weixin", "weixin-main", &body);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].platform, "weixin");
+        assert_eq!(messages[0].bot_id, "weixin-main");
+        assert_eq!(messages[0].chat_id, "wxid_abc");
+        assert_eq!(contexts, vec![("wxid_abc".to_string(), "ctx".to_string())]);
     }
 
     #[test]
