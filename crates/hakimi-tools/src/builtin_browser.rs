@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -10,10 +11,12 @@ use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::page::{
     EventJavascriptDialogOpening, HandleJavaScriptDialogParams,
 };
+use chromiumoxide::cdp::browser_protocol::target::{AttachToTargetParams, TargetId};
 use chromiumoxide::page::Page;
+use chromiumoxide::types::{Command, Method, MethodId};
 use futures::StreamExt;
 use hakimi_common::{HakimiError, Result, ToolContext, redact_sensitive_text};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -358,6 +361,77 @@ fn browser_cdp_timeout_ms(args: &JsonValue) -> u64 {
         .and_then(|v| v.as_u64())
         .unwrap_or(3_000)
         .clamp(250, 30_000)
+}
+
+fn browser_cdp_method_from_args(args: &JsonValue) -> std::result::Result<String, String> {
+    let method = args
+        .get("method")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or_default();
+    if method.is_empty() {
+        return Err("method is required for browser_cdp action='dispatch'".to_string());
+    }
+
+    Ok(method.to_string())
+}
+
+fn browser_cdp_params_from_args(args: &JsonValue) -> std::result::Result<JsonValue, String> {
+    match args.get("params") {
+        None => Ok(json!({})),
+        Some(value) if value.is_object() => Ok(value.clone()),
+        Some(_) => Err("params must be a JSON object for browser_cdp dispatch".to_string()),
+    }
+}
+
+fn browser_cdp_target_id_from_args(args: &JsonValue) -> Option<String> {
+    args.get("target_id")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn browser_cdp_frame_id_from_args(args: &JsonValue) -> Option<String> {
+    args.get("frame_id")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+#[derive(Debug, Clone)]
+struct RawBrowserCdpCommand {
+    method: String,
+    params: JsonValue,
+}
+
+impl RawBrowserCdpCommand {
+    fn new(method: impl Into<String>, params: JsonValue) -> Self {
+        Self {
+            method: method.into(),
+            params,
+        }
+    }
+}
+
+impl Serialize for RawBrowserCdpCommand {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.params.serialize(serializer)
+    }
+}
+
+impl Method for RawBrowserCdpCommand {
+    fn identifier(&self) -> MethodId {
+        Cow::Owned(self.method.clone())
+    }
+}
+
+impl Command for RawBrowserCdpCommand {
+    type Response = JsonValue;
 }
 
 fn playwright_browser_search_roots() -> Vec<PathBuf> {
@@ -2045,7 +2119,7 @@ impl Tool for BrowserVisionTool {
 // browser_cdp
 // ---------------------------------------------------------------------------
 
-/// Inspect a configured Chrome DevTools Protocol endpoint.
+/// Inspect and dispatch commands to a configured Chrome DevTools Protocol endpoint.
 pub struct BrowserCdpTool;
 
 impl BrowserCdpTool {
@@ -2071,9 +2145,9 @@ impl Tool for BrowserCdpTool {
     }
 
     fn description(&self) -> &str {
-        "Inspect a Chrome DevTools Protocol endpoint from HAKIMI_BROWSER_CDP_URL, BROWSER_CDP_URL, or an explicit endpoint. \
-         Use action='status' for readiness metadata or action='probe' to connect briefly and report browser version/target counts. \
-         Raw arbitrary CDP method dispatch is not exposed until the supervisor-backed browser backend lands."
+        "Inspect or dispatch a Chrome DevTools Protocol command through HAKIMI_BROWSER_CDP_URL, BROWSER_CDP_URL, or an explicit endpoint. \
+         Use action='status' for readiness metadata, action='probe' for browser version/target counts, or action='dispatch' with method/params. \
+         Pass target_id for page-scoped CDP methods; frame_id supervisor routing remains future browser-backend work."
     }
 
     fn emoji(&self) -> &str {
@@ -2086,16 +2160,32 @@ impl Tool for BrowserCdpTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["status", "probe"],
-                    "description": "status reports configured endpoint metadata without connecting. probe briefly connects and reads browser version/targets. Default: status."
+                    "enum": ["status", "probe", "dispatch"],
+                    "description": "status reports configured endpoint metadata without connecting. probe briefly connects and reads browser version/targets. dispatch sends a raw CDP method. Default: status."
                 },
                 "endpoint": {
                     "type": "string",
                     "description": "Optional ws://, wss://, http://, or https:// DevTools endpoint. Overrides HAKIMI_BROWSER_CDP_URL and BROWSER_CDP_URL."
                 },
+                "method": {
+                    "type": "string",
+                    "description": "CDP method for action='dispatch', for example Target.getTargets or Runtime.evaluate."
+                },
+                "params": {
+                    "type": "object",
+                    "description": "Optional JSON object sent as CDP params for action='dispatch'. Defaults to {}."
+                },
+                "target_id": {
+                    "type": "string",
+                    "description": "Optional target/tab id for page-scoped dispatch. The tool attaches with Target.attachToTarget before sending the method."
+                },
+                "frame_id": {
+                    "type": "string",
+                    "description": "Reserved for future supervisor-backed OOPIF/frame routing. Currently returns a clear unsupported-routing response."
+                },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Connection/probe timeout in milliseconds, clamped to 250..30000. Default: 3000.",
+                    "description": "Connection/probe/dispatch timeout in milliseconds, clamped to 250..30000. Default: 3000.",
                     "minimum": 250,
                     "maximum": 30000
                 }
@@ -2108,7 +2198,7 @@ impl Tool for BrowserCdpTool {
     }
 
     fn max_result_size(&self) -> Option<usize> {
-        Some(16 * 1024)
+        Some(64 * 1024)
     }
 
     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
@@ -2116,9 +2206,9 @@ impl Tool for BrowserCdpTool {
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("status");
-        if action != "status" && action != "probe" {
+        if action != "status" && action != "probe" && action != "dispatch" {
             return Err(HakimiError::Tool(format!(
-                "invalid browser_cdp action: {action}; expected status or probe"
+                "invalid browser_cdp action: {action}; expected status, probe, or dispatch"
             )));
         }
 
@@ -2158,15 +2248,146 @@ impl Tool for BrowserCdpTool {
                 "action": "status",
                 "source": endpoint.source,
                 "endpoint": endpoint_display,
-                "dispatch_ready": false,
-                "raw_cdp_dispatch": false,
+                "dispatch_ready": true,
+                "raw_cdp_dispatch": true,
                 "probe_available": true,
-                "note": "Endpoint syntax is valid. Use action='probe' to verify live connectivity."
+                "note": "Endpoint syntax is valid. Use action='probe' to verify live connectivity or action='dispatch' with a CDP method."
             })
             .to_string());
         }
 
         let timeout = std::time::Duration::from_millis(browser_cdp_timeout_ms(args));
+        if action == "dispatch" {
+            let method = browser_cdp_method_from_args(args).map_err(HakimiError::Tool)?;
+            let params = browser_cdp_params_from_args(args).map_err(HakimiError::Tool)?;
+            if let Some(frame_id) = browser_cdp_frame_id_from_args(args) {
+                return Ok(json!({
+                    "success": false,
+                    "configured": true,
+                    "action": "dispatch",
+                    "source": endpoint.source,
+                    "endpoint": endpoint_display,
+                    "method": method,
+                    "frame_id": frame_id,
+                    "raw_cdp_dispatch": true,
+                    "frame_routing_ready": false,
+                    "error": "browser_cdp frame_id routing requires the future supervisor-backed browser backend. Omit frame_id for browser-level dispatch or pass target_id for page-level dispatch."
+                })
+                .to_string());
+            }
+
+            let target_id = browser_cdp_target_id_from_args(args);
+            let endpoint_url = endpoint.endpoint.clone();
+            let endpoint_source = endpoint.source.clone();
+            let endpoint_display_for_dispatch = endpoint_display.clone();
+            let dispatch = tokio::time::timeout(timeout, async {
+                let (mut browser, mut handler) =
+                    Browser::connect(endpoint_url).await.map_err(|e| {
+                        HakimiError::Tool(format!(
+                            "failed to connect to CDP endpoint {}: {e}",
+                            endpoint_display_for_dispatch
+                        ))
+                    })?;
+                let handler_task = tokio::spawn(async move {
+                    while let Some(event) = handler.next().await {
+                        if let Err(e) = event {
+                            warn!(error = %e, "browser CDP dispatch handler error");
+                            break;
+                        }
+                    }
+                });
+
+                let command = RawBrowserCdpCommand::new(method.clone(), params);
+                let result = if let Some(target_id) = target_id.as_deref() {
+                    let targets = match browser.fetch_targets().await {
+                        Ok(targets) => targets,
+                        Err(e) => {
+                            handler_task.abort();
+                            return Err(HakimiError::Tool(format!(
+                                "CDP Target.getTargets failed before dispatch: {e}"
+                            )));
+                        }
+                    };
+                    if !targets.iter().any(|target| target.target_id.as_ref() == target_id) {
+                        handler_task.abort();
+                        return Err(HakimiError::Tool(format!(
+                            "CDP target_id {target_id} was not found; use method='Target.getTargets' without target_id to list tabs"
+                        )));
+                    }
+
+                    let attach = AttachToTargetParams::builder()
+                        .target_id(TargetId::from(target_id.to_string()))
+                        .flatten(true)
+                        .build()
+                        .map_err(HakimiError::Tool)?;
+                    if let Err(e) = browser.execute(attach).await {
+                        handler_task.abort();
+                        return Err(HakimiError::Tool(format!(
+                            "CDP Target.attachToTarget failed for {target_id}: {e}"
+                        )));
+                    }
+
+                    let page = match browser.get_page(TargetId::from(target_id.to_string())).await {
+                        Ok(page) => page,
+                        Err(e) => {
+                            handler_task.abort();
+                            return Err(HakimiError::Tool(format!(
+                                "CDP target {target_id} could not be opened as a page after attach: {e}"
+                            )));
+                        }
+                    };
+                    match page.execute(command).await {
+                        Ok(response) => response.result,
+                        Err(e) => {
+                            handler_task.abort();
+                            return Err(HakimiError::Tool(format!(
+                                "CDP method {method} failed for target {target_id}: {e}"
+                            )));
+                        }
+                    }
+                } else {
+                    match browser.execute(command).await {
+                        Ok(response) => response.result,
+                        Err(e) => {
+                            handler_task.abort();
+                            return Err(HakimiError::Tool(format!("CDP method {method} failed: {e}")));
+                        }
+                    }
+                };
+                handler_task.abort();
+
+                Ok::<JsonValue, HakimiError>(json!({
+                    "success": true,
+                    "configured": true,
+                    "action": "dispatch",
+                    "source": endpoint_source,
+                    "endpoint": endpoint_display_for_dispatch,
+                    "method": method,
+                    "target_id": target_id,
+                    "raw_cdp_dispatch": true,
+                    "frame_routing_ready": false,
+                    "result": result
+                }))
+            })
+            .await;
+
+            return match dispatch {
+                Ok(Ok(payload)) => Ok(payload.to_string()),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Ok(json!({
+                    "success": false,
+                    "configured": true,
+                    "action": "dispatch",
+                    "source": endpoint.source,
+                    "endpoint": endpoint_display,
+                    "error": format!("CDP dispatch timed out after {} ms", timeout.as_millis()),
+                    "raw_cdp_dispatch": true,
+                    "frame_routing_ready": false
+                })
+                .to_string()),
+            };
+        }
+
         let endpoint_url = endpoint.endpoint.clone();
         let endpoint_source = endpoint.source.clone();
         let endpoint_display_for_probe = endpoint_display.clone();
@@ -2217,9 +2438,10 @@ impl Tool for BrowserCdpTool {
                 "user_agent": version.user_agent,
                 "target_count": targets.len(),
                 "page_target_count": targets.iter().filter(|target| target.r#type.as_str() == "page").count(),
-                "dispatch_ready": false,
-                "raw_cdp_dispatch": false,
-                "note": "CDP endpoint is reachable. This slice exposes a typed readiness probe; raw method dispatch remains pending a supervisor-backed backend."
+                "dispatch_ready": true,
+                "raw_cdp_dispatch": true,
+                "frame_routing_ready": false,
+                "note": "CDP endpoint is reachable. Use action='dispatch' for browser-level methods or pass target_id for page-scoped methods."
             }))
         })
         .await;
@@ -2266,7 +2488,18 @@ mod tests {
         let schema = tool.schema();
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["action"].is_object());
+        assert!(
+            schema["properties"]["action"]["enum"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "dispatch")
+        );
         assert!(schema["properties"]["endpoint"].is_object());
+        assert!(schema["properties"]["method"].is_object());
+        assert!(schema["properties"]["params"].is_object());
+        assert!(schema["properties"]["target_id"].is_object());
+        assert!(schema["properties"]["frame_id"].is_object());
         assert!(schema["properties"]["timeout_ms"].is_object());
         assert!(schema.get("required").is_none());
     }
@@ -2328,6 +2561,52 @@ mod tests {
 
         assert_eq!(redacted, "wss://***@cdp.example/devtools/browser/abc");
         assert!(!redacted.contains("secret"));
+    }
+
+    #[test]
+    fn test_browser_cdp_dispatch_method_from_args() {
+        let args = json!({
+            "method": "  Target.getTargets  "
+        });
+
+        assert_eq!(
+            browser_cdp_method_from_args(&args).unwrap(),
+            "Target.getTargets"
+        );
+        assert!(browser_cdp_method_from_args(&json!({})).is_err());
+        assert!(browser_cdp_method_from_args(&json!({"method": "  "})).is_err());
+    }
+
+    #[test]
+    fn test_browser_cdp_dispatch_params_from_args() {
+        assert_eq!(browser_cdp_params_from_args(&json!({})).unwrap(), json!({}));
+        assert_eq!(
+            browser_cdp_params_from_args(&json!({
+                "params": {"expression": "document.title", "returnByValue": true}
+            }))
+            .unwrap(),
+            json!({"expression": "document.title", "returnByValue": true})
+        );
+        assert!(browser_cdp_params_from_args(&json!({"params": []})).is_err());
+    }
+
+    #[test]
+    fn test_browser_cdp_dispatch_optional_ids_from_args() {
+        let args = json!({
+            "target_id": "  target-1  ",
+            "frame_id": "  frame-1  "
+        });
+
+        assert_eq!(
+            browser_cdp_target_id_from_args(&args).as_deref(),
+            Some("target-1")
+        );
+        assert_eq!(
+            browser_cdp_frame_id_from_args(&args).as_deref(),
+            Some("frame-1")
+        );
+        assert!(browser_cdp_target_id_from_args(&json!({"target_id": ""})).is_none());
+        assert!(browser_cdp_frame_id_from_args(&json!({"frame_id": "  "})).is_none());
     }
 
     #[test]
@@ -2687,7 +2966,7 @@ mod tests {
             BrowserVisionTool::new(mgr.clone()).max_result_size(),
             Some(10 * 1024 * 1024)
         );
-        assert_eq!(BrowserCdpTool::new().max_result_size(), Some(16 * 1024));
+        assert_eq!(BrowserCdpTool::new().max_result_size(), Some(64 * 1024));
     }
 
     #[test]
