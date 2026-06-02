@@ -38,6 +38,14 @@ pub fn skills_response(args: &[String]) -> String {
 }
 
 pub fn gateway_skills_response(raw: Option<&str>, loaded_skills: &[Skill]) -> String {
+    gateway_skills_response_for_dir(raw, loaded_skills, &default_skills_dir())
+}
+
+pub fn gateway_skills_response_for_dir(
+    raw: Option<&str>,
+    loaded_skills: &[Skill],
+    skills_dir: &Path,
+) -> String {
     let args: Vec<String> = raw
         .unwrap_or_default()
         .split_whitespace()
@@ -63,12 +71,12 @@ pub fn gateway_skills_response(raw: Option<&str>, loaded_skills: &[Skill]) -> St
         Some(
             "browse" | "search" | "inspect" | "install" | "sync" | "sources" | "source" | "list"
             | "path" | "usage" | "help",
-        ) => skills_response_for_dir(hub_args, &default_skills_dir()),
+        ) => skills_response_for_dir(hub_args, skills_dir),
         _ => gateway_skills_help(),
     }
 }
 
-pub(crate) fn skills_response_for_dir(args: &[String], skills_dir: &Path) -> String {
+pub fn skills_response_for_dir(args: &[String], skills_dir: &Path) -> String {
     let Some(command) = args.first().map(|arg| arg.as_str()) else {
         return skills_help_response();
     };
@@ -178,9 +186,7 @@ pub(crate) fn skills_response_for_dir(args: &[String], skills_dir: &Path) -> Str
 }
 
 fn default_skills_dir() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi").join("skills"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi").join("skills"))
+    hakimi_common::effective_hakimi_home().join("skills")
 }
 
 fn hub_for_options(skills_dir: &Path, options: &SkillCliOptions) -> SkillHub {

@@ -80,45 +80,31 @@ fn render_tui_checkpoint_command(arg: Option<&str>, workdir: &Path) -> String {
 }
 
 fn default_session_db_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi").join("sessions.db"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi/sessions.db"))
+    hakimi_common::effective_hakimi_home().join("sessions.db")
 }
 
 fn default_skills_dir_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi").join("skills"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi/skills"))
+    hakimi_common::effective_hakimi_home().join("skills")
 }
 
 fn default_cron_db_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi").join("cron.db"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi/cron.db"))
+    hakimi_common::effective_hakimi_home().join("cron.db")
 }
 
 fn default_config_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi").join("config.yaml"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi/config.yaml"))
+    hakimi_common::effective_hakimi_home().join("config.yaml")
 }
 
 fn default_trajectory_dir_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi").join("trajectories"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi/trajectories"))
+    hakimi_common::effective_hakimi_home().join("trajectories")
 }
 
 fn default_memory_dir_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi").join("memory"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi/memory"))
+    hakimi_common::effective_hakimi_home().join("memory")
 }
 
 fn default_hakimi_home_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi"))
-        .unwrap_or_else(|| PathBuf::from(".hakimi"))
+    hakimi_common::effective_hakimi_home()
 }
 
 fn display_config_value(value: &str, fallback: &str) -> String {

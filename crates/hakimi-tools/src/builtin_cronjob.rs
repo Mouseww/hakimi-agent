@@ -20,10 +20,7 @@ impl CronjobTool {
     }
 
     fn get_store() -> std::result::Result<PersistentCronStore, HakimiError> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-        let cron_db_path = std::path::PathBuf::from(home)
-            .join(".hakimi")
-            .join("cron.db");
+        let cron_db_path = hakimi_common::effective_hakimi_home().join("cron.db");
         PersistentCronStore::open(&cron_db_path)
             .map_err(|e| HakimiError::Tool(format!("Failed to open cron DB: {e}")))
     }

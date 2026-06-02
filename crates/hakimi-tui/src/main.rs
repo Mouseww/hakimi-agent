@@ -19,6 +19,14 @@ use tracing::{error, info, warn};
 
 use hakimi_tui::{AgentCommand, AgentEvent, app::App, ui};
 
+fn bind_runtime_home_env(runtime_home: &hakimi_common::RuntimeHome) {
+    // SAFETY: The TUI binds its runtime home during single-threaded startup,
+    // before the agent task and tools begin reading environment-backed paths.
+    unsafe {
+        std::env::set_var("HAKIMI_HOME", runtime_home.home().as_os_str());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Default config YAML (mirrors hakimi-cli)
 // ---------------------------------------------------------------------------
@@ -77,12 +85,9 @@ voice:
 // Config loading
 // ---------------------------------------------------------------------------
 
-fn load_config() -> hakimi_config::HakimiConfig {
-    let hakimi_dir = dirs::home_dir()
-        .map(|h| h.join(".hakimi"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi"));
-
-    let config_path = hakimi_dir.join("config.yaml");
+fn load_config(runtime_home: &hakimi_common::RuntimeHome) -> hakimi_config::HakimiConfig {
+    let hakimi_dir = runtime_home.home();
+    let config_path = runtime_home.config_path();
 
     if !hakimi_dir.exists()
         && let Err(e) = std::fs::create_dir_all(&hakimi_dir)
@@ -158,15 +163,14 @@ fn resolve_model(config: &hakimi_config::HakimiConfig) -> String {
 
 fn trajectory_config_from_config(
     config: &hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
 ) -> Option<hakimi_core::TrajectoryConfig> {
     if !config.agent.save_trajectories {
         return None;
     }
 
     let dir = if config.agent.trajectory_dir.trim().is_empty() {
-        dirs::home_dir()
-            .map(|home| home.join(".hakimi").join("trajectories"))
-            .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/trajectories"))
+        runtime_home.trajectories_dir()
     } else {
         std::path::PathBuf::from(config.agent.trajectory_dir.trim())
     };
@@ -178,7 +182,10 @@ fn trajectory_config_from_config(
 // Build agent
 // ---------------------------------------------------------------------------
 
-async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core::AIAgent> {
+async fn build_agent(
+    config: &hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
+) -> Result<hakimi_core::AIAgent> {
     let model = resolve_model(config);
     let base_url = resolve_base_url(config);
     let api_key = resolve_api_key(config);
@@ -281,11 +288,42 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
         tool_registry.register(tool.clone()).await;
     }
 
+    let skills_path = if config.agent.skills_path.trim().is_empty() {
+        runtime_home.skills_dir()
+    } else {
+        std::path::PathBuf::from(config.agent.skills_path.trim())
+    };
+    let skill_store = if skills_path.exists() {
+        hakimi_skills::SkillStore::load(&skills_path).unwrap_or_else(|err| {
+            warn!(error = %err, path = %skills_path.display(), "failed to load skill store, using empty store");
+            hakimi_skills::SkillStore::empty()
+        })
+    } else {
+        hakimi_skills::SkillStore::empty()
+    };
+
+    let knowledge_provider = Arc::new(hakimi_knowledge::KnowledgeProvider::new(
+        runtime_home.knowledge_path(),
+    ));
+    for definition in
+        hakimi_context::MemoryProvider::get_tool_definitions(knowledge_provider.as_ref())
+    {
+        tool_registry
+            .register(Arc::new(hakimi_knowledge::KnowledgeTool::new(
+                knowledge_provider.clone(),
+                definition,
+            )))
+            .await;
+    }
+    let knowledge_searcher: Arc<dyn hakimi_common::KnowledgeSearcher> = knowledge_provider;
+
     let agent = hakimi_core::AIAgent::builder()
         .model(&model)
         .transport(transport)
         .context_engine(context_engine)
         .tool_registry(tool_registry)
+        .skill_store(skill_store)
+        .knowledge_searcher(knowledge_searcher)
         .max_iterations(config.agent.max_turns)
         .workdir(&config.terminal.cwd)
         .streaming(false)
@@ -302,7 +340,7 @@ async fn build_agent(config: &hakimi_config::HakimiConfig) -> Result<hakimi_core
             Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
         )
-        .with_trajectory_saving(trajectory_config_from_config(config));
+        .with_trajectory_saving(trajectory_config_from_config(config, runtime_home));
 
     info!(model = %model, "agent built successfully");
     Ok(agent)
@@ -550,10 +588,11 @@ fn handle_voice_capture_result(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let runtime_home = hakimi_common::RuntimeHome::resolve_default(None)?;
+    bind_runtime_home_env(&runtime_home);
+
     // Initialize logging to a file (not stdout, since we own the terminal).
-    let log_path = dirs::home_dir()
-        .map(|h| h.join(".hakimi").join("tui.log"))
-        .unwrap_or_else(|| std::path::PathBuf::from("hakimi-tui.log"));
+    let log_path = runtime_home.home().join("tui.log");
 
     let log_file = std::fs::OpenOptions::new()
         .create(true)
@@ -571,10 +610,10 @@ async fn main() -> Result<()> {
     info!("Hakimi TUI starting");
 
     // Load config and build agent.
-    let config = load_config();
+    let config = load_config(&runtime_home);
     let model = resolve_model(&config);
 
-    let agent = match build_agent(&config).await {
+    let agent = match build_agent(&config, &runtime_home).await {
         Ok(agent) => agent,
         Err(e) => {
             // Can't use TUI yet, print to stderr.
@@ -603,7 +642,11 @@ async fn main() -> Result<()> {
     // Create the app state.
     let mut app = App::new(cmd_tx, event_rx, model, session_id)
         .with_config(&config)
-        .with_voice_config(&config.voice);
+        .with_voice_config(&config.voice)
+        .with_session_db_path(runtime_home.sessions_db_path())
+        .with_skills_dir_path(runtime_home.skills_dir())
+        .with_cron_db_path(runtime_home.cron_db_path())
+        .with_knowledge_home_path(runtime_home.home());
 
     // Event loop.
     let tick_rate = Duration::from_millis(100);

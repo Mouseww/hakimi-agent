@@ -9,14 +9,14 @@ use crate::Tool;
 /// Built-in tool for managing persistent memory (agent notes and user profile).
 ///
 /// Supports an optional custom base directory for testing; defaults to
-/// `~/.hakimi/memory/` in production.
+/// the active Hakimi runtime home in production.
 pub struct MemoryTool {
-    /// Override directory for tests. `None` → default `~/.hakimi/memory/`.
+    /// Override directory for tests. `None` → default runtime `memory/`.
     base_dir: Option<std::path::PathBuf>,
 }
 
 impl MemoryTool {
-    /// Create a MemoryTool that uses the default `~/.hakimi/memory/` directory.
+    /// Create a MemoryTool that uses the default runtime `memory/` directory.
     pub fn new() -> Self {
         Self { base_dir: None }
     }
@@ -33,10 +33,7 @@ impl MemoryTool {
         if let Some(ref dir) = self.base_dir {
             return dir.clone();
         }
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-        std::path::PathBuf::from(home)
-            .join(".hakimi")
-            .join("memory")
+        hakimi_common::effective_hakimi_home().join("memory")
     }
 
     /// Resolve the file path for a given target.

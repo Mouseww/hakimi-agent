@@ -9,12 +9,9 @@ use crate::Tool;
 /// Built-in tool for searching past sessions using FTS5 full-text search.
 pub struct SessionSearchTool;
 
-/// Get the session database path (~/.hakimi/sessions.db).
+/// Get the active runtime session database path.
 fn session_db_path() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    std::path::PathBuf::from(home)
-        .join(".hakimi")
-        .join("sessions.db")
+    hakimi_common::effective_hakimi_home().join("sessions.db")
 }
 
 /// Format a session summary for display.

@@ -20,9 +20,7 @@ pub fn gateway_events_log_path() -> PathBuf {
         }
     }
 
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".hakimi")
+    hakimi_common::effective_hakimi_home()
         .join("logs")
         .join(DEFAULT_LOG_FILE)
 }

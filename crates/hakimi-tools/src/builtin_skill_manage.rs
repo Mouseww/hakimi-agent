@@ -9,12 +9,9 @@ use crate::Tool;
 /// Built-in tool for managing skills (reusable prompt templates stored as markdown).
 pub struct SkillManageTool;
 
-/// Get the skills directory path (~/.hakimi/skills/).
+/// Get the active runtime skills directory path.
 fn skills_dir() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    std::path::PathBuf::from(home)
-        .join(".hakimi")
-        .join("skills")
+    hakimi_common::effective_hakimi_home().join("skills")
 }
 
 /// Find a skill file (SKILL.md in a dir, or name.md) by searching recursively.

@@ -2826,11 +2826,7 @@ fn kanban_home() -> PathBuf {
     std::env::var("HAKIMI_KANBAN_HOME")
         .or_else(|_| std::env::var("HERMES_KANBAN_HOME"))
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".hakimi")
-        })
+        .unwrap_or_else(|_| hakimi_common::effective_hakimi_home())
 }
 
 fn boards_root() -> PathBuf {

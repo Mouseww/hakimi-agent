@@ -97,11 +97,7 @@ pub fn channel_directory_path() -> PathBuf {
         .ok()
         .or_else(|| std::env::var("HERMES_CHANNEL_DIRECTORY").ok())
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .map(|home| home.join(".hakimi").join("channel_directory.json"))
-                .unwrap_or_else(|| PathBuf::from(".hakimi/channel_directory.json"))
-        })
+        .unwrap_or_else(|| hakimi_common::effective_hakimi_home().join("channel_directory.json"))
 }
 
 /// Persist the currently known gateway targets for `send_message(action="list")`.

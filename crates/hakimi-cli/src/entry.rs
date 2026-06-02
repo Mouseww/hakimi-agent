@@ -341,14 +341,16 @@ fn gateway_allowlist_entry_matches(entry: &str, platform: &str, bot_id: &str, id
     false
 }
 
-fn hakimi_home_dir() -> std::path::PathBuf {
-    dirs::home_dir()
-        .map(|home| home.join(".hakimi"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi"))
+fn cron_db_path(runtime_home: &hakimi_common::RuntimeHome) -> std::path::PathBuf {
+    runtime_home.cron_db_path()
 }
 
-fn cron_db_path() -> std::path::PathBuf {
-    hakimi_home_dir().join("cron.db")
+fn bind_runtime_home_env(runtime_home: &hakimi_common::RuntimeHome) {
+    // SAFETY: CLI/TUI launchers bind the process runtime home during startup,
+    // before spawning worker tasks that read environment-backed default paths.
+    unsafe {
+        std::env::set_var("HAKIMI_HOME", runtime_home.home().as_os_str());
+    }
 }
 
 fn cron_tick_lock_path_for_db(db_path: &std::path::Path) -> std::path::PathBuf {
@@ -1362,17 +1364,18 @@ fn gateway_cron_response_for_context(
     command: Option<&str>,
     platform: &str,
     chat_id: &str,
+    runtime_home: &hakimi_common::RuntimeHome,
 ) -> String {
     let default_deliver = gateway_delivery_target(platform, chat_id);
     gateway_cron_response_for_path_with_delivery(
         command,
-        &cron_db_path(),
+        &cron_db_path(runtime_home),
         default_deliver.as_deref(),
     )
 }
 
-fn top_level_cron_response(args: &[String]) -> String {
-    top_level_cron_response_for_path(args, &cron_db_path())
+fn top_level_cron_response(args: &[String], runtime_home: &hakimi_common::RuntimeHome) -> String {
+    top_level_cron_response_for_path(args, &cron_db_path(runtime_home))
 }
 
 fn is_top_level_cron_tick(args: &[String]) -> bool {
@@ -3903,19 +3906,15 @@ compression:
 // Config loading
 // ---------------------------------------------------------------------------
 
-fn load_config() -> hakimi_config::HakimiConfig {
-    let hakimi_dir = dirs::home_dir()
-        .map(|h| h.join(".hakimi"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi"));
+fn load_config(runtime_home: &hakimi_common::RuntimeHome) -> hakimi_config::HakimiConfig {
+    let hakimi_dir = runtime_home.home();
+    let config_path = runtime_home.config_path();
 
-    let config_path = hakimi_dir.join("config.yaml");
-
-    // Create ~/.hakimi/ directory on first run.
     if !hakimi_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&hakimi_dir) {
-            warn!(path = %hakimi_dir.display(), error = %e, "failed to create .hakimi directory");
+            warn!(path = %hakimi_dir.display(), error = %e, "failed to create Hakimi runtime directory");
         } else {
-            info!(path = %hakimi_dir.display(), "created .hakimi directory");
+            info!(path = %hakimi_dir.display(), "created Hakimi runtime directory");
         }
     }
 
@@ -3951,20 +3950,21 @@ fn load_config() -> hakimi_config::HakimiConfig {
     }
 }
 
-fn hakimi_config_path() -> std::path::PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".hakimi").join("config.yaml"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi/config.yaml"))
+fn hakimi_config_path(runtime_home: &hakimi_common::RuntimeHome) -> std::path::PathBuf {
+    runtime_home.config_path()
 }
 
-fn maybe_show_startup_onboarding_hints(config: &mut hakimi_config::HakimiConfig) {
+fn maybe_show_startup_onboarding_hints(
+    config: &mut hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
+) {
     if crate::onboarding::should_show(config, crate::onboarding::OPENCLAW_RESIDUE_FLAG)
         && crate::onboarding::detect_openclaw_residue(None)
     {
         println!("{}", crate::onboarding::openclaw_residue_hint_cli());
         if let Err(err) = crate::onboarding::mark_seen(
             config,
-            &hakimi_config_path(),
+            &hakimi_config_path(runtime_home),
             crate::onboarding::OPENCLAW_RESIDUE_FLAG,
         ) {
             warn!(error = %err, "failed to persist onboarding hint state");
@@ -4019,8 +4019,11 @@ fn prompt_secret_optional(label: &str, existing: &str) -> Result<String> {
     }
 }
 
-fn write_config_file(config: &hakimi_config::HakimiConfig) -> Result<std::path::PathBuf> {
-    let path = hakimi_config_path();
+fn write_config_file(
+    config: &hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
+) -> Result<std::path::PathBuf> {
+    let path = hakimi_config_path(runtime_home);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -4153,7 +4156,10 @@ fn configure_clawbot_gateway(config: &mut hakimi_config::HakimiConfig) -> Result
     Ok(())
 }
 
-fn run_setup_wizard(mut config: hakimi_config::HakimiConfig) -> Result<()> {
+fn run_setup_wizard(
+    mut config: hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
+) -> Result<()> {
     println!("🐙 Hakimi Agent setup wizard");
     println!("This will write ~/.hakimi/config.yaml. Press Enter to accept defaults.");
     println!("Type 'skip' for optional keys you want to leave empty.\n");
@@ -4214,7 +4220,7 @@ fn run_setup_wizard(mut config: hakimi_config::HakimiConfig) -> Result<()> {
     .parse()
     .unwrap_or(config.agent.max_turns);
 
-    let path = write_config_file(&config)?;
+    let path = write_config_file(&config, runtime_home)?;
     println!("\n✅ Hakimi configuration saved to {}", path.display());
     println!("Next steps:");
     println!("  hakimi --query \"hello\"");
@@ -4421,6 +4427,7 @@ fn env_truthy(name: &str) -> bool {
 fn resolve_trajectory_config(
     args: &Args,
     config: &hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
 ) -> Option<hakimi_core::TrajectoryConfig> {
     let enabled = args.save_trajectories
         || config.agent.save_trajectories
@@ -4448,7 +4455,7 @@ fn resolve_trajectory_config(
                 .filter(|value| !value.trim().is_empty())
                 .map(std::path::PathBuf::from)
         })
-        .unwrap_or_else(|| hakimi_home_dir().join("trajectories"));
+        .unwrap_or_else(|| runtime_home.trajectories_dir());
 
     Some(hakimi_core::TrajectoryConfig::new(dir))
 }
@@ -4535,6 +4542,7 @@ async fn register_mcp_tools(
 async fn build_agent(
     args: &Args,
     config: &hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
 ) -> Result<hakimi_core::AIAgent> {
     let model = resolve_model(args.model.as_deref(), config);
     let base_url = resolve_base_url(args.base_url.as_deref(), config);
@@ -4857,8 +4865,12 @@ async fn build_agent(
     .await;
 
     // Load skills.
-    let skill_store = if !config.agent.skills_path.is_empty() {
-        let skills_path = std::path::PathBuf::from(&config.agent.skills_path);
+    let skills_path = if !config.agent.skills_path.is_empty() {
+        std::path::PathBuf::from(&config.agent.skills_path)
+    } else {
+        runtime_home.skills_dir()
+    };
+    let skill_store = if skills_path.exists() {
         hakimi_skills::SkillStore::load(&skills_path).unwrap_or_else(|e| {
             warn!(error = %e, path = %skills_path.display(), "failed to load skill store, using empty store");
             hakimi_skills::SkillStore::empty()
@@ -4868,9 +4880,7 @@ async fn build_agent(
     };
 
     // Build knowledge provider with optional vector search and expose its tools/searcher.
-    let knowledge_path = dirs::home_dir()
-        .map(|h| h.join(".hakimi").join("knowledge.json"))
-        .unwrap_or_else(|| std::path::PathBuf::from("/root/.hakimi/knowledge.json"));
+    let knowledge_path = runtime_home.knowledge_path();
     let knowledge_provider = if let Some(provider) = embedding_provider.clone() {
         std::sync::Arc::new(hakimi_knowledge::KnowledgeProvider::with_vector_search(
             knowledge_path,
@@ -4913,7 +4923,7 @@ async fn build_agent(
             Some(config.voice.base_url.clone()).filter(|s| !s.is_empty()),
             Some(config.voice.api_key.clone()).filter(|s| !s.is_empty()),
         )
-        .with_trajectory_saving(resolve_trajectory_config(args, config));
+        .with_trajectory_saving(resolve_trajectory_config(args, config, runtime_home));
     agent.set_model(&model);
     // agent.set_max_turns(config.agent.max_turns);
 
@@ -4954,6 +4964,7 @@ async fn start_gateway(
     agent: hakimi_core::AIAgent,
     skill_store: hakimi_skills::SkillStore,
     config: hakimi_config::HakimiConfig,
+    runtime_home: hakimi_common::RuntimeHome,
 ) -> Result<()> {
     use std::collections::{HashMap, VecDeque};
     use std::sync::Arc;
@@ -4985,7 +4996,8 @@ async fn start_gateway(
     let gateway_access = Arc::new(GatewayIngressPolicy::from_config(&config));
     let skill_store_ref = Arc::new(skill_store);
     let onboarding_state = Arc::new(Mutex::new(config.clone()));
-    let onboarding_config_path = Arc::new(hakimi_config_path());
+    let onboarding_config_path = Arc::new(hakimi_config_path(&runtime_home));
+    let runtime_home = Arc::new(runtime_home);
 
     // 3. Connect all platforms.
     gateway.connect_all().await?;
@@ -5029,14 +5041,12 @@ async fn start_gateway(
     // Spawn Cron Scheduler daemon
     let cron_agent_base = agent_arc.clone();
     let cron_skill_store = skill_store_ref.clone();
+    let cron_runtime_home = runtime_home.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-            let cron_db_path = std::path::PathBuf::from(home)
-                .join(".hakimi")
-                .join("cron.db");
+            let cron_db_path = cron_runtime_home.cron_db_path();
 
             if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
                 let now = chrono::Utc::now();
@@ -5262,6 +5272,7 @@ async fn start_gateway(
         let last_usage = last_usage.clone();
         let onboarding_state = onboarding_state.clone();
         let onboarding_config_path = onboarding_config_path.clone();
+        let runtime_home = runtime_home.clone();
 
         let config_clone = config.clone();
         tokio::spawn(async move {
@@ -5428,12 +5439,18 @@ Just send a message to chat with me!"
                         }
                         msg
                     }
-                    Some(Command::Skills(args)) => crate::skills::gateway_skills_response(
+                    Some(Command::Skills(args)) => crate::skills::gateway_skills_response_for_dir(
                         args.as_deref(),
                         skill_store_ref.skills(),
+                        &runtime_home.skills_dir(),
                     ),
                     Some(Command::Cron(cmd)) => {
-                        gateway_cron_response_for_context(cmd.as_deref(), &platform, &chat_id)
+                        gateway_cron_response_for_context(
+                            cmd.as_deref(),
+                            &platform,
+                            &chat_id,
+                            runtime_home.as_ref(),
+                        )
                     }
                     Some(Command::Doctor) => {
                         match tokio::task::spawn_blocking(|| {
@@ -5526,7 +5543,7 @@ Just send a message to chat with me!"
                     Some(Command::History(_)) => "`/history [N]` is available in the local Hakimi TUI for reviewing recent user/assistant messages. Gateway chats keep history in the chat client and can use `/undo [N]` to rewind Hakimi's in-memory turn state.".to_string(),
                     Some(Command::Profile(cmd)) => crate::profiles::profile_response_from_raw(
                         cmd.as_deref(),
-                        &hakimi_home_dir(),
+                        runtime_home.root_home(),
                     ),
                     Some(Command::Plugins(cmd)) => {
                         let args = plugin_args_from_raw(cmd.as_deref());
@@ -5544,9 +5561,8 @@ Just send a message to chat with me!"
                         hakimi_tools::checkpoint_response(cmd.as_deref(), &std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
                     }
                     Some(Command::Dump(_)) => {
-                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-                        let db_path = home.join(".hakimi").join("sessions.db");
-                        let dump_file = home.join(".hakimi").join(format!("dump-{}.sql", chrono::Local::now().format("%Y%m%d%H%M%S")));
+                        let db_path = runtime_home.sessions_db_path();
+                        let dump_file = runtime_home.home().join(format!("dump-{}.sql", chrono::Local::now().format("%Y%m%d%H%M%S")));
                         match std::process::Command::new("sqlite3").arg(&db_path).arg(".dump").output() {
                             Ok(o) => {
                                 let _ = std::fs::write(&dump_file, o.stdout);
@@ -5568,7 +5584,7 @@ Just send a message to chat with me!"
                     Some(Command::Kanban(cmd)) => hakimi_tools::kanban_response(cmd.as_deref()),
                     Some(Command::Knowledge(cmd)) => crate::knowledge::knowledge_response_from_raw(
                         cmd.as_deref(),
-                        &hakimi_home_dir(),
+                        runtime_home.home(),
                     ),
                     Some(Command::Logs(arg)) => {
                         let raw = arg.as_deref().unwrap_or("50").trim();
@@ -5579,8 +5595,7 @@ Just send a message to chat with me!"
                             _ if matches!(raw, "events" | "gateway" | "all") => (raw, 50),
                             _ => ("all", raw.parse::<usize>().unwrap_or(50)),
                         };
-                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-                        let gateway_log = home.join(".hakimi").join("logs").join("gateway.log");
+                        let gateway_log = runtime_home.home().join("logs").join("gateway.log");
                         let mut sections = Vec::new();
 
                         if matches!(source, "all" | "events") {
@@ -5619,8 +5634,7 @@ Just send a message to chat with me!"
                     }
                     Some(Command::Mcp(cmd)) => gateway_mcp_response(cmd.as_deref(), &config.mcp_servers),
                     Some(Command::Memory(cmd)) => {
-                        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-                        let memory_dir = home.join(".hakimi").join("memory");
+                        let memory_dir = runtime_home.memory_dir();
                         match cmd.as_deref() {
                             Some("clear") => {
                                 let _ = std::fs::remove_file(memory_dir.join("USER.md"));
@@ -5641,7 +5655,7 @@ Just send a message to chat with me!"
                     Some(Command::Skin(cmd)) => crate::skin::gateway_skin_response(
                         cmd.as_deref(),
                         &config.display.skin,
-                        &hakimi_home_dir(),
+                        runtime_home.home(),
                     ),
                     Some(Command::Tips(_)) => "💡 **Tip:** Use `/tools` to see all available capabilities, and `/skills` to use powerful multi-step workflows.".to_string(),
                     Some(Command::ToolsConfig(_)) => "⚙️ Tools configuration interface opened.".to_string(),
@@ -5690,20 +5704,18 @@ Just send a message to chat with me!"
                 // but we will update the inner loop to support `progressive updates` back through the gateway.
                 // Let's revert back to a standard query to unblock compilation and we will handle streaming next.
 
-                // 2. Load context from ~/.hakimi/memory/ via MemoryProvider
+                // 2. Load context from the active runtime memory home via MemoryProvider
                 let mut memory_text = String::new();
                 if config.memory.enabled {
                     let memory_dir = if config.memory.path.is_empty() {
-                        dirs::home_dir()
-                            .map(|h| h.join(".hakimi").join("memory"))
-                            .unwrap_or_else(|| std::path::PathBuf::from("/root/.hakimi/memory"))
+                        runtime_home.memory_dir()
                     } else {
                         std::path::PathBuf::from(&config.memory.path)
                     };
 
                     use hakimi_context::MemoryProvider;
                     let file_mem = hakimi_context::FileMemoryProvider::new(
-                        memory_dir.to_str().unwrap_or("/root/.hakimi/memory"),
+                        memory_dir.to_str().unwrap_or("memory"),
                     );
                     if file_mem.is_available() {
                         let text = file_mem.system_prompt_block();
@@ -6782,6 +6794,13 @@ async fn self_update() -> Result<()> {
 
 pub async fn run() -> Result<()> {
     let args = Args::parse();
+    let runtime_home = if matches!(&args.command, Some(TopLevelCommand::Profile(_))) {
+        hakimi_common::RuntimeHome::resolve_default(Some("default"))?
+    } else {
+        hakimi_common::RuntimeHome::resolve_default(args.profile.as_deref())?
+    };
+    bind_runtime_home_env(&runtime_home);
+
     // Initialise logging.
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -6807,7 +6826,10 @@ pub async fn run() -> Result<()> {
     if let Some(TopLevelCommand::Cron(cron_args)) = &args.command
         && !is_top_level_cron_tick(&cron_args.args)
     {
-        println!("{}", top_level_cron_response(&cron_args.args));
+        println!(
+            "{}",
+            top_level_cron_response(&cron_args.args, &runtime_home)
+        );
         return Ok(());
     }
     if let Some(TopLevelCommand::Plugins(plugin_args)) = &args.command {
@@ -6815,7 +6837,7 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
     if let Some(TopLevelCommand::Mcp(mcp_args)) = &args.command {
-        let config = load_config();
+        let config = load_config(&runtime_home);
         println!(
             "{}",
             top_level_mcp_response(&mcp_args.args, &config.mcp_servers)
@@ -6825,27 +6847,30 @@ pub async fn run() -> Result<()> {
     if let Some(TopLevelCommand::Knowledge(knowledge_args)) = &args.command {
         println!(
             "{}",
-            crate::knowledge::knowledge_response(&knowledge_args.args, &hakimi_home_dir())
+            crate::knowledge::knowledge_response(&knowledge_args.args, runtime_home.home())
         );
         return Ok(());
     }
     if let Some(TopLevelCommand::Skills(skill_args)) = &args.command {
-        println!("{}", crate::skills::skills_response(&skill_args.args));
+        println!(
+            "{}",
+            crate::skills::skills_response_for_dir(&skill_args.args, &runtime_home.skills_dir())
+        );
         return Ok(());
     }
     if let Some(TopLevelCommand::Profile(profile_args)) = &args.command {
         println!(
             "{}",
-            crate::profiles::profile_response(&profile_args.args, &hakimi_home_dir())
+            crate::profiles::profile_response(&profile_args.args, runtime_home.root_home())
         );
         return Ok(());
     }
     if let Some(TopLevelCommand::Skin(skin_args)) = &args.command {
-        let mut config = load_config();
+        let mut config = load_config(&runtime_home);
         let result =
-            crate::skin::skin_command_response(&skin_args.args, &mut config, &hakimi_home_dir());
+            crate::skin::skin_command_response(&skin_args.args, &mut config, runtime_home.home());
         if result.changed {
-            let path = write_config_file(&config)?;
+            let path = write_config_file(&config, &runtime_home)?;
             println!("{}\nConfig updated: {}", result.message, path.display());
         } else {
             println!("{}", result.message);
@@ -6867,10 +6892,10 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let mut config = load_config();
+    let mut config = load_config(&runtime_home);
 
     if args.setup || matches!(&args.command, Some(TopLevelCommand::Setup)) {
-        return run_setup_wizard(config);
+        return run_setup_wizard(config, &runtime_home);
     }
 
     if matches!(args.gateway, Some(GatewayMode::Install)) {
@@ -6884,10 +6909,10 @@ pub async fn run() -> Result<()> {
     }
 
     if !args.serve && args.gateway.is_none() && args.query.is_none() {
-        maybe_show_startup_onboarding_hints(&mut config);
+        maybe_show_startup_onboarding_hints(&mut config, &runtime_home);
     }
 
-    let agent = build_agent(&args, &config).await?;
+    let agent = build_agent(&args, &config, &runtime_home).await?;
 
     if let Some(TopLevelCommand::Cron(cron_args)) = &args.command
         && is_top_level_cron_tick(&cron_args.args)
@@ -6898,7 +6923,12 @@ pub async fn run() -> Result<()> {
             .unwrap_or_else(hakimi_skills::SkillStore::empty);
         println!(
             "{}",
-            top_level_cron_tick_response(&agent, Some(&tick_skill_store), &cron_db_path()).await
+            top_level_cron_tick_response(
+                &agent,
+                Some(&tick_skill_store),
+                &cron_db_path(&runtime_home),
+            )
+            .await
         );
         return Ok(());
     }
@@ -6911,7 +6941,7 @@ pub async fn run() -> Result<()> {
             .skill_store()
             .cloned()
             .unwrap_or_else(hakimi_skills::SkillStore::empty);
-        return start_gateway(agent, skill_store, config).await;
+        return start_gateway(agent, skill_store, config, runtime_home).await;
     }
 
     if let Some(query) = args.query {
@@ -6925,7 +6955,7 @@ pub async fn run() -> Result<()> {
 
     println!(
         "{}",
-        crate::skin::startup_banner_response(&config.display.skin, &hakimi_home_dir(), true)
+        crate::skin::startup_banner_response(&config.display.skin, runtime_home.home(), true)
     );
     println!("🚧 Interactive REPL is currently under construction.");
     println!("💡 Tip: Try running with --query \"your prompt\" or use the TUI (hakimi-tui).");
