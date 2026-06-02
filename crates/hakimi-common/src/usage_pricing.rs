@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::Usage;
 
@@ -15,6 +16,7 @@ pub enum CostStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CostSource {
+    ProviderModelsApi,
     OfficialDocsSnapshot,
     SubscriptionIncluded,
     None,
@@ -65,6 +67,16 @@ struct PricingEntry {
     cache_write_per_million: Option<f64>,
     pricing_version: &'static str,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LivePricingEntry {
+    pub input_per_million: f64,
+    pub output_per_million: f64,
+    pub cache_read_per_million: Option<f64>,
+    pub cache_write_per_million: Option<f64>,
+}
+
+pub type LivePricingCatalog = BTreeMap<String, LivePricingEntry>;
 
 const PRICING: &[PricingEntry] = &[
     PricingEntry {
@@ -377,6 +389,68 @@ pub fn estimate_usage_cost(model: &str, provider: &str, usage: &Usage) -> CostEs
     }
 }
 
+pub fn estimate_usage_cost_with_live_pricing(
+    model: &str,
+    provider: &str,
+    usage: &Usage,
+    live_pricing: &LivePricingCatalog,
+) -> CostEstimate {
+    let route = resolve_billing_route(model, provider);
+    if route.subscription_included {
+        return CostEstimate::included();
+    }
+
+    if let Some((model_id, entry)) = lookup_live_pricing(model, &route, live_pricing) {
+        return estimate_from_live_pricing(&model_id, entry, usage);
+    }
+
+    estimate_usage_cost(model, provider, usage)
+}
+
+pub fn openrouter_models_pricing_from_payload(payload: &serde_json::Value) -> LivePricingCatalog {
+    let mut catalog = BTreeMap::new();
+    let Some(items) = payload.get("data").and_then(|value| value.as_array()) else {
+        return catalog;
+    };
+
+    for item in items {
+        let Some(model_id) = item
+            .get("id")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        let Some(pricing) = item.get("pricing").and_then(|value| value.as_object()) else {
+            continue;
+        };
+        let Some(input_per_million) = pricing.get("prompt").and_then(price_per_token_to_million)
+        else {
+            continue;
+        };
+        let Some(output_per_million) = pricing
+            .get("completion")
+            .and_then(price_per_token_to_million)
+        else {
+            continue;
+        };
+        let entry = LivePricingEntry {
+            input_per_million,
+            output_per_million,
+            cache_read_per_million: pricing
+                .get("input_cache_read")
+                .and_then(price_per_token_to_million),
+            cache_write_per_million: pricing
+                .get("input_cache_write")
+                .and_then(price_per_token_to_million),
+        };
+        catalog.insert(normalize_live_model_id(model_id), entry);
+    }
+
+    catalog
+}
+
 fn unknown_with_note(note: &str) -> CostEstimate {
     let mut estimate = CostEstimate::unknown();
     estimate.notes.push(note.to_string());
@@ -388,6 +462,63 @@ fn lookup_pricing(route: &BillingRoute) -> Option<PricingEntry> {
         .iter()
         .copied()
         .find(|entry| entry.provider == route.provider && entry.model == route.model)
+}
+
+fn lookup_live_pricing<'a>(
+    model: &str,
+    route: &BillingRoute,
+    live_pricing: &'a LivePricingCatalog,
+) -> Option<(String, &'a LivePricingEntry)> {
+    let raw_model = normalize_live_model_id(model);
+    if let Some(entry) = live_pricing.get(&raw_model) {
+        return Some((raw_model, entry));
+    }
+
+    let route_model = normalize_live_model_id(&route.model);
+    if let Some(entry) = live_pricing.get(&route_model) {
+        return Some((route_model, entry));
+    }
+
+    let qualified = normalize_live_model_id(&format!("{}/{}", route.provider, route.model));
+    live_pricing.get(&qualified).map(|entry| (qualified, entry))
+}
+
+fn estimate_from_live_pricing(
+    model_id: &str,
+    entry: &LivePricingEntry,
+    usage: &Usage,
+) -> CostEstimate {
+    let cached_read = usage.cached_tokens;
+    if cached_read > 0 && entry.cache_read_per_million.is_none() {
+        return unknown_with_note("cache-read pricing unavailable from provider models API");
+    }
+
+    let prompt_tokens = usage.prompt_tokens.saturating_sub(cached_read);
+    let mut amount = prompt_tokens as f64 * entry.input_per_million / ONE_MILLION;
+    amount += usage.completion_tokens as f64 * entry.output_per_million / ONE_MILLION;
+    amount += cached_read as f64 * entry.cache_read_per_million.unwrap_or(0.0) / ONE_MILLION;
+
+    CostEstimate {
+        amount_usd: Some(amount),
+        status: CostStatus::Estimated,
+        source: CostSource::ProviderModelsApi,
+        label: format!("~{}", format_usd(amount)),
+        pricing_version: Some("provider-models-api".to_string()),
+        notes: vec![format!("Live pricing matched `{model_id}`.")],
+    }
+}
+
+fn normalize_live_model_id(model: &str) -> String {
+    model.trim().to_ascii_lowercase()
+}
+
+fn price_per_token_to_million(value: &serde_json::Value) -> Option<f64> {
+    let per_token = match value {
+        serde_json::Value::Number(number) => number.as_f64()?,
+        serde_json::Value::String(text) => text.trim().parse::<f64>().ok()?,
+        _ => return None,
+    };
+    per_token.is_finite().then_some(per_token * ONE_MILLION)
 }
 
 fn resolve_billing_route(model: &str, provider: &str) -> BillingRoute {
@@ -572,6 +703,85 @@ mod tests {
     #[test]
     fn cache_tokens_without_known_cache_pricing_return_unknown() {
         let estimate = estimate_usage_cost("gemini-2.5-pro", "gemini", &usage(1_000, 500, 10, 0));
+
+        assert_eq!(estimate.status, CostStatus::Unknown);
+        assert!(estimate.notes[0].contains("cache-read pricing unavailable"));
+    }
+
+    #[test]
+    fn parses_openrouter_models_pricing_payload() {
+        let catalog = openrouter_models_pricing_from_payload(&serde_json::json!({
+            "data": [
+                {
+                    "id": "Acme/New-Model",
+                    "pricing": {
+                        "prompt": "0.00000015",
+                        "completion": "0.00000060",
+                        "input_cache_read": "0.00000002",
+                        "input_cache_write": 0.00000020
+                    }
+                },
+                {"id": "skip/no-pricing"}
+            ]
+        }));
+
+        let entry = catalog.get("acme/new-model").unwrap();
+        assert_eq!(entry.input_per_million, 0.15);
+        assert_eq!(entry.output_per_million, 0.60);
+        assert_eq!(entry.cache_read_per_million, Some(0.02));
+        assert_eq!(entry.cache_write_per_million, Some(0.20));
+        assert!(!catalog.contains_key("skip/no-pricing"));
+    }
+
+    #[test]
+    fn estimates_cost_from_live_provider_models_pricing() {
+        let catalog = openrouter_models_pricing_from_payload(&serde_json::json!({
+            "data": [{
+                "id": "acme/new-model",
+                "pricing": {
+                    "prompt": "0.00000015",
+                    "completion": "0.00000060",
+                    "input_cache_read": "0.00000002",
+                    "input_cache_write": "0.00000020"
+                }
+            }]
+        }));
+
+        let estimate = estimate_usage_cost_with_live_pricing(
+            "ACME/New-Model",
+            "openrouter",
+            &usage(2_000, 500, 250, 50),
+            &catalog,
+        );
+
+        assert_eq!(estimate.status, CostStatus::Estimated);
+        assert_eq!(estimate.source, CostSource::ProviderModelsApi);
+        assert_eq!(
+            estimate.pricing_version,
+            Some("provider-models-api".to_string())
+        );
+        assert_eq!(estimate.label, "~$0.000568");
+        assert!((estimate.amount_usd.unwrap() - 0.0005675).abs() < 1e-12);
+    }
+
+    #[test]
+    fn live_pricing_missing_cache_rate_returns_unknown() {
+        let catalog = openrouter_models_pricing_from_payload(&serde_json::json!({
+            "data": [{
+                "id": "acme/new-model",
+                "pricing": {
+                    "prompt": "0.00000015",
+                    "completion": "0.00000060"
+                }
+            }]
+        }));
+
+        let estimate = estimate_usage_cost_with_live_pricing(
+            "acme/new-model",
+            "openrouter",
+            &usage(2_000, 500, 250, 0),
+            &catalog,
+        );
 
         assert_eq!(estimate.status, CostStatus::Unknown);
         assert!(estimate.notes[0].contains("cache-read pricing unavailable"));

@@ -1836,10 +1836,80 @@ async fn fetch_account_usage_snapshot(
     None
 }
 
+async fn fetch_live_pricing_catalog(
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_common::LivePricingCatalog> {
+    let model = resolve_model(None, config);
+    let provider = resolve_provider(None, config, &model);
+    let base_url = resolve_base_url(None, config);
+    if !supports_openrouter_compatible_models_pricing(&provider, &base_url) {
+        return None;
+    }
+
+    let api_key = resolve_account_usage_api_key(&provider, config);
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .read_timeout(std::time::Duration::from_secs(8))
+        .build()
+        .ok()?;
+
+    let mut request = client
+        .get(format!(
+            "{}/models",
+            openrouter_compatible_models_api_base(&base_url)
+        ))
+        .header("Accept", "application/json")
+        .header("User-Agent", "hakimi-agent");
+    if !api_key.trim().is_empty() {
+        request = request.bearer_auth(api_key.trim());
+    }
+
+    let response = request.send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let payload: serde_json::Value = response.json().await.ok()?;
+    let catalog = hakimi_common::openrouter_models_pricing_from_payload(&payload);
+    (!catalog.is_empty()).then_some(catalog)
+}
+
 fn openrouter_account_api_base(base_url: &str) -> String {
     let mut base = base_url.trim().trim_end_matches('/').to_string();
     if base.is_empty() {
         return "https://openrouter.ai/api/v1".to_string();
+    }
+    if base.ends_with("/api/v1") || base.ends_with("/v1") {
+        return base;
+    }
+    if base.ends_with("/api") {
+        base.push_str("/v1");
+        return base;
+    }
+    if base.contains("openrouter.ai") {
+        return format!("{base}/api/v1");
+    }
+    format!("{base}/v1")
+}
+
+fn supports_openrouter_compatible_models_pricing(provider: &str, base_url: &str) -> bool {
+    let provider = provider.trim().to_ascii_lowercase();
+    let base_url = base_url.trim().to_ascii_lowercase();
+    provider == "openrouter"
+        || provider == "nous"
+        || provider == "novita"
+        || base_url.contains("openrouter.ai")
+        || base_url.contains("inference-api.nousresearch.com")
+        || base_url.contains("api.novita.ai")
+}
+
+fn openrouter_compatible_models_api_base(base_url: &str) -> String {
+    let mut base = base_url.trim().trim_end_matches('/').to_string();
+    if base.is_empty() {
+        return "https://openrouter.ai/api/v1".to_string();
+    }
+    if base.ends_with("/models") {
+        base.truncate(base.len().saturating_sub("/models".len()));
+        return base;
     }
     if base.ends_with("/api/v1") || base.ends_with("/v1") {
         return base;
@@ -1916,6 +1986,22 @@ fn resolve_account_usage_api_key(provider: &str, config: &hakimi_config::HakimiC
         return config.delegation.api_key.clone();
     }
     String::new()
+}
+
+fn snapshot_with_live_pricing(
+    snapshot: Option<GatewayUsageSnapshot>,
+    live_pricing: Option<&hakimi_common::LivePricingCatalog>,
+) -> Option<GatewayUsageSnapshot> {
+    let mut snapshot = snapshot?;
+    if let Some(live_pricing) = live_pricing {
+        snapshot.cost = hakimi_common::estimate_usage_cost_with_live_pricing(
+            &snapshot.model,
+            &snapshot.provider,
+            &snapshot.usage,
+            live_pricing,
+        );
+    }
+    Some(snapshot)
 }
 
 fn gateway_usage_response(
@@ -5615,6 +5701,9 @@ Just send a message to chat with me!"
                             let usage = last_usage.lock().await;
                             usage.get(&chat_id).cloned()
                         };
+                        let live_pricing = fetch_live_pricing_catalog(&config).await;
+                        let snapshot =
+                            snapshot_with_live_pricing(snapshot, live_pricing.as_ref());
                         let account_usage = fetch_account_usage_snapshot(&config).await;
                         gateway_usage_response(snapshot.as_ref(), account_usage.as_ref())
                     }
@@ -7607,6 +7696,46 @@ mod tests {
     }
 
     #[test]
+    fn openrouter_compatible_models_api_base_normalizes_common_base_urls() {
+        assert_eq!(
+            super::openrouter_compatible_models_api_base(""),
+            "https://openrouter.ai/api/v1"
+        );
+        assert_eq!(
+            super::openrouter_compatible_models_api_base("https://openrouter.ai/api"),
+            "https://openrouter.ai/api/v1"
+        );
+        assert_eq!(
+            super::openrouter_compatible_models_api_base("https://openrouter.ai/api/v1/models"),
+            "https://openrouter.ai/api/v1"
+        );
+        assert_eq!(
+            super::openrouter_compatible_models_api_base("https://inference-api.nousresearch.com"),
+            "https://inference-api.nousresearch.com/v1"
+        );
+    }
+
+    #[test]
+    fn models_pricing_provider_detection_stays_openrouter_compatible() {
+        assert!(super::supports_openrouter_compatible_models_pricing(
+            "openrouter",
+            ""
+        ));
+        assert!(super::supports_openrouter_compatible_models_pricing(
+            "custom",
+            "https://openrouter.ai/api/v1"
+        ));
+        assert!(super::supports_openrouter_compatible_models_pricing(
+            "nous",
+            "https://inference-api.nousresearch.com"
+        ));
+        assert!(!super::supports_openrouter_compatible_models_pricing(
+            "anthropic",
+            "https://api.anthropic.com"
+        ));
+    }
+
+    #[test]
     fn codex_account_usage_provider_detection_is_explicit() {
         assert!(super::is_codex_account_usage_provider(
             "openai-codex",
@@ -7676,6 +7805,53 @@ mod tests {
         assert!(response.contains("Estimated cost: ~$0.004850"));
         assert!(response.contains("Pricing: `openai-pricing-2026-03-16`"));
         assert!(response.contains("No provider rate-limit headers"));
+    }
+
+    #[test]
+    fn gateway_usage_snapshot_can_apply_live_models_pricing() {
+        let snapshot = GatewayUsageSnapshot {
+            model: "acme/new-model".to_string(),
+            provider: "openrouter".to_string(),
+            usage: Usage {
+                prompt_tokens: 2_000,
+                completion_tokens: 500,
+                total_tokens: 2_500,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            },
+            cost: hakimi_common::estimate_usage_cost(
+                "acme/new-model",
+                "openrouter",
+                &Usage {
+                    prompt_tokens: 2_000,
+                    completion_tokens: 500,
+                    total_tokens: 2_500,
+                    cached_tokens: 0,
+                    reasoning_tokens: 0,
+                },
+            ),
+            api_call_count: 1,
+            rate_limits: None,
+        };
+        let catalog = hakimi_common::openrouter_models_pricing_from_payload(&serde_json::json!({
+            "data": [{
+                "id": "acme/new-model",
+                "pricing": {
+                    "prompt": "0.00000015",
+                    "completion": "0.00000060"
+                }
+            }]
+        }));
+
+        let snapshot = super::snapshot_with_live_pricing(Some(snapshot), Some(&catalog)).unwrap();
+        let response = gateway_usage_response(Some(&snapshot), None);
+
+        assert_eq!(
+            snapshot.cost.source,
+            hakimi_common::CostSource::ProviderModelsApi
+        );
+        assert!(response.contains("Estimated cost: ~$0.000600"));
+        assert!(response.contains("Pricing: `provider-models-api`"));
     }
 
     #[test]
