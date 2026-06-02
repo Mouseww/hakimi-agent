@@ -562,8 +562,10 @@ mod tests {
 
     #[test]
     fn tool_message_label_uses_skin_emoji_when_present() {
-        let mut skin = hakimi_common::SkinRuntime::default();
-        skin.tool_prefix = "::".to_string();
+        let mut skin = hakimi_common::SkinRuntime {
+            tool_prefix: "::".to_string(),
+            ..hakimi_common::SkinRuntime::default()
+        };
         skin.tool_emojis.insert("bash".to_string(), "⚔".to_string());
 
         assert_eq!(
