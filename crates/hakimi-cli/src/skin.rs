@@ -325,6 +325,82 @@ fn render_skin_inspect(name: &str, home: &Path) -> Result<String> {
     ))
 }
 
+pub fn startup_banner_response(current_skin: &str, home: &Path, ansi: bool) -> String {
+    match load_skin(current_skin, home) {
+        Ok(skin) => render_startup_banner(&skin, ansi),
+        Err(err) => {
+            let fallback = load_skin("default", home)
+                .unwrap_or_else(|_| builtin_skin("default").expect("default skin must exist"));
+            format!(
+                "{}\nSkin error: {err}",
+                render_startup_banner(&fallback, ansi)
+            )
+        }
+    }
+}
+
+pub fn render_startup_banner(skin: &SkinConfig, ansi: bool) -> String {
+    let title = skin.branding("agent_name").unwrap_or("Hakimi Agent").trim();
+    let welcome = skin
+        .branding("welcome")
+        .unwrap_or("Welcome to Hakimi Agent. Type /help for commands.")
+        .trim();
+    let prompt = skin.branding("prompt_symbol").unwrap_or(">").trim();
+    let border_color = skin.color("banner_border");
+    let title_color = skin.color("banner_title");
+    let text_color = skin.color("banner_text");
+    let dim_color = skin.color("banner_dim");
+
+    let mut lines = Vec::new();
+    if !skin.banner_logo.trim().is_empty() {
+        lines.extend(non_empty_banner_lines(&skin.banner_logo));
+    }
+    if !skin.banner_hero.trim().is_empty() {
+        lines.extend(non_empty_banner_lines(&skin.banner_hero));
+    }
+    lines.push(colorize(
+        &format!("=== {title} ==="),
+        title_color.or(border_color),
+        ansi,
+    ));
+    lines.push(colorize(welcome, text_color, ansi));
+    lines.push(colorize(
+        &format!("skin: {}  prompt: {prompt}", skin.name),
+        dim_color,
+        ansi,
+    ));
+    lines.join("\n")
+}
+
+fn non_empty_banner_lines(raw: &str) -> Vec<String> {
+    raw.lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn colorize(text: &str, color: Option<&str>, ansi: bool) -> String {
+    if !ansi {
+        return text.to_string();
+    }
+    let Some((red, green, blue)) = color.and_then(parse_hex_color) else {
+        return text.to_string();
+    };
+    format!("\x1b[38;2;{red};{green};{blue}m{text}\x1b[0m")
+}
+
+fn parse_hex_color(value: &str) -> Option<(u8, u8, u8)> {
+    let hex = value.trim().strip_prefix('#')?;
+    if hex.len() != 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let red = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let green = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let blue = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some((red, green, blue))
+}
+
 fn split_skin_args(raw: &str) -> Vec<String> {
     raw.split_whitespace().map(str::to_string).collect()
 }
@@ -588,5 +664,65 @@ branding:
 
         assert!(response.contains("hakimi skin set ares"));
         assert!(response.contains("after restart"));
+    }
+
+    #[test]
+    fn startup_banner_uses_skin_branding_prompt_and_custom_art() {
+        let temp = tempfile::tempdir().unwrap();
+        write_user_skin(
+            temp.path(),
+            "glacier",
+            r#"
+name: glacier
+branding:
+  agent_name: Glacier Agent
+  welcome: Keep the terminal quiet.
+  prompt_symbol: "=>"
+banner_logo: |
+  GLACIER
+banner_hero: |
+  ridge line
+"#,
+        );
+        let skin = load_skin("glacier", temp.path()).unwrap();
+
+        let banner = render_startup_banner(&skin, false);
+
+        assert!(banner.contains("GLACIER"));
+        assert!(banner.contains("ridge line"));
+        assert!(banner.contains("=== Glacier Agent ==="));
+        assert!(banner.contains("Keep the terminal quiet."));
+        assert!(banner.contains("skin: glacier  prompt: =>"));
+        assert!(!banner.contains("\x1b[38;2;"));
+    }
+
+    #[test]
+    fn startup_banner_emits_truecolor_from_skin_colors() {
+        let temp = tempfile::tempdir().unwrap();
+        let skin = load_skin("ares", temp.path()).unwrap();
+
+        let banner = render_startup_banner(&skin, true);
+
+        assert!(banner.contains("\x1b[38;2;199;169;107m=== Ares Agent ===\x1b[0m"));
+    }
+
+    #[test]
+    fn startup_banner_ignores_invalid_colors() {
+        let skin = SkinConfig {
+            name: "broken".to_string(),
+            description: String::new(),
+            colors: BTreeMap::from([("banner_title".to_string(), "gold".to_string())]),
+            spinner: BTreeMap::new(),
+            branding: BTreeMap::from([("agent_name".to_string(), "Broken".to_string())]),
+            tool_prefix: "|".to_string(),
+            tool_emojis: BTreeMap::new(),
+            banner_logo: String::new(),
+            banner_hero: String::new(),
+        };
+
+        let banner = render_startup_banner(&skin, true);
+
+        assert!(banner.contains("=== Broken ==="));
+        assert!(!banner.contains("\x1b[38;2;"));
     }
 }

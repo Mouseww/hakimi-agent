@@ -6714,6 +6714,10 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
+    println!(
+        "{}",
+        crate::skin::startup_banner_response(&config.display.skin, &hakimi_home_dir(), true)
+    );
     println!("🚧 Interactive REPL is currently under construction.");
     println!("💡 Tip: Try running with --query \"your prompt\" or use the TUI (hakimi-tui).");
     Ok(())
