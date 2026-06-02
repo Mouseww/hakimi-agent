@@ -29,25 +29,31 @@
 //! - `DELETE /v1/responses/:id` — Delete a stored Responses API result
 //! - `POST /v1/runs`         — Submit an asynchronous text run
 //! - `GET  /v1/runs/:id`     — Poll an asynchronous run status/result
-//! - `GET  /v1/runs/:id/events` — Read run lifecycle events as SSE
+//! - `GET  /v1/runs/:id/events` — Stream run lifecycle events as SSE
 //! - `POST /v1/runs/:id/stop` — Cancel an asynchronous run
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::convert::Infallible;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     Json, Router,
     extract::{Path, Query, Request, State},
     http::{StatusCode, header},
     middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{delete, get, post},
 };
+use futures::{StreamExt, stream};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
@@ -421,6 +427,7 @@ struct ResponsesExecution {
 
 #[derive(Debug, Clone)]
 struct RunEvent {
+    sequence: usize,
     event: String,
     status: String,
     created_at: u64,
@@ -429,12 +436,14 @@ struct RunEvent {
 
 impl RunEvent {
     fn at(
+        sequence: usize,
         event: impl Into<String>,
         status: impl Into<String>,
         created_at: u64,
         message: Option<String>,
     ) -> Self {
         Self {
+            sequence,
             event: event.into(),
             status: status.into(),
             created_at,
@@ -442,13 +451,19 @@ impl RunEvent {
         }
     }
 
-    fn new(event: impl Into<String>, status: impl Into<String>, message: Option<String>) -> Self {
-        Self::at(event, status, unix_timestamp_secs(), message)
+    fn new(
+        sequence: usize,
+        event: impl Into<String>,
+        status: impl Into<String>,
+        message: Option<String>,
+    ) -> Self {
+        Self::at(sequence, event, status, unix_timestamp_secs(), message)
     }
 
     fn to_json(&self, run_id: &str) -> JsonValue {
         json!({
             "object": "hakimi.run.event",
+            "sequence": self.sequence,
             "event": self.event,
             "run_id": run_id,
             "status": self.status,
@@ -484,7 +499,7 @@ impl StoredRun {
             output_text: None,
             usage: None,
             error: None,
-            events: vec![RunEvent::at("run.queued", "queued", created_at, None)],
+            events: vec![RunEvent::at(0, "run.queued", "queued", created_at, None)],
         }
     }
 
@@ -504,17 +519,11 @@ impl StoredRun {
         })
     }
 
-    fn push_event(&mut self, event: impl Into<String>, message: Option<String>) {
-        let event = RunEvent::new(event, self.status.clone(), message);
+    fn push_event(&mut self, event: impl Into<String>, message: Option<String>) -> RunEvent {
+        let event = RunEvent::new(self.events.len(), event, self.status.clone(), message);
         self.updated_at = event.created_at;
-        self.events.push(event);
-    }
-
-    fn events_json(&self) -> Vec<JsonValue> {
-        self.events
-            .iter()
-            .map(|event| event.to_json(&self.id))
-            .collect()
+        self.events.push(event.clone());
+        event
     }
 }
 
@@ -832,6 +841,12 @@ fn is_terminal_run_status(status: &str) -> bool {
     matches!(status, "completed" | "failed" | "cancelled")
 }
 
+struct RunEventsSubscription {
+    snapshot: Vec<RunEvent>,
+    receiver: Option<broadcast::Receiver<RunEvent>>,
+    since_sequence: usize,
+}
+
 /// In-memory store for asynchronous API runs.
 #[derive(Debug)]
 pub struct RunsStore {
@@ -839,6 +854,7 @@ pub struct RunsStore {
     entries: HashMap<String, StoredRun>,
     order: VecDeque<String>,
     controls: HashMap<String, RunControl>,
+    event_streams: HashMap<String, broadcast::Sender<RunEvent>>,
 }
 
 impl Default for RunsStore {
@@ -854,13 +870,19 @@ impl RunsStore {
             entries: HashMap::new(),
             order: VecDeque::new(),
             controls: HashMap::new(),
+            event_streams: HashMap::new(),
         }
     }
 
     fn insert(&mut self, run: StoredRun) {
+        let run_id = run.id.clone();
         if !self.entries.contains_key(&run.id) {
             self.order.push_back(run.id.clone());
         }
+        self.event_streams.entry(run_id).or_insert_with(|| {
+            let (sender, _receiver) = broadcast::channel(64);
+            sender
+        });
         self.entries.insert(run.id.clone(), run);
 
         while self.entries.len() > self.max_entries {
@@ -868,6 +890,7 @@ impl RunsStore {
                 break;
             };
             self.entries.remove(&evicted);
+            self.event_streams.remove(&evicted);
             if let Some(control) = self.controls.remove(&evicted) {
                 control.interrupt.store(true, Ordering::Relaxed);
                 control.task.abort();
@@ -879,8 +902,23 @@ impl RunsStore {
         self.entries.get(run_id).map(StoredRun::to_json)
     }
 
-    fn events(&self, run_id: &str) -> Option<Vec<JsonValue>> {
-        self.entries.get(run_id).map(StoredRun::events_json)
+    fn subscribe_events(&self, run_id: &str) -> Option<RunEventsSubscription> {
+        let run = self.entries.get(run_id)?;
+        let receiver = self
+            .event_streams
+            .get(run_id)
+            .map(|sender| sender.subscribe());
+        let snapshot = run.events.clone();
+        let since_sequence = snapshot
+            .iter()
+            .map(|event| event.sequence)
+            .max()
+            .unwrap_or_default();
+        Some(RunEventsSubscription {
+            snapshot,
+            receiver,
+            since_sequence,
+        })
     }
 
     fn attach_control(&mut self, run_id: &str, control: RunControl) {
@@ -897,44 +935,61 @@ impl RunsStore {
     }
 
     fn set_status(&mut self, run_id: &str, status: &str) {
+        let sender = self.event_streams.get(run_id).cloned();
         if let Some(run) = self.entries.get_mut(run_id) {
             if is_terminal_run_status(&run.status) {
                 return;
             }
             run.status = status.to_string();
-            run.push_event(format!("run.{status}"), None);
+            let event = run.push_event(format!("run.{status}"), None);
+            if let Some(sender) = sender {
+                let _ = sender.send(event);
+            }
         }
     }
 
     fn complete(&mut self, run_id: &str, output_text: String, usage: JsonValue) {
+        let sender = self.event_streams.get(run_id).cloned();
         if let Some(run) = self.entries.get_mut(run_id) {
             if is_terminal_run_status(&run.status) {
                 self.controls.remove(run_id);
+                self.event_streams.remove(run_id);
                 return;
             }
             run.status = "completed".to_string();
             run.output_text = Some(output_text);
             run.usage = Some(usage);
             run.error = None;
-            run.push_event("run.completed", None);
+            let event = run.push_event("run.completed", None);
+            if let Some(sender) = sender {
+                let _ = sender.send(event);
+            }
         }
         self.controls.remove(run_id);
+        self.event_streams.remove(run_id);
     }
 
     fn fail(&mut self, run_id: &str, error: String) {
+        let sender = self.event_streams.get(run_id).cloned();
         if let Some(run) = self.entries.get_mut(run_id) {
             if is_terminal_run_status(&run.status) {
                 self.controls.remove(run_id);
+                self.event_streams.remove(run_id);
                 return;
             }
             run.status = "failed".to_string();
             run.error = Some(error.clone());
-            run.push_event("run.failed", Some(error));
+            let event = run.push_event("run.failed", Some(error));
+            if let Some(sender) = sender {
+                let _ = sender.send(event);
+            }
         }
         self.controls.remove(run_id);
+        self.event_streams.remove(run_id);
     }
 
     fn stop(&mut self, run_id: &str) -> StopRunResult {
+        let sender = self.event_streams.get(run_id).cloned();
         let Some(run) = self.entries.get_mut(run_id) else {
             return StopRunResult::NotFound;
         };
@@ -945,13 +1000,17 @@ impl RunsStore {
         run.status = "cancelled".to_string();
         let message = "Stop requested via API".to_string();
         run.error = Some(message.clone());
-        run.push_event("run.cancelled", Some(message));
+        let event = run.push_event("run.cancelled", Some(message));
+        if let Some(sender) = sender {
+            let _ = sender.send(event);
+        }
         let body = run.to_json();
 
         if let Some(control) = self.controls.remove(run_id) {
             control.interrupt.store(true, Ordering::Relaxed);
             control.task.abort();
         }
+        self.event_streams.remove(run_id);
 
         StopRunResult::Cancelled(body)
     }
@@ -1114,6 +1173,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "run_submission": true,
             "run_status": true,
             "run_events_sse": true,
+            "run_events_streaming_mode": "live_lifecycle_sse",
             "run_stop": true,
             "websocket_streaming": false,
             "media_api": false
@@ -2376,45 +2436,82 @@ async fn get_run(
     }
 }
 
-/// GET /v1/runs/:id/events — retrieve stored run lifecycle events as SSE.
+fn run_sse_event(run_id: &str, event: &RunEvent) -> Result<Event, Infallible> {
+    Ok(Event::default()
+        .event(event.event.clone())
+        .json_data(event.to_json(run_id))
+        .unwrap_or_else(|_| Event::default().event("run.event").data("{}")))
+}
+
+fn live_run_event_stream(
+    run_id: String,
+    receiver: Option<broadcast::Receiver<RunEvent>>,
+    since_sequence: usize,
+) -> impl futures::Stream<Item = Result<Event, Infallible>> {
+    stream::unfold(
+        (run_id, receiver, since_sequence, false),
+        |(run_id, receiver, since_sequence, done)| async move {
+            if done {
+                return None;
+            }
+
+            let Some(mut receiver) = receiver else {
+                return None;
+            };
+
+            loop {
+                match receiver.recv().await {
+                    Ok(event) => {
+                        if event.sequence <= since_sequence {
+                            continue;
+                        }
+                        let done = is_terminal_run_status(&event.status);
+                        let next_sequence = event.sequence;
+                        let sse_event = run_sse_event(&run_id, &event);
+                        return Some((sse_event, (run_id, Some(receiver), next_sequence, done)));
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => return None,
+                }
+            }
+        },
+    )
+}
+
+/// GET /v1/runs/:id/events — stream stored and live run lifecycle events as SSE.
 async fn get_run_events(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
-    let id = id.trim();
-    let events = {
+    let id = id.trim().to_string();
+    let subscription = {
         let store = state.run_store.lock().await;
-        store.events(id)
+        store.subscribe_events(&id)
     };
 
-    let Some(events) = events else {
+    let Some(subscription) = subscription else {
         return Err(api_error(
             StatusCode::NOT_FOUND,
             format!("run not found: {id}"),
         ));
     };
 
-    let mut body = String::new();
-    for event in events {
-        let event_name = event
-            .get("event")
-            .and_then(JsonValue::as_str)
-            .unwrap_or("run.event");
-        body.push_str("event: ");
-        body.push_str(event_name);
-        body.push('\n');
-        body.push_str("data: ");
-        body.push_str(&event.to_string());
-        body.push_str("\n\n");
-    }
+    let snapshot_run_id = id.clone();
+    let snapshot = stream::iter(
+        subscription
+            .snapshot
+            .into_iter()
+            .map(move |event| run_sse_event(&snapshot_run_id, &event)),
+    );
+    let live = live_run_event_stream(id, subscription.receiver, subscription.since_sequence);
+    let events = snapshot.chain(live);
 
-    Ok((
-        [
-            (header::CONTENT_TYPE, "text/event-stream; charset=utf-8"),
-            (header::CACHE_CONTROL, "no-cache"),
-        ],
-        body,
-    )
+    Ok(Sse::new(events)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(30))
+                .text("keepalive"),
+        )
         .into_response())
 }
 
@@ -3154,6 +3251,10 @@ mod tests {
         assert_eq!(capabilities["features"]["run_submission"], true);
         assert_eq!(capabilities["features"]["run_status"], true);
         assert_eq!(capabilities["features"]["run_events_sse"], true);
+        assert_eq!(
+            capabilities["features"]["run_events_streaming_mode"],
+            "live_lifecycle_sse"
+        );
         assert_eq!(capabilities["features"]["run_stop"], true);
         assert_eq!(
             capabilities["endpoints"]["models"],
@@ -3747,6 +3848,66 @@ mod tests {
         let events = String::from_utf8(body.to_vec()).unwrap();
         assert!(events.contains("event: run.queued"));
         assert!(events.contains("event: run.cancelled"));
+    }
+
+    #[tokio::test]
+    async fn test_v1_runs_events_stream_waits_for_live_terminal_event() {
+        let state = test_state_with_transport(Arc::new(SlowTransport));
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({"input": "stream until stop"}).to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::ACCEPTED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let submitted: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let run_id = submitted["id"].as_str().unwrap().to_string();
+
+        let events_req = Request::builder()
+            .uri(format!("/v1/runs/{run_id}/events"))
+            .body(Body::empty())
+            .unwrap();
+        let events_app = app.clone();
+        let events_task = tokio::spawn(async move {
+            let resp = events_app.oneshot(events_req).await.unwrap();
+            assert_eq!(resp.status(), http::StatusCode::OK);
+            axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap()
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        assert!(
+            !events_task.is_finished(),
+            "live run event stream should remain open before a terminal event"
+        );
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/runs/{run_id}/stop"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = tokio::time::timeout(std::time::Duration::from_secs(2), events_task)
+            .await
+            .expect("events stream should close after cancellation")
+            .unwrap();
+        let events = String::from_utf8(body.to_vec()).unwrap();
+        assert!(events.contains("event: run.queued"));
+        assert!(events.contains("event: run.running"));
+        assert!(events.contains("event: run.cancelled"));
+        assert!(events.contains("\"sequence\":0"));
     }
 
     #[tokio::test]

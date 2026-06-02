@@ -37,9 +37,9 @@ rusqlite = { workspace = true }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 clap = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
-futures = { workspace = true }
 hakimi-skills = { path = "../hakimi-skills" }
 reqwest = { workspace = true }
