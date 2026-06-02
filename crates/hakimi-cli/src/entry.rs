@@ -1777,12 +1777,56 @@ async fn fetch_anthropic_account_usage_snapshot(
     ))
 }
 
+async fn fetch_codex_account_usage_snapshot(
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_common::AccountUsageSnapshot> {
+    let model = resolve_model(None, config);
+    let provider = resolve_provider(None, config, &model);
+    let base_url = resolve_base_url(None, config);
+    if !is_codex_account_usage_provider(&provider, &base_url, config.model.api_mode.as_str()) {
+        return None;
+    }
+
+    let api_key = resolve_account_usage_api_key("openai-codex", config);
+    let token = api_key.trim();
+    if token.is_empty() {
+        return None;
+    }
+
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .read_timeout(std::time::Duration::from_secs(15))
+        .build()
+        .ok()?;
+
+    let mut request = client
+        .get(hakimi_common::codex_account_usage_api_url(&base_url))
+        .bearer_auth(token)
+        .header("Accept", "application/json")
+        .header("User-Agent", "hakimi-agent");
+    if let Some(account_id) = codex_account_id_from_env() {
+        request = request.header("ChatGPT-Account-Id", account_id);
+    }
+    let response = request.send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let payload: serde_json::Value = response.json().await.ok()?;
+    Some(hakimi_common::codex_account_usage_from_payload(
+        &payload,
+        chrono::Utc::now(),
+    ))
+}
+
 async fn fetch_account_usage_snapshot(
     config: &hakimi_config::HakimiConfig,
 ) -> Option<hakimi_common::AccountUsageSnapshot> {
     let model = resolve_model(None, config);
     let provider = resolve_provider(None, config, &model);
     let base_url = resolve_base_url(None, config);
+    if is_codex_account_usage_provider(&provider, &base_url, config.model.api_mode.as_str()) {
+        return fetch_codex_account_usage_snapshot(config).await;
+    }
     if provider == "openrouter" || base_url.contains("openrouter.ai") {
         return fetch_openrouter_account_usage_snapshot(config).await;
     }
@@ -1810,11 +1854,40 @@ fn openrouter_account_api_base(base_url: &str) -> String {
     format!("{base}/v1")
 }
 
+fn is_codex_account_usage_provider(provider: &str, base_url: &str, api_mode: &str) -> bool {
+    let provider = provider.trim().to_ascii_lowercase();
+    let api_mode = api_mode.trim().to_ascii_lowercase();
+    let base_url = base_url.trim().to_ascii_lowercase();
+    provider == "openai-codex"
+        || provider == "codex"
+        || api_mode == "codex"
+        || base_url.contains("chatgpt.com/backend-api")
+        || base_url.contains("/backend-api/codex")
+        || base_url.contains("/api/codex")
+}
+
+fn codex_account_id_from_env() -> Option<String> {
+    ["CHATGPT_ACCOUNT_ID", "CODEX_ACCOUNT_ID"]
+        .into_iter()
+        .find_map(|var| {
+            std::env::var(var)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
 fn resolve_account_usage_api_key(provider: &str, config: &hakimi_config::HakimiConfig) -> String {
     let vars: &[&str] = match provider {
         "anthropic" => &[
             "ANTHROPIC_API_KEY",
             "CLAUDE_CODE_OAUTH_TOKEN",
+            "HAKIMI_API_KEY",
+        ],
+        "openai-codex" | "codex" => &[
+            "CODEX_API_KEY",
+            "OPENAI_CODEX_API_KEY",
+            "CHATGPT_ACCESS_TOKEN",
             "HAKIMI_API_KEY",
         ],
         "openrouter" => &["OPENROUTER_API_KEY", "HAKIMI_API_KEY"],
@@ -7472,6 +7545,38 @@ mod tests {
     }
 
     #[test]
+    fn codex_account_usage_provider_detection_is_explicit() {
+        assert!(super::is_codex_account_usage_provider(
+            "openai-codex",
+            "",
+            ""
+        ));
+        assert!(super::is_codex_account_usage_provider(
+            "openai", "", "codex"
+        ));
+        assert!(super::is_codex_account_usage_provider(
+            "openai",
+            "https://chatgpt.com/backend-api/codex",
+            ""
+        ));
+        assert!(super::is_codex_account_usage_provider(
+            "custom",
+            "https://codex.example.test/api/codex",
+            ""
+        ));
+        assert!(!super::is_codex_account_usage_provider(
+            "openai",
+            "https://api.openai.com/v1",
+            "responses"
+        ));
+        assert!(!super::is_codex_account_usage_provider(
+            "openrouter",
+            "https://openrouter.ai/api/v1",
+            ""
+        ));
+    }
+
+    #[test]
     fn gateway_usage_response_renders_token_counts() {
         let snapshot = GatewayUsageSnapshot {
             model: "gpt-4.1".to_string(),
@@ -7599,6 +7704,52 @@ mod tests {
         assert!(response.contains("API key quota: 80% remaining"));
         assert!(response.contains("Credits balance: $15.75"));
         assert!(response.contains("API key usage: $10.00 total - $1.50 today"));
+    }
+
+    #[test]
+    fn gateway_usage_response_includes_codex_account_snapshot() {
+        let snapshot = GatewayUsageSnapshot {
+            model: "codex-mini-latest".to_string(),
+            provider: "openai-codex".to_string(),
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            },
+            cost: hakimi_common::estimate_usage_cost(
+                "codex-mini-latest",
+                "openai-codex",
+                &Usage {
+                    prompt_tokens: 10,
+                    completion_tokens: 5,
+                    total_tokens: 15,
+                    cached_tokens: 0,
+                    reasoning_tokens: 0,
+                },
+            ),
+            api_call_count: 1,
+            rate_limits: None,
+        };
+        let account_usage = hakimi_common::codex_account_usage_from_payload(
+            &serde_json::json!({
+                "plan_type": "chatgpt_team",
+                "rate_limit": {
+                    "primary_window": {"used_percent": 20},
+                    "secondary_window": {"used_percent": 65}
+                },
+                "credits": {"has_credits": true, "unlimited": true}
+            }),
+            chrono::Utc::now(),
+        );
+
+        let response = gateway_usage_response(Some(&snapshot), Some(&account_usage));
+
+        assert!(response.contains("Provider: openai-codex (Chatgpt Team)"));
+        assert!(response.contains("Session: 80% remaining"));
+        assert!(response.contains("Weekly: 35% remaining"));
+        assert!(response.contains("Credits balance: unlimited"));
     }
 
     #[test]

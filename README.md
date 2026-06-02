@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.231-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.232-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1728-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1733-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1728 |
+| Tests | ~500 | 1733 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -100,7 +100,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - Real-time streaming with progressive edits, native Telegram draft previews, flood-control backoff, per-platform preview policy, and UTF-8-safe overflow chunking for long replies
 - Persistent lifecycle diagnostics record adapter, connect, route, filter, and edit events to `~/.hakimi/logs/gateway-events.log`; `/logs`, `/logs events`, and `/logs gateway` read recent logs without shelling out to `tail`
 - Gateway `/undo [N]` rewinds recent in-memory chat turns and echoes the target prompt for editing before resend
-- Gateway `/usage` shows last-turn token/cost/rate-limit data, OpenRouter `/credits` plus `/key` quota/usage, and Anthropic OAuth account windows without exposing credentials
+- Gateway `/usage` shows last-turn token/cost/rate-limit data, OpenRouter `/credits` plus `/key` quota/usage, Anthropic OAuth account windows, and Codex usage windows without exposing credentials
 - Cron jobs scheduled from chat with `/cron add`
 - Gateway `/voice on|off|tts|status|doctor` toggles spoken-response guidance and reports voice I/O readiness without polluting prompt cache or chat history
 - TUI `/config [field]` shows sanitized runtime configuration, `/gateway [cmd]` inspects configured adapters, cached channel targets, and lifecycle events, `/sessions [cmd]` browses saved SQLite sessions, `/skills [cmd]` browses/searches local Skills Hub metadata, `/cron [cmd]` manages the persistent cron DB locally, `/undo [N]` prefills recent prompts for editing, `/checkpoints [cmd]` inspects the shared shadow-git checkpoint store without entering the model loop, and `/voice status` plus configurable Ctrl+B/Ctrl+letter push-to-talk share the same `voice.*` config, TTS/transcription tools, audio environment checks, PCM16 WAV recording artifact validation, oversized WAV chunked STT dispatch, local TTS playback launch, recorder-backed `voice_capture`, automatic transcript submission, continuous restart mode, second-press capture cancellation, three-no-speech auto-exit, and Hermes-style start/stop audio cues
@@ -200,7 +200,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1728 |
+| Tests | ~500 | 1733 |
 
 ---
 
@@ -264,7 +264,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Voice capture start/stop audio cues
 - [x] Voice capture continuous restart mode
 - [x] Mixture-of-Agents reasoning via OpenRouter
-- [x] OpenRouter and Anthropic account usage display in gateway `/usage`
+- [x] OpenRouter, Anthropic, and Codex account usage display in gateway `/usage`
 - [ ] WASM plugin runtime
 - [ ] Web dashboard
 

@@ -176,6 +176,74 @@ pub fn anthropic_account_usage_from_payload(
     }
 }
 
+pub fn codex_account_usage_api_url(base_url: &str) -> String {
+    let mut normalized = base_url.trim().trim_end_matches('/').to_string();
+    if normalized.is_empty() {
+        normalized = "https://chatgpt.com/backend-api/codex".to_string();
+    }
+    if let Some(root) = normalized.strip_suffix("/codex") {
+        normalized = root.to_string();
+    }
+    if normalized.contains("/backend-api") {
+        format!("{normalized}/wham/usage")
+    } else {
+        format!("{normalized}/api/codex/usage")
+    }
+}
+
+pub fn codex_account_usage_from_payload(
+    payload: &Value,
+    fetched_at: DateTime<Utc>,
+) -> AccountUsageSnapshot {
+    let payload = data_object(payload);
+    let rate_limit = payload
+        .get("rate_limit")
+        .filter(|value| value.is_object())
+        .cloned()
+        .unwrap_or(Value::Null);
+
+    let mut windows = Vec::new();
+    for (field, label) in [
+        ("primary_window", "Session"),
+        ("secondary_window", "Weekly"),
+    ] {
+        let Some(window) = rate_limit.get(field).filter(|value| value.is_object()) else {
+            continue;
+        };
+        let Some(used_percent) = number_field(window, "used_percent") else {
+            continue;
+        };
+        windows.push(AccountUsageWindow {
+            label: label.to_string(),
+            used_percent: Some(used_percent),
+            reset_at: date_time_field(window, "reset_at"),
+            detail: None,
+        });
+    }
+
+    let mut details = Vec::new();
+    if let Some(credits) = payload.get("credits").filter(|value| value.is_object())
+        && bool_field(credits, "has_credits").unwrap_or(false)
+    {
+        if let Some(balance) = number_field(credits, "balance") {
+            details.push(format!("Credits balance: ${balance:.2}"));
+        } else if bool_field(credits, "unlimited").unwrap_or(false) {
+            details.push("Credits balance: unlimited".to_string());
+        }
+    }
+
+    AccountUsageSnapshot {
+        provider: "openai-codex".to_string(),
+        source: "usage_api".to_string(),
+        fetched_at,
+        title: "Account limits".to_string(),
+        plan: string_field(&payload, "plan_type").map(title_case_slug),
+        windows,
+        details,
+        unavailable_reason: None,
+    }
+}
+
 pub fn render_account_usage_lines(snapshot: &AccountUsageSnapshot, markdown: bool) -> Vec<String> {
     let mut lines = Vec::new();
     let title = if markdown {
@@ -241,6 +309,37 @@ fn string_field(payload: &Value, field: &str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn bool_field(payload: &Value, field: &str) -> Option<bool> {
+    match payload.get(field)? {
+        Value::Bool(value) => Some(*value),
+        Value::String(text) => match text.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" => Some(true),
+            "false" | "0" | "no" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn title_case_slug(value: String) -> String {
+    value
+        .split(['_', '-'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            let Some(first) = chars.next() else {
+                return String::new();
+            };
+            format!(
+                "{}{}",
+                first.to_uppercase(),
+                chars.as_str().to_ascii_lowercase()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn date_time_field(payload: &Value, field: &str) -> Option<DateTime<Utc>> {
@@ -392,5 +491,72 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("OAuth-backed Claude accounts"))
         );
+    }
+
+    #[test]
+    fn codex_usage_url_matches_backend_and_custom_routes() {
+        assert_eq!(
+            codex_account_usage_api_url(""),
+            "https://chatgpt.com/backend-api/wham/usage"
+        );
+        assert_eq!(
+            codex_account_usage_api_url("https://chatgpt.com/backend-api/codex"),
+            "https://chatgpt.com/backend-api/wham/usage"
+        );
+        assert_eq!(
+            codex_account_usage_api_url("https://codex.example.test"),
+            "https://codex.example.test/api/codex/usage"
+        );
+    }
+
+    #[test]
+    fn parses_codex_usage_windows_and_credits() {
+        let snapshot = codex_account_usage_from_payload(
+            &json!({
+                "plan_type": "chatgpt_plus",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 25,
+                        "reset_at": "2026-06-03T08:00:00Z"
+                    },
+                    "secondary_window": {
+                        "used_percent": "62.5",
+                        "reset_at": 1780502400
+                    }
+                },
+                "credits": {
+                    "has_credits": true,
+                    "balance": 12.5
+                }
+            }),
+            Utc::now(),
+        );
+
+        assert!(snapshot.available());
+        assert_eq!(snapshot.provider, "openai-codex");
+        assert_eq!(snapshot.source, "usage_api");
+        assert_eq!(snapshot.plan.as_deref(), Some("Chatgpt Plus"));
+        assert_eq!(snapshot.windows.len(), 2);
+        assert_eq!(snapshot.windows[0].label, "Session");
+        assert_eq!(snapshot.windows[0].used_percent, Some(25.0));
+        assert_eq!(snapshot.windows[1].label, "Weekly");
+        assert_eq!(snapshot.windows[1].used_percent, Some(62.5));
+        assert_eq!(snapshot.details, vec!["Credits balance: $12.50"]);
+    }
+
+    #[test]
+    fn parses_codex_unlimited_credits() {
+        let snapshot = codex_account_usage_from_payload(
+            &json!({
+                "credits": {
+                    "has_credits": "true",
+                    "unlimited": true
+                }
+            }),
+            Utc::now(),
+        );
+
+        assert!(snapshot.available());
+        assert_eq!(snapshot.details, vec!["Credits balance: unlimited"]);
     }
 }
