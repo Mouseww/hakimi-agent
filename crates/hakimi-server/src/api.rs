@@ -2455,9 +2455,7 @@ fn live_run_event_stream(
                 return None;
             }
 
-            let Some(mut receiver) = receiver else {
-                return None;
-            };
+            let mut receiver = receiver?;
 
             loop {
                 match receiver.recv().await {
