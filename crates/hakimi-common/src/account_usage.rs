@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -92,6 +92,90 @@ pub fn openrouter_account_usage_from_payloads(
     }
 }
 
+pub fn anthropic_token_is_oauth(token: &str) -> bool {
+    let token = token.trim();
+    if token.is_empty() || token.starts_with("sk-ant-api") {
+        return false;
+    }
+    token.starts_with("sk-ant-") || token.starts_with("eyJ") || token.starts_with("cc-")
+}
+
+pub fn anthropic_api_key_unavailable_snapshot(fetched_at: DateTime<Utc>) -> AccountUsageSnapshot {
+    AccountUsageSnapshot {
+        provider: "anthropic".to_string(),
+        source: "oauth_usage_api".to_string(),
+        fetched_at,
+        title: "Account limits".to_string(),
+        plan: None,
+        windows: Vec::new(),
+        details: Vec::new(),
+        unavailable_reason: Some(
+            "Anthropic account limits are only available for OAuth-backed Claude accounts."
+                .to_string(),
+        ),
+    }
+}
+
+pub fn anthropic_account_usage_from_payload(
+    payload: &Value,
+    fetched_at: DateTime<Utc>,
+) -> AccountUsageSnapshot {
+    let payload = data_object(payload);
+    let mut windows = Vec::new();
+    for (field, label) in [
+        ("five_hour", "Current session"),
+        ("seven_day", "Current week"),
+        ("seven_day_opus", "Opus week"),
+        ("seven_day_sonnet", "Sonnet week"),
+    ] {
+        let Some(window) = payload.get(field).filter(|value| value.is_object()) else {
+            continue;
+        };
+        let Some(utilization) = number_field(window, "utilization") else {
+            continue;
+        };
+        let used_percent = if utilization <= 1.0 {
+            utilization * 100.0
+        } else {
+            utilization
+        };
+        windows.push(AccountUsageWindow {
+            label: label.to_string(),
+            used_percent: Some(used_percent),
+            reset_at: date_time_field(window, "resets_at"),
+            detail: None,
+        });
+    }
+
+    let mut details = Vec::new();
+    if let Some(extra_usage) = payload.get("extra_usage").filter(|value| value.is_object())
+        && extra_usage
+            .get("is_enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    {
+        let used_credits = number_field(extra_usage, "used_credits");
+        let monthly_limit = number_field(extra_usage, "monthly_limit");
+        if let (Some(used_credits), Some(monthly_limit)) = (used_credits, monthly_limit) {
+            let currency = string_field(extra_usage, "currency").unwrap_or_else(|| "USD".into());
+            details.push(format!(
+                "Extra usage: {used_credits:.2} / {monthly_limit:.2} {currency}"
+            ));
+        }
+    }
+
+    AccountUsageSnapshot {
+        provider: "anthropic".to_string(),
+        source: "oauth_usage_api".to_string(),
+        fetched_at,
+        title: "Account limits".to_string(),
+        plan: None,
+        windows,
+        details,
+        unavailable_reason: None,
+    }
+}
+
 pub fn render_account_usage_lines(snapshot: &AccountUsageSnapshot, markdown: bool) -> Vec<String> {
     let mut lines = Vec::new();
     let title = if markdown {
@@ -159,6 +243,28 @@ fn string_field(payload: &Value, field: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+fn date_time_field(payload: &Value, field: &str) -> Option<DateTime<Utc>> {
+    match payload.get(field)? {
+        Value::Number(number) => {
+            let seconds = number.as_i64()?;
+            Utc.timestamp_opt(seconds, 0).single()
+        }
+        Value::String(text) => {
+            let text = text.trim();
+            if text.is_empty() {
+                return None;
+            }
+            let normalized = text
+                .strip_suffix('Z')
+                .map_or_else(|| text.to_string(), |value| format!("{value}+00:00"));
+            DateTime::parse_from_rfc3339(&normalized)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,5 +328,69 @@ mod tests {
         assert_eq!(lines[1], "Provider: openrouter");
         assert!(lines[2].contains("75% remaining"));
         assert!(lines[3].contains("Credits balance: $9.00"));
+    }
+
+    #[test]
+    fn detects_anthropic_oauth_token_shapes() {
+        assert!(anthropic_token_is_oauth("sk-ant-oat-abc"));
+        assert!(anthropic_token_is_oauth("sk-ant-managed-abc"));
+        assert!(anthropic_token_is_oauth("eyJhbGciOi"));
+        assert!(anthropic_token_is_oauth("cc-oauth-token"));
+        assert!(!anthropic_token_is_oauth("sk-ant-api03-regular-key"));
+        assert!(!anthropic_token_is_oauth("sk-or-v1-openrouter"));
+        assert!(!anthropic_token_is_oauth(""));
+    }
+
+    #[test]
+    fn parses_anthropic_oauth_usage_windows() {
+        let snapshot = anthropic_account_usage_from_payload(
+            &json!({
+                "five_hour": {
+                    "utilization": 0.25,
+                    "resets_at": "2026-06-03T08:00:00Z"
+                },
+                "seven_day": {
+                    "utilization": 62.5,
+                    "resets_at": 1780502400
+                },
+                "seven_day_opus": {
+                    "utilization": null
+                },
+                "extra_usage": {
+                    "is_enabled": true,
+                    "used_credits": 4.5,
+                    "monthly_limit": 20,
+                    "currency": "USD"
+                }
+            }),
+            Utc::now(),
+        );
+
+        assert!(snapshot.available());
+        assert_eq!(snapshot.provider, "anthropic");
+        assert_eq!(snapshot.source, "oauth_usage_api");
+        assert_eq!(snapshot.windows.len(), 2);
+        assert_eq!(snapshot.windows[0].label, "Current session");
+        assert_eq!(snapshot.windows[0].used_percent, Some(25.0));
+        assert!(snapshot.windows[0].reset_at.is_some());
+        assert_eq!(snapshot.windows[1].label, "Current week");
+        assert_eq!(snapshot.windows[1].used_percent, Some(62.5));
+        assert_eq!(snapshot.details, vec!["Extra usage: 4.50 / 20.00 USD"]);
+    }
+
+    #[test]
+    fn renders_anthropic_api_key_unavailable_snapshot() {
+        let snapshot = anthropic_api_key_unavailable_snapshot(Utc::now());
+
+        assert!(!snapshot.available());
+        let lines = render_account_usage_lines(&snapshot, true);
+
+        assert_eq!(lines[0], "**Account limits**");
+        assert_eq!(lines[1], "Provider: anthropic");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("OAuth-backed Claude accounts"))
+        );
     }
 }

@@ -1685,7 +1685,7 @@ async fn fetch_openrouter_account_usage_snapshot(
         return None;
     }
 
-    let api_key = resolve_api_key(None, config);
+    let api_key = resolve_account_usage_api_key("openrouter", config);
     if api_key.trim().is_empty() {
         return None;
     }
@@ -1727,6 +1727,68 @@ async fn fetch_openrouter_account_usage_snapshot(
     ))
 }
 
+async fn fetch_anthropic_account_usage_snapshot(
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_common::AccountUsageSnapshot> {
+    let model = resolve_model(None, config);
+    let provider = resolve_provider(None, config, &model);
+    let base_url = resolve_base_url(None, config);
+    if !is_anthropic_provider(&provider, &base_url) {
+        return None;
+    }
+
+    let api_key = resolve_account_usage_api_key("anthropic", config);
+    let token = api_key.trim();
+    if token.is_empty() {
+        return None;
+    }
+    if !hakimi_common::anthropic_token_is_oauth(token) {
+        return Some(hakimi_common::anthropic_api_key_unavailable_snapshot(
+            chrono::Utc::now(),
+        ));
+    }
+
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .read_timeout(std::time::Duration::from_secs(15))
+        .build()
+        .ok()?;
+
+    let response = client
+        .get("https://api.anthropic.com/api/oauth/usage")
+        .bearer_auth(token)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .header("anthropic-beta", "oauth-2025-04-20")
+        .header("User-Agent", "hakimi-agent")
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let payload: serde_json::Value = response.json().await.ok()?;
+    Some(hakimi_common::anthropic_account_usage_from_payload(
+        &payload,
+        chrono::Utc::now(),
+    ))
+}
+
+async fn fetch_account_usage_snapshot(
+    config: &hakimi_config::HakimiConfig,
+) -> Option<hakimi_common::AccountUsageSnapshot> {
+    let model = resolve_model(None, config);
+    let provider = resolve_provider(None, config, &model);
+    let base_url = resolve_base_url(None, config);
+    if provider == "openrouter" || base_url.contains("openrouter.ai") {
+        return fetch_openrouter_account_usage_snapshot(config).await;
+    }
+    if is_anthropic_provider(&provider, &base_url) {
+        return fetch_anthropic_account_usage_snapshot(config).await;
+    }
+    None
+}
+
 fn openrouter_account_api_base(base_url: &str) -> String {
     let mut base = base_url.trim().trim_end_matches('/').to_string();
     if base.is_empty() {
@@ -1743,6 +1805,41 @@ fn openrouter_account_api_base(base_url: &str) -> String {
         return format!("{base}/api/v1");
     }
     format!("{base}/v1")
+}
+
+fn resolve_account_usage_api_key(provider: &str, config: &hakimi_config::HakimiConfig) -> String {
+    let vars: &[&str] = match provider {
+        "anthropic" => &[
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "HAKIMI_API_KEY",
+        ],
+        "openrouter" => &["OPENROUTER_API_KEY", "HAKIMI_API_KEY"],
+        _ => &["HAKIMI_API_KEY"],
+    };
+    for var in vars {
+        if let Ok(val) = std::env::var(var)
+            && !val.is_empty()
+        {
+            info!(
+                env_var = *var,
+                provider, "using account usage API key from environment"
+            );
+            return val;
+        }
+    }
+    if !config.model.api_key.is_empty() {
+        return config.model.api_key.clone();
+    }
+    if let Some(default_role) = config.roles.get("default")
+        && !default_role.api_key.is_empty()
+    {
+        return default_role.api_key.clone();
+    }
+    if !config.delegation.api_key.is_empty() {
+        return config.delegation.api_key.clone();
+    }
+    String::new()
 }
 
 fn gateway_usage_response(
@@ -5366,7 +5463,7 @@ Just send a message to chat with me!"
                             let usage = last_usage.lock().await;
                             usage.get(&chat_id).cloned()
                         };
-                        let account_usage = fetch_openrouter_account_usage_snapshot(&config).await;
+                        let account_usage = fetch_account_usage_snapshot(&config).await;
                         gateway_usage_response(snapshot.as_ref(), account_usage.as_ref())
                     }
                     Some(Command::Restart) => "🔄 正在重启 Hakimi Gateway...".to_string(),
@@ -7472,6 +7569,78 @@ mod tests {
         assert!(response.contains("API key quota: 80% remaining"));
         assert!(response.contains("Credits balance: $15.75"));
         assert!(response.contains("API key usage: $10.00 total - $1.50 today"));
+    }
+
+    #[test]
+    fn gateway_usage_response_includes_anthropic_account_snapshot() {
+        let snapshot = GatewayUsageSnapshot {
+            model: "claude-sonnet-4-20250514".to_string(),
+            provider: "anthropic".to_string(),
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                cached_tokens: 0,
+                reasoning_tokens: 0,
+            },
+            cost: hakimi_common::estimate_usage_cost(
+                "claude-sonnet-4-20250514",
+                "anthropic",
+                &Usage {
+                    prompt_tokens: 10,
+                    completion_tokens: 5,
+                    total_tokens: 15,
+                    cached_tokens: 0,
+                    reasoning_tokens: 0,
+                },
+            ),
+            api_call_count: 1,
+            rate_limits: None,
+        };
+        let account_usage = hakimi_common::anthropic_account_usage_from_payload(
+            &serde_json::json!({
+                "five_hour": {
+                    "utilization": 0.4,
+                    "resets_at": "2026-06-03T08:00:00Z"
+                },
+                "seven_day": {
+                    "utilization": 55.0
+                },
+                "extra_usage": {
+                    "is_enabled": true,
+                    "used_credits": 1.25,
+                    "monthly_limit": 15.0,
+                    "currency": "USD"
+                }
+            }),
+            chrono::Utc::now(),
+        );
+
+        let response = gateway_usage_response(Some(&snapshot), Some(&account_usage));
+
+        assert!(response.contains("Provider: anthropic"));
+        assert!(response.contains("Current session: 60% remaining"));
+        assert!(response.contains("Current week: 45% remaining"));
+        assert!(response.contains("Extra usage: 1.25 / 15.00 USD"));
+    }
+
+    #[test]
+    fn anthropic_api_key_usage_snapshot_reports_oauth_requirement() {
+        assert!(!hakimi_common::anthropic_token_is_oauth(
+            "sk-ant-api03-regular-key"
+        ));
+        let account_usage =
+            hakimi_common::anthropic_api_key_unavailable_snapshot(chrono::Utc::now());
+
+        assert_eq!(account_usage.provider, "anthropic");
+        assert!(!account_usage.available());
+        assert!(
+            account_usage
+                .unavailable_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("OAuth-backed Claude accounts")
+        );
     }
 
     #[test]

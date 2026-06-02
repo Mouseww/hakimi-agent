@@ -396,7 +396,7 @@ Generated: 2026-06-02
 #### 40. Usage Pricing / Account Usage Tracking
 - **What**: Token usage pricing calculation and account usage aggregation
 - **Hermes location**: `agent/usage_pricing.py`, `agent/account_usage.py`
-- **Details**: Per-model cost estimation, account usage aggregation, and provider usage surfaces. Rate-limit header parsing/tracking, gateway `/usage`, offline per-turn cost estimates, and OpenRouter `/credits` plus `/key` account usage display are implemented; Codex/Anthropic/provider account probes, persisted aggregation, and live model pricing discovery are still missing.
+- **Details**: Per-model cost estimation, account usage aggregation, and provider usage surfaces. Rate-limit header parsing/tracking, gateway `/usage`, offline per-turn cost estimates, OpenRouter `/credits` plus `/key` account usage display, and Anthropic OAuth usage windows are implemented; Codex/provider account probes, persisted aggregation, and live model pricing discovery are still missing.
 - **Priority**: **Medium** — Cost visibility
 
 #### 41. Model Metadata / Auto-Discovery
@@ -571,8 +571,8 @@ Generated: 2026-06-02
 - **Hermes reference**: `agent/error_classifier.py`
 
 ### 16. Usage Pricing / Rate Limit Tracking
-- **Status**: `hakimi-transports::RateLimitTracker` parses OpenAI/Nous-style `x-ratelimit-*` request/token windows, formats detailed/compact displays, and Chat Completions, Responses, Anthropic, and Gemini transports retain the latest snapshot. `hakimi-common::estimate_usage_cost()` adds Hermes-style static pricing estimates for common OpenAI, Anthropic, Gemini, DeepSeek, and MiniMax routes; gateway `/usage` shows token counts, estimated cost, pricing snapshot version, rate limits, and OpenRouter account credits/API-key quota when configured.
-- **What's missing**: Codex/Anthropic/provider account probes, persisted aggregation, provider live pricing discovery, and reconciliation with actual billed costs.
+- **Status**: `hakimi-transports::RateLimitTracker` parses OpenAI/Nous-style `x-ratelimit-*` request/token windows, formats detailed/compact displays, and Chat Completions, Responses, Anthropic, and Gemini transports retain the latest snapshot. `hakimi-common::estimate_usage_cost()` adds Hermes-style static pricing estimates for common OpenAI, Anthropic, Gemini, DeepSeek, and MiniMax routes; gateway `/usage` shows token counts, estimated cost, pricing snapshot version, rate limits, OpenRouter account credits/API-key quota, and Anthropic OAuth usage windows when configured.
+- **What's missing**: Codex/provider account probes, persisted aggregation, provider live pricing discovery, and reconciliation with actual billed costs.
 - **Hermes reference**: `agent/rate_limit_tracker.py`, `agent/usage_pricing.py`, `agent/account_usage.py`
 ---
 
@@ -644,7 +644,7 @@ Generated: 2026-06-02
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
 | 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
 | 21 | Think Scrubber | `hakimi-transports/src/scrubber.rs`, `hakimi-core/src/loop_impl.rs` | 18 | ✅ Hermes-style stateful reasoning tag scrubbing for streaming and non-streaming responses |
-| 22 | Rate Limit Tracking + Gateway Usage + Cost Estimates | `hakimi-transports/src/rate_limit.rs`, `hakimi-common/src/usage_pricing.rs`, `hakimi-common/src/account_usage.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 22 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls, Hermes-style estimated cost, pricing snapshot version, rate-limit display, plus OpenRouter `/credits` and `/key` account quota/usage |
+| 22 | Rate Limit Tracking + Gateway Usage + Cost Estimates | `hakimi-transports/src/rate_limit.rs`, `hakimi-common/src/usage_pricing.rs`, `hakimi-common/src/account_usage.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 27 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls, Hermes-style estimated cost, pricing snapshot version, rate-limit display, OpenRouter `/credits` and `/key` account quota/usage, plus Anthropic OAuth usage windows |
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 | 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 10 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends plus OSC 52 terminal fallback and exposes the command in shared slash parsing |
 | 25 | TUI `/history` Review | `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Hermes-style `/history [N]` / `/hist [N]` reviews recent user/assistant messages locally and gives gateway users a clear surface-boundary notice |
@@ -743,10 +743,10 @@ Generated: 2026-06-02
 | 115 | Gateway Native Draft Transport | `hakimi-config/src/config.rs`, `hakimi-gateway/src/{lib.rs,telegram.rs}`, `hakimi-cli/src/entry.rs` | 8 | ✅ `gateways.streaming.transport` now supports `edit`, `auto`, `draft`, and `off`; Telegram private chats can receive native `sendMessageDraft` previews with automatic fallback to progressive edits, draft segment rotation around tool/media/delegate boundaries, and UTF-8-safe truncation |
 | 116 | Knowledge Graph Operator Surface | `hakimi-knowledge/src/{commands.rs,graph.rs}`, `hakimi-cli/src/{knowledge.rs,lib.rs,entry.rs}`, `hakimi-tui/src/app.rs`, `hakimi-common/src/slash_commands.rs` | 9 | ✅ `hakimi knowledge stats/list/search/context/add/relate/path` plus TUI/gateway `/knowledge ...` expose the persisted `~/.hakimi/knowledge.json` graph for operator inspection and small updates without entering the model loop; node/relation string mapping and command rendering stay centralized in `hakimi-knowledge` |
 | 117 | Dashboard Kanban Management API | `hakimi-server/src/api.rs`, `hakimi-tools/src/builtin_kanban.rs` | 3 | ✅ `/api/kanban`, `/api/kanban/boards`, and `/api/kanban/tasks/{id}` expose dashboard-safe board snapshots, board inventory, task comments, dependency links, event trails, and diagnostics; `POST /api/kanban/tasks`, `PATCH /api/kanban/tasks/{id}`, and `POST /api/kanban/tasks/{id}/comments` add guarded task create/status/assignee/comment writes while rejecting unknown boards and malformed blocked-state requests |
-| 118 | OpenRouter Account Usage API | `hakimi-common/src/account_usage.rs`, `hakimi-cli/src/entry.rs` | 5 | ✅ Gateway `/usage` detects OpenRouter profiles, fetches `/credits` and `/key` with the configured API key, renders credits balance plus API-key quota/usage, and silently degrades to local token/cost/rate-limit output when account APIs are unavailable |
+| 118 | OpenRouter + Anthropic Account Usage API | `hakimi-common/src/account_usage.rs`, `hakimi-cli/src/entry.rs` | 10 | ✅ Gateway `/usage` detects OpenRouter profiles, fetches `/credits` and `/key` with the configured API key, renders credits balance plus API-key quota/usage, parses Anthropic OAuth usage windows and extra-usage credits, and reports ordinary Anthropic API keys as OAuth-only for account limits without leaking credentials |
 
 ### Summary
-- **Total tests**: 1718 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1723 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
