@@ -149,6 +149,18 @@ fn resolve_base_url(config: &hakimi_config::HakimiConfig) -> String {
     "https://openrouter.ai/api".to_string()
 }
 
+fn resolve_optional_base_url(config: &hakimi_config::HakimiConfig) -> Option<String> {
+    if let Ok(val) = std::env::var("HAKIMI_BASE_URL")
+        && !val.trim().is_empty()
+    {
+        return Some(val.trim().to_string());
+    }
+    if !config.model.base_url.trim().is_empty() {
+        return Some(config.model.base_url.trim().to_string());
+    }
+    None
+}
+
 fn resolve_model(config: &hakimi_config::HakimiConfig) -> String {
     if let Ok(val) = std::env::var("HAKIMI_MODEL")
         && !val.is_empty()
@@ -159,6 +171,30 @@ fn resolve_model(config: &hakimi_config::HakimiConfig) -> String {
         return config.model.default.clone();
     }
     "anthropic/claude-sonnet-4-20250514".to_string()
+}
+
+fn is_bedrock_transport(config: &hakimi_config::HakimiConfig) -> bool {
+    let mode = config.model.api_mode.trim().to_ascii_lowercase();
+    let provider = config.model.provider.trim().to_ascii_lowercase();
+    matches!(
+        mode.as_str(),
+        "bedrock" | "bedrock_converse" | "aws_bedrock"
+    ) || matches!(
+        provider.as_str(),
+        "bedrock" | "aws" | "aws_bedrock" | "amazon-bedrock"
+    )
+}
+
+fn resolve_bedrock_region() -> String {
+    std::env::var("AWS_REGION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("AWS_DEFAULT_REGION")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| "us-east-1".to_string())
 }
 
 fn trajectory_config_from_config(
@@ -189,8 +225,9 @@ async fn build_agent(
     let model = resolve_model(config);
     let base_url = resolve_base_url(config);
     let api_key = resolve_api_key(config);
+    let bedrock_mode = is_bedrock_transport(config);
 
-    if api_key.is_empty() {
+    if api_key.is_empty() && !bedrock_mode {
         anyhow::bail!(
             "No API key found. Set one of:\n\
              • HAKIMI_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY env var\n\
@@ -199,9 +236,17 @@ async fn build_agent(
     }
 
     let client = hakimi_transports::build_llm_http_client()?;
-    let transport = Arc::new(hakimi_transports::ChatCompletionsTransport::new(
-        base_url, api_key, client,
-    ));
+    let transport: Arc<dyn hakimi_transports::ProviderTransport> = if bedrock_mode {
+        Arc::new(hakimi_transports::BedrockConverseTransport::from_env(
+            Some(resolve_bedrock_region()),
+            resolve_optional_base_url(config),
+            client,
+        )?)
+    } else {
+        Arc::new(hakimi_transports::ChatCompletionsTransport::new(
+            base_url, api_key, client,
+        ))
+    };
 
     let context_length = 128_000;
     let context_engine = Arc::new(RwLock::new(hakimi_context::SimpleContextEngine::new(

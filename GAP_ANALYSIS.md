@@ -49,6 +49,7 @@ Generated: 2026-06-02
 - **Chat Completions** — OpenAI-compatible API
 - **Anthropic** — Anthropic Messages API
 - **Gemini** — Google Gemini native API
+- **Bedrock Converse (non-streaming)** — AWS Bedrock Runtime Converse REST transport with SigV4 signing, env credentials, message/tool mapping, reasoning/tool-use/usage normalization, and CLI/TUI/server provider routing
 
 ### Context Management
 - **ContextEngine trait** — Pluggable context engine abstraction
@@ -245,10 +246,11 @@ Generated: 2026-06-02
 - **Missing**: yuanbao, QQBot WebSocket ingress/media/keyboards/onboarding, full api_server streaming/session surface, IMAP email inbound/attachments
 - **Priority**: **High** — Platform reach
 
-#### 14. Bedrock Transport
+#### 14. Bedrock Transport — PARTIAL
 - **What**: AWS Bedrock Converse API native integration
 - **Hermes location**: `agent/bedrock_adapter.py`, `agent/transports/bedrock.py`
-- **Details**: Native Converse API, AWS credential chain (IAM, SSO, env, instance metadata), dynamic model discovery, guardrails support, cross-region inference profiles.
+- **Details**: Hakimi now has a Rust-native non-streaming Bedrock Runtime Converse transport: `bedrock_converse` / `bedrock` mode maps Hakimi messages, images, tool schemas, tool uses, tool results, reasoning content, stop reasons, and usage into/from Converse JSON, signs direct HTTPS requests with AWS Signature V4, reads `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`, `AWS_REGION` / `AWS_DEFAULT_REGION`, supports optional base-url override, and is wired into CLI, TUI, and server startup without requiring an ordinary LLM API key.
+- **Missing**: AWS SDK/profile/SSO/IMDS credential-chain support, Bedrock control-plane model discovery, guardrail config, cross-region inference profile helpers, Anthropic-on-Bedrock special cases, and ConverseStream delta support.
 - **Priority**: **High** — AWS ecosystem integration
 
 #### 15. Plugin System — Memory Providers (8+ backends)
@@ -581,7 +583,7 @@ Generated: 2026-06-02
 | Category | Hermes Features | Hakimi Complete | Hakimi Partial | Hakimi Missing |
 |----------|----------------|-----------------|----------------|----------------|
 | Core Tools | 40+ | 29 | 1 | 11+ |
-| Transports | 4 | 4 | 0 | 0 |
+| Transports | 5 | 4 | 1 | 0 |
 | Gateway Platforms | 20+ | 16 | 2 | 3+ |
 | CLI Commands | 50+ | 17 | 0 | 33+ |
 | Agent Internals | 25+ | 18 | 4 | 2+ |
@@ -593,15 +595,15 @@ Generated: 2026-06-02
 
 **Total unique Hermes features identified: ~150+**
 **Fully present in Hakimi: ~82** (up from ~30)
-**Partially implemented: ~10**
-**Missing entirely: ~66+**
+**Partially implemented: ~11**
+**Missing entirely: ~65+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (CDP attach, cloud backends)
 2. Gateway platform breadth (4+ missing platforms after runtime exposure for webhook/msgraph/signal/sms/email/whatsapp/homeassistant/matrix/wecom/dingtalk/weixin)
 3. Plugin ecosystem (memory providers, model providers, context engines)
 4. CLI command completeness (31+ missing commands)
-5. Bedrock transport
+5. Bedrock transport streaming/discovery/credential-chain completion
 6. ACP adapter / IDE integration
 7. Kanban dispatcher/dashboard completion
 8. Remote MCP sampling + richer server-initiated flows
@@ -745,9 +747,10 @@ Generated: 2026-06-02
 | 117 | Dashboard Kanban Management API | `hakimi-server/src/api.rs`, `hakimi-tools/src/builtin_kanban.rs` | 3 | ✅ `/api/kanban`, `/api/kanban/boards`, and `/api/kanban/tasks/{id}` expose dashboard-safe board snapshots, board inventory, task comments, dependency links, event trails, and diagnostics; `POST /api/kanban/tasks`, `PATCH /api/kanban/tasks/{id}`, and `POST /api/kanban/tasks/{id}/comments` add guarded task create/status/assignee/comment writes while rejecting unknown boards and malformed blocked-state requests |
 | 118 | OpenRouter + Anthropic Account Usage API | `hakimi-common/src/account_usage.rs`, `hakimi-cli/src/entry.rs` | 10 | ✅ Gateway `/usage` detects OpenRouter profiles, fetches `/credits` and `/key` with the configured API key, renders credits balance plus API-key quota/usage, parses Anthropic OAuth usage windows and extra-usage credits, and reports ordinary Anthropic API keys as OAuth-only for account limits without leaking credentials |
 | 119 | Codex Account Usage API | `hakimi-common/src/account_usage.rs`, `hakimi-cli/src/entry.rs` | 5 | ✅ Gateway `/usage` detects explicit Codex provider/mode/backend URLs, resolves Hermes-compatible `/wham/usage` vs `/api/codex/usage` endpoints, sends local bearer credentials without logging them, parses session/weekly usage windows, plan labels, and credits balance/unlimited status |
+| 120 | Bedrock Converse Transport | `hakimi-transports/src/bedrock.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs`, `hakimi-server/src/main.rs` | 4 | 🟡 Rust-native non-streaming AWS Bedrock Runtime Converse transport maps messages/images/tools/tool results, signs direct REST calls with SigV4, normalizes text/reasoning/tool-use/usage responses, supports env credentials and region/base-url overrides, and is routed through CLI/TUI/server; remaining parity is AWS profile/SSO/IMDS chain, model discovery, guardrails, cross-region inference helpers, Anthropic-on-Bedrock special cases, and ConverseStream |
 
 ### Summary
-- **Total tests**: 1733 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1737 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

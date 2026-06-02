@@ -1,4 +1,5 @@
 mod anthropic;
+mod bedrock;
 mod chat_completions;
 mod client;
 mod embeddings;
@@ -13,6 +14,7 @@ mod streaming;
 mod trait_def;
 
 pub use anthropic::*;
+pub use bedrock::*;
 pub use chat_completions::*;
 pub use client::*;
 pub use embeddings::*;

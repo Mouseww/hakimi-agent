@@ -4360,6 +4360,30 @@ fn is_anthropic_provider(provider: &str, base_url: &str) -> bool {
         || base_url.contains("anthropic")
 }
 
+fn is_bedrock_transport(api_mode: &str, provider: &str) -> bool {
+    let mode = api_mode.trim().to_ascii_lowercase();
+    let provider = provider.trim().to_ascii_lowercase();
+    matches!(
+        mode.as_str(),
+        "bedrock" | "bedrock_converse" | "aws_bedrock"
+    ) || matches!(
+        provider.as_str(),
+        "bedrock" | "aws" | "aws_bedrock" | "amazon-bedrock"
+    )
+}
+
+fn resolve_bedrock_region() -> String {
+    std::env::var("AWS_REGION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("AWS_DEFAULT_REGION")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| "us-east-1".to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Resolve API key from args > env > config
 // ---------------------------------------------------------------------------
@@ -4425,6 +4449,26 @@ fn resolve_base_url(args_url: Option<&str>, config: &hakimi_config::HakimiConfig
     }
     // 4. Default — OpenRouter is a reasonable default
     "https://openrouter.ai/api".to_string()
+}
+
+fn resolve_optional_base_url(
+    args_url: Option<&str>,
+    config: &hakimi_config::HakimiConfig,
+) -> Option<String> {
+    if let Some(url) = args_url
+        && !url.trim().is_empty()
+    {
+        return Some(url.trim().to_string());
+    }
+    if let Ok(val) = std::env::var("HAKIMI_BASE_URL")
+        && !val.trim().is_empty()
+    {
+        return Some(val.trim().to_string());
+    }
+    if !config.model.base_url.trim().is_empty() {
+        return Some(config.model.base_url.trim().to_string());
+    }
+    None
 }
 
 fn resolve_embedding_base_url(
@@ -4620,8 +4664,10 @@ async fn build_agent(
     let model = resolve_model(args.model.as_deref(), config);
     let base_url = resolve_base_url(args.base_url.as_deref(), config);
     let api_key = resolve_api_key(args.api_key.as_deref(), config);
+    let effective_provider = resolve_provider(args.provider.as_deref(), config, &model);
+    let bedrock_mode = is_bedrock_transport(config.model.api_mode.as_str(), &effective_provider);
 
-    if api_key.is_empty() {
+    if api_key.is_empty() && !bedrock_mode {
         anyhow::bail!(
             "No API key found. Set one of:\n\n\
              • --api-key flag\n\n\
@@ -4629,9 +4675,6 @@ async fn build_agent(
              • ~/.hakimi/config.yaml delegation.api_key"
         );
     }
-
-    // Resolve effective provider (from args > config > model prefix > env).
-    let effective_provider = resolve_provider(args.provider.as_deref(), config, &model);
 
     // Create transport — auto-detect Anthropic vs OpenAI-compatible.
     let client = hakimi_transports::build_llm_http_client()?;
@@ -4644,7 +4687,14 @@ async fn build_agent(
             let embedding_model = config.embedding.model.clone();
             let embedding_provider_name = config.embedding.provider.as_str();
 
-            if embedding_provider_name == "openai-compatible" || embedding_provider_name == "openai"
+            if embedding_api_key.is_empty() {
+                warn!(
+                    provider = %config.embedding.provider,
+                    "embedding provider requires an API key; embeddings disabled"
+                );
+                None
+            } else if embedding_provider_name == "openai-compatible"
+                || embedding_provider_name == "openai"
             {
                 info!(
                     base_url = %embedding_base_url,
@@ -4678,7 +4728,19 @@ async fn build_agent(
         // Check explicit api_mode first.
         let mode = config.model.api_mode.as_str();
 
-        if mode == "responses" || mode == "codex" {
+        if bedrock_mode {
+            let region = resolve_bedrock_region();
+            let bedrock_base_url = resolve_optional_base_url(args.base_url.as_deref(), config);
+            info!(
+                region = %region,
+                "using AWS Bedrock Converse transport"
+            );
+            std::sync::Arc::new(hakimi_transports::BedrockConverseTransport::from_env(
+                Some(region),
+                bedrock_base_url,
+                client,
+            )?)
+        } else if mode == "responses" || mode == "codex" {
             info!(base_url = %base_url, "using OpenAI Responses API transport");
             std::sync::Arc::new(hakimi_transports::ResponsesTransport::new(
                 base_url.clone(),

@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.232"
+version = "0.3.233"
 edition = "2024"
 
 [workspace.dependencies]
@@ -86,6 +86,9 @@ fancy-regex = "0.14"
 
 # Base64
 base64 = "0.22"
+
+# Crypto helpers
+ring = "0.17"
 
 # Interactive prompts
 dialoguer = "0.11"

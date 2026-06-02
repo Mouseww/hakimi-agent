@@ -89,6 +89,47 @@ fn trajectory_config_from_config(
     Some(hakimi_core::TrajectoryConfig::new(dir))
 }
 
+fn is_bedrock_transport(api_mode: &str, provider: &str) -> bool {
+    let mode = api_mode.trim().to_ascii_lowercase();
+    let provider = provider.trim().to_ascii_lowercase();
+    matches!(
+        mode.as_str(),
+        "bedrock" | "bedrock_converse" | "aws_bedrock"
+    ) || matches!(
+        provider.as_str(),
+        "bedrock" | "aws" | "aws_bedrock" | "amazon-bedrock"
+    )
+}
+
+fn resolve_bedrock_region() -> String {
+    std::env::var("AWS_REGION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("AWS_DEFAULT_REGION")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| "us-east-1".to_string())
+}
+
+fn resolve_optional_base_url(args: &Args, config: &hakimi_config::HakimiConfig) -> Option<String> {
+    if let Some(url) = args.base_url.as_deref()
+        && !url.trim().is_empty()
+    {
+        return Some(url.trim().to_string());
+    }
+    if let Ok(val) = std::env::var("HAKIMI_BASE_URL")
+        && !val.trim().is_empty()
+    {
+        return Some(val.trim().to_string());
+    }
+    if !config.model.base_url.trim().is_empty() {
+        return Some(config.model.base_url.trim().to_string());
+    }
+    None
+}
+
 async fn build_agent(
     args: &Args,
     config: &hakimi_config::HakimiConfig,
@@ -134,15 +175,6 @@ async fn build_agent(
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
 
-    if api_key.is_empty() {
-        anyhow::bail!(
-            "No API key found. Set one of:\n\
-             • --api-key flag\n\
-             • HAKIMI_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY env var\n\
-             • ~/.hakimi/config.yaml delegation.api_key"
-        );
-    }
-
     let base_url = args
         .base_url
         .clone()
@@ -165,6 +197,10 @@ async fn build_agent(
         .provider
         .clone()
         .filter(|s| !s.is_empty() && s != "auto")
+        .or_else(|| {
+            (!config.model.provider.is_empty() && config.model.provider != "auto")
+                .then(|| config.model.provider.clone())
+        })
         .unwrap_or_else(|| {
             if model.starts_with("claude") || model.contains("anthropic") {
                 "anthropic".to_string()
@@ -177,13 +213,29 @@ async fn build_agent(
                 "openrouter".to_string()
             }
         });
+    let bedrock_mode = is_bedrock_transport(config.model.api_mode.as_str(), &provider);
+
+    if api_key.is_empty() && !bedrock_mode {
+        anyhow::bail!(
+            "No API key found. Set one of:\n\
+             • --api-key flag\n\
+             • HAKIMI_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY env var\n\
+             • ~/.hakimi/config.yaml delegation.api_key"
+        );
+    }
 
     // Create transport
     let client = hakimi_transports::build_llm_http_client()?;
     let is_anthropic =
         provider == "anthropic" || provider == "claude" || base_url.contains("api.anthropic.com");
 
-    let transport: Arc<dyn hakimi_transports::ProviderTransport> = if is_anthropic {
+    let transport: Arc<dyn hakimi_transports::ProviderTransport> = if bedrock_mode {
+        Arc::new(hakimi_transports::BedrockConverseTransport::from_env(
+            Some(resolve_bedrock_region()),
+            resolve_optional_base_url(args, config),
+            client.clone(),
+        )?)
+    } else if is_anthropic {
         let anthropic_url = if base_url.contains("anthropic") {
             base_url.clone()
         } else {
@@ -220,7 +272,11 @@ async fn build_agent(
                 config.embedding.api_key.clone()
             };
 
-        if config.embedding.provider == "openai-compatible" || config.embedding.provider == "openai"
+        if embedding_api_key.is_empty() {
+            warn!(provider = %config.embedding.provider, "embedding provider requires an API key; vector search disabled");
+            None
+        } else if config.embedding.provider == "openai-compatible"
+            || config.embedding.provider == "openai"
         {
             info!(
                 base_url = %embedding_base_url,

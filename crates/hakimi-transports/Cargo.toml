@@ -17,6 +17,8 @@ fancy-regex = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 pin-project = { workspace = true }
+chrono = { workspace = true }
+ring = { workspace = true }
 
 [dev-dependencies]
 hakimi-config = { path = "../hakimi-config" }
