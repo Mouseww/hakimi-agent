@@ -2771,14 +2771,14 @@ async fn create_session(
         )
     })?;
 
-    if let Some(title) = req.title.as_deref() {
-        if let Err(e) = db.set_title(&id, title) {
-            let _ = db.delete_session(&id);
-            return Err(api_error(
-                StatusCode::BAD_REQUEST,
-                format!("Failed to set session title: {e}"),
-            ));
-        }
+    if let Some(title) = req.title.as_deref()
+        && let Err(e) = db.set_title(&id, title)
+    {
+        let _ = db.delete_session(&id);
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            format!("Failed to set session title: {e}"),
+        ));
     }
 
     let session = db
@@ -3036,14 +3036,14 @@ async fn fork_session(
             )
         })?;
     }
-    if let Some(title) = req.title.as_deref() {
-        if let Err(e) = db.set_title(&fork_id, title) {
-            let _ = db.delete_session(&fork_id);
-            return Err(api_error(
-                StatusCode::BAD_REQUEST,
-                format!("Failed to set fork title: {e}"),
-            ));
-        }
+    if let Some(title) = req.title.as_deref()
+        && let Err(e) = db.set_title(&fork_id, title)
+    {
+        let _ = db.delete_session(&fork_id);
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            format!("Failed to set fork title: {e}"),
+        ));
     }
 
     let session = db
