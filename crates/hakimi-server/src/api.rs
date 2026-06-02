@@ -1168,6 +1168,49 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
         model
     };
 
+    let features = json!({
+        "chat": true,
+        "chat_completions": true,
+        "chat_completions_streaming": true,
+        "chat_completions_streaming_mode": "completed_sse_snapshot",
+        "responses_api": true,
+        "responses_streaming": true,
+        "responses_streaming_mode": "completed_sse_snapshot",
+        "responses_persistence": "sqlite_lru",
+        "skills_api": true,
+        "toolsets_api": true,
+        "session_resources": true,
+        "session_create": true,
+        "session_update": true,
+        "session_delete": true,
+        "session_fork": true,
+        "session_chat": false,
+        "session_chat_streaming": false,
+        "session_messages": true,
+        "session_search": true,
+        "tools_api": true,
+        "config_read": true,
+        "config_write": true,
+        "run_submission": true,
+        "run_status": true,
+        "run_events_sse": true,
+        "run_events_streaming_mode": "live_lifecycle_sse",
+        "run_stop": true,
+        "websocket_streaming": false,
+        "media_api": false
+    });
+    let dashboard_admin = json!({
+        "status": true,
+        "mcp_servers_read": true,
+        "mcp_servers_write": true,
+        "credential_pools_read": true,
+        "credential_pools_write": true,
+        "webhooks_read": true,
+        "webhooks_write": true,
+        "write_operations": true,
+        "persistence": "runtime"
+    });
+
     Json(json!({
         "object": "hakimi.api_server.capabilities",
         "platform": "hakimi-agent",
@@ -1182,85 +1225,63 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "split_runtime": false,
             "description": "The HTTP API server runs a server-side Hakimi AIAgent; tools execute on the API-server host."
         },
-        "features": {
-            "chat": true,
-            "chat_completions": true,
-            "chat_completions_streaming": true,
-            "chat_completions_streaming_mode": "completed_sse_snapshot",
-            "responses_api": true,
-            "responses_streaming": true,
-            "responses_streaming_mode": "completed_sse_snapshot",
-            "responses_persistence": "sqlite_lru",
-            "skills_api": true,
-            "toolsets_api": true,
-            "session_resources": true,
-            "session_create": true,
-            "session_update": true,
-            "session_delete": true,
-            "session_fork": true,
-            "session_chat": false,
-            "session_chat_streaming": false,
-            "session_messages": true,
-            "session_search": true,
-            "tools_api": true,
-            "config_read": true,
-            "config_write": true,
-            "run_submission": true,
-            "run_status": true,
-            "run_events_sse": true,
-            "run_events_streaming_mode": "live_lifecycle_sse",
-            "run_stop": true,
-            "websocket_streaming": false,
-            "media_api": false
-        },
-        "dashboard_admin": {
-            "status": true,
-            "mcp_servers_read": true,
-            "mcp_servers_write": true,
-            "credential_pools_read": true,
-            "credential_pools_write": true,
-            "webhooks_read": true,
-            "webhooks_write": true,
-            "write_operations": true,
-            "persistence": "runtime"
-        },
-        "endpoints": {
-            "health": {"method": "GET", "path": "/api/health"},
-            "models": {"method": "GET", "path": "/v1/models"},
-            "capabilities": {"method": "GET", "path": "/v1/capabilities"},
-            "skills": {"method": "GET", "path": "/v1/skills"},
-            "toolsets": {"method": "GET", "path": "/v1/toolsets"},
-            "chat_completions": {"method": "POST", "path": "/v1/chat/completions"},
-            "responses": {"method": "POST", "path": "/v1/responses"},
-            "response": {"method": "GET", "path": "/v1/responses/{id}"},
-            "response_delete": {"method": "DELETE", "path": "/v1/responses/{id}"},
-            "run": {"method": "POST", "path": "/v1/runs"},
-            "run_status": {"method": "GET", "path": "/v1/runs/{id}"},
-            "run_events": {"method": "GET", "path": "/v1/runs/{id}/events"},
-            "run_stop": {"method": "POST", "path": "/v1/runs/{id}/stop"},
-            "chat": {"method": "POST", "path": "/api/chat"},
-            "sessions": {"method": "GET", "path": "/api/sessions"},
-            "session_create": {"method": "POST", "path": "/api/sessions"},
-            "session": {"method": "GET", "path": "/api/sessions/{id}"},
-            "session_update": {"method": "PATCH", "path": "/api/sessions/{id}"},
-            "session_delete": {"method": "DELETE", "path": "/api/sessions/{id}"},
-            "session_messages": {"method": "GET", "path": "/api/sessions/{id}/messages"},
-            "session_fork": {"method": "POST", "path": "/api/sessions/{id}/fork"},
-            "session_search": {"method": "GET", "path": "/api/sessions/search?q=<query>"},
-            "tools": {"method": "GET", "path": "/api/tools"},
-            "config": {"method": "GET", "path": "/api/config"},
-            "config_update": {"method": "POST", "path": "/api/config"},
-            "dashboard_status": {"method": "GET", "path": "/api/status"},
-            "mcp_servers": {"method": "GET", "path": "/api/mcp/servers"},
-            "mcp_server_add": {"method": "POST", "path": "/api/mcp/servers"},
-            "mcp_server_delete": {"method": "DELETE", "path": "/api/mcp/servers/{name}"},
-            "credential_pool": {"method": "GET", "path": "/api/credentials/pool"},
-            "credential_pool_add": {"method": "POST", "path": "/api/credentials/pool"},
-            "credential_pool_delete": {"method": "DELETE", "path": "/api/credentials/pool/{provider}/{index}"},
-            "webhooks": {"method": "GET", "path": "/api/webhooks"},
-            "webhook_update": {"method": "POST", "path": "/api/webhooks"}
-        }
+        "features": features,
+        "dashboard_admin": dashboard_admin,
+        "endpoints": capability_endpoints()
     }))
+}
+
+fn capability_endpoints() -> BTreeMap<&'static str, JsonValue> {
+    [
+        ("health", "GET", "/api/health"),
+        ("models", "GET", "/v1/models"),
+        ("capabilities", "GET", "/v1/capabilities"),
+        ("skills", "GET", "/v1/skills"),
+        ("toolsets", "GET", "/v1/toolsets"),
+        ("chat_completions", "POST", "/v1/chat/completions"),
+        ("responses", "POST", "/v1/responses"),
+        ("response", "GET", "/v1/responses/{id}"),
+        ("response_delete", "DELETE", "/v1/responses/{id}"),
+        ("run", "POST", "/v1/runs"),
+        ("run_status", "GET", "/v1/runs/{id}"),
+        ("run_events", "GET", "/v1/runs/{id}/events"),
+        ("run_stop", "POST", "/v1/runs/{id}/stop"),
+        ("chat", "POST", "/api/chat"),
+        ("sessions", "GET", "/api/sessions"),
+        ("session_create", "POST", "/api/sessions"),
+        ("session", "GET", "/api/sessions/{id}"),
+        ("session_update", "PATCH", "/api/sessions/{id}"),
+        ("session_delete", "DELETE", "/api/sessions/{id}"),
+        ("session_messages", "GET", "/api/sessions/{id}/messages"),
+        ("session_fork", "POST", "/api/sessions/{id}/fork"),
+        ("session_search", "GET", "/api/sessions/search?q=<query>"),
+        ("tools", "GET", "/api/tools"),
+        ("config", "GET", "/api/config"),
+        ("config_update", "POST", "/api/config"),
+        ("dashboard_status", "GET", "/api/status"),
+        ("mcp_servers", "GET", "/api/mcp/servers"),
+        ("mcp_server_add", "POST", "/api/mcp/servers"),
+        ("mcp_server_delete", "DELETE", "/api/mcp/servers/{name}"),
+        ("credential_pool", "GET", "/api/credentials/pool"),
+        ("credential_pool_add", "POST", "/api/credentials/pool"),
+        (
+            "credential_pool_delete",
+            "DELETE",
+            "/api/credentials/pool/{provider}/{index}",
+        ),
+        ("webhooks", "GET", "/api/webhooks"),
+        ("webhook_update", "POST", "/api/webhooks"),
+    ]
+    .into_iter()
+    .map(|(name, method, path)| (name, api_endpoint(method, path)))
+    .collect()
+}
+
+fn api_endpoint(method: &'static str, path: &'static str) -> JsonValue {
+    json!({
+        "method": method,
+        "path": path
+    })
 }
 
 fn auth_required() -> bool {
