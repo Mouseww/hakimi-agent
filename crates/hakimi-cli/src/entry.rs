@@ -5545,7 +5545,6 @@ Just send a message to chat with me!"
                                 .await;
                                 if render_result.retry_after_backoff {
                                     backoff_state.disable_previews();
-                                    current_message_id = None;
                                 }
                                 if !text.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
@@ -5578,7 +5577,6 @@ Just send a message to chat with me!"
                                 .await;
                                 if render_result.retry_after_backoff {
                                     backoff_state.disable_previews();
-                                    current_message_id = None;
                                 }
                                 if !media.trim().is_empty() {
                                     let msg = hakimi_gateway::GatewayMessage {
@@ -5608,7 +5606,6 @@ Just send a message to chat with me!"
                                 .await;
                                 if render_result.retry_after_backoff {
                                     backoff_state.disable_previews();
-                                    current_message_id = None;
                                 }
                                 let task_id = event.task_id.clone();
                                 let bubble = delegate_bubbles.entry(task_id).or_default();
@@ -6525,21 +6522,21 @@ pub async fn run() -> Result<()> {
 mod tests {
     use super::{
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
-        GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamRenderSnapshot,
-        GatewayStreamUiState, GatewayUiContentTarget, GatewayUsageSnapshot, McpCommandArgs,
-        PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
-        VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
-        create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
-        cron_success_output_should_deliver, effective_gateway_streaming_policy,
-        gateway_bot_id_for_platform, gateway_cron_response_for_path,
-        gateway_cron_response_for_path_with_delivery, gateway_mcp_response,
-        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
-        gateway_voice_response, is_top_level_cron_tick, parse_gateway_undo_turns,
-        plan_gateway_final_delivery, queue_cron_delivery, render_gateway_undo_response,
-        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
-        restore_voice_history_text, rewind_gateway_history, split_stream_chunks,
-        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
-        update_target_from_candidate,
+        GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamBackoffState,
+        GatewayStreamRenderSnapshot, GatewayStreamUiState, GatewayUiContentTarget,
+        GatewayUsageSnapshot, McpCommandArgs, PluginCommandArgs, ProfileCommandArgs,
+        TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX, VOICE_USER_MESSAGE_PREFIX,
+        VoiceRuntimeState, build_cron_delegation_goal, create_hakimi_state_backup,
+        cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
+        effective_gateway_streaming_policy, gateway_bot_id_for_platform,
+        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
+        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
+        gateway_usage_response, gateway_voice_response, is_gateway_flood_error,
+        is_top_level_cron_tick, parse_gateway_undo_turns, plan_gateway_final_delivery,
+        queue_cron_delivery, render_gateway_undo_response, resolve_clawbot_gateway_config,
+        resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
+        rewind_gateway_history, split_stream_chunks, top_level_cron_response_for_path,
+        top_level_mcp_response, update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::{Message, Usage};
