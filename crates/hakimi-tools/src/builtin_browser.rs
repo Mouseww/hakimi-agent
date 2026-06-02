@@ -175,6 +175,19 @@ struct BrowserCdpEndpoint {
     source: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BrowserCloudProviderStatus {
+    name: String,
+    display_name: String,
+    configured: bool,
+    selected: bool,
+    source: String,
+    required_env: Vec<&'static str>,
+    missing_env: Vec<&'static str>,
+    cdp_capable: bool,
+    notes: Vec<&'static str>,
+}
+
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
@@ -310,6 +323,202 @@ fn browser_cdp_endpoint_from_value(value: &str, source: &str) -> Option<BrowserC
 
 fn resolve_browser_cdp_endpoint(args: &JsonValue) -> Option<BrowserCdpEndpoint> {
     browser_cdp_endpoint_from_args(args).or_else(browser_cdp_endpoint_from_env)
+}
+
+fn browser_cloud_provider_from_args(args: &JsonValue) -> Option<String> {
+    ["cloud_provider", "provider", "backend"]
+        .into_iter()
+        .find_map(|key| {
+            args.get(key)
+                .and_then(|value| value.as_str())
+                .and_then(normalize_browser_cloud_provider)
+        })
+}
+
+fn browser_cloud_provider_from_env() -> Option<String> {
+    [
+        "HAKIMI_BROWSER_CLOUD_PROVIDER",
+        "HAKIMI_BROWSER_PROVIDER",
+        "BROWSER_CLOUD_PROVIDER",
+    ]
+    .into_iter()
+    .find_map(|name| {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| normalize_browser_cloud_provider(&value))
+    })
+}
+
+fn resolve_browser_cloud_provider(args: &JsonValue) -> Option<String> {
+    browser_cloud_provider_from_args(args).or_else(browser_cloud_provider_from_env)
+}
+
+fn normalize_browser_cloud_provider(value: &str) -> Option<String> {
+    let normalized = value
+        .trim()
+        .to_ascii_lowercase()
+        .replace('_', "-")
+        .replace(' ', "-");
+    match normalized.as_str() {
+        "" | "auto" => None,
+        "local" | "chromium" | "chrome" | "cdp" => Some("local".to_string()),
+        "browser-use" | "browseruse" => Some("browser-use".to_string()),
+        "browserbase" | "browser-base" => Some("browserbase".to_string()),
+        "firecrawl" | "fire-crawl" => Some("firecrawl".to_string()),
+        "camofox" | "camoufox" | "camoufox-browser" => Some("camofox".to_string()),
+        _ => Some(normalized),
+    }
+}
+
+fn env_present(name: &str) -> bool {
+    std::env::var(name)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn browser_cloud_provider_statuses(
+    selected: Option<&str>,
+    cdp_endpoint: Option<&BrowserCdpEndpoint>,
+) -> Vec<BrowserCloudProviderStatus> {
+    let mut statuses = vec![
+        provider_status(
+            "browser-use",
+            "Browser Use",
+            selected,
+            &["BROWSER_USE_API_KEY"],
+            true,
+            vec![
+                "Hermes auto-prefers Browser Use before Browserbase when no provider is explicitly configured.",
+                "Hakimi reports readiness only; cloud session creation is not wired yet.",
+            ],
+        ),
+        provider_status(
+            "browserbase",
+            "Browserbase",
+            selected,
+            &["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"],
+            true,
+            vec![
+                "Browserbase exposes per-session CDP URLs after session creation.",
+                "Hakimi reports readiness only; cloud session creation is not wired yet.",
+            ],
+        ),
+        provider_status(
+            "firecrawl",
+            "Firecrawl",
+            selected,
+            &["FIRECRAWL_API_KEY"],
+            true,
+            vec![
+                "Hermes requires explicit Firecrawl selection because FIRECRAWL_API_KEY is shared with web tools.",
+                "Hakimi reports readiness only; cloud session creation is not wired yet.",
+            ],
+        ),
+        provider_status(
+            "camofox",
+            "Camofox",
+            selected,
+            &["CAMOFOX_URL"],
+            false,
+            vec![
+                "Camofox is a local REST backend, not a CDP endpoint.",
+                "BROWSER_CDP_URL or HAKIMI_BROWSER_CDP_URL takes precedence over Camofox.",
+            ],
+        ),
+    ];
+
+    if cdp_endpoint.is_some() {
+        statuses.push(BrowserCloudProviderStatus {
+            name: "local".to_string(),
+            display_name: "Local CDP".to_string(),
+            configured: true,
+            selected: selected == Some("local") || selected.is_none(),
+            source: "cdp_endpoint".to_string(),
+            required_env: Vec::new(),
+            missing_env: Vec::new(),
+            cdp_capable: true,
+            notes: vec![
+                "A configured CDP endpoint can be probed or used for raw browser/page dispatch.",
+            ],
+        });
+    }
+
+    statuses
+}
+
+fn provider_status(
+    name: &str,
+    display_name: &str,
+    selected: Option<&str>,
+    required_env: &[&'static str],
+    cdp_capable: bool,
+    notes: Vec<&'static str>,
+) -> BrowserCloudProviderStatus {
+    provider_status_with_env_checker(
+        name,
+        display_name,
+        selected,
+        required_env,
+        cdp_capable,
+        notes,
+        env_present,
+    )
+}
+
+fn provider_status_with_env_checker(
+    name: &str,
+    display_name: &str,
+    selected: Option<&str>,
+    required_env: &[&'static str],
+    cdp_capable: bool,
+    notes: Vec<&'static str>,
+    env_checker: impl Fn(&str) -> bool,
+) -> BrowserCloudProviderStatus {
+    let missing_env = required_env
+        .iter()
+        .copied()
+        .filter(|name| !env_checker(name))
+        .collect::<Vec<_>>();
+    BrowserCloudProviderStatus {
+        name: name.to_string(),
+        display_name: display_name.to_string(),
+        configured: missing_env.is_empty(),
+        selected: selected == Some(name),
+        source: "env".to_string(),
+        required_env: required_env.to_vec(),
+        missing_env,
+        cdp_capable,
+        notes,
+    }
+}
+
+fn browser_cloud_provider_status_json(
+    args: &JsonValue,
+    cdp_endpoint: Option<&BrowserCdpEndpoint>,
+) -> JsonValue {
+    let selected = resolve_browser_cloud_provider(args);
+    let statuses = browser_cloud_provider_statuses(selected.as_deref(), cdp_endpoint);
+    let selected_known = selected.as_ref().is_some_and(|selected| {
+        let selected = selected.as_str();
+        selected == "local" || statuses.iter().any(|status| status.name == selected)
+    });
+    json!({
+        "selected_provider": selected,
+        "selected_provider_known": selected_known,
+        "providers": statuses.into_iter().map(|status| {
+            json!({
+                "name": status.name,
+                "display_name": status.display_name,
+                "configured": status.configured,
+                "selected": status.selected,
+                "source": status.source,
+                "required_env": status.required_env,
+                "missing_env": status.missing_env,
+                "cdp_capable": status.cdp_capable,
+                "notes": status.notes
+            })
+        }).collect::<Vec<_>>()
+    })
 }
 
 fn validate_browser_cdp_endpoint(endpoint: &str) -> std::result::Result<(), String> {
@@ -2167,6 +2376,11 @@ impl Tool for BrowserCdpTool {
                     "type": "string",
                     "description": "Optional ws://, wss://, http://, or https:// DevTools endpoint. Overrides HAKIMI_BROWSER_CDP_URL and BROWSER_CDP_URL."
                 },
+                "cloud_provider": {
+                    "type": "string",
+                    "enum": ["local", "browser-use", "browserbase", "firecrawl", "camofox"],
+                    "description": "Optional browser backend selection for status readiness reporting. Alias keys provider/backend are also accepted. This does not create cloud sessions."
+                },
                 "method": {
                     "type": "string",
                     "description": "CDP method for action='dispatch', for example Target.getTargets or Runtime.evaluate."
@@ -2213,6 +2427,7 @@ impl Tool for BrowserCdpTool {
         }
 
         let resolved = resolve_browser_cdp_endpoint(args);
+        let provider_status = browser_cloud_provider_status_json(args, resolved.as_ref());
         let Some(endpoint) = resolved else {
             return Ok(json!({
                 "success": false,
@@ -2221,6 +2436,7 @@ impl Tool for BrowserCdpTool {
                 "error": "No CDP endpoint configured. Set HAKIMI_BROWSER_CDP_URL or BROWSER_CDP_URL, or pass endpoint explicitly.",
                 "dispatch_ready": false,
                 "raw_cdp_dispatch": false,
+                "cloud_providers": provider_status,
                 "next_step": "Start Chrome/Chromium with --remote-debugging-port or use a CDP-capable provider, then run browser_cdp with action='probe'."
             })
             .to_string());
@@ -2236,7 +2452,8 @@ impl Tool for BrowserCdpTool {
                 "endpoint": endpoint_display,
                 "error": error,
                 "dispatch_ready": false,
-                "raw_cdp_dispatch": false
+                "raw_cdp_dispatch": false,
+                "cloud_providers": provider_status
             })
             .to_string());
         }
@@ -2251,6 +2468,7 @@ impl Tool for BrowserCdpTool {
                 "dispatch_ready": true,
                 "raw_cdp_dispatch": true,
                 "probe_available": true,
+                "cloud_providers": provider_status,
                 "note": "Endpoint syntax is valid. Use action='probe' to verify live connectivity or action='dispatch' with a CDP method."
             })
             .to_string());
@@ -2496,6 +2714,7 @@ mod tests {
                 .any(|value| value == "dispatch")
         );
         assert!(schema["properties"]["endpoint"].is_object());
+        assert!(schema["properties"]["cloud_provider"].is_object());
         assert!(schema["properties"]["method"].is_object());
         assert!(schema["properties"]["params"].is_object());
         assert!(schema["properties"]["target_id"].is_object());
@@ -2516,6 +2735,102 @@ mod tests {
             "ws://127.0.0.1:9222/devtools/browser/session"
         );
         assert_eq!(endpoint.source, "argument:endpoint");
+    }
+
+    #[test]
+    fn test_browser_cloud_provider_from_args_accepts_aliases() {
+        assert_eq!(
+            browser_cloud_provider_from_args(&json!({"cloud_provider": "Browser Use"})).as_deref(),
+            Some("browser-use")
+        );
+        assert_eq!(
+            browser_cloud_provider_from_args(&json!({"provider": "browser_base"})).as_deref(),
+            Some("browserbase")
+        );
+        assert_eq!(
+            browser_cloud_provider_from_args(&json!({"backend": "camoufox-browser"})).as_deref(),
+            Some("camofox")
+        );
+        assert!(browser_cloud_provider_from_args(&json!({"cloud_provider": "auto"})).is_none());
+    }
+
+    #[test]
+    fn test_browser_cloud_provider_from_args_skips_auto_alias() {
+        assert_eq!(
+            browser_cloud_provider_from_args(
+                &json!({"cloud_provider": "auto", "provider": "browserbase"})
+            )
+            .as_deref(),
+            Some("browserbase")
+        );
+    }
+
+    #[test]
+    fn test_browser_cloud_provider_status_marks_missing_env() {
+        let browserbase = provider_status_with_env_checker(
+            "browserbase",
+            "Browserbase",
+            Some("browserbase"),
+            &["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"],
+            true,
+            Vec::new(),
+            |_| false,
+        );
+
+        assert!(browserbase.selected);
+        assert_eq!(
+            browserbase.required_env,
+            vec!["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"]
+        );
+        assert!(browserbase.missing_env.contains(&"BROWSERBASE_API_KEY"));
+        assert!(browserbase.missing_env.contains(&"BROWSERBASE_PROJECT_ID"));
+        assert!(browserbase.cdp_capable);
+    }
+
+    #[test]
+    fn test_browser_cloud_provider_status_marks_configured_env() {
+        let firecrawl = provider_status_with_env_checker(
+            "firecrawl",
+            "Firecrawl",
+            Some("firecrawl"),
+            &["FIRECRAWL_API_KEY"],
+            true,
+            Vec::new(),
+            |name| name == "FIRECRAWL_API_KEY",
+        );
+
+        assert!(firecrawl.configured);
+        assert!(firecrawl.selected);
+        assert!(firecrawl.missing_env.is_empty());
+    }
+
+    #[test]
+    fn test_browser_cloud_provider_status_includes_local_cdp_when_endpoint_exists() {
+        let endpoint = BrowserCdpEndpoint {
+            endpoint: "ws://127.0.0.1:9222/devtools/browser/session".to_string(),
+            source: "argument:endpoint".to_string(),
+        };
+        let statuses = browser_cloud_provider_statuses(None, Some(&endpoint));
+        let local = statuses
+            .iter()
+            .find(|status| status.name == "local")
+            .unwrap();
+
+        assert!(local.configured);
+        assert!(local.selected);
+        assert!(local.required_env.is_empty());
+        assert!(local.missing_env.is_empty());
+        assert!(local.cdp_capable);
+    }
+
+    #[test]
+    fn test_browser_cloud_provider_status_json_flags_unknown_selection() {
+        let status =
+            browser_cloud_provider_status_json(&json!({"cloud_provider": "vendor-x"}), None);
+
+        assert_eq!(status["selected_provider"], "vendor-x");
+        assert_eq!(status["selected_provider_known"], false);
+        assert!(status["providers"].as_array().unwrap().len() >= 4);
     }
 
     #[test]
