@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.201-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.202-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1600-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1605-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1600 |
+| 测试数量 | ~500 | 1605 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -108,7 +108,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - HTTP API 发现端点 — OpenAI 兼容 `/v1/models`、`/v1/capabilities`、`/v1/skills`、`/v1/toolsets`、非流式文本 `/v1/chat/completions`、支持 `previous_response_id` 链式续写且在 `stream=true` 时返回 completed SSE snapshot 的 `/v1/responses`、带 SSE 生命周期事件快照的可轮询且可取消 `/v1/runs`，以及会话消息/搜索能力发现，方便外部 UI 探测能力
 - WebUI 管理 API — `/api/status`、`/api/sessions/{id}/messages`、`/api/sessions/search`、`/api/mcp/servers`、`/api/credentials/pool` 和 `/api/webhooks` 提供脱敏运行状态，并支持运行期作用域的管理写入
 - Skills Hub — 社区技能市场
-- 隔离 Profile — 管理命名工作区、克隆/导出 Profile 归档、创建 `~/.hakimi/bin/<profile>` 包装别名，并通过网关 `/profile` 操作
+- 隔离 Profile — 管理命名工作区、克隆/导出 Profile 归档、安装/更新带 `distribution.yaml` 的可分享 Profile 分发包、创建 `~/.hakimi/bin/<profile>` 包装别名，并通过网关 `/profile` 操作
 - 10 个精选 MCP 目录项：GitHub、文件系统、Brave Search、PostgreSQL、Puppeteer、记忆、fetch、SQLite、思维链，以及 Hermes 审核过的 n8n bridge
 
 ### 🛡️ 生产级安全
@@ -202,7 +202,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1600 |
+| 测试数量 | ~500 | 1605 |
 
 ---
 
@@ -235,6 +235,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] HTTP API 模型/能力发现端点 + 文本 Chat Completions + Responses SSE 快照 + 可取消 Runs 生命周期事件
 - [x] WebUI 管理 API 摘要 + 运行期写入
 - [x] 插件系统 + HTTP 模板
+- [x] Profile 分发包安装/更新/info，并保护用户数据
 - [x] ratatui TUI 界面、本地 slash 命令、脱敏配置浏览与网关状态面
 - [x] 智能上下文压缩（3 层）
 - [x] 错误分类器 + 凭证池

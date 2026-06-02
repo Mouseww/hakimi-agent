@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.201-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.202-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1600-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1605-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1600 |
+| Tests | ~500 | 1605 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -109,7 +109,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - HTTP API discovery — OpenAI-compatible `/v1/models`, `/v1/capabilities`, `/v1/skills`, `/v1/toolsets`, non-streaming text `/v1/chat/completions`, `/v1/responses` with `previous_response_id` chaining plus completed SSE snapshots for `stream=true`, pollable and cancellable `/v1/runs` with SSE lifecycle event snapshots, and session messages/search discovery for external UI feature detection
 - Dashboard admin API — `/api/status`, `/api/sessions/{id}/messages`, `/api/sessions/search`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks` expose redacted operational state plus runtime-scoped admin writes for WebUI/admin panels
 - Skills Hub — install community skills with `/skills install`
-- Isolated profiles — manage named workspaces, clone/export profile archives, create `~/.hakimi/bin/<profile>` wrapper aliases, and use gateway `/profile`
+- Isolated profiles — manage named workspaces, clone/export profile archives, install/update shareable `distribution.yaml` profile distributions, create `~/.hakimi/bin/<profile>` wrapper aliases, and use gateway `/profile`
 - 10 curated MCP catalog entries: GitHub, filesystem, Brave Search, PostgreSQL, Puppeteer, memory, fetch, SQLite, sequential-thinking, and the Hermes-reviewed n8n bridge
 
 ### 🛡️ Production Safety
@@ -195,7 +195,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1600 |
+| Tests | ~500 | 1605 |
 
 ---
 
@@ -228,6 +228,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] HTTP API model/capability discovery + text Chat Completions + Responses SSE snapshots + cancellable Runs lifecycle events
 - [x] Dashboard admin API summaries + runtime writes
 - [x] Plugin system + HTTP templates
+- [x] Profile distributions with install/update/info and protected user data
 - [x] ratatui TUI with local slash commands, sanitized config browser, and gateway status panel
 - [x] Smart context compression (3-tier)
 - [x] Error classifier + credential pool
