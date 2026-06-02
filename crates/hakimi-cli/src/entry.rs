@@ -4414,6 +4414,9 @@ async fn build_agent(
             ))
             .await;
         tool_registry
+            .register(std::sync::Arc::new(hakimi_tools::BrowserCdpTool::new()))
+            .await;
+        tool_registry
             .register(std::sync::Arc::new(hakimi_tools::BrowserVisionTool::new(
                 browser_manager,
             )))

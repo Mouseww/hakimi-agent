@@ -14,6 +14,7 @@ const CHARS_PER_TOKEN: f64 = 4.0;
 
 const CORE_TOOL_NAMES: &[&str] = &[
     "browser_back",
+    "browser_cdp",
     "browser_click",
     "browser_console",
     "browser_dialog",

@@ -12,7 +12,7 @@ use chromiumoxide::cdp::browser_protocol::page::{
 };
 use chromiumoxide::page::Page;
 use futures::StreamExt;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, redact_sensitive_text};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::Mutex;
@@ -166,6 +166,12 @@ impl BrowserManager {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BrowserCdpEndpoint {
+    endpoint: String,
+    source: String,
+}
+
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
@@ -256,6 +262,105 @@ fn playwright_browser_executable() -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn browser_cdp_endpoint_from_args(args: &JsonValue) -> Option<BrowserCdpEndpoint> {
+    args.get("endpoint")
+        .and_then(|v| v.as_str())
+        .and_then(|value| browser_cdp_endpoint_from_value(value, "argument:endpoint"))
+}
+
+fn browser_cdp_endpoint_from_env() -> Option<BrowserCdpEndpoint> {
+    browser_cdp_endpoint_from_pairs(
+        [
+            (
+                "HAKIMI_BROWSER_CDP_URL",
+                std::env::var("HAKIMI_BROWSER_CDP_URL").ok(),
+            ),
+            ("BROWSER_CDP_URL", std::env::var("BROWSER_CDP_URL").ok()),
+        ]
+        .into_iter(),
+    )
+}
+
+fn browser_cdp_endpoint_from_pairs(
+    pairs: impl IntoIterator<Item = (&'static str, Option<String>)>,
+) -> Option<BrowserCdpEndpoint> {
+    for (name, value) in pairs {
+        if let Some(value) = value
+            && let Some(endpoint) = browser_cdp_endpoint_from_value(&value, name)
+        {
+            return Some(endpoint);
+        }
+    }
+    None
+}
+
+fn browser_cdp_endpoint_from_value(value: &str, source: &str) -> Option<BrowserCdpEndpoint> {
+    let endpoint = value.trim();
+    if endpoint.is_empty() {
+        return None;
+    }
+
+    Some(BrowserCdpEndpoint {
+        endpoint: endpoint.to_string(),
+        source: source.to_string(),
+    })
+}
+
+fn resolve_browser_cdp_endpoint(args: &JsonValue) -> Option<BrowserCdpEndpoint> {
+    browser_cdp_endpoint_from_args(args).or_else(browser_cdp_endpoint_from_env)
+}
+
+fn validate_browser_cdp_endpoint(endpoint: &str) -> std::result::Result<(), String> {
+    let lower = endpoint.trim().to_ascii_lowercase();
+    if lower.starts_with("ws://")
+        || lower.starts_with("wss://")
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+    {
+        Ok(())
+    } else {
+        Err("CDP endpoint must start with ws://, wss://, http://, or https://".to_string())
+    }
+}
+
+fn redact_browser_cdp_endpoint(endpoint: &str) -> String {
+    let without_query = if let Some((prefix, _)) = endpoint.split_once('?') {
+        format!("{prefix}?[REDACTED]")
+    } else {
+        endpoint.to_string()
+    };
+
+    let without_userinfo = if let Some(scheme_pos) = without_query.find("://") {
+        let authority_start = scheme_pos + 3;
+        let authority_end = without_query[authority_start..]
+            .find('/')
+            .map(|offset| authority_start + offset)
+            .unwrap_or(without_query.len());
+        let authority = &without_query[authority_start..authority_end];
+        if let Some(at_pos) = authority.rfind('@') {
+            format!(
+                "{}***@{}{}",
+                &without_query[..authority_start],
+                &authority[at_pos + 1..],
+                &without_query[authority_end..]
+            )
+        } else {
+            without_query
+        }
+    } else {
+        without_query
+    };
+
+    redact_sensitive_text(&without_userinfo)
+}
+
+fn browser_cdp_timeout_ms(args: &JsonValue) -> u64 {
+    args.get("timeout_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3_000)
+        .clamp(250, 30_000)
 }
 
 fn playwright_browser_search_roots() -> Vec<PathBuf> {
@@ -1940,12 +2045,293 @@ impl Tool for BrowserVisionTool {
 }
 
 // ---------------------------------------------------------------------------
+// browser_cdp
+// ---------------------------------------------------------------------------
+
+/// Inspect a configured Chrome DevTools Protocol endpoint.
+pub struct BrowserCdpTool;
+
+impl BrowserCdpTool {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for BrowserCdpTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Tool for BrowserCdpTool {
+    fn name(&self) -> &str {
+        "browser_cdp"
+    }
+
+    fn toolset(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Inspect a Chrome DevTools Protocol endpoint from HAKIMI_BROWSER_CDP_URL, BROWSER_CDP_URL, or an explicit endpoint. \
+         Use action='status' for readiness metadata or action='probe' to connect briefly and report browser version/target counts. \
+         Raw arbitrary CDP method dispatch is not exposed until the supervisor-backed browser backend lands."
+    }
+
+    fn emoji(&self) -> &str {
+        "\u{1f50c}"
+    }
+
+    fn schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["status", "probe"],
+                    "description": "status reports configured endpoint metadata without connecting. probe briefly connects and reads browser version/targets. Default: status."
+                },
+                "endpoint": {
+                    "type": "string",
+                    "description": "Optional ws://, wss://, http://, or https:// DevTools endpoint. Overrides HAKIMI_BROWSER_CDP_URL and BROWSER_CDP_URL."
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Connection/probe timeout in milliseconds, clamped to 250..30000. Default: 3000.",
+                    "minimum": 250,
+                    "maximum": 30000
+                }
+            }
+        })
+    }
+
+    fn check_available(&self) -> bool {
+        true
+    }
+
+    fn max_result_size(&self) -> Option<usize> {
+        Some(16 * 1024)
+    }
+
+    async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("status");
+        if action != "status" && action != "probe" {
+            return Err(HakimiError::Tool(format!(
+                "invalid browser_cdp action: {action}; expected status or probe"
+            )));
+        }
+
+        let resolved = resolve_browser_cdp_endpoint(args);
+        let Some(endpoint) = resolved else {
+            return Ok(json!({
+                "success": false,
+                "configured": false,
+                "action": action,
+                "error": "No CDP endpoint configured. Set HAKIMI_BROWSER_CDP_URL or BROWSER_CDP_URL, or pass endpoint explicitly.",
+                "dispatch_ready": false,
+                "raw_cdp_dispatch": false,
+                "next_step": "Start Chrome/Chromium with --remote-debugging-port or use a CDP-capable provider, then run browser_cdp with action='probe'."
+            })
+            .to_string());
+        };
+
+        let endpoint_display = redact_browser_cdp_endpoint(&endpoint.endpoint);
+        if let Err(error) = validate_browser_cdp_endpoint(&endpoint.endpoint) {
+            return Ok(json!({
+                "success": false,
+                "configured": true,
+                "action": action,
+                "source": endpoint.source,
+                "endpoint": endpoint_display,
+                "error": error,
+                "dispatch_ready": false,
+                "raw_cdp_dispatch": false
+            })
+            .to_string());
+        }
+
+        if action == "status" {
+            return Ok(json!({
+                "success": true,
+                "configured": true,
+                "action": "status",
+                "source": endpoint.source,
+                "endpoint": endpoint_display,
+                "dispatch_ready": false,
+                "raw_cdp_dispatch": false,
+                "probe_available": true,
+                "note": "Endpoint syntax is valid. Use action='probe' to verify live connectivity."
+            })
+            .to_string());
+        }
+
+        let timeout = std::time::Duration::from_millis(browser_cdp_timeout_ms(args));
+        let endpoint_url = endpoint.endpoint.clone();
+        let endpoint_source = endpoint.source.clone();
+        let endpoint_display_for_probe = endpoint_display.clone();
+        let probe = tokio::time::timeout(timeout, async {
+            let (mut browser, mut handler) = Browser::connect(endpoint_url).await.map_err(|e| {
+                HakimiError::Tool(format!(
+                    "failed to connect to CDP endpoint {}: {e}",
+                    endpoint_display_for_probe
+                ))
+            })?;
+            let handler_task = tokio::spawn(async move {
+                while let Some(event) = handler.next().await {
+                    if let Err(e) = event {
+                        warn!(error = %e, "browser CDP probe handler error");
+                        break;
+                    }
+                }
+            });
+
+            let version = match browser.version().await {
+                Ok(version) => version,
+                Err(e) => {
+                    handler_task.abort();
+                    return Err(HakimiError::Tool(format!(
+                        "CDP Browser.getVersion failed: {e}"
+                    )));
+                }
+            };
+            let targets = match browser.fetch_targets().await {
+                Ok(targets) => targets,
+                Err(e) => {
+                    handler_task.abort();
+                    return Err(HakimiError::Tool(format!(
+                        "CDP Target.getTargets failed: {e}"
+                    )));
+                }
+            };
+            handler_task.abort();
+
+            Ok::<JsonValue, HakimiError>(json!({
+                "success": true,
+                "configured": true,
+                "action": "probe",
+                "source": endpoint_source,
+                "endpoint": endpoint_display_for_probe,
+                "browser": version.product,
+                "protocol_version": version.protocol_version,
+                "user_agent": version.user_agent,
+                "target_count": targets.len(),
+                "page_target_count": targets.iter().filter(|target| target.r#type.as_str() == "page").count(),
+                "dispatch_ready": false,
+                "raw_cdp_dispatch": false,
+                "note": "CDP endpoint is reachable. This slice exposes a typed readiness probe; raw method dispatch remains pending a supervisor-backed backend."
+            }))
+        })
+        .await;
+
+        match probe {
+            Ok(Ok(payload)) => Ok(payload.to_string()),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Ok(json!({
+                "success": false,
+                "configured": true,
+                "action": "probe",
+                "source": endpoint.source,
+                "endpoint": endpoint_display,
+                "error": format!("CDP probe timed out after {} ms", timeout.as_millis()),
+                "dispatch_ready": false,
+                "raw_cdp_dispatch": false
+            })
+            .to_string()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_browser_cdp_metadata() {
+        let tool = BrowserCdpTool::new();
+        assert_eq!(tool.name(), "browser_cdp");
+        assert_eq!(tool.toolset(), "browser");
+        assert_eq!(tool.emoji(), "\u{1f50c}");
+        assert!(tool.description().contains("CDP"));
+        assert!(tool.check_available());
+    }
+
+    #[test]
+    fn test_browser_cdp_schema() {
+        let tool = BrowserCdpTool::new();
+        let schema = tool.schema();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["action"].is_object());
+        assert!(schema["properties"]["endpoint"].is_object());
+        assert!(schema["properties"]["timeout_ms"].is_object());
+        assert!(schema.get("required").is_none());
+    }
+
+    #[test]
+    fn test_browser_cdp_endpoint_from_explicit_arg() {
+        let args = json!({
+            "endpoint": "  ws://127.0.0.1:9222/devtools/browser/session  "
+        });
+
+        let endpoint = browser_cdp_endpoint_from_args(&args).unwrap();
+        assert_eq!(
+            endpoint.endpoint,
+            "ws://127.0.0.1:9222/devtools/browser/session"
+        );
+        assert_eq!(endpoint.source, "argument:endpoint");
+    }
+
+    #[test]
+    fn test_browser_cdp_endpoint_pair_precedence() {
+        let endpoint = browser_cdp_endpoint_from_pairs([
+            ("HAKIMI_BROWSER_CDP_URL", Some("".to_string())),
+            (
+                "BROWSER_CDP_URL",
+                Some("wss://example.com/devtools".to_string()),
+            ),
+        ])
+        .unwrap();
+
+        assert_eq!(endpoint.endpoint, "wss://example.com/devtools");
+        assert_eq!(endpoint.source, "BROWSER_CDP_URL");
+    }
+
+    #[test]
+    fn test_browser_cdp_endpoint_validation() {
+        assert!(validate_browser_cdp_endpoint("ws://127.0.0.1:9222/devtools").is_ok());
+        assert!(validate_browser_cdp_endpoint("wss://browserbase.example/session").is_ok());
+        assert!(validate_browser_cdp_endpoint("http://127.0.0.1:9222").is_ok());
+        assert!(validate_browser_cdp_endpoint("https://cdp.example/json/version").is_ok());
+        assert!(validate_browser_cdp_endpoint("file:///tmp/browser").is_err());
+    }
+
+    #[test]
+    fn test_browser_cdp_redacts_query_string() {
+        let redacted =
+            redact_browser_cdp_endpoint("wss://cdp.example/devtools/browser/abc?token=secret");
+
+        assert_eq!(
+            redacted,
+            "wss://cdp.example/devtools/browser/abc?[REDACTED]"
+        );
+        assert!(!redacted.contains("secret"));
+    }
+
+    #[test]
+    fn test_browser_cdp_redacts_userinfo() {
+        let redacted =
+            redact_browser_cdp_endpoint("wss://user:secret@cdp.example/devtools/browser/abc");
+
+        assert_eq!(redacted, "wss://***@cdp.example/devtools/browser/abc");
+        assert!(!redacted.contains("secret"));
+    }
 
     #[test]
     fn test_browser_navigate_metadata() {
@@ -2304,6 +2690,7 @@ mod tests {
             BrowserVisionTool::new(mgr.clone()).max_result_size(),
             Some(10 * 1024 * 1024)
         );
+        assert_eq!(BrowserCdpTool::new().max_result_size(), Some(16 * 1024));
     }
 
     #[test]
@@ -2321,5 +2708,6 @@ mod tests {
         assert_eq!(BrowserDialogTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserScreenshotTool::new(mgr.clone()).toolset(), "browser");
         assert_eq!(BrowserVisionTool::new(mgr).toolset(), "browser");
+        assert_eq!(BrowserCdpTool::new().toolset(), "browser");
     }
 }
