@@ -223,6 +223,32 @@ pub struct KanbanSwarmCreated {
     pub blackboard_prefix: &'static str,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct KanbanDashboardTaskCreate {
+    pub title: String,
+    pub body: Option<String>,
+    pub assignee: Option<String>,
+    pub status: Option<String>,
+    pub blocked_reason: Option<String>,
+    pub priority: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct KanbanDashboardTaskUpdate {
+    pub status: Option<String>,
+    pub assignee: Option<String>,
+    pub blocked_reason: Option<String>,
+    pub summary: Option<String>,
+    pub comment: Option<String>,
+    pub author: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct KanbanDashboardCommentCreate {
+    pub body: String,
+    pub author: Option<String>,
+}
+
 pub struct KanbanStore {
     path: PathBuf,
 }
@@ -452,6 +478,21 @@ impl KanbanStore {
         }
         self.update_status(task_id, next, None, None)?;
         self.get_task_required(task_id)
+    }
+
+    fn set_task_status(&self, task_id: &str, status: &str) -> Result<KanbanTask> {
+        validate_status(status)?;
+        match status {
+            "blocked" => Err(HakimiError::Tool(
+                "blocked dashboard updates require blocked_reason".into(),
+            )),
+            "done" => self.complete_task(task_id, None),
+            "ready" | "todo" | "triage" | "running" | "review" | "archived" => {
+                self.update_status(task_id, status, None, None)?;
+                self.get_task_required(task_id)
+            }
+            _ => unreachable!("validate_status accepts only known statuses"),
+        }
     }
 
     fn heartbeat_task(&self, task_id: &str, note: Option<&str>) -> Result<KanbanTask> {
@@ -2072,7 +2113,7 @@ pub fn kanban_dashboard_snapshot(
         "tasks": tasks,
         "diagnostics": diagnostics,
         "diagnostic_count": diagnostics.len(),
-        "write_operations": false
+        "write_operations": true
     }))
 }
 
@@ -2086,18 +2127,180 @@ pub fn kanban_dashboard_task(
     let board_slug = board.unwrap_or(current_board_slug()?);
     let current = current_board_slug()?;
     let event_limit = event_limit.clamp(1, MAX_LIMIT);
-    let task = store.get_task_required(task_id)?;
 
+    kanban_dashboard_task_payload(&store, &board_slug, &current, task_id, event_limit, true)
+}
+
+pub fn kanban_dashboard_create_task(
+    board: Option<&str>,
+    input: KanbanDashboardTaskCreate,
+    event_limit: usize,
+) -> Result<JsonValue> {
+    let board = dashboard_board_slug(board)?;
+    let store = KanbanStore::for_board(board.as_deref())?;
+    let board_slug = board.unwrap_or(current_board_slug()?);
+    let current = current_board_slug()?;
+    let status = input
+        .status
+        .as_deref()
+        .and_then(non_empty_str)
+        .unwrap_or("todo")
+        .to_string();
+    validate_status(&status)?;
+    let blocked_reason = if status == "blocked" {
+        Some(
+            input
+                .blocked_reason
+                .as_deref()
+                .and_then(non_empty_str)
+                .ok_or_else(|| {
+                    HakimiError::Tool("blocked dashboard tasks require blocked_reason".into())
+                })?
+                .to_string(),
+        )
+    } else {
+        None
+    };
+    let task = store.create_task(CreateTask {
+        title: input.title,
+        body: input.body,
+        assignee: input.assignee,
+        status,
+        priority: input.priority.unwrap_or(0),
+    })?;
+    if let Some(reason) = blocked_reason.as_deref() {
+        store.block_task(&task.id, reason)?;
+    }
+    kanban_dashboard_task_payload(
+        &store,
+        &board_slug,
+        &current,
+        &task.id,
+        event_limit.clamp(1, MAX_LIMIT),
+        true,
+    )
+}
+
+pub fn kanban_dashboard_update_task(
+    board: Option<&str>,
+    task_id: &str,
+    input: KanbanDashboardTaskUpdate,
+    event_limit: usize,
+) -> Result<JsonValue> {
+    let board = dashboard_board_slug(board)?;
+    let store = KanbanStore::for_board(board.as_deref())?;
+    let board_slug = board.unwrap_or(current_board_slug()?);
+    let current = current_board_slug()?;
+    let status = input
+        .status
+        .as_deref()
+        .and_then(non_empty_str)
+        .map(str::to_string);
+    if let Some(status) = status.as_deref() {
+        validate_status(status)?;
+        if status == "blocked"
+            && input
+                .blocked_reason
+                .as_deref()
+                .and_then(non_empty_str)
+                .is_none()
+        {
+            return Err(HakimiError::Tool(
+                "blocked dashboard updates require blocked_reason".into(),
+            ));
+        }
+    }
+
+    if let Some(assignee) = input.assignee.as_deref() {
+        store.assign_task(task_id, Some(assignee), Some("dashboard"))?;
+    }
+    if let Some(status) = status.as_deref() {
+        match status {
+            "blocked" => {
+                let reason = input
+                    .blocked_reason
+                    .as_deref()
+                    .and_then(non_empty_str)
+                    .ok_or_else(|| {
+                        HakimiError::Tool("blocked dashboard updates require blocked_reason".into())
+                    })?;
+                store.block_task(task_id, reason)?;
+            }
+            "done" => {
+                store.complete_task(task_id, input.summary.as_deref())?;
+            }
+            "ready" => {
+                store.unblock_task(task_id, Some("ready"))?;
+            }
+            _ => {
+                store.set_task_status(task_id, status)?;
+            }
+        }
+    }
+    if let Some(comment) = input.comment.as_deref().and_then(non_empty_str) {
+        let author = input
+            .author
+            .as_deref()
+            .and_then(non_empty_str)
+            .or(Some("dashboard"));
+        store.add_comment(task_id, comment, author)?;
+    }
+
+    kanban_dashboard_task_payload(
+        &store,
+        &board_slug,
+        &current,
+        task_id,
+        event_limit.clamp(1, MAX_LIMIT),
+        true,
+    )
+}
+
+pub fn kanban_dashboard_add_comment(
+    board: Option<&str>,
+    task_id: &str,
+    input: KanbanDashboardCommentCreate,
+    event_limit: usize,
+) -> Result<JsonValue> {
+    let board = dashboard_board_slug(board)?;
+    let store = KanbanStore::for_board(board.as_deref())?;
+    let board_slug = board.unwrap_or(current_board_slug()?);
+    let current = current_board_slug()?;
+    let author = input
+        .author
+        .as_deref()
+        .and_then(non_empty_str)
+        .or(Some("dashboard"));
+    store.add_comment(task_id, &input.body, author)?;
+    kanban_dashboard_task_payload(
+        &store,
+        &board_slug,
+        &current,
+        task_id,
+        event_limit.clamp(1, MAX_LIMIT),
+        true,
+    )
+}
+
+fn kanban_dashboard_task_payload(
+    store: &KanbanStore,
+    board_slug: &str,
+    current: &str,
+    task_id: &str,
+    event_limit: usize,
+    write_operations: bool,
+) -> Result<JsonValue> {
+    let task = store.get_task_required(task_id)?;
     Ok(json!({
         "object": "hakimi.dashboard.kanban.task",
-        "board": board_summary(&board_slug, &current)?,
+        "board": board_summary(board_slug, current)?,
         "task": task,
         "comments": store.comments(task_id)?,
         "parents": store.parents(task_id)?,
         "children": store.children(task_id)?,
         "events": store.events(task_id, event_limit)?,
         "diagnostics": store.diagnostics(Some(task_id))?,
-        "write_operations": false
+        "write_operations": write_operations
     }))
 }
 

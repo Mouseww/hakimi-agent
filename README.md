@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.226-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.227-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1711-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1712-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 | Idle memory | ~150MB | ~15MB |
 | Async model | asyncio + GIL | tokio native async |
 | Tool safety | Runtime crashes | Compile-time guarantees |
-| Tests | ~500 | 1711 |
+| Tests | ~500 | 1712 |
 
 **Not a wrapper. Not a demo. A real production system:**
 - 20+ error types auto-classified with recovery strategies
@@ -90,7 +90,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - **Code**: Python/JS/Bash execution with sandbox
 - **Media**: vision analysis, video analysis, TTS, transcription with silence-hallucination filtering and oversized WAV chunking
 - **Memory**: persistent memory + FTS5 full-text search + `hakimi knowledge` / TUI `/knowledge` / gateway `/knowledge` graph operations
-- **Productivity**: todo, Kanban boards with profile routing, worker logs, event trails, diagnostics, notification subscriptions, swarm graph creation, dashboard read snapshots, cron scheduler
+- **Productivity**: todo, Kanban boards with profile routing, worker logs, event trails, diagnostics, notification subscriptions, swarm graph creation, dashboard read/write management, cron scheduler
 - **Meta**: sub-agent delegation, Mixture-of-Agents reasoning, skills system, MCP plugins
 - **Evaluation**: Hermes-compatible ShareGPT JSONL trajectory saving for completed and failed turns
 
@@ -108,7 +108,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - MCP (Model Context Protocol) client — stdio / HTTP / SSE transports, CLI/gateway catalog search and config snippets, and stdio server-initiated sampling with tool schema forwarding plus `tool_use` handoff
 - HTTP plugin system with YAML templates
 - HTTP API discovery — OpenAI-compatible `/v1/models`, `/v1/capabilities`, `/v1/skills`, `/v1/toolsets`, text `/v1/chat/completions` with completed SSE snapshots for `stream=true`, `/v1/responses` with SQLite-backed `previous_response_id` chaining plus completed SSE snapshots, pollable and cancellable `/v1/runs` with live lifecycle SSE events, and session lifecycle/messages/search discovery for external UI feature detection
-- Dashboard admin API — `/api/status`, `/api/sessions` create/update/delete/fork plus message/search inspection, `/api/mcp/servers`, `/api/credentials/pool`, `/api/webhooks`, and read-only Kanban `/api/kanban` board/task snapshots expose redacted operational state plus runtime-scoped admin writes for WebUI/admin panels
+- Dashboard admin API — `/api/status`, `/api/sessions` create/update/delete/fork plus message/search inspection, `/api/mcp/servers`, `/api/credentials/pool`, `/api/webhooks`, and Kanban `/api/kanban` board/task read-write management expose redacted operational state plus runtime-scoped admin writes for WebUI/admin panels
 - Skills Hub — install community skills with `/skills install`
 - Static i18n foundation — `display.language`, `HAKIMI_LANGUAGE` / `HERMES_LANGUAGE`, Hermes-compatible language aliases, YAML catalog directory loading, English fallback, and named placeholders for static user-facing messages
 - CLI Skin Engine — `hakimi skin list|inspect|set|path` plus gateway `/skin` discover built-in and `~/.hakimi/skins/*.yaml` themes, inherit missing values from `default`, persist `display.skin`, apply selected branding/colors/logo/hero to the CLI startup banner, and drive TUI thinking spinner faces/verbs/wings plus status, session, selection, completion, help, input, response, tool-prefix, tool emoji labels, running-tool progress, and tool-panel colors
@@ -199,7 +199,7 @@ Response + Memory + Stats
 | Intent detection | None | 10-category classifier |
 | Role adaptation | None | 8 roles auto-detected |
 | Conversation model | Flat list | Decision tree |
-| Tests | ~500 | 1711 |
+| Tests | ~500 | 1712 |
 
 ---
 
@@ -230,7 +230,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Gateway target directory + send_message channel resolution
 - [x] MCP client + CLI/gateway server catalog
 - [x] HTTP API model/capability discovery + text Chat Completions/Responses SSE snapshots + cancellable Runs with live lifecycle events
-- [x] Dashboard admin API summaries + runtime writes + Kanban read snapshots
+- [x] Dashboard admin API summaries + runtime writes + Kanban read/write management
 - [x] Plugin system + HTTP templates
 - [x] Profile distributions with install/update/info and protected user data
 - [x] CLI skin engine with built-in/user YAML themes, `display.skin` persistence, startup banner theming, and TUI spinner, status, completion, help, tool emoji/progress, and surface theming
@@ -246,7 +246,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Meta-skill auto-extraction
 - [x] Browser automation (Chromium + Playwright cache discovery + CDP readiness probe + cloud-provider readiness status + provider CDP endpoint routing)
 - [x] Computer Use readiness surface
-- [x] Kanban task boards + notification cursors + swarm graphs + dashboard read snapshots
+- [x] Kanban task boards + notification cursors + swarm graphs + dashboard read/write management
 - [x] Gateway voice-response mode
 - [x] TUI voice readiness and media-tool config parity
 - [x] Voice environment diagnostics and STT silence-hallucination filtering

@@ -26,6 +26,9 @@
 //! - `GET  /kanban`          — Dashboard Kanban board snapshot
 //! - `GET  /kanban/boards`   — Dashboard Kanban board inventory
 //! - `GET  /kanban/tasks/:id` — Dashboard Kanban task detail
+//! - `POST /kanban/tasks`    — Create a dashboard Kanban task
+//! - `PATCH /kanban/tasks/:id` — Update a dashboard Kanban task status/assignee
+//! - `POST /kanban/tasks/:id/comments` — Append a dashboard Kanban task comment
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
 //! - `GET  /v1/skills`       — List loaded runtime skills without skill bodies
@@ -1109,7 +1112,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/webhooks", post(update_webhook))
         .route("/kanban", get(kanban_dashboard))
         .route("/kanban/boards", get(kanban_boards))
-        .route("/kanban/tasks/{id}", get(kanban_task_detail));
+        .route("/kanban/tasks", post(kanban_task_create))
+        .route("/kanban/tasks/{id}", get(kanban_task_detail))
+        .route("/kanban/tasks/{id}", patch(kanban_task_update))
+        .route("/kanban/tasks/{id}/comments", post(kanban_task_comment));
 
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
@@ -1230,7 +1236,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
         "webhooks_read": true,
         "webhooks_write": true,
         "kanban_read": true,
-        "kanban_write": false,
+        "kanban_write": true,
         "write_operations": true,
         "persistence": "runtime"
     });
@@ -1298,6 +1304,13 @@ fn capability_endpoints() -> BTreeMap<&'static str, JsonValue> {
         ("kanban", "GET", "/api/kanban"),
         ("kanban_boards", "GET", "/api/kanban/boards"),
         ("kanban_task", "GET", "/api/kanban/tasks/{id}"),
+        ("kanban_task_create", "POST", "/api/kanban/tasks"),
+        ("kanban_task_update", "PATCH", "/api/kanban/tasks/{id}"),
+        (
+            "kanban_task_comment",
+            "POST",
+            "/api/kanban/tasks/{id}/comments",
+        ),
     ]
     .into_iter()
     .map(|(name, method, path)| (name, api_endpoint(method, path)))
@@ -2303,6 +2316,52 @@ async fn kanban_task_detail(
     hakimi_tools::kanban_dashboard_task(
         query.board.as_deref(),
         id.trim(),
+        bounded_limit(query.event_limit, 50, 200),
+    )
+    .map(Json)
+    .map_err(kanban_dashboard_error)
+}
+
+/// POST /kanban/tasks — dashboard-safe Kanban task creation.
+async fn kanban_task_create(
+    Query(query): Query<KanbanTaskDashboardQuery>,
+    Json(req): Json<hakimi_tools::KanbanDashboardTaskCreate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    hakimi_tools::kanban_dashboard_create_task(
+        query.board.as_deref(),
+        req,
+        bounded_limit(query.event_limit, 50, 200),
+    )
+    .map(Json)
+    .map_err(kanban_dashboard_error)
+}
+
+/// PATCH /kanban/tasks/:id — dashboard-safe Kanban task status/assignee update.
+async fn kanban_task_update(
+    Path(id): Path<String>,
+    Query(query): Query<KanbanTaskDashboardQuery>,
+    Json(req): Json<hakimi_tools::KanbanDashboardTaskUpdate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    hakimi_tools::kanban_dashboard_update_task(
+        query.board.as_deref(),
+        id.trim(),
+        req,
+        bounded_limit(query.event_limit, 50, 200),
+    )
+    .map(Json)
+    .map_err(kanban_dashboard_error)
+}
+
+/// POST /kanban/tasks/:id/comments — dashboard-safe Kanban task comment append.
+async fn kanban_task_comment(
+    Path(id): Path<String>,
+    Query(query): Query<KanbanTaskDashboardQuery>,
+    Json(req): Json<hakimi_tools::KanbanDashboardCommentCreate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    hakimi_tools::kanban_dashboard_add_comment(
+        query.board.as_deref(),
+        id.trim(),
+        req,
         bounded_limit(query.event_limit, 50, 200),
     )
     .map(Json)
@@ -3939,7 +3998,7 @@ mod tests {
         assert_eq!(capabilities["dashboard_admin"]["status"], true);
         assert_eq!(capabilities["dashboard_admin"]["mcp_servers_read"], true);
         assert_eq!(capabilities["dashboard_admin"]["kanban_read"], true);
-        assert_eq!(capabilities["dashboard_admin"]["kanban_write"], false);
+        assert_eq!(capabilities["dashboard_admin"]["kanban_write"], true);
         assert_eq!(
             capabilities["endpoints"]["dashboard_status"],
             json!({"method": "GET", "path": "/api/status"})
@@ -3964,6 +4023,18 @@ mod tests {
         assert_eq!(
             capabilities["endpoints"]["kanban_task"],
             json!({"method": "GET", "path": "/api/kanban/tasks/{id}"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["kanban_task_create"],
+            json!({"method": "POST", "path": "/api/kanban/tasks"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["kanban_task_update"],
+            json!({"method": "PATCH", "path": "/api/kanban/tasks/{id}"})
+        );
+        assert_eq!(
+            capabilities["endpoints"]["kanban_task_comment"],
+            json!({"method": "POST", "path": "/api/kanban/tasks/{id}/comments"})
         );
     }
 
@@ -5028,7 +5099,7 @@ mod tests {
         assert_eq!(snapshot["count"], 1);
         assert_eq!(snapshot["tasks"][0]["id"], task_id);
         assert_eq!(snapshot["tasks"][0]["title"], "Dashboard task");
-        assert_eq!(snapshot["write_operations"], false);
+        assert_eq!(snapshot["write_operations"], true);
 
         let req = Request::builder()
             .uri("/api/kanban/boards")
@@ -5060,7 +5131,151 @@ mod tests {
             "Reviewed from dashboard test"
         );
         assert!(detail["events"].as_array().unwrap().len() >= 2);
-        assert_eq!(detail["write_operations"], false);
+        assert_eq!(detail["write_operations"], true);
+
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_file(std::path::PathBuf::from(format!(
+            "{}-wal",
+            db_path.display()
+        )));
+        let _ = std::fs::remove_file(std::path::PathBuf::from(format!(
+            "{}-shm",
+            db_path.display()
+        )));
+        let _ = std::fs::remove_dir_all(&home_path);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_kanban_write_api_creates_updates_and_comments() {
+        let _lock = KANBAN_ENV_LOCK.lock().await;
+        let db_path = std::env::temp_dir().join(format!(
+            "hakimi-kanban-dashboard-write-{}-{}.db",
+            std::process::id(),
+            unix_timestamp_millis()
+        ));
+        let home_path = std::env::temp_dir().join(format!(
+            "hakimi-kanban-home-write-{}-{}",
+            std::process::id(),
+            unix_timestamp_millis()
+        ));
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&home_path);
+
+        let _db = EnvVarGuard::set("HAKIMI_KANBAN_DB", db_path.as_os_str());
+        let _home = EnvVarGuard::set("HAKIMI_KANBAN_HOME", home_path.as_os_str());
+        let _hermes_db = EnvVarGuard::remove("HERMES_KANBAN_DB");
+        let _hermes_home = EnvVarGuard::remove("HERMES_KANBAN_HOME");
+        let _board = EnvVarGuard::remove("HAKIMI_KANBAN_BOARD");
+        let _hermes_board = EnvVarGuard::remove("HERMES_KANBAN_BOARD");
+
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/kanban/tasks?event_limit=10")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "title": "Dashboard write task",
+                    "body": "Created from the dashboard write API",
+                    "assignee": "operator",
+                    "priority": 3
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(created["object"], "hakimi.dashboard.kanban.task");
+        assert_eq!(created["task"]["title"], "Dashboard write task");
+        assert_eq!(created["task"]["assignee"], "operator");
+        assert_eq!(created["task"]["priority"], 3);
+        assert_eq!(created["write_operations"], true);
+        let task_id = created["task"]["id"].as_str().unwrap().to_string();
+
+        let req = Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/kanban/tasks/{task_id}?event_limit=10"))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "status": "blocked",
+                    "blocked_reason": "Need operator review",
+                    "comment": "Blocked from dashboard",
+                    "author": "dashboard-reviewer"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let blocked: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(blocked["task"]["status"], "blocked");
+        assert_eq!(blocked["task"]["blocked_reason"], "Need operator review");
+        assert!(
+            blocked["comments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|comment| comment["body"] == "Blocked from dashboard")
+        );
+        assert!(
+            blocked["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["kind"] == "blocked")
+        );
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/api/kanban/tasks/{task_id}/comments"))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "body": "Follow-up from dashboard",
+                    "author": "ops"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let commented: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            commented["comments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|comment| comment["body"] == "Follow-up from dashboard"
+                    && comment["author"] == "ops")
+        );
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/kanban/tasks")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "title": "Invalid blocked task",
+                    "status": "blocked"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
 
         let _ = std::fs::remove_file(&db_path);
         let _ = std::fs::remove_file(std::path::PathBuf::from(format!(
