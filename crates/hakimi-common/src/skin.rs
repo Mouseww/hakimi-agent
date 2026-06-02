@@ -12,6 +12,7 @@ pub struct SkinRuntime {
     pub name: String,
     pub colors: BTreeMap<String, String>,
     pub branding: BTreeMap<String, String>,
+    pub tool_prefix: String,
     pub spinner: SkinSpinner,
 }
 
@@ -112,11 +113,17 @@ pub fn load_skin_runtime(name: &str, home: &Path) -> Result<SkinRuntime> {
             branding.insert(key.trim().to_string(), value.to_string());
         }
     }
+    let tool_prefix = raw
+        .tool_prefix
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(default.tool_prefix);
 
     Ok(SkinRuntime {
         name,
         colors,
         branding,
+        tool_prefix,
         spinner: raw.spinner.into_runtime_spinner(),
     })
 }
@@ -141,9 +148,22 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("status_bar_bg".to_string(), "#141428".to_string()),
                 ("status_bar_text".to_string(), "#6c6c6c".to_string()),
                 ("status_bar_strong".to_string(), "#87af87".to_string()),
+                ("status_bar_dim".to_string(), "#6c6c6c".to_string()),
+                ("status_bar_good".to_string(), "#87af87".to_string()),
+                ("status_bar_warn".to_string(), "#ffff00".to_string()),
+                ("status_bar_bad".to_string(), "#ffaf00".to_string()),
+                ("status_bar_critical".to_string(), "#ff0000".to_string()),
+                ("session_label".to_string(), "#87af87".to_string()),
+                ("session_border".to_string(), "#6c6c6c".to_string()),
+                ("selection_bg".to_string(), "#1e1e32".to_string()),
                 ("completion_menu_bg".to_string(), "#19192d".to_string()),
                 (
                     "completion_menu_current_bg".to_string(),
+                    "#1e1e32".to_string(),
+                ),
+                ("completion_menu_meta_bg".to_string(), "#19192d".to_string()),
+                (
+                    "completion_menu_meta_current_bg".to_string(),
                     "#1e1e32".to_string(),
                 ),
             ]),
@@ -151,7 +171,9 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("agent_name".to_string(), "Hakimi Agent".to_string()),
                 ("prompt_symbol".to_string(), "⟩".to_string()),
                 ("response_label".to_string(), " AI ".to_string()),
+                ("help_header".to_string(), "Available Commands".to_string()),
             ]),
+            tool_prefix: "┊".to_string(),
             spinner: SkinSpinner {
                 frames: DEFAULT_SPINNER_FRAMES
                     .iter()
@@ -179,9 +201,22 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("status_bar_bg".to_string(), "#2a1212".to_string()),
                 ("status_bar_text".to_string(), "#f1e6cf".to_string()),
                 ("status_bar_strong".to_string(), "#c7a96b".to_string()),
+                ("status_bar_dim".to_string(), "#6e584b".to_string()),
+                ("status_bar_good".to_string(), "#7bc96f".to_string()),
+                ("status_bar_warn".to_string(), "#c7a96b".to_string()),
+                ("status_bar_bad".to_string(), "#dd4a3a".to_string()),
+                ("status_bar_critical".to_string(), "#ef5350".to_string()),
+                ("session_label".to_string(), "#c7a96b".to_string()),
+                ("session_border".to_string(), "#6e584b".to_string()),
+                ("selection_bg".to_string(), "#4a1a1a".to_string()),
                 ("completion_menu_bg".to_string(), "#2a1212".to_string()),
                 (
                     "completion_menu_current_bg".to_string(),
+                    "#4a1a1a".to_string(),
+                ),
+                ("completion_menu_meta_bg".to_string(), "#2a1212".to_string()),
+                (
+                    "completion_menu_meta_current_bg".to_string(),
                     "#4a1a1a".to_string(),
                 ),
             ]),
@@ -189,7 +224,9 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("agent_name".to_string(), "Ares Agent".to_string()),
                 ("prompt_symbol".to_string(), "⚔".to_string()),
                 ("response_label".to_string(), " ⚔ Ares ".to_string()),
+                ("help_header".to_string(), "Ares Commands".to_string()),
             ]),
+            tool_prefix: "╎".to_string(),
             spinner: SkinSpinner {
                 frames: ["(⚔)", "(⛨)", "(▲)", "(⌁)", "(<>)"]
                     .into_iter()
@@ -232,12 +269,22 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("status_bar_bg".to_string(), "#101010".to_string()),
                 ("status_bar_text".to_string(), "#d0d0d0".to_string()),
                 ("status_bar_strong".to_string(), "#ffffff".to_string()),
+                ("status_bar_dim".to_string(), "#808080".to_string()),
+                ("status_bar_good".to_string(), "#d0d0d0".to_string()),
+                ("status_bar_warn".to_string(), "#ffffff".to_string()),
+                ("status_bar_bad".to_string(), "#d0d0d0".to_string()),
+                ("status_bar_critical".to_string(), "#ffffff".to_string()),
+                ("session_label".to_string(), "#d0d0d0".to_string()),
+                ("session_border".to_string(), "#808080".to_string()),
+                ("selection_bg".to_string(), "#303030".to_string()),
             ]),
             branding: BTreeMap::from([
                 ("agent_name".to_string(), "Hakimi Agent".to_string()),
                 ("prompt_symbol".to_string(), ">".to_string()),
                 ("response_label".to_string(), " AI ".to_string()),
+                ("help_header".to_string(), "Available Commands".to_string()),
             ]),
+            tool_prefix: "┊".to_string(),
             spinner: SkinSpinner {
                 frames: ["-", "\\", "|", "/"]
                     .into_iter()
@@ -262,12 +309,22 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("status_bar_bg".to_string(), "#101a24".to_string()),
                 ("status_bar_text".to_string(), "#d7e5f5".to_string()),
                 ("status_bar_strong".to_string(), "#87afd7".to_string()),
+                ("status_bar_dim".to_string(), "#6c6c6c".to_string()),
+                ("status_bar_good".to_string(), "#63d0a6".to_string()),
+                ("status_bar_warn".to_string(), "#87afd7".to_string()),
+                ("status_bar_bad".to_string(), "#5fd7ff".to_string()),
+                ("status_bar_critical".to_string(), "#ef5350".to_string()),
+                ("session_label".to_string(), "#87afd7".to_string()),
+                ("session_border".to_string(), "#6c6c6c".to_string()),
+                ("selection_bg".to_string(), "#1e2a38".to_string()),
             ]),
             branding: BTreeMap::from([
                 ("agent_name".to_string(), "Hakimi Agent".to_string()),
                 ("prompt_symbol".to_string(), "›".to_string()),
                 ("response_label".to_string(), " AI ".to_string()),
+                ("help_header".to_string(), "Available Commands".to_string()),
             ]),
+            tool_prefix: "┊".to_string(),
             spinner: SkinSpinner {
                 frames: ["◐", "◓", "◑", "◒"]
                     .into_iter()
@@ -292,12 +349,22 @@ fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
                 ("status_bar_bg".to_string(), "#e5e7eb".to_string()),
                 ("status_bar_text".to_string(), "#1f2937".to_string()),
                 ("status_bar_strong".to_string(), "#1f3f6f".to_string()),
+                ("status_bar_dim".to_string(), "#6c6c6c".to_string()),
+                ("status_bar_good".to_string(), "#2f7d5f".to_string()),
+                ("status_bar_warn".to_string(), "#9a6a00".to_string()),
+                ("status_bar_bad".to_string(), "#b45309".to_string()),
+                ("status_bar_critical".to_string(), "#b91c1c".to_string()),
+                ("session_label".to_string(), "#1f3f6f".to_string()),
+                ("session_border".to_string(), "#6c6c6c".to_string()),
+                ("selection_bg".to_string(), "#bfdbfe".to_string()),
             ]),
             branding: BTreeMap::from([
                 ("agent_name".to_string(), "Hakimi Agent".to_string()),
                 ("prompt_symbol".to_string(), "›".to_string()),
                 ("response_label".to_string(), " AI ".to_string()),
+                ("help_header".to_string(), "Available Commands".to_string()),
             ]),
+            tool_prefix: "│".to_string(),
             spinner: SkinSpinner {
                 frames: ["·", "•", "●", "•"]
                     .into_iter()
@@ -320,6 +387,8 @@ struct RawSkinRuntime {
     colors: BTreeMap<String, String>,
     #[serde(default)]
     branding: BTreeMap<String, String>,
+    #[serde(default)]
+    tool_prefix: Option<String>,
     #[serde(default)]
     spinner: RawSkinSpinner,
 }
@@ -458,6 +527,7 @@ spinner:
         assert_eq!(skin.animation_len(), 2);
         assert_eq!(skin.color("banner_title"), Some("#87af87"));
         assert_eq!(skin.branding("agent_name"), Some("Hakimi Agent"));
+        assert_eq!(skin.tool_prefix, "┊");
         assert_eq!(skin.spinner_frame(0), "<(g)>");
         assert_eq!(skin.thinking_label(1), "<(*)> checking snow");
 
@@ -514,7 +584,27 @@ branding:
         assert_eq!(skin.color("response_border"), Some("#445566"));
         assert_eq!(skin.branding("agent_name"), Some("Glacier Agent"));
         assert_eq!(skin.branding("prompt_symbol"), Some("=>"));
+        assert_eq!(skin.color("session_label"), Some("#87af87"));
+        assert_eq!(skin.branding("help_header"), Some("Available Commands"));
         assert_eq!(skin.color("banner_title"), Some("#87af87"));
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn runtime_skin_reads_hermes_tool_prefix() {
+        let home = temp_home();
+        write_user_skin(
+            &home,
+            "glacier",
+            r#"
+name: glacier
+tool_prefix: ">>"
+"#,
+        );
+
+        let skin = load_skin_runtime("glacier", &home).unwrap();
+
+        assert_eq!(skin.tool_prefix, ">>");
         let _ = fs::remove_dir_all(home);
     }
 }

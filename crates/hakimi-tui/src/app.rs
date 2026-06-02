@@ -2216,9 +2216,14 @@ impl App {
     fn handle_slash_command(&mut self, cmd: &str) -> bool {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
-                self.messages.push(ChatMessage::system(
-                    "Commands:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space.",
-                ));
+                let header = self
+                    .skin_runtime
+                    .branding("help_header")
+                    .unwrap_or("Commands")
+                    .trim();
+                self.messages.push(ChatMessage::system(format!(
+                    "{header}:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space."
+                )));
             }
             Some(TuiCommand::Config(arg)) => {
                 let output = render_tui_config_command(arg.as_deref(), &self.config_summary);
@@ -3207,6 +3212,22 @@ mod tests {
         assert!(app.messages[1].content.contains("/knowledge"));
         assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/voice"));
+    }
+
+    #[test]
+    fn slash_help_uses_skin_help_header() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.skin_runtime
+            .branding
+            .insert("help_header".to_string(), "Ares Commands".to_string());
+
+        for c in "/help".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(app.messages[1].content.starts_with("Ares Commands:"));
+        assert!(app.messages[1].content.contains("/help"));
     }
 
     #[test]

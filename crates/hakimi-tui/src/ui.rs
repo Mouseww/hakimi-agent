@@ -25,6 +25,7 @@ const COLOR_ACCENT: Color = Color::Cyan;
 struct TuiPalette {
     accent: Color,
     label: Color,
+    prompt: Color,
     ok: Color,
     error: Color,
     warn: Color,
@@ -34,18 +35,30 @@ struct TuiPalette {
     panel_bg: Color,
     status_bg: Color,
     status_text: Color,
+    status_strong: Color,
+    status_dim: Color,
+    status_good: Color,
+    session_label: Color,
+    session_border: Color,
     response_border: Color,
     input_border: Color,
     completion_bg: Color,
     completion_current_bg: Color,
+    completion_meta_bg: Color,
+    completion_meta_current_bg: Color,
+    selection_bg: Color,
 }
 
 impl TuiPalette {
     fn from_app(app: &App) -> Self {
         let skin = &app.skin_runtime;
+        let selection_bg = skin_color(skin.color("selection_bg"), COLOR_PANEL_BG);
+        let completion_current_bg =
+            skin_color(skin.color("completion_menu_current_bg"), selection_bg);
         Self {
             accent: skin_color(skin.color("ui_accent"), COLOR_ACCENT),
             label: skin_color(skin.color("ui_label"), COLOR_ASSISTANT),
+            prompt: skin_color(skin.color("prompt"), COLOR_ACCENT),
             ok: skin_color(skin.color("ui_ok"), COLOR_ASSISTANT),
             error: skin_color(skin.color("ui_error"), COLOR_ERROR),
             warn: skin_color(skin.color("ui_warn"), COLOR_TOOL),
@@ -55,13 +68,21 @@ impl TuiPalette {
             panel_bg: skin_color(skin.color("completion_menu_bg"), COLOR_PANEL_BG),
             status_bg: skin_color(skin.color("status_bar_bg"), COLOR_STATUS_BG),
             status_text: skin_color(skin.color("status_bar_text"), COLOR_SYSTEM),
+            status_strong: skin_color(skin.color("status_bar_strong"), COLOR_ASSISTANT),
+            status_dim: skin_color(skin.color("status_bar_dim"), COLOR_SYSTEM),
+            status_good: skin_color(skin.color("status_bar_good"), COLOR_ASSISTANT),
+            session_label: skin_color(skin.color("session_label"), COLOR_ASSISTANT),
+            session_border: skin_color(skin.color("session_border"), COLOR_SYSTEM),
             response_border: skin_color(skin.color("response_border"), Color::DarkGray),
             input_border: skin_color(skin.color("input_rule"), Color::DarkGray),
             completion_bg: skin_color(skin.color("completion_menu_bg"), COLOR_INPUT_BG),
-            completion_current_bg: skin_color(
-                skin.color("completion_menu_current_bg"),
-                COLOR_PANEL_BG,
+            completion_current_bg,
+            completion_meta_bg: skin_color(skin.color("completion_menu_meta_bg"), COLOR_PANEL_BG),
+            completion_meta_current_bg: skin_color(
+                skin.color("completion_menu_meta_current_bg"),
+                completion_current_bg,
             ),
+            selection_bg,
         }
     }
 }
@@ -196,12 +217,20 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPa
                         .fg(palette.label)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Role::Tool => Span::styled(
-                    "Tool│ ",
-                    Style::default()
-                        .fg(palette.warn)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Role::Tool => {
+                    let tool_prefix = app.skin_runtime.tool_prefix.trim();
+                    let tool_prefix = if tool_prefix.is_empty() {
+                        "│"
+                    } else {
+                        tool_prefix
+                    };
+                    Span::styled(
+                        format!("Tool{tool_prefix} "),
+                        Style::default()
+                            .fg(palette.warn)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                }
                 Role::System => Span::styled(
                     "Sys │ ",
                     Style::default()
@@ -275,7 +304,7 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPa
                 ))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(palette.response_border))
-                .style(Style::default().bg(Color::Black)),
+                .style(Style::default().bg(palette.panel_bg)),
         )
         .wrap(Wrap { trim: false });
 
@@ -299,7 +328,7 @@ fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPal
             let name_span = Span::styled(
                 &activity.name,
                 Style::default()
-                    .fg(Color::White)
+                    .fg(palette.text)
                     .add_modifier(Modifier::BOLD),
             );
 
@@ -346,7 +375,7 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) 
         Style::default().fg(palette.warn)
     } else {
         Style::default()
-            .fg(palette.accent)
+            .fg(palette.prompt)
             .add_modifier(Modifier::BOLD)
     };
 
@@ -355,29 +384,37 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) 
         Span::styled(&app.input, Style::default().fg(palette.text)),
     ]);
 
-    let border_color = if app.is_thinking {
-        palette.warn
-    } else {
-        palette.input_border
+    let border_color = match (app.is_thinking, app.completion_hint.is_some()) {
+        (true, _) => palette.warn,
+        (false, true) => palette.selection_bg,
+        (false, false) => palette.input_border,
     };
 
-    let input_title = app
-        .completion_hint
-        .as_ref()
-        .map(|hint| format!(" Input - {hint} "))
-        .unwrap_or_else(|| " Input ".to_string());
+    let (input_title, title_style, input_bg) = if let Some(hint) = app.completion_hint.as_ref() {
+        (
+            format!(" Input - {hint} "),
+            Style::default()
+                .fg(palette.status_strong)
+                .bg(palette.completion_meta_current_bg),
+            palette.completion_current_bg,
+        )
+    } else {
+        (
+            " Input ".to_string(),
+            Style::default()
+                .fg(palette.dim)
+                .bg(palette.completion_meta_bg),
+            palette.completion_bg,
+        )
+    };
 
     let input_paragraph = Paragraph::new(input_text)
         .block(
             Block::default()
-                .title(Span::styled(input_title, Style::default().fg(palette.dim)))
+                .title(Span::styled(input_title, title_style))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
-                .style(Style::default().bg(if app.completion_hint.is_some() {
-                    palette.completion_current_bg
-                } else {
-                    palette.completion_bg
-                })),
+                .style(Style::default().bg(input_bg)),
         )
         .wrap(Wrap { trim: false });
 
@@ -400,19 +437,35 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPale
         "Tab:show-tools"
     };
 
-    let status_text = format!(
-        " Session: {} │ Tokens: {} │ API calls: {} │ {} │ {} │ ↑↓:scroll │ Ctrl+C:quit",
-        &app.session_id[..8.min(app.session_id.len())],
-        app.total_tokens,
-        app.api_calls,
-        tab_hint,
-        app.voice.status_bar_hint(),
-    );
-
-    let status_bar = Paragraph::new(Span::styled(
-        status_text,
-        Style::default().fg(palette.status_text),
-    ))
+    let session_id = &app.session_id[..8.min(app.session_id.len())];
+    let separator = || Span::styled(" │ ", Style::default().fg(palette.session_border));
+    let status_bar = Paragraph::new(Line::from(vec![
+        Span::styled(" Session: ", Style::default().fg(palette.session_label)),
+        Span::styled(session_id, Style::default().fg(palette.status_strong)),
+        separator(),
+        Span::styled("Tokens: ", Style::default().fg(palette.status_dim)),
+        Span::styled(
+            app.total_tokens.to_string(),
+            Style::default().fg(palette.status_good),
+        ),
+        separator(),
+        Span::styled("API calls: ", Style::default().fg(palette.status_dim)),
+        Span::styled(
+            app.api_calls.to_string(),
+            Style::default().fg(palette.status_text),
+        ),
+        separator(),
+        Span::styled(tab_hint, Style::default().fg(palette.status_strong)),
+        separator(),
+        Span::styled(
+            app.voice.status_bar_hint(),
+            Style::default().fg(palette.status_text),
+        ),
+        separator(),
+        Span::styled("↑↓:scroll", Style::default().fg(palette.status_dim)),
+        separator(),
+        Span::styled("Ctrl+C:quit", Style::default().fg(palette.status_dim)),
+    ]))
     .style(Style::default().bg(palette.status_bg));
 
     frame.render_widget(status_bar, area);
@@ -461,6 +514,14 @@ mod tests {
         assert_eq!(palette.accent, Color::Rgb(221, 74, 58));
         assert_eq!(palette.status_bg, Color::Rgb(42, 18, 18));
         assert_eq!(palette.status_text, Color::Rgb(241, 230, 207));
+        assert_eq!(palette.status_strong, Color::Rgb(199, 169, 107));
+        assert_eq!(palette.status_dim, Color::Rgb(110, 88, 75));
+        assert_eq!(palette.status_good, Color::Rgb(123, 201, 111));
+        assert_eq!(palette.session_label, Color::Rgb(199, 169, 107));
+        assert_eq!(palette.session_border, Color::Rgb(110, 88, 75));
+        assert_eq!(palette.completion_meta_bg, Color::Rgb(42, 18, 18));
+        assert_eq!(palette.completion_meta_current_bg, Color::Rgb(74, 26, 26));
+        assert_eq!(palette.selection_bg, Color::Rgb(74, 26, 26));
         assert_eq!(palette.response_border, Color::Rgb(199, 169, 107));
     }
 
@@ -575,6 +636,17 @@ mod tests {
             status: crate::ToolStatus::Error,
             timestamp: chrono::Utc::now(),
         });
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn render_uses_skin_tool_prefix_for_tool_messages() {
+        let mut app = make_app();
+        app.skin_runtime.tool_prefix = "::".to_string();
+        app.messages
+            .push(crate::ChatMessage::tool("bash", "tool output"));
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();
