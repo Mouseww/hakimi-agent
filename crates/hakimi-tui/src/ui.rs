@@ -11,7 +11,6 @@ use ratatui::{
 };
 
 /// Color scheme constants
-const COLOR_USER: Color = Color::Blue;
 const COLOR_ASSISTANT: Color = Color::Green;
 const COLOR_TOOL: Color = Color::Yellow;
 const COLOR_ERROR: Color = Color::Red;
@@ -22,8 +21,78 @@ const COLOR_INPUT_BG: Color = Color::Rgb(25, 25, 45);
 const COLOR_PANEL_BG: Color = Color::Rgb(20, 20, 35);
 const COLOR_ACCENT: Color = Color::Cyan;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TuiPalette {
+    accent: Color,
+    label: Color,
+    ok: Color,
+    error: Color,
+    warn: Color,
+    dim: Color,
+    text: Color,
+    header_bg: Color,
+    panel_bg: Color,
+    status_bg: Color,
+    status_text: Color,
+    response_border: Color,
+    input_border: Color,
+    completion_bg: Color,
+    completion_current_bg: Color,
+}
+
+impl TuiPalette {
+    fn from_app(app: &App) -> Self {
+        let skin = &app.skin_runtime;
+        Self {
+            accent: skin_color(skin.color("ui_accent"), COLOR_ACCENT),
+            label: skin_color(skin.color("ui_label"), COLOR_ASSISTANT),
+            ok: skin_color(skin.color("ui_ok"), COLOR_ASSISTANT),
+            error: skin_color(skin.color("ui_error"), COLOR_ERROR),
+            warn: skin_color(skin.color("ui_warn"), COLOR_TOOL),
+            dim: skin_color(skin.color("banner_dim"), COLOR_SYSTEM),
+            text: skin_color(skin.color("banner_text"), Color::White),
+            header_bg: skin_color(skin.color("status_bar_bg"), COLOR_HEADER_BG),
+            panel_bg: skin_color(skin.color("completion_menu_bg"), COLOR_PANEL_BG),
+            status_bg: skin_color(skin.color("status_bar_bg"), COLOR_STATUS_BG),
+            status_text: skin_color(skin.color("status_bar_text"), COLOR_SYSTEM),
+            response_border: skin_color(skin.color("response_border"), Color::DarkGray),
+            input_border: skin_color(skin.color("input_rule"), Color::DarkGray),
+            completion_bg: skin_color(skin.color("completion_menu_bg"), COLOR_INPUT_BG),
+            completion_current_bg: skin_color(
+                skin.color("completion_menu_current_bg"),
+                COLOR_PANEL_BG,
+            ),
+        }
+    }
+}
+
+fn skin_color(value: Option<&str>, fallback: Color) -> Color {
+    value.and_then(parse_hex_color).unwrap_or(fallback)
+}
+
+fn parse_hex_color(value: &str) -> Option<Color> {
+    let hex = value.trim().strip_prefix('#')?;
+    if hex.len() != 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let red = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let green = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let blue = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(Color::Rgb(red, green, blue))
+}
+
+fn assistant_prefix_label(raw: &str) -> String {
+    let compact = raw.split_whitespace().collect::<String>();
+    let mut label = compact.chars().take(3).collect::<String>();
+    if label.is_empty() {
+        label.push_str("AI");
+    }
+    format!("{label:>3}│ ")
+}
+
 /// Render the full TUI layout.
 pub fn render(frame: &mut Frame, app: &App) {
+    let palette = TuiPalette::from_app(app);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -34,46 +103,50 @@ pub fn render(frame: &mut Frame, app: &App) {
         ])
         .split(frame.area());
 
-    render_header(frame, app, chunks[0]);
-    render_main_area(frame, app, chunks[1]);
-    render_input(frame, app, chunks[2]);
-    render_status_bar(frame, app, chunks[3]);
+    render_header(frame, app, chunks[0], &palette);
+    render_main_area(frame, app, chunks[1], &palette);
+    render_input(frame, app, chunks[2], &palette);
+    render_status_bar(frame, app, chunks[3], &palette);
 }
 
 /// Render the header bar with title and model info.
-fn render_header(frame: &mut Frame, app: &App, area: Rect) {
+fn render_header(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) {
     let thinking_indicator = if app.is_thinking {
         format!("  {}", app.thinking_label())
     } else {
         String::new()
     };
+    let agent_name = app
+        .skin_runtime
+        .branding("agent_name")
+        .unwrap_or("Hakimi Agent");
 
     let title_line = Line::from(vec![
         Span::styled(
             " ◆ ",
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(palette.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            "Hakimi Agent",
+            agent_name,
             Style::default()
-                .fg(Color::White)
+                .fg(palette.text)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!("  {} ", app.model_name),
-            Style::default().fg(COLOR_SYSTEM),
+            Style::default().fg(palette.dim),
         ),
-        Span::styled(thinking_indicator, Style::default().fg(COLOR_TOOL)),
+        Span::styled(thinking_indicator, Style::default().fg(palette.warn)),
     ]);
 
     let header = Paragraph::new(title_line)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(COLOR_ACCENT))
-                .style(Style::default().bg(COLOR_HEADER_BG)),
+                .border_style(Style::default().fg(palette.accent))
+                .style(Style::default().bg(palette.header_bg)),
         )
         .alignment(ratatui::layout::Alignment::Center);
 
@@ -81,23 +154,29 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Render the main content area (chat history + optional tools panel).
-fn render_main_area(frame: &mut Frame, app: &App, area: Rect) {
+fn render_main_area(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) {
     if app.show_tools_panel {
         let horizontal_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
             .split(area);
 
-        render_chat_history(frame, app, horizontal_chunks[0]);
-        render_tools_panel(frame, app, horizontal_chunks[1]);
+        render_chat_history(frame, app, horizontal_chunks[0], palette);
+        render_tools_panel(frame, app, horizontal_chunks[1], palette);
     } else {
-        render_chat_history(frame, app, area);
+        render_chat_history(frame, app, area, palette);
     }
 }
 
 /// Render the scrollable chat history.
-fn render_chat_history(frame: &mut Frame, app: &App, area: Rect) {
+fn render_chat_history(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) {
     let inner_height = area.height.saturating_sub(2) as usize; // subtract borders
+    let response_label = assistant_prefix_label(
+        app.skin_runtime
+            .branding("response_label")
+            .unwrap_or(" AI ")
+            .trim(),
+    );
 
     // Build all message lines
     let all_lines: Vec<Line> = app
@@ -107,40 +186,44 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect) {
             let prefix = match msg.role {
                 Role::User => Span::styled(
                     "You │ ",
-                    Style::default().fg(COLOR_USER).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(palette.accent)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Role::Assistant => Span::styled(
-                    "AI  │ ",
+                    response_label.clone(),
                     Style::default()
-                        .fg(COLOR_ASSISTANT)
+                        .fg(palette.label)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Role::Tool => Span::styled(
                     "Tool│ ",
-                    Style::default().fg(COLOR_TOOL).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(palette.warn)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Role::System => Span::styled(
                     "Sys │ ",
                     Style::default()
-                        .fg(COLOR_SYSTEM)
+                        .fg(palette.dim)
                         .add_modifier(Modifier::ITALIC),
                 ),
                 Role::Error => Span::styled(
                     "Err │ ",
                     Style::default()
-                        .fg(COLOR_ERROR)
+                        .fg(palette.error)
                         .add_modifier(Modifier::BOLD),
                 ),
             };
 
             let content_style = match msg.role {
-                Role::User => Style::default().fg(COLOR_USER),
-                Role::Assistant => Style::default().fg(COLOR_ASSISTANT),
-                Role::Tool => Style::default().fg(COLOR_TOOL),
+                Role::User => Style::default().fg(palette.accent),
+                Role::Assistant => Style::default().fg(palette.text),
+                Role::Tool => Style::default().fg(palette.warn),
                 Role::System => Style::default()
-                    .fg(COLOR_SYSTEM)
+                    .fg(palette.dim)
                     .add_modifier(Modifier::ITALIC),
-                Role::Error => Style::default().fg(COLOR_ERROR),
+                Role::Error => Style::default().fg(palette.error),
             };
 
             // Split content into lines
@@ -156,7 +239,7 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect) {
                 } else {
                     // Continuation lines get a blank prefix for alignment
                     result_lines.push(Line::from(vec![
-                        Span::raw("    │ "),
+                        Span::styled("    │ ", Style::default().fg(palette.dim)),
                         Span::styled(line.to_string(), content_style),
                     ]));
                 }
@@ -187,11 +270,11 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect) {
                 .title(Span::styled(
                     chat_title,
                     Style::default()
-                        .fg(COLOR_ACCENT)
+                        .fg(palette.accent)
                         .add_modifier(Modifier::BOLD),
                 ))
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray))
+                .border_style(Style::default().fg(palette.response_border))
                 .style(Style::default().bg(Color::Black)),
         )
         .wrap(Wrap { trim: false });
@@ -200,7 +283,7 @@ fn render_chat_history(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Render the tools activity panel on the right side.
-fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect) {
+fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) {
     let items: Vec<ListItem> = app
         .tool_activity
         .iter()
@@ -208,9 +291,9 @@ fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect) {
         .take(area.height.saturating_sub(3) as usize)
         .map(|activity| {
             let status_icon = match activity.status {
-                ToolStatus::Running => Span::styled("⟳ ", Style::default().fg(COLOR_TOOL)),
-                ToolStatus::Success => Span::styled("✓ ", Style::default().fg(COLOR_ASSISTANT)),
-                ToolStatus::Error => Span::styled("✗ ", Style::default().fg(COLOR_ERROR)),
+                ToolStatus::Running => Span::styled("⟳ ", Style::default().fg(palette.warn)),
+                ToolStatus::Success => Span::styled("✓ ", Style::default().fg(palette.ok)),
+                ToolStatus::Error => Span::styled("✗ ", Style::default().fg(palette.error)),
             };
 
             let name_span = Span::styled(
@@ -222,7 +305,7 @@ fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect) {
 
             let args_span = Span::styled(
                 format!(" {}", activity.arguments_summary),
-                Style::default().fg(COLOR_SYSTEM),
+                Style::default().fg(palette.dim),
             );
 
             ListItem::new(Line::from(vec![status_icon, name_span, args_span]))
@@ -236,41 +319,46 @@ fn render_tools_panel(frame: &mut Frame, app: &App, area: Rect) {
         Block::default()
             .title(Span::styled(
                 panel_title,
-                Style::default().fg(COLOR_TOOL).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(palette.warn)
+                    .add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray))
-            .style(Style::default().bg(COLOR_PANEL_BG)),
+            .border_style(Style::default().fg(palette.response_border))
+            .style(Style::default().bg(palette.panel_bg)),
     );
 
     frame.render_widget(tools_list, area);
 }
 
 /// Render the input area at the bottom.
-fn render_input(frame: &mut Frame, app: &App, area: Rect) {
+fn render_input(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) {
     let prompt = if app.is_thinking {
         format!("{} ", app.spinner_frame())
     } else {
-        "⟩ ".to_string()
+        format!(
+            "{} ",
+            app.skin_runtime.branding("prompt_symbol").unwrap_or("⟩")
+        )
     };
 
     let prompt_style = if app.is_thinking {
-        Style::default().fg(COLOR_TOOL)
+        Style::default().fg(palette.warn)
     } else {
         Style::default()
-            .fg(COLOR_ACCENT)
+            .fg(palette.accent)
             .add_modifier(Modifier::BOLD)
     };
 
     let input_text = Line::from(vec![
         Span::styled(&prompt, prompt_style),
-        Span::styled(&app.input, Style::default().fg(Color::White)),
+        Span::styled(&app.input, Style::default().fg(palette.text)),
     ]);
 
     let border_color = if app.is_thinking {
-        COLOR_TOOL
+        palette.warn
     } else {
-        Color::DarkGray
+        palette.input_border
     };
 
     let input_title = app
@@ -282,10 +370,14 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect) {
     let input_paragraph = Paragraph::new(input_text)
         .block(
             Block::default()
-                .title(Span::styled(input_title, Style::default().fg(COLOR_SYSTEM)))
+                .title(Span::styled(input_title, Style::default().fg(palette.dim)))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
-                .style(Style::default().bg(COLOR_INPUT_BG)),
+                .style(Style::default().bg(if app.completion_hint.is_some() {
+                    palette.completion_current_bg
+                } else {
+                    palette.completion_bg
+                })),
         )
         .wrap(Wrap { trim: false });
 
@@ -293,7 +385,7 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Render the status bar at the very bottom.
-fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+fn render_status_bar(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) {
     let slash_token_end = app
         .input
         .find(char::is_whitespace)
@@ -317,8 +409,11 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         app.voice.status_bar_hint(),
     );
 
-    let status_bar = Paragraph::new(Span::styled(status_text, Style::default().fg(COLOR_SYSTEM)))
-        .style(Style::default().bg(COLOR_STATUS_BG));
+    let status_bar = Paragraph::new(Span::styled(
+        status_text,
+        Style::default().fg(palette.status_text),
+    ))
+    .style(Style::default().bg(palette.status_bg));
 
     frame.render_widget(status_bar, area);
 }
@@ -339,6 +434,41 @@ mod tests {
             "test-model".to_string(),
             "test-session-id-1234".to_string(),
         )
+    }
+
+    #[test]
+    fn hex_skin_color_parser_accepts_six_digit_rgb() {
+        assert_eq!(parse_hex_color("#112233"), Some(Color::Rgb(17, 34, 51)));
+        assert_eq!(parse_hex_color("#AABBCC"), Some(Color::Rgb(170, 187, 204)));
+    }
+
+    #[test]
+    fn hex_skin_color_parser_rejects_non_hex_values() {
+        assert_eq!(parse_hex_color("gold"), None);
+        assert_eq!(parse_hex_color("#12345"), None);
+        assert_eq!(parse_hex_color("#xyzxyz"), None);
+    }
+
+    #[test]
+    fn palette_uses_runtime_skin_colors() {
+        let mut app = make_app();
+        let mut config = hakimi_config::HakimiConfig::default();
+        config.display.skin = "ares".to_string();
+        app = app.with_config(&config);
+
+        let palette = TuiPalette::from_app(&app);
+
+        assert_eq!(palette.accent, Color::Rgb(221, 74, 58));
+        assert_eq!(palette.status_bg, Color::Rgb(42, 18, 18));
+        assert_eq!(palette.status_text, Color::Rgb(241, 230, 207));
+        assert_eq!(palette.response_border, Color::Rgb(199, 169, 107));
+    }
+
+    #[test]
+    fn assistant_prefix_label_is_fixed_width() {
+        assert_eq!(assistant_prefix_label(" AI "), " AI│ ");
+        assert_eq!(assistant_prefix_label(" ⚔ Ares "), "⚔Ar│ ");
+        assert_eq!(assistant_prefix_label(""), " AI│ ");
     }
 
     #[test]

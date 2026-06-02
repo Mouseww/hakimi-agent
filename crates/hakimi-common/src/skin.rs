@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,6 +10,8 @@ const DEFAULT_SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "�
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkinRuntime {
     pub name: String,
+    pub colors: BTreeMap<String, String>,
+    pub branding: BTreeMap<String, String>,
     pub spinner: SkinSpinner,
 }
 
@@ -55,6 +58,20 @@ impl SkinRuntime {
             format!("{frame} Thinking...")
         }
     }
+
+    pub fn color(&self, key: &str) -> Option<&str> {
+        self.colors
+            .get(key)
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+    }
+
+    pub fn branding(&self, key: &str) -> Option<&str> {
+        self.branding
+            .get(key)
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+    }
 }
 
 pub fn skins_dir(home: &Path) -> PathBuf {
@@ -80,81 +97,229 @@ pub fn load_skin_runtime(name: &str, home: &Path) -> Result<SkinRuntime> {
         .transpose()?
         .unwrap_or(normalized);
 
+    let default = builtin_skin_runtime("default").expect("default skin runtime must exist");
+    let mut colors = default.colors;
+    for (key, value) in raw.colors {
+        let value = value.trim();
+        if !key.trim().is_empty() && !value.is_empty() {
+            colors.insert(key.trim().to_string(), value.to_string());
+        }
+    }
+    let mut branding = default.branding;
+    for (key, value) in raw.branding {
+        let value = value.trim();
+        if !key.trim().is_empty() && !value.is_empty() {
+            branding.insert(key.trim().to_string(), value.to_string());
+        }
+    }
+
     Ok(SkinRuntime {
         name,
+        colors,
+        branding,
         spinner: raw.spinner.into_runtime_spinner(),
     })
 }
 
 fn builtin_skin_runtime(name: &str) -> Option<SkinRuntime> {
-    let spinner = match name {
-        "default" => SkinSpinner {
-            frames: DEFAULT_SPINNER_FRAMES
-                .iter()
-                .map(|value| value.to_string())
-                .collect(),
-            thinking_verbs: Vec::new(),
-            wings: Vec::new(),
+    let skin = match name {
+        "default" => SkinRuntime {
+            name: name.to_string(),
+            colors: BTreeMap::from([
+                ("banner_border".to_string(), "#5f875f".to_string()),
+                ("banner_title".to_string(), "#87af87".to_string()),
+                ("banner_dim".to_string(), "#6c6c6c".to_string()),
+                ("banner_text".to_string(), "#e4e4e4".to_string()),
+                ("ui_accent".to_string(), "#00ffff".to_string()),
+                ("ui_label".to_string(), "#87af87".to_string()),
+                ("ui_ok".to_string(), "#00ff00".to_string()),
+                ("ui_error".to_string(), "#ff0000".to_string()),
+                ("ui_warn".to_string(), "#ffff00".to_string()),
+                ("prompt".to_string(), "#00ffff".to_string()),
+                ("input_rule".to_string(), "#6c6c6c".to_string()),
+                ("response_border".to_string(), "#6c6c6c".to_string()),
+                ("status_bar_bg".to_string(), "#141428".to_string()),
+                ("status_bar_text".to_string(), "#6c6c6c".to_string()),
+                ("status_bar_strong".to_string(), "#87af87".to_string()),
+                ("completion_menu_bg".to_string(), "#19192d".to_string()),
+                (
+                    "completion_menu_current_bg".to_string(),
+                    "#1e1e32".to_string(),
+                ),
+            ]),
+            branding: BTreeMap::from([
+                ("agent_name".to_string(), "Hakimi Agent".to_string()),
+                ("prompt_symbol".to_string(), "⟩".to_string()),
+                ("response_label".to_string(), " AI ".to_string()),
+            ]),
+            spinner: SkinSpinner {
+                frames: DEFAULT_SPINNER_FRAMES
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect(),
+                thinking_verbs: Vec::new(),
+                wings: Vec::new(),
+            },
         },
-        "ares" => SkinSpinner {
-            frames: ["(⚔)", "(⛨)", "(▲)", "(⌁)", "(<>)"]
+        "ares" => SkinRuntime {
+            name: name.to_string(),
+            colors: BTreeMap::from([
+                ("banner_border".to_string(), "#9f1c1c".to_string()),
+                ("banner_title".to_string(), "#c7a96b".to_string()),
+                ("banner_dim".to_string(), "#6e584b".to_string()),
+                ("banner_text".to_string(), "#f1e6cf".to_string()),
+                ("ui_accent".to_string(), "#dd4a3a".to_string()),
+                ("ui_label".to_string(), "#c7a96b".to_string()),
+                ("ui_ok".to_string(), "#7bc96f".to_string()),
+                ("ui_error".to_string(), "#ef5350".to_string()),
+                ("ui_warn".to_string(), "#ffa726".to_string()),
+                ("prompt".to_string(), "#f1e6cf".to_string()),
+                ("input_rule".to_string(), "#9f1c1c".to_string()),
+                ("response_border".to_string(), "#c7a96b".to_string()),
+                ("status_bar_bg".to_string(), "#2a1212".to_string()),
+                ("status_bar_text".to_string(), "#f1e6cf".to_string()),
+                ("status_bar_strong".to_string(), "#c7a96b".to_string()),
+                ("completion_menu_bg".to_string(), "#2a1212".to_string()),
+                (
+                    "completion_menu_current_bg".to_string(),
+                    "#4a1a1a".to_string(),
+                ),
+            ]),
+            branding: BTreeMap::from([
+                ("agent_name".to_string(), "Ares Agent".to_string()),
+                ("prompt_symbol".to_string(), "⚔".to_string()),
+                ("response_label".to_string(), " ⚔ Ares ".to_string()),
+            ]),
+            spinner: SkinSpinner {
+                frames: ["(⚔)", "(⛨)", "(▲)", "(⌁)", "(<>)"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                thinking_verbs: [
+                    "forging",
+                    "marching",
+                    "sizing the field",
+                    "holding the line",
+                    "hammering plans",
+                    "tempering steel",
+                    "plotting impact",
+                    "raising the shield",
+                ]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
-            thinking_verbs: [
-                "forging",
-                "marching",
-                "sizing the field",
-                "holding the line",
-                "hammering plans",
-                "tempering steel",
-                "plotting impact",
-                "raising the shield",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-            wings: [("⟪⚔", "⚔⟫"), ("⟪▲", "▲⟫"), ("⟪╸", "╺⟫"), ("⟪⛨", "⛨⟫")]
-                .into_iter()
-                .map(|(left, right)| (left.to_string(), right.to_string()))
-                .collect(),
+                wings: [("⟪⚔", "⚔⟫"), ("⟪▲", "▲⟫"), ("⟪╸", "╺⟫"), ("⟪⛨", "⛨⟫")]
+                    .into_iter()
+                    .map(|(left, right)| (left.to_string(), right.to_string()))
+                    .collect(),
+            },
         },
-        "mono" => SkinSpinner {
-            frames: ["-", "\\", "|", "/"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-            thinking_verbs: Vec::new(),
-            wings: Vec::new(),
+        "mono" => SkinRuntime {
+            name: name.to_string(),
+            colors: BTreeMap::from([
+                ("banner_border".to_string(), "#808080".to_string()),
+                ("banner_title".to_string(), "#ffffff".to_string()),
+                ("banner_dim".to_string(), "#808080".to_string()),
+                ("banner_text".to_string(), "#d0d0d0".to_string()),
+                ("ui_accent".to_string(), "#ffffff".to_string()),
+                ("ui_label".to_string(), "#d0d0d0".to_string()),
+                ("ui_ok".to_string(), "#d0d0d0".to_string()),
+                ("ui_error".to_string(), "#ffffff".to_string()),
+                ("ui_warn".to_string(), "#d0d0d0".to_string()),
+                ("prompt".to_string(), "#ffffff".to_string()),
+                ("input_rule".to_string(), "#808080".to_string()),
+                ("response_border".to_string(), "#d0d0d0".to_string()),
+                ("status_bar_bg".to_string(), "#101010".to_string()),
+                ("status_bar_text".to_string(), "#d0d0d0".to_string()),
+                ("status_bar_strong".to_string(), "#ffffff".to_string()),
+            ]),
+            branding: BTreeMap::from([
+                ("agent_name".to_string(), "Hakimi Agent".to_string()),
+                ("prompt_symbol".to_string(), ">".to_string()),
+                ("response_label".to_string(), " AI ".to_string()),
+            ]),
+            spinner: SkinSpinner {
+                frames: ["-", "\\", "|", "/"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                thinking_verbs: Vec::new(),
+                wings: Vec::new(),
+            },
         },
-        "slate" => SkinSpinner {
-            frames: ["◐", "◓", "◑", "◒"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-            thinking_verbs: Vec::new(),
-            wings: Vec::new(),
+        "slate" => SkinRuntime {
+            name: name.to_string(),
+            colors: BTreeMap::from([
+                ("banner_border".to_string(), "#5f87af".to_string()),
+                ("banner_title".to_string(), "#87afd7".to_string()),
+                ("banner_dim".to_string(), "#6c6c6c".to_string()),
+                ("banner_text".to_string(), "#d7e5f5".to_string()),
+                ("ui_accent".to_string(), "#5fd7ff".to_string()),
+                ("ui_label".to_string(), "#87afd7".to_string()),
+                ("prompt".to_string(), "#d7e5f5".to_string()),
+                ("input_rule".to_string(), "#5f87af".to_string()),
+                ("response_border".to_string(), "#87afd7".to_string()),
+                ("status_bar_bg".to_string(), "#101a24".to_string()),
+                ("status_bar_text".to_string(), "#d7e5f5".to_string()),
+                ("status_bar_strong".to_string(), "#87afd7".to_string()),
+            ]),
+            branding: BTreeMap::from([
+                ("agent_name".to_string(), "Hakimi Agent".to_string()),
+                ("prompt_symbol".to_string(), "›".to_string()),
+                ("response_label".to_string(), " AI ".to_string()),
+            ]),
+            spinner: SkinSpinner {
+                frames: ["◐", "◓", "◑", "◒"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                thinking_verbs: Vec::new(),
+                wings: Vec::new(),
+            },
         },
-        "daylight" => SkinSpinner {
-            frames: ["·", "•", "●", "•"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-            thinking_verbs: Vec::new(),
-            wings: Vec::new(),
+        "daylight" => SkinRuntime {
+            name: name.to_string(),
+            colors: BTreeMap::from([
+                ("banner_border".to_string(), "#4f6f9f".to_string()),
+                ("banner_title".to_string(), "#1f3f6f".to_string()),
+                ("banner_dim".to_string(), "#6c6c6c".to_string()),
+                ("banner_text".to_string(), "#1f2937".to_string()),
+                ("ui_accent".to_string(), "#2f5f9f".to_string()),
+                ("ui_label".to_string(), "#1f3f6f".to_string()),
+                ("prompt".to_string(), "#1f3f6f".to_string()),
+                ("input_rule".to_string(), "#4f6f9f".to_string()),
+                ("response_border".to_string(), "#2f5f9f".to_string()),
+                ("status_bar_bg".to_string(), "#e5e7eb".to_string()),
+                ("status_bar_text".to_string(), "#1f2937".to_string()),
+                ("status_bar_strong".to_string(), "#1f3f6f".to_string()),
+            ]),
+            branding: BTreeMap::from([
+                ("agent_name".to_string(), "Hakimi Agent".to_string()),
+                ("prompt_symbol".to_string(), "›".to_string()),
+                ("response_label".to_string(), " AI ".to_string()),
+            ]),
+            spinner: SkinSpinner {
+                frames: ["·", "•", "●", "•"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                thinking_verbs: Vec::new(),
+                wings: Vec::new(),
+            },
         },
         _ => return None,
     };
-    Some(SkinRuntime {
-        name: name.to_string(),
-        spinner,
-    })
+    Some(skin)
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct RawSkinRuntime {
     #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
+    colors: BTreeMap<String, String>,
+    #[serde(default)]
+    branding: BTreeMap<String, String>,
     #[serde(default)]
     spinner: RawSkinSpinner,
 }
@@ -291,6 +456,8 @@ spinner:
 
         assert_eq!(skin.name, "glacier");
         assert_eq!(skin.animation_len(), 2);
+        assert_eq!(skin.color("banner_title"), Some("#87af87"));
+        assert_eq!(skin.branding("agent_name"), Some("Hakimi Agent"));
         assert_eq!(skin.spinner_frame(0), "<(g)>");
         assert_eq!(skin.thinking_label(1), "<(*)> checking snow");
 
@@ -314,9 +481,40 @@ spinner:
         let skin = load_skin_runtime("ares", &home).unwrap();
 
         assert!(skin.animation_len() > 1);
+        assert_eq!(skin.color("status_bar_bg"), Some("#2a1212"));
+        assert_eq!(skin.branding("agent_name"), Some("Ares Agent"));
         assert!(skin.spinner_frame(0).contains("(⚔)"));
         assert!(skin.thinking_label(0).contains("forging"));
         assert_ne!(skin.spinner_frame(0), "⠋");
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn runtime_skin_reads_hermes_tui_colors_and_branding() {
+        let home = temp_home();
+        write_user_skin(
+            &home,
+            "glacier",
+            r##"
+name: glacier
+colors:
+  status_bar_bg: "#112233"
+  status_bar_text: "#ccddee"
+  response_border: "#445566"
+branding:
+  agent_name: Glacier Agent
+  prompt_symbol: =>
+"##,
+        );
+
+        let skin = load_skin_runtime("glacier", &home).unwrap();
+
+        assert_eq!(skin.color("status_bar_bg"), Some("#112233"));
+        assert_eq!(skin.color("status_bar_text"), Some("#ccddee"));
+        assert_eq!(skin.color("response_border"), Some("#445566"));
+        assert_eq!(skin.branding("agent_name"), Some("Glacier Agent"));
+        assert_eq!(skin.branding("prompt_symbol"), Some("=>"));
+        assert_eq!(skin.color("banner_title"), Some("#87af87"));
         let _ = fs::remove_dir_all(home);
     }
 }
