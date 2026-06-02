@@ -354,11 +354,7 @@ fn resolve_browser_cloud_provider(args: &JsonValue) -> Option<String> {
 }
 
 fn normalize_browser_cloud_provider(value: &str) -> Option<String> {
-    let normalized = value
-        .trim()
-        .to_ascii_lowercase()
-        .replace('_', "-")
-        .replace(' ', "-");
+    let normalized = value.trim().to_ascii_lowercase().replace(['_', ' '], "-");
     match normalized.as_str() {
         "" | "auto" => None,
         "local" | "chromium" | "chrome" | "cdp" => Some("local".to_string()),
