@@ -364,11 +364,11 @@ fn browser_cdp_endpoint_from_value(value: &str, source: &str) -> Option<BrowserC
 }
 
 fn resolve_browser_cdp_endpoint(args: &JsonValue) -> Option<BrowserCdpEndpoint> {
-    resolve_browser_cdp_endpoint_from_sources(
-        args,
-        browser_cdp_generic_endpoint_pairs(),
-        browser_cdp_provider_endpoint_pairs(),
-    )
+    browser_cdp_endpoint_from_args(args)
+        .or_else(browser_cdp_endpoint_from_env)
+        .or_else(|| {
+            resolve_browser_cdp_provider_endpoint(args, browser_cdp_provider_endpoint_pairs())
+        })
 }
 
 fn resolve_browser_cdp_endpoint_from_sources(
