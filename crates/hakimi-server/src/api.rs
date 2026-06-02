@@ -33,6 +33,7 @@
 //! - `POST /v1/runs/:id/stop` — Cancel an asynchronous run
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -44,10 +45,11 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::task::JoinHandle;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::server::AppState;
 
@@ -72,7 +74,7 @@ pub struct ChatCompletionsRequest {
 }
 
 /// OpenAI-style chat message input.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionsMessage {
     pub role: String,
     #[serde(default)]
@@ -516,30 +518,117 @@ impl StoredRun {
     }
 }
 
-/// In-memory store for OpenAI Responses-compatible chaining.
-#[derive(Debug)]
+const RESPONSES_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS responses (
+    response_id TEXT PRIMARY KEY,
+    response_json TEXT NOT NULL,
+    messages_json TEXT NOT NULL,
+    accessed_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_responses_accessed_at
+    ON responses(accessed_at);
+"#;
+
+/// Store for OpenAI Responses-compatible chaining.
 pub struct ResponsesStore {
     max_entries: usize,
     entries: HashMap<String, StoredResponse>,
     order: VecDeque<String>,
+    db: Option<Connection>,
+    db_path: Option<PathBuf>,
 }
 
 impl Default for ResponsesStore {
     fn default() -> Self {
-        Self::new(100)
+        match Self::persistent_default(100) {
+            Ok(store) => store,
+            Err(err) => {
+                warn!(error = %err, "falling back to in-memory Responses API store");
+                Self::new(100)
+            }
+        }
     }
 }
 
 impl ResponsesStore {
+    /// Create an in-memory store. Tests use this to avoid touching user state.
     pub fn new(max_entries: usize) -> Self {
         Self {
             max_entries: max_entries.max(1),
             entries: HashMap::new(),
             order: VecDeque::new(),
+            db: None,
+            db_path: None,
         }
     }
 
+    fn persistent_default(max_entries: usize) -> anyhow::Result<Self> {
+        let path = default_response_store_path();
+        Self::with_path(path, max_entries)
+    }
+
+    pub fn with_path(path: impl AsRef<Path>, max_entries: usize) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let conn = Connection::open(path)?;
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             PRAGMA busy_timeout = 5000;
+             PRAGMA foreign_keys = ON;",
+        )?;
+        conn.execute_batch(RESPONSES_SCHEMA_SQL)?;
+        restrict_response_store_permissions(path);
+
+        Ok(Self {
+            max_entries: max_entries.max(1),
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            db: Some(conn),
+            db_path: Some(path.to_path_buf()),
+        })
+    }
+
     fn insert(
+        &mut self,
+        response_id: String,
+        response: JsonValue,
+        messages: Vec<ChatCompletionsMessage>,
+    ) {
+        if let Some(conn) = &self.db {
+            let now = unix_timestamp_millis();
+            let response_json = serde_json::to_string(&response);
+            let messages_json = serde_json::to_string(&messages);
+            match (response_json, messages_json) {
+                (Ok(response_json), Ok(messages_json)) => {
+                    if let Err(err) = conn.execute(
+                        "INSERT OR REPLACE INTO responses
+                         (response_id, response_json, messages_json, accessed_at)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![response_id.as_str(), response_json, messages_json, now],
+                    ) {
+                        warn!(error = %err, "failed to persist Responses API entry");
+                    } else if let Err(err) = Self::evict_sqlite(conn, self.max_entries) {
+                        warn!(error = %err, "failed to evict old Responses API entries");
+                    } else {
+                        return;
+                    }
+                }
+                (Err(err), _) | (_, Err(err)) => {
+                    warn!(error = %err, "failed to serialize Responses API entry");
+                }
+            }
+        }
+
+        self.insert_memory(response_id, response, messages);
+    }
+
+    fn insert_memory(
         &mut self,
         response_id: String,
         response: JsonValue,
@@ -560,25 +649,167 @@ impl ResponsesStore {
     }
 
     fn get(&self, response_id: &str) -> Option<JsonValue> {
+        if let Some(conn) = &self.db {
+            match Self::get_sqlite_response(conn, response_id) {
+                Ok(Some(response)) => return Some(response),
+                Ok(None) => {}
+                Err(err) => warn!(error = %err, "failed to read persisted Responses API entry"),
+            }
+        }
+
         self.entries
             .get(response_id)
             .map(|stored| stored.response.clone())
     }
 
     fn messages(&self, response_id: &str) -> Option<Vec<ChatCompletionsMessage>> {
+        if let Some(conn) = &self.db {
+            match Self::get_sqlite_messages(conn, response_id) {
+                Ok(Some(messages)) => return Some(messages),
+                Ok(None) => {}
+                Err(err) => warn!(error = %err, "failed to read persisted Responses API messages"),
+            }
+        }
+
         self.entries
             .get(response_id)
             .map(|stored| stored.messages.clone())
     }
 
     fn delete(&mut self, response_id: &str) -> bool {
-        let removed = self.entries.remove(response_id).is_some();
-        if removed {
+        let mut removed = false;
+
+        if let Some(conn) = &self.db {
+            match conn.execute(
+                "DELETE FROM responses WHERE response_id = ?1",
+                params![response_id],
+            ) {
+                Ok(rows) => removed = rows > 0,
+                Err(err) => warn!(error = %err, "failed to delete persisted Responses API entry"),
+            }
+        }
+
+        if self.entries.remove(response_id).is_some() {
+            removed = true;
             self.order.retain(|id| id != response_id);
         }
+
         removed
     }
+
+    fn get_sqlite_response(
+        conn: &Connection,
+        response_id: &str,
+    ) -> anyhow::Result<Option<JsonValue>> {
+        let row = conn
+            .query_row(
+                "SELECT response_json FROM responses WHERE response_id = ?1",
+                params![response_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(response_json) = row else {
+            return Ok(None);
+        };
+
+        conn.execute(
+            "UPDATE responses SET accessed_at = ?1 WHERE response_id = ?2",
+            params![unix_timestamp_millis(), response_id],
+        )?;
+
+        Ok(Some(serde_json::from_str(&response_json)?))
+    }
+
+    fn get_sqlite_messages(
+        conn: &Connection,
+        response_id: &str,
+    ) -> anyhow::Result<Option<Vec<ChatCompletionsMessage>>> {
+        let row = conn
+            .query_row(
+                "SELECT messages_json FROM responses WHERE response_id = ?1",
+                params![response_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(messages_json) = row else {
+            return Ok(None);
+        };
+
+        conn.execute(
+            "UPDATE responses SET accessed_at = ?1 WHERE response_id = ?2",
+            params![unix_timestamp_millis(), response_id],
+        )?;
+
+        Ok(Some(serde_json::from_str(&messages_json)?))
+    }
+
+    fn evict_sqlite(conn: &Connection, max_entries: usize) -> anyhow::Result<()> {
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM responses", [], |row| row.get(0))?;
+        let overflow = count - max_entries as i64;
+        if overflow <= 0 {
+            return Ok(());
+        }
+
+        let mut stmt = conn.prepare(
+            "SELECT response_id FROM responses ORDER BY accessed_at ASC, response_id ASC LIMIT ?1",
+        )?;
+        let evicted = stmt
+            .query_map(params![overflow], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for response_id in evicted {
+            conn.execute(
+                "DELETE FROM responses WHERE response_id = ?1",
+                params![response_id],
+            )?;
+        }
+
+        Ok(())
+    }
 }
+
+impl std::fmt::Debug for ResponsesStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResponsesStore")
+            .field("max_entries", &self.max_entries)
+            .field("memory_entries", &self.entries.len())
+            .field("db_path", &self.db_path)
+            .finish()
+    }
+}
+
+fn default_response_store_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("HAKIMI_RESPONSE_STORE_PATH") {
+        return PathBuf::from(path);
+    }
+    if let Some(home) = std::env::var_os("HAKIMI_HOME") {
+        return PathBuf::from(home).join("response_store.db");
+    }
+
+    dirs::home_dir()
+        .map(|home| home.join(".hakimi").join("response_store.db"))
+        .unwrap_or_else(|| PathBuf::from(".hakimi").join("response_store.db"))
+}
+
+#[cfg(unix)]
+fn restrict_response_store_permissions(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    for candidate in [
+        path.to_path_buf(),
+        PathBuf::from(format!("{}-wal", path.display())),
+        PathBuf::from(format!("{}-shm", path.display())),
+    ] {
+        if let Ok(metadata) = std::fs::metadata(&candidate) {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o600);
+            let _ = std::fs::set_permissions(&candidate, permissions);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn restrict_response_store_permissions(_path: &Path) {}
 
 struct RunControl {
     interrupt: std::sync::Arc<AtomicBool>,
@@ -871,6 +1102,7 @@ async fn capabilities(State(state): State<AppState>) -> Json<serde_json::Value> 
             "responses_api": true,
             "responses_streaming": true,
             "responses_streaming_mode": "completed_sse_snapshot",
+            "responses_persistence": "sqlite_lru",
             "skills_api": true,
             "toolsets_api": true,
             "session_resources": true,
@@ -1343,6 +1575,13 @@ fn unix_timestamp_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
+        .unwrap_or_default()
+}
+
+fn unix_timestamp_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis().min(i64::MAX as u128) as i64)
         .unwrap_or_default()
 }
 
@@ -2002,7 +2241,7 @@ async fn responses(
     }
 }
 
-/// GET /v1/responses/:id — retrieve an in-memory Responses API result.
+/// GET /v1/responses/:id — retrieve a stored Responses API result.
 async fn get_response(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -2017,7 +2256,7 @@ async fn get_response(
     }
 }
 
-/// DELETE /v1/responses/:id — remove an in-memory Responses API result.
+/// DELETE /v1/responses/:id — remove a stored Responses API result.
 async fn delete_response(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -2769,12 +3008,60 @@ mod tests {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(hakimi_config::HakimiConfig::default())),
             session_db: Arc::new(Mutex::new(db)),
-            response_store: Arc::new(Mutex::new(ResponsesStore::default())),
+            response_store: Arc::new(Mutex::new(ResponsesStore::new(100))),
             run_store: Arc::new(Mutex::new(RunsStore::default())),
         }
     }
 
     // ---------- tests ----------
+
+    #[test]
+    fn test_responses_store_persists_messages_and_evicts_old_entries() {
+        let path = std::env::temp_dir().join(format!(
+            "hakimi-response-store-{}-{}.db",
+            std::process::id(),
+            unix_timestamp_millis()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let first_messages = vec![ChatCompletionsMessage {
+            role: "user".to_string(),
+            content: json!("first turn"),
+        }];
+        let second_messages = vec![ChatCompletionsMessage {
+            role: "user".to_string(),
+            content: json!("second turn"),
+        }];
+
+        {
+            let mut store = ResponsesStore::with_path(&path, 1).unwrap();
+            store.insert(
+                "resp_1".to_string(),
+                json!({"id": "resp_1", "status": "completed"}),
+                first_messages.clone(),
+            );
+        }
+
+        {
+            let mut reopened = ResponsesStore::with_path(&path, 1).unwrap();
+            assert_eq!(reopened.get("resp_1").unwrap()["id"], "resp_1");
+            let messages = reopened.messages("resp_1").unwrap();
+            assert_eq!(messages[0].role, "user");
+            assert_eq!(messages[0].content, json!("first turn"));
+
+            reopened.insert(
+                "resp_2".to_string(),
+                json!({"id": "resp_2", "status": "completed"}),
+                second_messages,
+            );
+            assert!(reopened.get("resp_1").is_none());
+            assert_eq!(reopened.get("resp_2").unwrap()["id"], "resp_2");
+        }
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(std::path::PathBuf::from(format!("{}-wal", path.display())));
+        let _ = std::fs::remove_file(std::path::PathBuf::from(format!("{}-shm", path.display())));
+    }
 
     #[tokio::test]
     async fn test_health_endpoint() {
@@ -2857,6 +3144,10 @@ mod tests {
         assert_eq!(
             capabilities["features"]["responses_streaming_mode"],
             "completed_sse_snapshot"
+        );
+        assert_eq!(
+            capabilities["features"]["responses_persistence"],
+            "sqlite_lru"
         );
         assert_eq!(capabilities["features"]["skills_api"], true);
         assert_eq!(capabilities["features"]["toolsets_api"], true);
