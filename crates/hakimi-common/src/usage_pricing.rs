@@ -611,17 +611,26 @@ fn format_usd(amount: f64) -> String {
     if amount == 0.0 {
         "$0.00".to_string()
     } else if amount.abs() < 0.01 {
-        format!("${amount:.6}")
+        format_usd_decimal(amount, 6)
     } else if amount.abs() < 1.0 {
-        format!("${amount:.4}")
+        format_usd_decimal(amount, 4)
     } else {
-        format!("${amount:.2}")
+        format_usd_decimal(amount, 2)
     }
 }
 
 fn round_decimal(value: f64, decimals: i32) -> f64 {
     let factor = 10_f64.powi(decimals);
     (value * factor).round() / factor
+}
+
+fn format_usd_decimal(amount: f64, decimals: usize) -> String {
+    let factor = 10_u64.pow(decimals as u32);
+    let scaled = (amount.abs() * factor as f64 + 1e-9).round() as u64;
+    let whole = scaled / factor;
+    let fraction = scaled % factor;
+    let sign = if amount.is_sign_negative() { "-" } else { "" };
+    format!("${sign}{whole}.{fraction:0decimals$}")
 }
 
 #[cfg(test)]
