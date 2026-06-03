@@ -504,7 +504,7 @@ fn estimate_from_live_pricing(
         amount_usd: Some(amount),
         status: CostStatus::Estimated,
         source: CostSource::ProviderModelsApi,
-        label: format!("~{}", format_usd(amount)),
+        label: format!("~{}", format_live_usd(amount)),
         pricing_version: Some("provider-models-api".to_string()),
         notes: vec![format!("Live pricing matched `{model_id}`.")],
     }
@@ -611,17 +611,35 @@ fn format_usd(amount: f64) -> String {
     if amount == 0.0 {
         "$0.00".to_string()
     } else if amount.abs() < 0.01 {
-        format_usd_decimal(amount, 6)
+        format!("${amount:.6}")
     } else if amount.abs() < 1.0 {
-        format_usd_decimal(amount, 4)
+        format!("${amount:.4}")
     } else {
-        format_usd_decimal(amount, 2)
+        format!("${amount:.2}")
     }
 }
 
 fn round_decimal(value: f64, decimals: i32) -> f64 {
     let factor = 10_f64.powi(decimals);
     (value * factor).round() / factor
+}
+
+fn display_decimals(amount: f64) -> usize {
+    if amount.abs() < 0.01 {
+        6
+    } else if amount.abs() < 1.0 {
+        4
+    } else {
+        2
+    }
+}
+
+fn format_live_usd(amount: f64) -> String {
+    if amount == 0.0 {
+        "$0.00".to_string()
+    } else {
+        format_usd_decimal(amount, display_decimals(amount))
+    }
 }
 
 fn format_usd_decimal(amount: f64, decimals: usize) -> String {
