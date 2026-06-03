@@ -321,6 +321,69 @@ const PRICING: &[PricingEntry] = &[
         pricing_version: "google-pricing-2026-03-16",
     },
     PricingEntry {
+        provider: "bedrock",
+        model: "anthropic.claude-opus-4-6",
+        input_per_million: 15.00,
+        output_per_million: 75.00,
+        cache_read_per_million: None,
+        cache_write_per_million: None,
+        pricing_version: "bedrock-pricing-2026-04",
+    },
+    PricingEntry {
+        provider: "bedrock",
+        model: "anthropic.claude-sonnet-4-6",
+        input_per_million: 3.00,
+        output_per_million: 15.00,
+        cache_read_per_million: None,
+        cache_write_per_million: None,
+        pricing_version: "bedrock-pricing-2026-04",
+    },
+    PricingEntry {
+        provider: "bedrock",
+        model: "anthropic.claude-sonnet-4-5",
+        input_per_million: 3.00,
+        output_per_million: 15.00,
+        cache_read_per_million: None,
+        cache_write_per_million: None,
+        pricing_version: "bedrock-pricing-2026-04",
+    },
+    PricingEntry {
+        provider: "bedrock",
+        model: "anthropic.claude-haiku-4-5",
+        input_per_million: 0.80,
+        output_per_million: 4.00,
+        cache_read_per_million: None,
+        cache_write_per_million: None,
+        pricing_version: "bedrock-pricing-2026-04",
+    },
+    PricingEntry {
+        provider: "bedrock",
+        model: "amazon.nova-pro",
+        input_per_million: 0.80,
+        output_per_million: 3.20,
+        cache_read_per_million: None,
+        cache_write_per_million: None,
+        pricing_version: "bedrock-pricing-2026-04",
+    },
+    PricingEntry {
+        provider: "bedrock",
+        model: "amazon.nova-lite",
+        input_per_million: 0.06,
+        output_per_million: 0.24,
+        cache_read_per_million: None,
+        cache_write_per_million: None,
+        pricing_version: "bedrock-pricing-2026-04",
+    },
+    PricingEntry {
+        provider: "bedrock",
+        model: "amazon.nova-micro",
+        input_per_million: 0.035,
+        output_per_million: 0.14,
+        cache_read_per_million: None,
+        cache_write_per_million: None,
+        pricing_version: "bedrock-pricing-2026-04",
+    },
+    PricingEntry {
         provider: "deepseek",
         model: "deepseek-chat",
         input_per_million: 0.14,
@@ -614,6 +677,8 @@ fn resolve_billing_route(model: &str, provider: &str) -> BillingRoute {
 
     if provider_name == "anthropic" {
         model_name = normalize_anthropic_model(&model_name);
+    } else if provider_name == "bedrock" {
+        model_name = normalize_bedrock_model(&model_name);
     }
 
     BillingRoute {
@@ -639,6 +704,8 @@ fn infer_provider_from_model(model: &str) -> Option<String> {
         Some("anthropic".to_string())
     } else if model.starts_with("gemini-") {
         Some("google".to_string())
+    } else if model.starts_with("anthropic.claude-") || model.starts_with("amazon.nova-") {
+        Some("bedrock".to_string())
     } else if model.starts_with("deepseek-") {
         Some("deepseek".to_string())
     } else if model.starts_with("minimax-") {
@@ -651,7 +718,14 @@ fn infer_provider_from_model(model: &str) -> Option<String> {
 fn is_known_provider(provider: &str) -> bool {
     matches!(
         provider,
-        "anthropic" | "openai" | "google" | "gemini" | "deepseek" | "minimax" | "minimax-cn"
+        "anthropic"
+            | "openai"
+            | "google"
+            | "gemini"
+            | "bedrock"
+            | "deepseek"
+            | "minimax"
+            | "minimax-cn"
     )
 }
 
@@ -661,6 +735,42 @@ fn normalize_anthropic_model(model: &str) -> String {
         name = stripped.to_string();
     }
     name.replace('.', "-")
+}
+
+fn normalize_bedrock_model(model: &str) -> String {
+    let mut name = model.trim().to_ascii_lowercase();
+    if let Some(stripped) = name.strip_prefix("bedrock/") {
+        name = stripped.to_string();
+    }
+    name = strip_bedrock_runtime_version(&name).to_string();
+    strip_trailing_date_segment(&name).to_string()
+}
+
+fn strip_bedrock_runtime_version(model: &str) -> &str {
+    let Some((base, suffix)) = model.rsplit_once("-v") else {
+        return model;
+    };
+    let Some((version, revision)) = suffix.split_once(':') else {
+        return model;
+    };
+    if version.chars().all(|ch| ch.is_ascii_digit())
+        && revision.chars().all(|ch| ch.is_ascii_digit())
+    {
+        base
+    } else {
+        model
+    }
+}
+
+fn strip_trailing_date_segment(model: &str) -> &str {
+    let Some((base, date)) = model.rsplit_once('-') else {
+        return model;
+    };
+    if date.len() == 8 && date.chars().all(|ch| ch.is_ascii_digit()) {
+        base
+    } else {
+        model
+    }
 }
 
 fn format_usd(amount: f64) -> String {
@@ -798,6 +908,39 @@ mod tests {
 
         assert_eq!(estimate.status, CostStatus::Unknown);
         assert!(estimate.notes[0].contains("cache-read pricing unavailable"));
+    }
+
+    #[test]
+    fn estimates_bedrock_anthropic_runtime_model_cost() {
+        let estimate = estimate_usage_cost(
+            "anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "bedrock",
+            &usage(1_000, 200, 0, 0),
+        );
+
+        assert_eq!(estimate.status, CostStatus::Estimated);
+        assert_eq!(estimate.source, CostSource::OfficialDocsSnapshot);
+        assert_eq!(estimate.label, "~$0.006000");
+        assert_eq!(
+            estimate.pricing_version,
+            Some("bedrock-pricing-2026-04".to_string())
+        );
+    }
+
+    #[test]
+    fn bedrock_model_prefix_can_select_amazon_nova_pricing() {
+        let estimate = estimate_usage_cost(
+            "bedrock/amazon.nova-lite-v1:0",
+            "openai-compatible",
+            &usage(2_000, 1_000, 0, 0),
+        );
+
+        assert_eq!(estimate.status, CostStatus::Estimated);
+        assert_eq!(estimate.label, "~$0.000360");
+        assert_eq!(
+            estimate.pricing_version,
+            Some("bedrock-pricing-2026-04".to_string())
+        );
     }
 
     #[test]
