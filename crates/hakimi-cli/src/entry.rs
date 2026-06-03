@@ -7960,7 +7960,7 @@ mod tests {
                 }
             }]
         }));
-        let live_pricing = GatewayLivePricingCatalog {
+        let live_pricing = super::GatewayLivePricingCatalog {
             catalog,
             note: Some(
                 "Live pricing loaded from cache fetched at 2026-06-03T01:00:00+00:00.".to_string(),
