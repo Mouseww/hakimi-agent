@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use crate::Usage;
 
 const ONE_MILLION: f64 = 1_000_000.0;
+const PRICE_PRECISION: i32 = 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -497,6 +498,7 @@ fn estimate_from_live_pricing(
     let mut amount = prompt_tokens as f64 * entry.input_per_million / ONE_MILLION;
     amount += usage.completion_tokens as f64 * entry.output_per_million / ONE_MILLION;
     amount += cached_read as f64 * entry.cache_read_per_million.unwrap_or(0.0) / ONE_MILLION;
+    amount = round_decimal(amount, PRICE_PRECISION);
 
     CostEstimate {
         amount_usd: Some(amount),
@@ -518,7 +520,9 @@ fn price_per_token_to_million(value: &serde_json::Value) -> Option<f64> {
         serde_json::Value::String(text) => text.trim().parse::<f64>().ok()?,
         _ => return None,
     };
-    per_token.is_finite().then_some(per_token * ONE_MILLION)
+    per_token
+        .is_finite()
+        .then_some(round_decimal(per_token * ONE_MILLION, PRICE_PRECISION))
 }
 
 fn resolve_billing_route(model: &str, provider: &str) -> BillingRoute {
@@ -613,6 +617,11 @@ fn format_usd(amount: f64) -> String {
     } else {
         format!("${amount:.2}")
     }
+}
+
+fn round_decimal(value: f64, decimals: i32) -> f64 {
+    let factor = 10_f64.powi(decimals);
+    (value * factor).round() / factor
 }
 
 #[cfg(test)]
