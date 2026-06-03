@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.237-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.238-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1747-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1749-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -59,7 +59,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 | 空闲内存 | ~150MB | ~15MB |
 | 异步模型 | asyncio + GIL | tokio 原生 async |
 | 工具安全 | 运行时才报错 | 编译期类型保证 |
-| 测试数量 | ~500 | 1747 |
+| 测试数量 | ~500 | 1749 |
 
 **不是 wrapper，不是 demo，是真能上的生产系统：**
 - 20+ 种 API 错误类型自动识别并恢复
@@ -99,7 +99,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 实时流式输出，支持 progressive edits、Telegram 原生草稿 preview、flood-control 退避、按平台配置 preview 策略，长回复会按平台限制做 UTF-8 安全分片
 - 持久化生命周期诊断会把适配器、连接、路由、过滤和编辑事件写入 `~/.hakimi/logs/gateway-events.log`；`/logs`、`/logs events`、`/logs gateway` 可直接读取近期日志，不再依赖外部 `tail`
 - 网关 `/undo [N]` 可回退近期内存会话轮次，并回显目标提示词，方便编辑后重发
-- 网关 `/usage` 会显示上一轮 token/成本/限流数据，按需使用带 Profile 作用域新鲜度缓存的 OpenRouter-compatible `/v1/models` 实时价格，并展示 OpenRouter `/credits` 与 `/key` 额度/用量、Anthropic OAuth 账户窗口和 Codex 用量窗口，且不会暴露凭证
+- 网关 `/usage` 会显示上一轮 token/成本/限流数据，按需使用带 Profile 作用域新鲜度缓存和请求费用的 OpenRouter-compatible `/v1/models` 实时价格，并展示 OpenRouter `/credits` 与 `/key` 额度/用量、Anthropic OAuth 账户窗口和 Codex 用量窗口，且不会暴露凭证
 - 聊天里直接创建定时任务 `/cron add`
 - 网关 `/voice on|off|tts|status|doctor` 可切换口语化回复并报告语音 I/O 就绪状态，不污染 prompt cache 和聊天历史
 - TUI `/config [field]` 可查看脱敏运行配置摘要；`/gateway [cmd]` 可查看已配置适配器、缓存频道目标和生命周期事件；`/sessions [cmd]` 可浏览已保存 SQLite 会话；`/skills [cmd]` 可浏览/搜索本地 Skills Hub 元数据；`/cron [cmd]` 可在本地管理持久化 cron 数据库；`/undo [N]` 可把近期提示词放回输入框继续编辑；`/checkpoints [cmd]` 可在不进入模型循环的情况下查看和管理共享 shadow-git 检查点；`/voice status` 与可配置 Ctrl+B/Ctrl+字母按键录音共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验、超大 WAV 分块 STT 派发、本地 TTS 播放启动、支持录音后端和自动 transcript 提交的 `voice_capture` 工具、连续重启录音、二次按键取消录音、三次无语音自动退出，以及 Hermes 风格开始/停止提示音
@@ -207,7 +207,7 @@ hakimi-agent/
 | 意图检测 | 无 | 10 分类规则引擎 |
 | 角色自适应 | 无 | 8 角色自动切换 |
 | 对话模型 | 扁平列表 | 决策树 |
-| 测试数量 | ~500 | 1747 |
+| 测试数量 | ~500 | 1749 |
 
 ---
 
@@ -239,7 +239,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] MCP 客户端 + CLI/网关服务器目录
 - [x] HTTP API 模型/能力发现端点 + 文本 Chat Completions/Responses SSE 快照 + 可取消 Runs 实时生命周期事件
 - [x] WebUI 管理 API 摘要 + 运行期写入 + Kanban 读写管理
-- [x] 网关 `/usage` 速率限制、账号额度、实时价格与离线 OpenAI/Anthropic/Gemini/DeepSeek/MiniMax/Bedrock 成本估算
+- [x] 网关 `/usage` 速率限制、账号额度、带请求费用的实时价格与离线 OpenAI/Anthropic/Gemini/DeepSeek/MiniMax/Bedrock 成本估算
 - [x] 插件系统 + HTTP 模板
 - [x] Profile 分发包安装/更新/info，并保护用户数据
 - [x] CLI Skin Engine，支持内置/用户 YAML 主题、`display.skin` 持久化、启动横幅主题化和 TUI spinner、状态栏、补全、帮助、工具 emoji/进度与界面主题化

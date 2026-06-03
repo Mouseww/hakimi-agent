@@ -2093,11 +2093,12 @@ fn snapshot_with_live_pricing(
 ) -> Option<GatewayUsageSnapshot> {
     let mut snapshot = snapshot?;
     if let Some(live_pricing) = live_pricing {
-        snapshot.cost = hakimi_common::estimate_usage_cost_with_live_pricing(
+        snapshot.cost = hakimi_common::estimate_usage_cost_with_live_pricing_and_requests(
             &snapshot.model,
             &snapshot.provider,
             &snapshot.usage,
             &live_pricing.catalog,
+            snapshot.api_call_count,
         );
         if let Some(note) = live_pricing.note.as_deref()
             && snapshot.cost.source == hakimi_common::CostSource::ProviderModelsApi
@@ -7948,7 +7949,7 @@ mod tests {
                     reasoning_tokens: 0,
                 },
             ),
-            api_call_count: 1,
+            api_call_count: 2,
             rate_limits: None,
         };
         let catalog = hakimi_common::openrouter_models_pricing_from_payload(&serde_json::json!({
@@ -7956,7 +7957,8 @@ mod tests {
                 "id": "acme/new-model",
                 "pricing": {
                     "prompt": "0.00000015",
-                    "completion": "0.00000060"
+                    "completion": "0.00000060",
+                    "request": "0.001"
                 }
             }]
         }));
@@ -7975,8 +7977,9 @@ mod tests {
             snapshot.cost.source,
             hakimi_common::CostSource::ProviderModelsApi
         );
-        assert!(response.contains("Estimated cost: ~$0.000600"));
+        assert!(response.contains("Estimated cost: ~$0.002600"));
         assert!(response.contains("Pricing: `provider-models-api`"));
+        assert!(response.contains("2 API call"));
         assert!(response.contains("Live pricing loaded from cache"));
     }
 
