@@ -1,10 +1,12 @@
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, io, path::Path};
 
 use crate::Usage;
 
 const ONE_MILLION: f64 = 1_000_000.0;
 const PRICE_PRECISION: i32 = 12;
+pub const LIVE_PRICING_CACHE_TTL_SECONDS: i64 = 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -78,6 +80,37 @@ pub struct LivePricingEntry {
 }
 
 pub type LivePricingCatalog = BTreeMap<String, LivePricingEntry>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LivePricingCache {
+    pub provider: String,
+    pub base_url: String,
+    pub fetched_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub catalog: LivePricingCatalog,
+}
+
+impl LivePricingCache {
+    pub fn new(
+        provider: impl Into<String>,
+        base_url: impl Into<String>,
+        catalog: LivePricingCatalog,
+        fetched_at: DateTime<Utc>,
+        ttl: Duration,
+    ) -> Self {
+        Self {
+            provider: provider.into(),
+            base_url: base_url.into(),
+            fetched_at,
+            expires_at: fetched_at + ttl,
+            catalog,
+        }
+    }
+
+    pub fn is_fresh_at(&self, now: DateTime<Utc>) -> bool {
+        !self.catalog.is_empty() && now < self.expires_at
+    }
+}
 
 const PRICING: &[PricingEntry] = &[
     PricingEntry {
@@ -452,6 +485,29 @@ pub fn openrouter_models_pricing_from_payload(payload: &serde_json::Value) -> Li
     catalog
 }
 
+pub fn save_live_pricing_cache(path: &Path, cache: &LivePricingCache) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let bytes = serde_json::to_vec_pretty(cache)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    std::fs::write(path, bytes)
+}
+
+pub fn load_fresh_live_pricing_cache(
+    path: &Path,
+    now: DateTime<Utc>,
+) -> io::Result<Option<LivePricingCache>> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err),
+    };
+    let cache: LivePricingCache = serde_json::from_slice(&bytes)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    Ok(cache.is_fresh_at(now).then_some(cache))
+}
+
 fn unknown_with_note(note: &str) -> CostEstimate {
     let mut estimate = CostEstimate::unknown();
     estimate.notes.push(note.to_string());
@@ -821,5 +877,48 @@ mod tests {
 
         assert_eq!(estimate.status, CostStatus::Unknown);
         assert!(estimate.notes[0].contains("cache-read pricing unavailable"));
+    }
+
+    #[test]
+    fn live_pricing_cache_round_trips_fresh_catalog() {
+        let fetched_at = DateTime::parse_from_rfc3339("2026-06-03T01:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let path = std::env::temp_dir().join(format!(
+            "hakimi-live-pricing-cache-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        let mut catalog = LivePricingCatalog::new();
+        catalog.insert(
+            "openrouter/acme".to_string(),
+            LivePricingEntry {
+                input_per_million: 0.15,
+                output_per_million: 0.60,
+                cache_read_per_million: None,
+                cache_write_per_million: None,
+            },
+        );
+        let cache = LivePricingCache::new(
+            "openrouter",
+            "https://openrouter.ai/api/v1",
+            catalog.clone(),
+            fetched_at,
+            Duration::seconds(60),
+        );
+
+        save_live_pricing_cache(&path, &cache).unwrap();
+
+        let loaded = load_fresh_live_pricing_cache(&path, fetched_at + Duration::seconds(30))
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.provider, "openrouter");
+        assert_eq!(loaded.base_url, "https://openrouter.ai/api/v1");
+        assert_eq!(loaded.catalog, catalog);
+        assert!(
+            load_fresh_live_pricing_cache(&path, fetched_at + Duration::seconds(61))
+                .unwrap()
+                .is_none()
+        );
+        let _ = std::fs::remove_file(path);
     }
 }

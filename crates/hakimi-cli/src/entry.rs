@@ -32,6 +32,12 @@ fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
 const VOICE_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice mode: respond in a concise, natural spoken style for a spoken interface. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
 const VOICE_TTS_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice+TTS mode: respond in a concise, natural spoken style suitable for text-to-speech playback. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
 
+#[derive(Debug, Clone)]
+struct GatewayLivePricingCatalog {
+    catalog: hakimi_common::LivePricingCatalog,
+    note: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct VoiceRuntimeState {
     spoken_response: bool,
@@ -1838,7 +1844,7 @@ async fn fetch_account_usage_snapshot(
 
 async fn fetch_live_pricing_catalog(
     config: &hakimi_config::HakimiConfig,
-) -> Option<hakimi_common::LivePricingCatalog> {
+) -> Option<GatewayLivePricingCatalog> {
     let model = resolve_model(None, config);
     let provider = resolve_provider(None, config, &model);
     let base_url = resolve_base_url(None, config);
@@ -1846,12 +1852,19 @@ async fn fetch_live_pricing_catalog(
         return None;
     }
 
+    let cache_path = live_pricing_cache_path(&provider, &base_url);
     let api_key = resolve_account_usage_api_key(&provider, config);
-    let client = reqwest::Client::builder()
+    let client = match reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(5))
         .read_timeout(std::time::Duration::from_secs(8))
         .build()
-        .ok()?;
+    {
+        Ok(client) => client,
+        Err(err) => {
+            warn!(error = %err, "failed to build live pricing HTTP client");
+            return load_cached_live_pricing_catalog(&cache_path);
+        }
+    };
 
     let mut request = client
         .get(format!(
@@ -1864,13 +1877,48 @@ async fn fetch_live_pricing_catalog(
         request = request.bearer_auth(api_key.trim());
     }
 
-    let response = request.send().await.ok()?;
+    let response = match request.send().await {
+        Ok(response) => response,
+        Err(err) => {
+            warn!(error = %err, "failed to fetch live pricing catalog");
+            return load_cached_live_pricing_catalog(&cache_path);
+        }
+    };
     if !response.status().is_success() {
-        return None;
+        warn!(
+            status = %response.status(),
+            "live pricing catalog request returned non-success status"
+        );
+        return load_cached_live_pricing_catalog(&cache_path);
     }
-    let payload: serde_json::Value = response.json().await.ok()?;
+    let payload: serde_json::Value = match response.json().await {
+        Ok(payload) => payload,
+        Err(err) => {
+            warn!(error = %err, "failed to decode live pricing catalog");
+            return load_cached_live_pricing_catalog(&cache_path);
+        }
+    };
     let catalog = hakimi_common::openrouter_models_pricing_from_payload(&payload);
-    (!catalog.is_empty()).then_some(catalog)
+    if catalog.is_empty() {
+        return load_cached_live_pricing_catalog(&cache_path);
+    }
+
+    let api_base = openrouter_compatible_models_api_base(&base_url);
+    let cache = hakimi_common::LivePricingCache::new(
+        provider,
+        api_base,
+        catalog.clone(),
+        chrono::Utc::now(),
+        chrono::Duration::seconds(hakimi_common::LIVE_PRICING_CACHE_TTL_SECONDS),
+    );
+    if let Err(err) = hakimi_common::save_live_pricing_cache(&cache_path, &cache) {
+        warn!(error = %err, path = %cache_path.display(), "failed to save live pricing cache");
+    }
+
+    Some(GatewayLivePricingCatalog {
+        catalog,
+        note: None,
+    })
 }
 
 fn openrouter_account_api_base(base_url: &str) -> String {
@@ -1922,6 +1970,57 @@ fn openrouter_compatible_models_api_base(base_url: &str) -> String {
         return format!("{base}/api/v1");
     }
     format!("{base}/v1")
+}
+
+fn live_pricing_cache_path(provider: &str, base_url: &str) -> std::path::PathBuf {
+    let api_base = openrouter_compatible_models_api_base(base_url);
+    let key = sanitize_live_pricing_cache_key(&format!("{provider}-{api_base}"));
+    hakimi_common::effective_hakimi_home()
+        .join("cache")
+        .join("live-pricing")
+        .join(format!("{key}.json"))
+}
+
+fn sanitize_live_pricing_cache_key(value: &str) -> String {
+    let mut key = String::new();
+    let mut last_was_dash = false;
+    for ch in value.chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            key.push(ch);
+            last_was_dash = false;
+        } else if !last_was_dash && !key.is_empty() {
+            key.push('-');
+            last_was_dash = true;
+        }
+    }
+    while key.ends_with('-') {
+        key.pop();
+    }
+    if key.is_empty() {
+        "default".to_string()
+    } else if key.len() > 96 {
+        key.truncate(96);
+        key.trim_end_matches('-').to_string()
+    } else {
+        key
+    }
+}
+
+fn load_cached_live_pricing_catalog(path: &std::path::Path) -> Option<GatewayLivePricingCatalog> {
+    match hakimi_common::load_fresh_live_pricing_cache(path, chrono::Utc::now()) {
+        Ok(Some(cache)) => Some(GatewayLivePricingCatalog {
+            catalog: cache.catalog,
+            note: Some(format!(
+                "Live pricing loaded from cache fetched at {}.",
+                cache.fetched_at.to_rfc3339()
+            )),
+        }),
+        Ok(None) => None,
+        Err(err) => {
+            warn!(error = %err, path = %path.display(), "failed to load live pricing cache");
+            None
+        }
+    }
 }
 
 fn is_codex_account_usage_provider(provider: &str, base_url: &str, api_mode: &str) -> bool {
@@ -1990,7 +2089,7 @@ fn resolve_account_usage_api_key(provider: &str, config: &hakimi_config::HakimiC
 
 fn snapshot_with_live_pricing(
     snapshot: Option<GatewayUsageSnapshot>,
-    live_pricing: Option<&hakimi_common::LivePricingCatalog>,
+    live_pricing: Option<&GatewayLivePricingCatalog>,
 ) -> Option<GatewayUsageSnapshot> {
     let mut snapshot = snapshot?;
     if let Some(live_pricing) = live_pricing {
@@ -1998,8 +2097,13 @@ fn snapshot_with_live_pricing(
             &snapshot.model,
             &snapshot.provider,
             &snapshot.usage,
-            live_pricing,
+            &live_pricing.catalog,
         );
+        if let Some(note) = live_pricing.note.as_deref()
+            && snapshot.cost.source == hakimi_common::CostSource::ProviderModelsApi
+        {
+            snapshot.cost.notes.push(note.to_string());
+        }
     }
     Some(snapshot)
 }
@@ -2060,6 +2164,9 @@ fn gateway_usage_response(
         hakimi_common::CostStatus::Unknown => {
             lines.push("- Estimated cost: n/a".to_string());
         }
+    }
+    for note in &snapshot.cost.notes {
+        lines.push(format!("  Note: {note}"));
     }
 
     if let Some(account_usage) = account_usage {
@@ -7736,6 +7843,17 @@ mod tests {
     }
 
     #[test]
+    fn live_pricing_cache_key_is_path_safe_and_stable() {
+        assert_eq!(
+            super::sanitize_live_pricing_cache_key(
+                "OpenRouter-https://openrouter.ai/api/v1?source=cache"
+            ),
+            "openrouter-https-openrouter-ai-api-v1-source-cache"
+        );
+        assert_eq!(super::sanitize_live_pricing_cache_key("///"), "default");
+    }
+
+    #[test]
     fn codex_account_usage_provider_detection_is_explicit() {
         assert!(super::is_codex_account_usage_provider(
             "openai-codex",
@@ -7842,8 +7960,15 @@ mod tests {
                 }
             }]
         }));
+        let live_pricing = GatewayLivePricingCatalog {
+            catalog,
+            note: Some(
+                "Live pricing loaded from cache fetched at 2026-06-03T01:00:00+00:00.".to_string(),
+            ),
+        };
 
-        let snapshot = super::snapshot_with_live_pricing(Some(snapshot), Some(&catalog)).unwrap();
+        let snapshot =
+            super::snapshot_with_live_pricing(Some(snapshot), Some(&live_pricing)).unwrap();
         let response = gateway_usage_response(Some(&snapshot), None);
 
         assert_eq!(
@@ -7852,6 +7977,7 @@ mod tests {
         );
         assert!(response.contains("Estimated cost: ~$0.000600"));
         assert!(response.contains("Pricing: `provider-models-api`"));
+        assert!(response.contains("Live pricing loaded from cache"));
     }
 
     #[test]
