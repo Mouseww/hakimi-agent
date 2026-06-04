@@ -462,25 +462,24 @@ fn parse_ddg_html(html: &str, max_results: usize) -> Vec<SearchResult> {
                 .to_string();
 
             // DDG sometimes wraps URLs in redirects: extract actual URL
-            if url.contains("uddg=") {
-                if let Some(decoded) = extract_ddg_redirect(&url) {
-                    url = decoded;
-                }
+            if url.contains("uddg=")
+                && let Some(decoded) = extract_ddg_redirect(&url)
+            {
+                url = decoded;
             }
 
             // Try dedicated URL element if href was empty or a redirect
-            if url.is_empty() || url.starts_with('/') {
-                if let Some(ref u_sel) = url_sel {
-                    if let Some(url_el) = el.select(u_sel).next() {
-                        let raw = url_el.text().collect::<String>().trim().to_string();
-                        if !raw.is_empty() {
-                            url = if raw.starts_with("http") {
-                                raw
-                            } else {
-                                format!("https://{raw}")
-                            };
-                        }
-                    }
+            if (url.is_empty() || url.starts_with('/'))
+                && let Some(ref u_sel) = url_sel
+                && let Some(url_el) = el.select(u_sel).next()
+            {
+                let raw = url_el.text().collect::<String>().trim().to_string();
+                if !raw.is_empty() {
+                    url = if raw.starts_with("http") {
+                        raw
+                    } else {
+                        format!("https://{raw}")
+                    };
                 }
             }
 
@@ -503,32 +502,32 @@ fn parse_ddg_html(html: &str, max_results: usize) -> Vec<SearchResult> {
     }
 
     // Strategy 2: Fallback — scan all <a class="result__a"> directly
-    if results.is_empty() {
-        if let Some(ref t_sel) = title_sel {
-            for a_el in document.select(t_sel) {
-                if results.len() >= max_results {
-                    break;
-                }
-                let title = a_el.text().collect::<String>().trim().to_string();
-                if title.is_empty() {
-                    continue;
-                }
-                let mut url = a_el.value().attr("href").unwrap_or("").to_string();
-                if url.contains("uddg=") {
-                    if let Some(decoded) = extract_ddg_redirect(&url) {
-                        url = decoded;
-                    }
-                }
-                results.push(SearchResult {
-                    title: clean_html_text(&title),
-                    url: if url.is_empty() {
-                        "(no url)".to_string()
-                    } else {
-                        url
-                    },
-                    snippet: String::new(),
-                });
+    if results.is_empty()
+        && let Some(ref t_sel) = title_sel
+    {
+        for a_el in document.select(t_sel) {
+            if results.len() >= max_results {
+                break;
             }
+            let title = a_el.text().collect::<String>().trim().to_string();
+            if title.is_empty() {
+                continue;
+            }
+            let mut url = a_el.value().attr("href").unwrap_or("").to_string();
+            if url.contains("uddg=")
+                && let Some(decoded) = extract_ddg_redirect(&url)
+            {
+                url = decoded;
+            }
+            results.push(SearchResult {
+                title: clean_html_text(&title),
+                url: if url.is_empty() {
+                    "(no url)".to_string()
+                } else {
+                    url
+                },
+                snippet: String::new(),
+            });
         }
     }
 
