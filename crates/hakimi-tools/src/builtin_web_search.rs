@@ -381,7 +381,10 @@ async fn search_ddg_html(query: &str, max_results: usize) -> Result<String> {
 
     let response = client
         .get(&url)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
         .header("Accept-Language", "en-US,en;q=0.9")
         .header("Accept-Encoding", "gzip, deflate, br")
         .header("DNT", "1")
@@ -429,7 +432,8 @@ fn parse_ddg_html(html: &str, max_results: usize) -> Vec<SearchResult> {
     // Strategy 1: Modern DDG selectors (div.result or div.web-result)
     let result_sel = Selector::parse("div.result, div.web-result, div.results_links").ok();
     let title_sel = Selector::parse("a.result__a, h2 a, a.result-link").ok();
-    let snippet_sel = Selector::parse("a.result__snippet, .result__snippet, td.result-snippet, .snippet").ok();
+    let snippet_sel =
+        Selector::parse("a.result__snippet, .result__snippet, td.result-snippet, .snippet").ok();
     let url_sel = Selector::parse("a.result__url, .result__extras__url a, span.result__url").ok();
 
     if let (Some(r_sel), Some(t_sel)) = (&result_sel, &title_sel) {
@@ -560,7 +564,10 @@ async fn search_bing_cn(query: &str, max_results: usize) -> Result<String> {
 
     let response = client
         .get(&url)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
         .header("Accept-Encoding", "gzip, deflate, br")
         .header("Sec-Fetch-Dest", "document")
@@ -598,7 +605,8 @@ fn parse_bing_html(html: &str, max_results: usize) -> Vec<SearchResult> {
     let algo_sel = Selector::parse("li.b_algo").ok();
     let title_sel = Selector::parse("h2 a").ok();
     let tilk_sel = Selector::parse("a.tilk").ok();
-    let snippet_sel = Selector::parse(".b_caption p, .b_lineclamp2, .b_lineclamp3, .b_paractl").ok();
+    let snippet_sel =
+        Selector::parse(".b_caption p, .b_lineclamp2, .b_lineclamp3, .b_paractl").ok();
 
     if let (Some(a_sel), Some(t_sel)) = (&algo_sel, &title_sel) {
         for el in document.select(a_sel) {
