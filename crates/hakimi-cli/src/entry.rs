@@ -6948,6 +6948,38 @@ fn restore_hakimi_state_backup(
     Ok(())
 }
 
+fn extract_binary_from_tar_gz(data: &[u8], binary_name: &str) -> Result<Option<Vec<u8>>> {
+    let decoder = flate2::read::GzDecoder::new(data);
+    let mut archive = tar::Archive::new(decoder);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?;
+        if path.file_name().map(|n| n == binary_name).unwrap_or(false) {
+            let mut buf = Vec::new();
+            use std::io::Read;
+            entry.read_to_end(&mut buf)?;
+            return Ok(Some(buf));
+        }
+    }
+    Ok(None)
+}
+
+fn extract_binary_from_zip(data: &[u8], binary_name: &str) -> Result<Option<Vec<u8>>> {
+    use std::io::Read;
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor)?;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let path = std::path::Path::new(file.name());
+        if path.file_name().map(|n| n == binary_name).unwrap_or(false) {
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+            return Ok(Some(buf));
+        }
+    }
+    Ok(None)
+}
+
 async fn self_update() -> Result<()> {
     use std::env;
     use std::fs;
@@ -6962,6 +6994,7 @@ async fn self_update() -> Result<()> {
     let (platform, ext) = match os {
         "linux" => ("unknown-linux-musl", "tar.gz"),
         "macos" => ("apple-darwin", "tar.gz"),
+        "windows" => ("pc-windows-msvc", "zip"),
         _ => anyhow::bail!("Self-update not supported on this OS. Use the install script."),
     };
     let arch_str = match arch {
@@ -6989,27 +7022,23 @@ async fn self_update() -> Result<()> {
     let bytes = resp.bytes().await?;
     println!("Downloaded {} bytes", bytes.len());
 
-    // Extract tar.gz in memory
-    let tar_bytes = bytes.clone();
-    let decoder = flate2::read::GzDecoder::new(&tar_bytes[..]);
-    let mut archive = tar::Archive::new(decoder);
+    // Extract binary from archive
+    let binary_name = if os == "windows" {
+        "hakimi.exe"
+    } else {
+        "hakimi"
+    };
 
-    // Find the hakimi binary in the archive
-    let mut binary_data: Option<Vec<u8>> = None;
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        let path = entry.path()?;
-        if path.file_name().map(|n| n == "hakimi").unwrap_or(false) {
-            let mut buf = Vec::new();
-            use std::io::Read;
-            entry.read_to_end(&mut buf)?;
-            binary_data = Some(buf);
-            break;
-        }
-    }
+    let binary_data = if ext == "zip" {
+        // Extract from zip (Windows)
+        extract_binary_from_zip(&bytes, binary_name)?
+    } else {
+        // Extract from tar.gz (Linux/macOS)
+        extract_binary_from_tar_gz(&bytes, binary_name)?
+    };
 
-    let binary_data =
-        binary_data.ok_or_else(|| anyhow::anyhow!("Binary 'hakimi' not found in archive"))?;
+    let binary_data = binary_data
+        .ok_or_else(|| anyhow::anyhow!("Binary '{binary_name}' not found in archive"))?;
 
     // Determine update target. Prefer the `hakimi` found on PATH so `hakimi --update`
     // updates the command users actually run, even when current_exe resolves through a
@@ -7053,8 +7082,24 @@ async fn self_update() -> Result<()> {
     } else {
         current_exe.as_path()
     };
-    fs::copy(backup_source, &backup_path)?;
-    println!("Backed up current binary to {}", backup_path.display());
+
+    // On Windows, a running exe can be renamed but not overwritten.
+    // So we rename the running binary out of the way first, then place the new one.
+    #[cfg(windows)]
+    {
+        if update_target.binary_path.exists() {
+            fs::rename(&update_target.binary_path, &backup_path)?;
+            println!("Backed up current binary to {}", backup_path.display());
+        } else {
+            fs::copy(backup_source, &backup_path)?;
+            println!("Backed up current binary to {}", backup_path.display());
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        fs::copy(backup_source, &backup_path)?;
+        println!("Backed up current binary to {}", backup_path.display());
+    }
 
     let install_tmp = update_target.binary_path.with_extension(format!(
         "hakimi-update-{}",
