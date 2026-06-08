@@ -18,6 +18,7 @@ use std::pin::Pin;
 use tracing::{debug, warn};
 
 use crate::error::classify_error;
+use crate::nous_rate_guard;
 use crate::params::RequestParams;
 use crate::rate_limit::{RateLimitState, RateLimitTracker};
 use crate::streaming::StreamEvent;
@@ -279,6 +280,16 @@ impl ResponsesTransport {
         let body = self.build_request_base(model, messages, tools, params, true);
         let url = self.endpoint();
 
+        if let Some(message) = nous_rate_guard::active_limit_message(&self.base_url) {
+            warn!(message = %message, "blocking Nous request while shared rate-limit guard is active");
+            return Err(crate::error::TransportError::Api {
+                status: 429,
+                reason: "NousRateLimitGuard".to_string(),
+                retryable: false,
+                body: message,
+            });
+        }
+
         debug!(url = %url, model = model, "sending streaming responses API request");
 
         let response = self
@@ -295,12 +306,32 @@ impl ResponsesTransport {
             })?;
 
         let status = response.status();
-        self.rate_limits
+        let previous_rate_limits = self.rate_limits.snapshot();
+        let current_rate_limits = self
+            .rate_limits
             .update_from_headers(response.headers(), "openai-responses");
+        if status.is_success() {
+            nous_rate_guard::clear_success(&self.base_url);
+        }
         if !status.is_success() {
             let response_text = response.text().await.unwrap_or_default();
             let code = status.as_u16();
             let (reason, retryable) = classify_error(code, &response_text);
+            if code == 429
+                && let Some(message) = nous_rate_guard::record_genuine_limit(
+                    &self.base_url,
+                    current_rate_limits.as_ref(),
+                    previous_rate_limits.as_ref(),
+                )
+            {
+                warn!(message = %message, "recorded shared Nous rate-limit guard");
+                return Err(crate::error::TransportError::Api {
+                    status: code,
+                    reason: "NousRateLimitGuard".to_string(),
+                    retryable: false,
+                    body: message,
+                });
+            }
             warn!(
                 status = code,
                 ?reason,
@@ -350,6 +381,11 @@ impl ProviderTransport for ResponsesTransport {
         let body = self.build_request(model, messages, tools, params);
         let url = self.endpoint();
 
+        if let Some(message) = nous_rate_guard::active_limit_message(&self.base_url) {
+            warn!(message = %message, "blocking Nous request while shared rate-limit guard is active");
+            return Err(HakimiError::Other(message));
+        }
+
         debug!(url = %url, model = model, "sending responses API request");
 
         let response = self
@@ -366,8 +402,13 @@ impl ProviderTransport for ResponsesTransport {
             })?;
 
         let status = response.status();
-        self.rate_limits
+        let previous_rate_limits = self.rate_limits.snapshot();
+        let current_rate_limits = self
+            .rate_limits
             .update_from_headers(response.headers(), "openai-responses");
+        if status.is_success() {
+            nous_rate_guard::clear_success(&self.base_url);
+        }
         let response_text = response
             .text()
             .await
@@ -376,6 +417,16 @@ impl ProviderTransport for ResponsesTransport {
         if !status.is_success() {
             let code = status.as_u16();
             let (reason, retryable) = classify_error(code, &response_text);
+            if code == 429
+                && let Some(message) = nous_rate_guard::record_genuine_limit(
+                    &self.base_url,
+                    current_rate_limits.as_ref(),
+                    previous_rate_limits.as_ref(),
+                )
+            {
+                warn!(message = %message, "recorded shared Nous rate-limit guard");
+                return Err(HakimiError::Other(message));
+            }
             warn!(
                 status = code,
                 ?reason,
@@ -405,7 +456,14 @@ impl ProviderTransport for ResponsesTransport {
     ) -> Result<Pin<Box<dyn Stream<Item = std::result::Result<StreamEvent, String>> + Send>>> {
         ResponsesTransport::execute_streaming(self, model, messages, tools, params)
             .await
-            .map_err(|e| HakimiError::Transport(e.to_string()))
+            .map_err(|e| {
+                let message = e.to_string();
+                if nous_rate_guard::is_guard_message(&message) {
+                    HakimiError::Other(message)
+                } else {
+                    HakimiError::Transport(message)
+                }
+            })
     }
 }
 

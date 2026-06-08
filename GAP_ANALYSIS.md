@@ -398,7 +398,7 @@ Generated: 2026-06-02
 #### 40. Usage Pricing / Account Usage Tracking
 - **What**: Token usage pricing calculation and account usage aggregation
 - **Hermes location**: `agent/usage_pricing.py`, `agent/account_usage.py`
-- **Details**: Per-model cost estimation, account usage aggregation, and provider usage surfaces. Rate-limit header parsing/tracking, gateway `/usage`, offline per-turn cost estimates including Bedrock official-docs snapshot pricing, best-effort OpenRouter-compatible `/v1/models` live pricing with stable decimal normalization, request fees, and profile-scoped fresh cache fallback, OpenRouter `/credits` plus `/key` account usage display, Anthropic OAuth usage windows, and Codex usage windows are implemented; broader provider account probes, persisted aggregation, non-OpenRouter-compatible persistent pricing caches, and non-OpenRouter-compatible live pricing discovery are still missing.
+- **Details**: Per-model cost estimation, account usage aggregation, and provider usage surfaces. Rate-limit header parsing/tracking, gateway `/usage`, offline per-turn cost estimates including Bedrock official-docs snapshot pricing, best-effort OpenRouter-compatible `/v1/models` live pricing with stable decimal normalization, request fees, and profile-scoped fresh cache fallback, OpenRouter `/credits` plus `/key` account usage display, Anthropic OAuth usage windows, Codex usage windows, and a shared Nous rate-limit guard are implemented; broader provider account probes, persisted aggregation, non-OpenRouter-compatible persistent pricing caches, and non-OpenRouter-compatible live pricing discovery are still missing.
 - **Priority**: **Medium** — Cost visibility
 
 #### 41. Model Metadata / Auto-Discovery
@@ -461,10 +461,10 @@ Generated: 2026-06-02
 - **Details**: `KawaiiSpinner` with configurable faces. `┊` activity feed.
 - **Priority**: **Low** — CLI aesthetics (Hakimi has basic spinner in TUI)
 
-#### 53. Nous Rate Guard
+#### 53. ~~Nous Rate Guard~~ ✅ DONE
 - **What**: Rate limiting specific to Nous provider
 - **Hermes location**: `agent/nous_rate_guard.py`
-- **Priority**: **Low** — Provider-specific
+- **Status**: ✅ Done in v0.3.241 — `hakimi-transports::nous_rate_guard` stores a shared `~/.hakimi/rate_limits/nous.json` breaker for OpenAI-compatible Chat Completions and Responses requests pointed at Nous. It only trips on 429 responses with a real exhausted rate-limit bucket and a reset window of at least 60 seconds, checks the breaker before new requests across CLI/TUI/gateway/cron processes, clears it after successful Nous responses, and leaves transient upstream-capacity 429s as single request errors.
 
 #### 54. ~~Shell Hooks (terminal pre/post slice)~~ ✅ DONE
 - **What**: Pre/post command execution hooks
@@ -573,7 +573,7 @@ Generated: 2026-06-02
 - **Hermes reference**: `agent/error_classifier.py`
 
 ### 16. Usage Pricing / Rate Limit Tracking
-- **Status**: `hakimi-transports::RateLimitTracker` parses OpenAI/Nous-style `x-ratelimit-*` request/token windows, formats detailed/compact displays, and Chat Completions, Responses, Anthropic, and Gemini transports retain the latest snapshot. `hakimi-common::estimate_usage_cost()` adds Hermes-style static pricing estimates for common OpenAI, Anthropic, Gemini, DeepSeek, MiniMax, and AWS Bedrock routes; gateway `/usage` shows token counts, estimated cost, pricing snapshot version, rate limits, best-effort OpenRouter-compatible `/v1/models` live pricing with stable decimal normalization, request fees, and a profile-scoped fresh cache fallback, OpenRouter account credits/API-key quota, Anthropic OAuth usage windows, and Codex usage windows when configured.
+- **Status**: `hakimi-transports::RateLimitTracker` parses OpenAI/Nous-style `x-ratelimit-*` request/token windows, formats detailed/compact displays, and Chat Completions, Responses, Anthropic, and Gemini transports retain the latest snapshot. `hakimi-transports::nous_rate_guard` records a shared Nous breaker only for genuine exhausted-bucket 429s and blocks subsequent Nous requests before retry amplification. `hakimi-common::estimate_usage_cost()` adds Hermes-style static pricing estimates for common OpenAI, Anthropic, Gemini, DeepSeek, MiniMax, and AWS Bedrock routes; gateway `/usage` shows token counts, estimated cost, pricing snapshot version, rate limits, best-effort OpenRouter-compatible `/v1/models` live pricing with stable decimal normalization, request fees, and a profile-scoped fresh cache fallback, OpenRouter account credits/API-key quota, Anthropic OAuth usage windows, and Codex usage windows when configured.
 - **What's missing**: broader provider account probes, persisted aggregation, non-OpenRouter-compatible persistent pricing caches, non-OpenRouter-compatible provider live pricing discovery, and reconciliation with actual billed costs.
 - **Hermes reference**: `agent/rate_limit_tracker.py`, `agent/usage_pricing.py`, `agent/account_usage.py`
 ---
@@ -646,7 +646,7 @@ Generated: 2026-06-02
 | 19 | Responses Stream Recovery | `hakimi-transports/src/responses.rs`, `hakimi-core/src/loop_impl.rs` | 1 | ✅ `response.incomplete` continues as `length`, missing terminal stream events retry through classified transport recovery |
 | 20 | Home Assistant Tools | `hakimi-tools/src/builtin_homeassistant.rs`, CLI/server/TUI registration | 11 | ✅ `ha_list_entities`, `ha_get_state`, `ha_list_services`, `ha_call_service` with REST auth, validation, blocked domains, and compact summaries |
 | 21 | Think Scrubber | `hakimi-transports/src/scrubber.rs`, `hakimi-core/src/loop_impl.rs` | 18 | ✅ Hermes-style stateful reasoning tag scrubbing for streaming and non-streaming responses |
-| 22 | Rate Limit Tracking + Gateway Usage + Cost Estimates | `hakimi-transports/src/rate_limit.rs`, `hakimi-common/src/usage_pricing.rs`, `hakimi-common/src/account_usage.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 42 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, and gateway `/usage` renders last-turn tokens/API calls, Hermes-style estimated cost, pricing snapshot version, rate-limit display, OpenRouter-compatible `/v1/models` live pricing with stable decimal normalization, request fees, and profile-scoped fresh cache fallback, OpenRouter `/credits` and `/key` account quota/usage, Anthropic OAuth usage windows, Codex `/wham/usage` / `/api/codex/usage` windows, plus AWS Bedrock official-docs snapshot cost estimates for Anthropic Claude and Amazon Nova routes |
+| 22 | Rate Limit Tracking + Gateway Usage + Cost Estimates | `hakimi-transports/src/{rate_limit,nous_rate_guard}.rs`, `hakimi-common/src/usage_pricing.rs`, `hakimi-common/src/account_usage.rs`, transport adapters, `hakimi-cli/src/entry.rs` | 48 | ✅ OpenAI/Nous-style `x-ratelimit-*` parsing, detailed/compact formatting, hot-bucket warnings, latest snapshot retained by Chat/Responses/Anthropic/Gemini transports, shared Nous exhausted-bucket rate guard before retry amplification, and gateway `/usage` renders last-turn tokens/API calls, Hermes-style estimated cost, pricing snapshot version, rate-limit display, OpenRouter-compatible `/v1/models` live pricing with stable decimal normalization, request fees, and profile-scoped fresh cache fallback, OpenRouter `/credits` and `/key` account quota/usage, Anthropic OAuth usage windows, Codex `/wham/usage` / `/api/codex/usage` windows, plus AWS Bedrock official-docs snapshot cost estimates for Anthropic Claude and Amazon Nova routes |
 | 23 | Video Analysis | `hakimi-tools/src/builtin_video_analyze.rs`, CLI/server/TUI registration | 10 | ✅ `video_analyze` prepares structured video-capable request payloads for URLs, `file://`, and local files with MIME detection and payload-size guardrails |
 | 24 | TUI `/copy` Clipboard | `hakimi-tui/src/clipboard.rs`, `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs` | 10 | ✅ Hermes-style `/copy [N]` copies recent assistant responses through native clipboard backends plus OSC 52 terminal fallback and exposes the command in shared slash parsing |
 | 25 | TUI `/history` Review | `hakimi-tui/src/app.rs`, `hakimi-cli/src/lib.rs`, `hakimi-cli/src/entry.rs` | 3 | ✅ Hermes-style `/history [N]` / `/hist [N]` reviews recent user/assistant messages locally and gives gateway users a clear surface-boundary notice |
@@ -750,7 +750,7 @@ Generated: 2026-06-02
 | 120 | Bedrock Converse Transport | `hakimi-transports/src/bedrock.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs`, `hakimi-server/src/main.rs` | 4 | 🟡 Rust-native non-streaming AWS Bedrock Runtime Converse transport maps messages/images/tools/tool results, signs direct REST calls with SigV4, normalizes text/reasoning/tool-use/usage responses, supports env credentials and region/base-url overrides, and is routed through CLI/TUI/server; remaining parity is AWS profile/SSO/IMDS chain, model discovery, guardrails, cross-region inference helpers, Anthropic-on-Bedrock special cases, and ConverseStream |
 
 ### Summary
-- **Total tests**: 1749 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1755 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024
