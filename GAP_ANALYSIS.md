@@ -130,6 +130,7 @@ Generated: 2026-06-02
 - **Jittered backoff** — Exponential backoff with random jitter
 - **should_retry()** — Transport/IO errors retryable, tool/config errors not
 - **HakimiError enum** — Transport, Tool, Config, Session, Context, Io, Json, Other
+- **TurnRetryState** — Hermes-style one-shot recovery guards and restart signals for the core agent loop
 - **Responses stream recovery** — Incomplete Responses SSE maps to continuation, and truncated streams retry before surfacing partial output
 - **Output-token budget recovery** — Provider errors with `available_tokens` lower only the retry `max_tokens` budget, preserving the current prompt/context instead of forcing context compression
 - **Credential pool dead-entry hygiene** — 401 OAuth terminal reasons mark credentials `dead`, keep them out of rotation without TTL re-entry, preserve last status/reason/timestamp for diagnostics, prune stale dead manual credentials after a 24-hour quiet window, and retain dead singleton-seeded OAuth entries until explicit re-auth sync can rewrite them
@@ -586,7 +587,7 @@ Generated: 2026-06-02
 | Transports | 5 | 4 | 1 | 0 |
 | Gateway Platforms | 20+ | 16 | 2 | 3+ |
 | CLI Commands | 50+ | 17 | 0 | 33+ |
-| Agent Internals | 25+ | 18 | 4 | 2+ |
+| Agent Internals | 25+ | 19 | 4 | 1+ |
 | Plugins | 10+ | 0 | 1 | 9+ |
 | MCP Features | Full | Full | 0 | 0 |
 | Cron Features | Full | Full | 0 | 0 |
@@ -594,9 +595,9 @@ Generated: 2026-06-02
 | Security Features | 6 | 6 | 0 | 0 |
 
 **Total unique Hermes features identified: ~150+**
-**Fully present in Hakimi: ~82** (up from ~30)
+**Fully present in Hakimi: ~83** (up from ~30)
 **Partially implemented: ~11**
-**Missing entirely: ~65+**
+**Missing entirely: ~64+**
 
 ### Top 10 Critical Gaps (by impact)
 1. Browser advanced automation (CDP attach, cloud backends)
@@ -653,6 +654,7 @@ Generated: 2026-06-02
 | 26 | Session Title Generation | `hakimi-session/src/message_ops.rs`, `hakimi-session/src/session_ops.rs` | 4 | ✅ First user messages auto-title untitled persisted sessions, preserve manual titles, avoid duplicate generated titles, and truncate Unicode safely |
 | 27 | Plugin CLI/Templates | `hakimi-cli/src/entry.rs`, `hakimi-cli/src/lib.rs`, `templates/plugin-*.yaml` | 8 | ✅ `hakimi plugins list|templates|init|path` and gateway `/plugins` expose HTTP plugin discovery, safe template scaffolding, metadata-aware list output, and `--plain`/`--json` formats |
 | 28 | Output Token Budget Recovery | `hakimi-core/src/error_classifier.rs`, `hakimi-core/src/loop_impl.rs` | 7 | ✅ Anthropic-style `available_tokens` errors now retry with a safe temporary `max_tokens` cap instead of compressing context when the prompt itself still fits |
+| 28a | Turn Retry State | `hakimi-core/src/turn_retry_state.rs`, `hakimi-core/src/loop_impl.rs` | 4 | ✅ Hermes-style per-turn recovery state centralizes one-shot provider/format/restart guards, bounds output-token adjustment retries, guards context-compression restarts, and keeps loop counters local |
 | 29 | Browser Navigation Controls | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 6 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_scroll`, `browser_back`, and `browser_press` in CLI and TUI feature builds |
 | 30 | Browser Image Listing | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 3 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_get_images` with image URL, alt text, and natural dimensions |
 | 31 | Browser Console + Eval | `hakimi-tools/src/builtin_browser.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs` | 2 | ✅ Optional Chromium browser tooling now includes Hermes-style `browser_console` for captured console messages, JavaScript errors, and page-context expression evaluation |
@@ -750,7 +752,7 @@ Generated: 2026-06-02
 | 120 | Bedrock Converse Transport | `hakimi-transports/src/bedrock.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs`, `hakimi-server/src/main.rs` | 4 | 🟡 Rust-native non-streaming AWS Bedrock Runtime Converse transport maps messages/images/tools/tool results, signs direct REST calls with SigV4, normalizes text/reasoning/tool-use/usage responses, supports env credentials and region/base-url overrides, and is routed through CLI/TUI/server; remaining parity is AWS profile/SSO/IMDS chain, model discovery, guardrails, cross-region inference helpers, Anthropic-on-Bedrock special cases, and ConverseStream |
 
 ### Summary
-- **Total tests**: 1755 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1759 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

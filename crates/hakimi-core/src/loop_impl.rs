@@ -14,6 +14,7 @@ use crate::error_classifier::{
 };
 use crate::guardrails::{GuardrailDecision, ToolGuardrails};
 use crate::retry::{jittered_backoff, should_retry};
+use crate::turn_retry_state::TurnRetryState;
 use std::time::Duration;
 
 /// Maximum number of retries for transient API errors.
@@ -108,6 +109,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
     let mut api_call_count: usize = 0;
     let mut continuation_parts: Vec<String> = Vec::new();
     let mut length_continuations: usize = 0;
+    let mut turn_retry_state = TurnRetryState::default();
     let mut tool_guardrails = ToolGuardrails::new();
     tool_guardrails.begin_turn();
 
@@ -184,6 +186,13 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                 let classifier = ErrorClassifier::new();
                 let classification = classifier.classify_transport_error(&e.to_string());
                 if matches!(classification.action, RecoveryAction::CompressContext) {
+                    if !turn_retry_state.mark_restart_with_compressed_messages() {
+                        warn!(
+                            error = %e,
+                            "Context overflow recovery already attempted for this turn"
+                        );
+                        return Err(e);
+                    }
                     warn!(error = %e, "Context overflow detected — compressing and retrying");
                     let engine = agent.context_engine.write().await;
                     engine.compress(&mut agent.messages).await?;
@@ -227,6 +236,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         ));
 
         if stopped_by_length && length_continuations < MAX_LENGTH_CONTINUATIONS {
+            turn_retry_state.mark_restart_with_length_continuation();
             warn!(
                 continuation = length_continuations + 1,
                 max_continuations = MAX_LENGTH_CONTINUATIONS,
@@ -237,6 +247,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             agent
                 .messages
                 .push(Message::user(CONTINUE_AFTER_LENGTH_PROMPT));
+            turn_retry_state.clear_restart_with_length_continuation();
             budget.use_one();
             continue;
         }
@@ -297,7 +308,7 @@ async fn fetch_response(
     // Maximum retry attempts per fetch.
     let max_retries = MAX_RETRIES;
     let mut attempt = 0;
-    let mut output_token_adjustments = 0;
+    let mut retry_state = TurnRetryState::default();
     let mut effective_params = params.clone();
 
     loop {
@@ -326,14 +337,14 @@ async fn fetch_response(
                 *api_call_count += 1;
                 let error_text = e.to_string();
 
-                if output_token_adjustments < MAX_OUTPUT_TOKEN_ADJUSTMENTS
+                if retry_state.output_token_budget_adjustments() < MAX_OUTPUT_TOKEN_ADJUSTMENTS
                     && let Some(max_tokens) =
                         adjust_max_tokens_for_available_output(&mut effective_params, &error_text)
                 {
-                    output_token_adjustments += 1;
+                    retry_state.record_output_token_budget_adjustment(MAX_OUTPUT_TOKEN_ADJUSTMENTS);
                     warn!(
                         max_tokens = max_tokens,
-                        adjustment = output_token_adjustments,
+                        adjustment = retry_state.output_token_budget_adjustments(),
                         "Provider reported a smaller available output budget; retrying with adjusted max_tokens"
                     );
                     continue;
