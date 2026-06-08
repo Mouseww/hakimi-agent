@@ -1,73 +1,38 @@
-# React + TypeScript + Vite
+# Hakimi WebUI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React/Vite operator console for the Hakimi Agent HTTP server. The layout follows the practical Hermes WebUI shape: sessions on the left, live chat in the center, and runtime/tool/control panels on the right.
 
-Currently, two official plugins are available:
+## Current surface
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Live `/api/chat` turn submission with local transcript rendering.
+- Recent `/api/sessions` list and `/api/sessions/{id}/messages` inspection.
+- Runtime summaries from `/api/health`, `/api/status`, `/v1/capabilities`, `/api/mcp/servers`, `/api/credentials/pool`, and `/api/webhooks`.
+- Tool and skill discovery from `/api/tools`, `/v1/toolsets`, and `/v1/skills`.
+- Runtime config read/write through `/api/config`.
+- Optional Bearer token storage for servers protected by `HAKIMI_WEBUI_PASSWORD`.
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Start the Hakimi HTTP server separately, then run:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The Vite dev server proxies `/api/*` and `/v1/*` to `http://127.0.0.1:3001` without rewriting path prefixes, matching the Rust server router.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Build
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm run lint
+npm run build
 ```
+
+Production output is written to `dist/`. The Rust server fallback serves `../hakimi-webui/dist`.
+
+## Remaining parity
+
+- No xterm.js/WebSocket PTY terminal yet.
+- `/api/chat` is shared server-agent chat; session-scoped chat is not implemented by the backend.
+- Kanban APIs exist, but this WebUI does not yet include a full board/task management view.
+- Runtime config writes are in-memory for the current server process unless the backend later persists them.

@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.244-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.245-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1767-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -110,6 +110,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - HTTP 插件系统，YAML 模板
 - HTTP API 发现端点 — OpenAI 兼容 `/v1/models`、`/v1/capabilities`、`/v1/skills`、`/v1/toolsets`、文本 `/v1/chat/completions` 在 `stream=true` 时返回 completed SSE snapshot、`/v1/responses` 支持 SQLite 持久化 `previous_response_id` 链式续写并返回 completed SSE snapshot，带实时生命周期 SSE 的可轮询且可取消 `/v1/runs`，以及会话生命周期/消息/搜索能力发现，方便外部 UI 探测能力
 - WebUI 管理 API — `/api/status`、`/api/sessions` 创建/更新/删除/fork 以及消息/搜索检查、`/api/mcp/servers`、`/api/credentials/pool`、`/api/webhooks` 和 Kanban `/api/kanban` 看板/任务读写管理提供脱敏运行状态，并支持运行期作用域的管理写入
+- Hakimi WebUI — 参考 Hermes WebUI 的 React/Vite 操作台，左侧浏览会话，中间通过 `/api/chat` 执行实时轮次，右侧展示运行态、工具、技能与控制面板，支持 Bearer token 和基于现有 HTTP API 的运行期配置编辑
 - Skills Hub — 社区技能市场
 - 静态 i18n 基础设施 — 支持 `display.language`、`HAKIMI_LANGUAGE` / `HERMES_LANGUAGE`、Hermes 兼容语言别名、YAML catalog 目录加载、英文 fallback 和静态用户文案的命名占位符
 - CLI Skin Engine — `hakimi skin list|inspect|set|path` 与网关 `/skin` 可发现内置和 `~/.hakimi/skins/*.yaml` 主题，缺失字段继承 `default`，持久化 `display.skin`，并把选中的 branding/colors/logo/hero 应用到 CLI 启动横幅，同时驱动 TUI 思考态 spinner faces/verbs/wings，以及状态栏、session、选择态、补全提示、帮助标题、输入区、响应框、工具前缀、工具 emoji 标签、运行中工具进度和工具面板配色
@@ -274,8 +275,9 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] 语音采集连续重启模式
 - [x] 基于 OpenRouter 的 Mixture-of-Agents 多模型推理
 - [x] 网关 `/usage` 展示 OpenRouter、Anthropic 与 Codex 账户用量
+- [x] 基础 Hakimi WebUI 操作台
 - [ ] WASM 插件运行时
-- [ ] Web 仪表盘
+- [ ] Web 仪表盘 PTY 终端、会话级流式执行与完整 Kanban UI
 
 ---
 

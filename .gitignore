@@ -6,3 +6,4 @@
 .idea/
 .vscode/
 *.log
+.codex_tmp_test/
