@@ -93,6 +93,7 @@ Generated: 2026-06-02
 - **CronScheduler** — In-memory job scheduling
 - **CronJob** — Name, schedule, prompt, enabled flag, last/next run
 - **Interval parsing** — `30m`, `2h` syntax
+- **Five-field cron parsing** — `*`, lists, ranges, steps, and month/weekday aliases compute real next-run times while invalid legacy expressions keep the existing 1-hour fallback
 - **Tick-based execution** — `next_tick()` returns due job IDs
 - **Cron prompt injection scanning** — Strict create/store/run-time scan plus looser assembled-skill scan mirroring Hermes cron security
 
@@ -288,7 +289,7 @@ Generated: 2026-06-02
 #### 20. Cron — Persistent File-Based with Full CLI
 - **What**: Persistent cron job store with file-based locking, CLI management, slash commands
 - **Hermes location**: `cron/jobs.py`, `cron/scheduler.py`, `hermes_cli/cron.py`, `tools/cronjob_tools.py`
-- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove/status/tick`. Standalone `hakimi cron list/status/add/edit/pause/resume/run/remove/tick`, gateway `/cron status/add/edit/list/pause/resume/run/remove`, and `cronjob create/update/list/pause/resume/run/remove` are now covered in Hakimi; scheduled and standalone tick runs now assemble attached skills with Hermes-style prompt scanning, `[SILENT]` suppression, overlap-safe due-job claiming, explicit `platform:chat_id` gateway delivery, and Hermes-style repeat limits with completed-run tracking and automatic cleanup at the limit. Deeper delivery expansion remains.
+- **Details**: File-based tick lock for multi-process safety. `hermes cron list/add/edit/pause/resume/run/remove/status/tick`. Standalone `hakimi cron list/status/add/edit/pause/resume/run/remove/tick`, gateway `/cron status/add/edit/list/pause/resume/run/remove`, and `cronjob create/update/list/pause/resume/run/remove` are now covered in Hakimi; scheduled and standalone tick runs now assemble attached skills with Hermes-style prompt scanning, `[SILENT]` suppression, overlap-safe due-job claiming, five-field cron expression next-run calculation, explicit `platform:chat_id` gateway delivery, and Hermes-style repeat limits with completed-run tracking and automatic cleanup at the limit. Deeper delivery expansion remains.
 - **Priority**: **High** — Remaining work is home-channel/all/plugin delivery expansion
 
 ### Medium Priority
@@ -509,7 +510,7 @@ Generated: 2026-06-02
 ## PARTIALLY IMPLEMENTED in Hakimi
 
 ### 2. Cron System
-- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron status|list|add|edit|pause|resume|run|remove`、独立 CLI `hakimi cron status|list|add|edit|pause|resume|run|remove|tick`、prompt injection 扫描、cron 扩展元数据持久化、skill-loaded scheduled runs、standalone tick 执行、`[SILENT]` 投递抑制、gateway 创建任务的显式 `platform:chat_id` 定向投递，以及 repeat 上限/完成次数追踪与到达上限自动清理已落地
+- **Status**: SQLite 持久化、file lock、cronjob tool `create|list|update|pause|resume|remove|run`、gateway `/cron status|list|add|edit|pause|resume|run|remove`、独立 CLI `hakimi cron status|list|add|edit|pause|resume|run|remove|tick`、prompt injection 扫描、cron 扩展元数据持久化、五字段 cron 表达式 next-run 计算、skill-loaded scheduled runs、standalone tick 执行、`[SILENT]` 投递抑制、gateway 创建任务的显式 `platform:chat_id` 定向投递，以及 repeat 上限/完成次数追踪与到达上限自动清理已落地
 - **What's missing**: home-channel/all/plugin delivery expansion
 - **Hermes reference**: `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
 
@@ -639,7 +640,7 @@ Generated: 2026-06-02
 | # | Feature | File(s) | Tests | Status |
 |---|---------|---------|-------|--------|
 | 13 | Gateway Adapters | `hakimi-gateway/src/{webhook,signal,sms,matrix,wecom,dingtalk,qqbot}.rs`, `hakimi-config/src/config.rs`, `hakimi-cli/src/entry.rs` | 38 | ✅ 7 adapter implementations now have YAML config and gateway startup registration, with queued outbound delivery mapped through configured bot IDs |
-| 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 36 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron status/add/edit`, standalone `hakimi cron status/tick` management, strict/assembled cron prompt scanner, skill-loaded scheduled runs, explicit gateway delivery targets |
+| 14 | Cron Persistence + Prompt Guard | `hakimi-cron/src/{lib.rs,persistence.rs}`, `hakimi-tools/src/builtin_cronjob.rs`, `hakimi-cli/src/entry.rs` | 42 | ✅ SQLite storage, FileLock, per-job toolset/config/delivery metadata, `cronjob update`, gateway `/cron status/add/edit`, standalone `hakimi cron status/tick` management, five-field cron next-run calculation, strict/assembled cron prompt scanner, skill-loaded scheduled runs, explicit gateway delivery targets |
 | 15 | Checkpoint Manager | `hakimi-tools/src/builtin_checkpoint.rs`, `hakimi-cli/src/entry.rs` | 22 | ✅ Shared `~/.hakimi/checkpoints/store` shadow git snapshots with per-project refs/indexes, validated IDs/paths, status/list/diff/rollback, and real gateway `/checkpoints` responses |
 | 16 | i18n | `hakimi-i18n/src/lib.rs`, `hakimi-config/src/config.rs` | 15 | ✅ Locale YAML catalogs, Hermes-compatible language aliases, env/config resolution, directory loading, dotted key paths, English fallback, and named placeholders |
 | 17 | Batch Runner | `hakimi-batch/src/lib.rs` | 8 | ✅ Dataset loading, parallel processing, checkpointing, trajectory saving |
@@ -752,7 +753,7 @@ Generated: 2026-06-02
 | 120 | Bedrock Converse Transport | `hakimi-transports/src/bedrock.rs`, `hakimi-cli/src/entry.rs`, `hakimi-tui/src/main.rs`, `hakimi-server/src/main.rs` | 4 | 🟡 Rust-native non-streaming AWS Bedrock Runtime Converse transport maps messages/images/tools/tool results, signs direct REST calls with SigV4, normalizes text/reasoning/tool-use/usage responses, supports env credentials and region/base-url overrides, and is routed through CLI/TUI/server; remaining parity is AWS profile/SSO/IMDS chain, model discovery, guardrails, cross-region inference helpers, Anthropic-on-Bedrock special cases, and ConverseStream |
 
 ### Summary
-- **Total tests**: 1759 (latest CI target; local compilation intentionally not run in automation)
+- **Total tests**: 1765 (latest CI target; local compilation intentionally not run in automation)
 - **Build**: Clean (0 errors)
 - **Stubs/todos/unimplemented**: 0 across all gap files
 - **Cargo workspace**: 19 crates, edition 2024

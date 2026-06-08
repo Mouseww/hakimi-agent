@@ -9,7 +9,7 @@ pub mod persistence;
 use std::collections::HashMap;
 use std::fmt;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -257,7 +257,7 @@ pub enum CronSchedule {
     IntervalMinutes(u64),
     /// Run every N hours.
     IntervalHours(u64),
-    /// Raw cron expression (stored for display; full parsing is a TODO).
+    /// Five-field cron expression.
     CronExpr(String),
 }
 
@@ -267,13 +267,195 @@ impl CronSchedule {
         match self {
             CronSchedule::IntervalMinutes(m) => after + chrono::Duration::minutes(*m as i64),
             CronSchedule::IntervalHours(h) => after + chrono::Duration::hours(*h as i64),
-            CronSchedule::CronExpr(_expr) => {
-                // TODO: integrate a proper cron parser crate.
-                // For now, fall back to a 1-hour default.
-                after + chrono::Duration::hours(1)
-            }
+            CronSchedule::CronExpr(expr) => next_cron_expr_after(expr, after)
+                .unwrap_or_else(|| after + chrono::Duration::hours(1)),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct CronField {
+    values: Vec<bool>,
+    min: u32,
+    any: bool,
+}
+
+impl CronField {
+    fn parse(raw: &str, min: u32, max: u32, aliases: &[(&str, u32)]) -> Option<Self> {
+        let size = usize::try_from(max - min + 1).ok()?;
+        let mut values = vec![false; size];
+        let any = raw == "*";
+
+        for part in raw.split(',') {
+            add_cron_field_part(part.trim(), min, max, aliases, &mut values)?;
+        }
+
+        Some(Self { values, min, any })
+    }
+
+    fn contains(&self, value: u32) -> bool {
+        let Some(index) = value.checked_sub(self.min) else {
+            return false;
+        };
+        self.values.get(index as usize).copied().unwrap_or(false)
+    }
+}
+
+fn next_cron_expr_after(expr: &str, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let schedule = ParsedCronExpr::parse(expr)?;
+    let mut candidate = (after + chrono::Duration::minutes(1))
+        .with_second(0)?
+        .with_nanosecond(0)?;
+    let deadline = after + chrono::Duration::days(366 * 5);
+
+    while candidate <= deadline {
+        if schedule.matches(candidate) {
+            return Some(candidate);
+        }
+        candidate += chrono::Duration::minutes(1);
+    }
+
+    None
+}
+
+#[derive(Debug, Clone)]
+struct ParsedCronExpr {
+    minute: CronField,
+    hour: CronField,
+    day_of_month: CronField,
+    month: CronField,
+    day_of_week: CronField,
+}
+
+impl ParsedCronExpr {
+    fn parse(expr: &str) -> Option<Self> {
+        let mut parts = expr.split_whitespace();
+        let minute = parts.next()?;
+        let hour = parts.next()?;
+        let day_of_month = parts.next()?;
+        let month = parts.next()?;
+        let day_of_week = parts.next()?;
+        if parts.next().is_some() {
+            return None;
+        }
+
+        Some(Self {
+            minute: CronField::parse(minute, 0, 59, &[])?,
+            hour: CronField::parse(hour, 0, 23, &[])?,
+            day_of_month: CronField::parse(day_of_month, 1, 31, &[])?,
+            month: CronField::parse(month, 1, 12, MONTH_ALIASES)?,
+            day_of_week: parse_cron_day_of_week(day_of_week)?,
+        })
+    }
+
+    fn matches(&self, candidate: DateTime<Utc>) -> bool {
+        let minute = candidate.minute();
+        let hour = candidate.hour();
+        let day = candidate.day();
+        let month = candidate.month();
+        let weekday = candidate.weekday().num_days_from_sunday();
+
+        if !self.minute.contains(minute) || !self.hour.contains(hour) || !self.month.contains(month)
+        {
+            return false;
+        }
+
+        let day_matches = self.day_of_month.contains(day);
+        let weekday_matches = self.day_of_week.contains(weekday);
+
+        if !self.day_of_month.any && !self.day_of_week.any {
+            day_matches || weekday_matches
+        } else {
+            day_matches && weekday_matches
+        }
+    }
+}
+
+const MONTH_ALIASES: &[(&str, u32)] = &[
+    ("JAN", 1),
+    ("FEB", 2),
+    ("MAR", 3),
+    ("APR", 4),
+    ("MAY", 5),
+    ("JUN", 6),
+    ("JUL", 7),
+    ("AUG", 8),
+    ("SEP", 9),
+    ("OCT", 10),
+    ("NOV", 11),
+    ("DEC", 12),
+];
+
+const WEEKDAY_ALIASES: &[(&str, u32)] = &[
+    ("SUN", 0),
+    ("MON", 1),
+    ("TUE", 2),
+    ("WED", 3),
+    ("THU", 4),
+    ("FRI", 5),
+    ("SAT", 6),
+];
+
+fn parse_cron_day_of_week(raw: &str) -> Option<CronField> {
+    let mut field = CronField::parse(raw, 0, 7, WEEKDAY_ALIASES)?;
+    if field.values.get(7).copied().unwrap_or(false) {
+        field.values[0] = true;
+    }
+    field.values.truncate(7);
+    Some(field)
+}
+
+fn add_cron_field_part(
+    raw_part: &str,
+    min: u32,
+    max: u32,
+    aliases: &[(&str, u32)],
+    values: &mut [bool],
+) -> Option<()> {
+    if raw_part.is_empty() {
+        return None;
+    }
+
+    let (range_part, step) = raw_part
+        .split_once('/')
+        .map(|(range, step)| {
+            let step = step.parse::<u32>().ok().filter(|step| *step > 0)?;
+            Some((range, step))
+        })
+        .unwrap_or(Some((raw_part, 1)))?;
+
+    let (start, end) = if range_part == "*" {
+        (min, max)
+    } else if let Some((start, end)) = range_part.split_once('-') {
+        (
+            parse_cron_field_value(start, min, max, aliases)?,
+            parse_cron_field_value(end, min, max, aliases)?,
+        )
+    } else {
+        let value = parse_cron_field_value(range_part, min, max, aliases)?;
+        (value, value)
+    };
+
+    if start > end {
+        return None;
+    }
+
+    for value in (start..=end).step_by(step as usize) {
+        let index = usize::try_from(value - min).ok()?;
+        *values.get_mut(index)? = true;
+    }
+
+    Some(())
+}
+
+fn parse_cron_field_value(raw: &str, min: u32, max: u32, aliases: &[(&str, u32)]) -> Option<u32> {
+    let normalized = raw.trim().to_ascii_uppercase();
+    let value = aliases
+        .iter()
+        .find_map(|(name, value)| (*name == normalized).then_some(*value))
+        .or_else(|| normalized.parse::<u32>().ok())?;
+
+    (min..=max).contains(&value).then_some(value)
 }
 
 /// Parse a human-friendly schedule string.
@@ -465,6 +647,19 @@ impl CronScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
+
+    fn fixed_utc(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+        second: u32,
+    ) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
+            .unwrap()
+    }
 
     #[test]
     fn test_parse_schedule_minutes() {
@@ -530,12 +725,56 @@ mod tests {
     }
 
     #[test]
-    fn test_cron_expr_next_after_adds_one_hour() {
+    fn test_cron_expr_next_after_top_of_next_hour() {
         let schedule = CronSchedule::CronExpr("0 * * * *".to_string());
-        let base = Utc::now();
+        let base = fixed_utc(2026, 6, 8, 10, 17, 30);
         let next = schedule.next_after(base);
-        let diff = next - base;
-        assert_eq!(diff, chrono::Duration::hours(1));
+        assert_eq!(next, fixed_utc(2026, 6, 8, 11, 0, 0));
+    }
+
+    #[test]
+    fn test_cron_expr_supports_minute_steps() {
+        let schedule = CronSchedule::CronExpr("*/15 * * * *".to_string());
+        let base = fixed_utc(2026, 6, 8, 10, 7, 30);
+        let next = schedule.next_after(base);
+        assert_eq!(next, fixed_utc(2026, 6, 8, 10, 15, 0));
+    }
+
+    #[test]
+    fn test_cron_expr_supports_weekday_names_and_ranges() {
+        let schedule = CronSchedule::CronExpr("0 9 * * MON-FRI".to_string());
+        let friday_morning = fixed_utc(2026, 6, 12, 8, 59, 0);
+        assert_eq!(
+            schedule.next_after(friday_morning),
+            fixed_utc(2026, 6, 12, 9, 0, 0)
+        );
+
+        let friday_after_run = fixed_utc(2026, 6, 12, 9, 0, 0);
+        assert_eq!(
+            schedule.next_after(friday_after_run),
+            fixed_utc(2026, 6, 15, 9, 0, 0)
+        );
+    }
+
+    #[test]
+    fn test_cron_expr_supports_month_names_and_day_of_month() {
+        let schedule = CronSchedule::CronExpr("30 14 1 JAN,MAR *".to_string());
+        let base = fixed_utc(2026, 1, 1, 14, 30, 0);
+        assert_eq!(schedule.next_after(base), fixed_utc(2026, 3, 1, 14, 30, 0));
+    }
+
+    #[test]
+    fn test_cron_expr_treats_seven_as_sunday_only() {
+        let schedule = CronSchedule::CronExpr("0 8 * * 7".to_string());
+        let monday = fixed_utc(2026, 6, 8, 8, 0, 0);
+        assert_eq!(schedule.next_after(monday), fixed_utc(2026, 6, 14, 8, 0, 0));
+    }
+
+    #[test]
+    fn test_invalid_cron_expr_keeps_legacy_one_hour_fallback() {
+        let schedule = CronSchedule::CronExpr("not a cron".to_string());
+        let base = fixed_utc(2026, 6, 8, 10, 17, 30);
+        assert_eq!(schedule.next_after(base), base + chrono::Duration::hours(1));
     }
 
     #[test]
