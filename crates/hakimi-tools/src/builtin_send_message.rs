@@ -249,6 +249,38 @@ fn channel_directory_has_platform(platform: &str) -> bool {
         .is_some_and(|entries| !entries.is_empty())
 }
 
+/// Resolve a cached gateway target from the shared channel directory.
+///
+/// `raw_target=None` returns the platform home target, falling back to the
+/// first cached entry for compatibility with `send_message`.
+pub fn resolve_cached_channel_target(platform: &str, raw_target: Option<&str>) -> Option<String> {
+    resolve_channel_target(platform, raw_target)
+}
+
+/// Return all cached home delivery targets as `platform:chat_id` strings.
+pub fn cached_home_delivery_targets() -> Vec<String> {
+    let directory = load_channel_directory();
+    let mut targets = Vec::new();
+    for (platform, entries) in directory.platforms {
+        for entry in entries.into_iter().filter(|entry| entry.is_home) {
+            if let Some(target) = gateway_target(&platform, &entry.id) {
+                targets.push(target);
+            }
+        }
+    }
+    targets
+}
+
+fn gateway_target(platform: &str, chat_id: &str) -> Option<String> {
+    let platform = platform.trim();
+    let chat_id = chat_id.trim();
+    if platform.is_empty() || chat_id.is_empty() {
+        None
+    } else {
+        Some(format!("{}:{}", platform.to_ascii_lowercase(), chat_id))
+    }
+}
+
 fn looks_like_explicit_target(platform: &str, target: &str) -> bool {
     let raw = target.trim();
     if raw.is_empty() || raw.starts_with('#') {

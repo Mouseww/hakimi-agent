@@ -1073,6 +1073,12 @@ fn gateway_delivery_target(platform: &str, chat_id: &str) -> Option<String> {
     }
 }
 
+fn push_unique_cron_delivery_target(targets: &mut Vec<String>, target: String) {
+    if !targets.iter().any(|seen| seen == &target) {
+        targets.push(target);
+    }
+}
+
 fn cron_delivery_targets(job: &hakimi_cron::CronJob) -> Vec<String> {
     let Some(raw) = job.deliver.as_deref() else {
         return Vec::new();
@@ -1083,25 +1089,51 @@ fn cron_delivery_targets(job: &hakimi_cron::CronJob) -> Vec<String> {
         if part.is_empty() || part.eq_ignore_ascii_case("local") {
             continue;
         }
-        let Some((platform, chat_id)) = part.split_once(':') else {
-            tracing::warn!(
-                job_id = %job.id,
-                target = %part,
-                "skipping cron delivery target without platform:chat_id"
-            );
+        if part.eq_ignore_ascii_case("all") {
+            for target in hakimi_tools::cached_home_delivery_targets() {
+                push_unique_cron_delivery_target(&mut targets, target);
+            }
             continue;
-        };
-        let Some(target) = gateway_delivery_target(platform, chat_id) else {
-            tracing::warn!(
-                job_id = %job.id,
-                target = %part,
-                "skipping cron delivery target with empty platform or chat_id"
-            );
-            continue;
-        };
-        if !targets.iter().any(|seen| seen == &target) {
-            targets.push(target);
         }
+        if part.eq_ignore_ascii_case("origin") {
+            match hakimi_tools::cached_home_delivery_targets()
+                .into_iter()
+                .next()
+            {
+                Some(target) => push_unique_cron_delivery_target(&mut targets, target),
+                None => tracing::warn!(
+                    job_id = %job.id,
+                    "skipping cron deliver=origin because no origin or cached home target is available"
+                ),
+            }
+            continue;
+        }
+
+        let target = if let Some((platform, chat_id)) = part.split_once(':') {
+            let platform = platform.trim();
+            let chat_id = chat_id.trim();
+            if platform.is_empty() {
+                None
+            } else if chat_id.eq_ignore_ascii_case("home") {
+                hakimi_tools::resolve_cached_channel_target(platform, None)
+                    .map(|resolved| format!("{}:{}", platform.to_ascii_lowercase(), resolved))
+            } else if let Some(resolved) =
+                hakimi_tools::resolve_cached_channel_target(platform, Some(chat_id))
+            {
+                Some(format!("{}:{}", platform.to_ascii_lowercase(), resolved))
+            } else {
+                gateway_delivery_target(platform, chat_id)
+            }
+        } else {
+            hakimi_tools::resolve_cached_channel_target(part, None)
+                .map(|resolved| format!("{}:{resolved}", part.to_ascii_lowercase()))
+        };
+
+        let Some(target) = target else {
+            tracing::warn!(job_id = %job.id, target = %part, "skipping unresolved cron delivery target");
+            continue;
+        };
+        push_unique_cron_delivery_target(&mut targets, target);
     }
     targets
 }
@@ -7370,6 +7402,44 @@ mod tests {
         while hakimi_tools::builtin_send_message::pop_message().is_some() {}
     }
 
+    static CHANNEL_DIRECTORY_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct ChannelDirectoryEnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: Option<String>,
+        _dir: tempfile::TempDir,
+    }
+
+    impl ChannelDirectoryEnvGuard {
+        fn new(entries: &[hakimi_tools::ChannelDirectoryEntry]) -> Self {
+            let lock = CHANNEL_DIRECTORY_ENV_LOCK.lock().unwrap();
+            let previous = std::env::var("HAKIMI_CHANNEL_DIRECTORY").ok();
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("channel_directory.json");
+            unsafe {
+                std::env::set_var("HAKIMI_CHANNEL_DIRECTORY", &path);
+            }
+            hakimi_tools::write_channel_directory(entries).unwrap();
+            Self {
+                _lock: lock,
+                previous,
+                _dir: dir,
+            }
+        }
+    }
+
+    impl Drop for ChannelDirectoryEnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                if let Some(previous) = &self.previous {
+                    std::env::set_var("HAKIMI_CHANNEL_DIRECTORY", previous);
+                } else {
+                    std::env::remove_var("HAKIMI_CHANNEL_DIRECTORY");
+                }
+            }
+        }
+    }
+
     #[test]
     fn gateway_mode_supports_install_restart_and_status() {
         assert_eq!(
@@ -9445,6 +9515,69 @@ gateways:
                 "clawbot:user@wx".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn cron_delivery_targets_expand_all_and_home_channels_at_fire_time() {
+        let _dir = ChannelDirectoryEnvGuard::new(&[
+            hakimi_tools::ChannelDirectoryEntry::home(
+                "slack",
+                "C123456789",
+                "home",
+                "home",
+                "slack",
+            ),
+            hakimi_tools::ChannelDirectoryEntry::home(
+                "matrix",
+                "!room:example.org",
+                "home",
+                "room",
+                "matrix",
+            ),
+            hakimi_tools::ChannelDirectoryEntry {
+                platform: "slack".into(),
+                id: "C987654321".into(),
+                name: "deploys".into(),
+                bot_id: "slack".into(),
+                channel_type: "channel".into(),
+                is_home: false,
+            },
+        ]);
+        let mut job = CronJob::new("deliver", CronSchedule::IntervalMinutes(15), "report");
+        job.deliver = Some("all,slack:home,slack:#deploys".to_string());
+
+        assert_eq!(
+            cron_delivery_targets(&job),
+            vec![
+                "matrix:!room:example.org".to_string(),
+                "slack:C123456789".to_string(),
+                "slack:C987654321".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn cron_delivery_origin_falls_back_to_first_cached_home_target() {
+        let _dir = ChannelDirectoryEnvGuard::new(&[
+            hakimi_tools::ChannelDirectoryEntry::home(
+                "sms",
+                "+15552223333",
+                "home",
+                "phone",
+                "sms",
+            ),
+            hakimi_tools::ChannelDirectoryEntry::home(
+                "whatsapp",
+                "15554445555",
+                "home",
+                "phone",
+                "whatsapp",
+            ),
+        ]);
+        let mut job = CronJob::new("deliver", CronSchedule::IntervalMinutes(15), "report");
+        job.deliver = Some("origin".to_string());
+
+        assert_eq!(cron_delivery_targets(&job), vec!["sms:+15552223333"]);
     }
 
     #[test]
