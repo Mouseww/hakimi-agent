@@ -31,11 +31,35 @@ fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
 
 const VOICE_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice mode: respond in a concise, natural spoken style for a spoken interface. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
 const VOICE_TTS_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice+TTS mode: respond in a concise, natural spoken style suitable for text-to-speech playback. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
+const GATEWAY_UPDATE_NOTIFICATION_FILE: &str = "pending-gateway-update-notification.json";
+const GATEWAY_UPDATE_NOTIFY_PLATFORM_ENV: &str = "HAKIMI_UPDATE_NOTIFY_PLATFORM";
+const GATEWAY_UPDATE_NOTIFY_BOT_ID_ENV: &str = "HAKIMI_UPDATE_NOTIFY_BOT_ID";
+const GATEWAY_UPDATE_NOTIFY_CHAT_ID_ENV: &str = "HAKIMI_UPDATE_NOTIFY_CHAT_ID";
+const GATEWAY_UPDATE_NOTIFY_HOME_ENV: &str = "HAKIMI_UPDATE_NOTIFY_HOME";
+const MAX_UPDATE_FEATURE_ITEMS: usize = 6;
 
 #[derive(Debug, Clone)]
 struct GatewayLivePricingCatalog {
     catalog: hakimi_common::LivePricingCatalog,
     note: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct HakimiLatestRelease {
+    tag: String,
+    body: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct GatewayUpdateNotification {
+    platform: String,
+    #[serde(default)]
+    bot_id: String,
+    chat_id: String,
+    version: String,
+    #[serde(default)]
+    features: Vec<String>,
+    created_at: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -356,6 +380,224 @@ fn bind_runtime_home_env(runtime_home: &hakimi_common::RuntimeHome) {
     // before spawning worker tasks that read environment-backed default paths.
     unsafe {
         std::env::set_var("HAKIMI_HOME", runtime_home.home().as_os_str());
+    }
+}
+
+fn gateway_update_notification_path_for_home(home: &std::path::Path) -> std::path::PathBuf {
+    home.join(GATEWAY_UPDATE_NOTIFICATION_FILE)
+}
+
+fn gateway_update_notification_path() -> std::path::PathBuf {
+    let home = std::env::var_os(GATEWAY_UPDATE_NOTIFY_HOME_ENV)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(hakimi_common::effective_hakimi_home);
+    gateway_update_notification_path_for_home(&home)
+}
+
+fn strip_markdown_bullet(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    trimmed
+        .strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+        .or_else(|| trimmed.strip_prefix("+ "))
+        .or_else(|| {
+            let (number, rest) = trimmed.split_once(". ")?;
+            (!number.is_empty() && number.chars().all(|ch| ch.is_ascii_digit())).then_some(rest)
+        })
+}
+
+fn release_notes_stop_line(line: &str) -> bool {
+    let normalized = line.trim().trim_matches('#').trim().to_ascii_lowercase();
+    normalized.contains("full changelog") || normalized.starts_with("new contributors")
+}
+
+fn release_feature_noise(item: &str) -> bool {
+    let normalized = item.trim().trim_matches('*').trim().to_ascii_lowercase();
+    normalized.is_empty()
+        || normalized.contains("full changelog")
+        || normalized.starts_with("compare:")
+        || normalized.starts_with("https://github.com/")
+}
+
+fn truncate_update_feature(item: &str) -> String {
+    let trimmed = item.trim();
+    const MAX_CHARS: usize = 180;
+    if trimmed.chars().count() <= MAX_CHARS {
+        return trimmed.to_string();
+    }
+    let mut out: String = trimmed.chars().take(MAX_CHARS).collect();
+    out.push_str("...");
+    out
+}
+
+fn release_feature_items(body: Option<&str>) -> Vec<String> {
+    let Some(body) = body else {
+        return Vec::new();
+    };
+    let mut items = Vec::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if release_notes_stop_line(trimmed) {
+            break;
+        }
+        let Some(item) = strip_markdown_bullet(trimmed) else {
+            continue;
+        };
+        if release_feature_noise(item) {
+            continue;
+        }
+        items.push(truncate_update_feature(item));
+        if items.len() >= MAX_UPDATE_FEATURE_ITEMS {
+            return items;
+        }
+    }
+
+    if !items.is_empty() {
+        return items;
+    }
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || release_notes_stop_line(trimmed) {
+            continue;
+        }
+        if release_feature_noise(trimmed) {
+            continue;
+        }
+        items.push(truncate_update_feature(trimmed));
+        if items.len() >= MAX_UPDATE_FEATURE_ITEMS {
+            break;
+        }
+    }
+
+    items
+}
+
+fn gateway_update_notification_from_env(
+    version: &str,
+    release_body: Option<&str>,
+) -> Option<GatewayUpdateNotification> {
+    let platform = std::env::var(GATEWAY_UPDATE_NOTIFY_PLATFORM_ENV)
+        .ok()?
+        .trim()
+        .to_string();
+    let chat_id = std::env::var(GATEWAY_UPDATE_NOTIFY_CHAT_ID_ENV)
+        .ok()?
+        .trim()
+        .to_string();
+    if platform.is_empty() || chat_id.is_empty() {
+        return None;
+    }
+    let bot_id = std::env::var(GATEWAY_UPDATE_NOTIFY_BOT_ID_ENV)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let version = if version.starts_with('v') {
+        version.to_string()
+    } else {
+        format!("v{version}")
+    };
+
+    Some(GatewayUpdateNotification {
+        platform,
+        bot_id,
+        chat_id,
+        version,
+        features: release_feature_items(release_body),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    })
+}
+
+fn write_gateway_update_notification(notification: &GatewayUpdateNotification) -> Result<()> {
+    let path = gateway_update_notification_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(notification)?)?;
+    Ok(())
+}
+
+fn take_gateway_update_notification(
+    runtime_home: &hakimi_common::RuntimeHome,
+) -> Option<GatewayUpdateNotification> {
+    let path = gateway_update_notification_path_for_home(runtime_home.home());
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(err) => {
+            warn!(path = %path.display(), error = %err, "failed to read pending gateway update notification");
+            return None;
+        }
+    };
+    if let Err(err) = std::fs::remove_file(&path) {
+        warn!(path = %path.display(), error = %err, "failed to remove pending gateway update notification");
+    }
+    match serde_json::from_str(&contents) {
+        Ok(notification) => Some(notification),
+        Err(err) => {
+            warn!(path = %path.display(), error = %err, "failed to parse pending gateway update notification");
+            None
+        }
+    }
+}
+
+fn format_gateway_update_notification(notification: &GatewayUpdateNotification) -> String {
+    let mut lines = vec![
+        "✅ Hakimi 更新成功，Gateway 已启动。".to_string(),
+        String::new(),
+        format!("当前版本：{}", notification.version),
+        String::new(),
+        "本次更新的功能有：".to_string(),
+    ];
+    if notification.features.is_empty() {
+        lines.push("- Release Notes 未提供具体功能说明。".to_string());
+    } else {
+        lines.extend(
+            notification
+                .features
+                .iter()
+                .map(|feature| format!("- {}", feature.trim())),
+        );
+    }
+    lines.join("\n")
+}
+
+async fn deliver_pending_gateway_update_notification(
+    gateway: &hakimi_gateway::Gateway,
+    gateway_bot_ids: &std::collections::HashMap<String, String>,
+    runtime_home: &hakimi_common::RuntimeHome,
+) {
+    let Some(notification) = take_gateway_update_notification(runtime_home) else {
+        return;
+    };
+    let bot_id = if notification.bot_id.trim().is_empty() {
+        gateway_bot_id_for_platform(gateway_bot_ids, &notification.platform)
+    } else {
+        notification.bot_id.clone()
+    };
+    let msg = hakimi_gateway::GatewayMessage {
+        platform: notification.platform.clone(),
+        bot_id,
+        chat_id: notification.chat_id.clone(),
+        user_id: String::new(),
+        text: format_gateway_update_notification(&notification),
+        media: None,
+    };
+    match gateway.route_message(&msg).await {
+        Ok(()) => info!(
+            platform = %notification.platform,
+            chat_id = %notification.chat_id,
+            version = %notification.version,
+            "delivered pending gateway update notification"
+        ),
+        Err(err) => warn!(
+            platform = %notification.platform,
+            chat_id = %notification.chat_id,
+            error = %err,
+            "failed to deliver pending gateway update notification"
+        ),
     }
 }
 
@@ -4019,8 +4261,8 @@ pub struct Args {
     #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "start")]
     pub gateway: Option<GatewayMode>,
 
-    /// Address for the HTTP API server (default: 127.0.0.1:3000).
-    #[arg(long, default_value = "127.0.0.1:3000")]
+    /// Address for the HTTP API server (default: 127.0.0.1:3005).
+    #[arg(long, default_value = "127.0.0.1:3005")]
     pub addr: String,
 
     /// Run the interactive setup wizard.
@@ -5367,6 +5609,8 @@ async fn start_gateway(
     let mut messages = merge_gateway_receivers(receivers)?;
 
     info!("gateway listening for messages");
+    deliver_pending_gateway_update_notification(&gateway, &gateway_bot_ids, runtime_home.as_ref())
+        .await;
 
     // Spawn a background task to process queued outbound messages
     let gateway_queue = gateway.clone();
@@ -5853,6 +6097,7 @@ Just send a message to chat with me!"
                         let chat = chat_id.clone();
                         let bot = bot_id.clone();
                         let plat = platform.clone();
+                        let update_home = runtime_home.home().to_path_buf();
                         tokio::spawn(async move {
                             let msg = hakimi_gateway::GatewayMessage {
                                 platform: plat.clone(),
@@ -5864,8 +6109,18 @@ Just send a message to chat with me!"
                             };
                             let _ = gateway.route_message(&msg).await;
 
-                            let update_result = tokio::task::spawn_blocking(|| {
-                                std::process::Command::new("hakimi").arg("--update").status()
+                            let update_platform = plat.clone();
+                            let update_bot = bot.clone();
+                            let update_chat = chat.clone();
+                            let update_home = update_home.clone();
+                            let update_result = tokio::task::spawn_blocking(move || {
+                                std::process::Command::new("hakimi")
+                                    .arg("--update")
+                                    .env(GATEWAY_UPDATE_NOTIFY_PLATFORM_ENV, update_platform)
+                                    .env(GATEWAY_UPDATE_NOTIFY_BOT_ID_ENV, update_bot)
+                                    .env(GATEWAY_UPDATE_NOTIFY_CHAT_ID_ENV, update_chat)
+                                    .env(GATEWAY_UPDATE_NOTIFY_HOME_ENV, update_home)
+                                    .status()
                             })
                             .await;
 
@@ -6900,7 +7155,7 @@ fn ensure_hakimi_path_shim(_shim_path: &std::path::Path, _target: &std::path::Pa
     Ok(())
 }
 
-async fn latest_release_tag(client: &reqwest::Client) -> Result<String> {
+async fn latest_release(client: &reqwest::Client) -> Result<HakimiLatestRelease> {
     let api = "https://api.github.com/repos/Mouseww/hakimi-agent/releases/latest";
     let value: serde_json::Value = client
         .get(api)
@@ -6910,11 +7165,18 @@ async fn latest_release_tag(client: &reqwest::Client) -> Result<String> {
         .error_for_status()?
         .json()
         .await?;
-    value
+    let tag = value
         .get("tag_name")
         .and_then(|v| v.as_str())
         .map(|tag| tag.to_string())
-        .ok_or_else(|| anyhow::anyhow!("GitHub latest release response missing tag_name"))
+        .ok_or_else(|| anyhow::anyhow!("GitHub latest release response missing tag_name"))?;
+    let body = value
+        .get("body")
+        .and_then(|v| v.as_str())
+        .filter(|body| !body.trim().is_empty())
+        .map(|body| body.to_string());
+
+    Ok(HakimiLatestRelease { tag, body })
 }
 
 const HAKIMI_STATE_BACKUP_ENTRIES: &[&str] = &[
@@ -7038,7 +7300,8 @@ async fn self_update() -> Result<()> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()?;
-    let latest_tag = latest_release_tag(&client).await?;
+    let latest_release = latest_release(&client).await?;
+    let latest_tag = latest_release.tag.as_str();
     println!("Latest release: {latest_tag}");
 
     let url = format!(
@@ -7188,6 +7451,16 @@ async fn self_update() -> Result<()> {
                     eprintln!("⚠️ Failed to restore memory/session backup: {err}");
                 }
                 let _ = fs::remove_file(&state_backup_tar);
+            }
+            if let Some(notification) =
+                gateway_update_notification_from_env(latest_tag, latest_release.body.as_deref())
+            {
+                match write_gateway_update_notification(&notification) {
+                    Ok(()) => println!("Gateway update notification queued."),
+                    Err(err) => {
+                        eprintln!("⚠️ Failed to queue gateway update notification: {err}");
+                    }
+                }
             }
         }
         _ => {
@@ -7377,20 +7650,22 @@ mod tests {
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
         GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamBackoffState,
         GatewayStreamDraftState, GatewayStreamRenderSnapshot, GatewayStreamUiState,
-        GatewayStreamingPolicy, GatewayUiContentTarget, GatewayUsageSnapshot, KnowledgeCommandArgs,
-        McpCommandArgs, PluginCommandArgs, ProfileCommandArgs, TopLevelCommand,
-        VOICE_TTS_USER_MESSAGE_PREFIX, VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState,
-        build_cron_delegation_goal, create_hakimi_state_backup, cron_delivery_targets,
-        cron_output_preview, cron_success_output_should_deliver,
-        effective_gateway_streaming_policy, gateway_bot_id_for_platform,
+        GatewayStreamingPolicy, GatewayUiContentTarget, GatewayUpdateNotification,
+        GatewayUsageSnapshot, KnowledgeCommandArgs, McpCommandArgs, PluginCommandArgs,
+        ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
+        VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
+        create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
+        cron_success_output_should_deliver, effective_gateway_streaming_policy,
+        format_gateway_update_notification, gateway_bot_id_for_platform,
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
         gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
         gateway_usage_response, gateway_voice_response, is_gateway_flood_error,
         is_top_level_cron_tick, parse_gateway_undo_turns, plan_gateway_final_delivery,
-        queue_cron_delivery, render_gateway_undo_response, resolve_clawbot_gateway_config,
-        resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
-        rewind_gateway_history, split_stream_chunks, top_level_cron_response_for_path,
-        top_level_mcp_response, update_shim_paths, update_target_from_candidate,
+        queue_cron_delivery, release_feature_items, render_gateway_undo_response,
+        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
+        restore_voice_history_text, rewind_gateway_history, split_stream_chunks,
+        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
+        update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::{Message, Usage};
@@ -8386,6 +8661,46 @@ mcp_servers:
             gateway_mcp_response(Some("bogus"), &config.mcp_servers),
             "Usage: /mcp <list|catalog|search|inspect|config>"
         );
+    }
+
+    #[test]
+    fn release_feature_items_extracts_bullets_before_changelog() {
+        let body = r#"
+## What's Changed
+- Add gateway update completion notification
+- Move WebUI default port to 3005
+
+**Full Changelog**: https://github.com/Mouseww/hakimi-agent/compare/v0.3.245...v0.3.246
+"#;
+
+        let items = release_feature_items(Some(body));
+
+        assert_eq!(
+            items,
+            vec![
+                "Add gateway update completion notification".to_string(),
+                "Move WebUI default port to 3005".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn gateway_update_notification_reports_version_and_features() {
+        let notification = GatewayUpdateNotification {
+            platform: "telegram".to_string(),
+            bot_id: "telegram_bot".to_string(),
+            chat_id: "chat-42".to_string(),
+            version: "v0.3.246".to_string(),
+            features: vec!["Gateway startup update report".to_string()],
+            created_at: "2026-06-09T00:00:00Z".to_string(),
+        };
+
+        let text = format_gateway_update_notification(&notification);
+
+        assert!(text.contains("Hakimi 更新成功，Gateway 已启动"));
+        assert!(text.contains("当前版本：v0.3.246"));
+        assert!(text.contains("本次更新的功能有："));
+        assert!(text.contains("- Gateway startup update report"));
     }
 
     #[test]

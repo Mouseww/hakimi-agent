@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.245-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.246-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1767-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -103,6 +103,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - 网关 `/usage` 会显示上一轮 token/成本/限流数据，按需使用带 Profile 作用域新鲜度缓存和请求费用的 OpenRouter-compatible `/v1/models` 实时价格，并展示 OpenRouter `/credits` 与 `/key` 额度/用量、Anthropic OAuth 账户窗口、Codex 用量窗口和 Nous 共享限流保护，且不会暴露凭证
 - 聊天里直接创建定时任务 `/cron add`，支持 `30m` / `2h` 间隔、`*/15 * * * *`、`0 9 * * MON-FRI` 这类五字段 cron 语法，以及 `local`、`origin`、`all`、`platform`、`platform:home`、`platform:#channel` 等投递目标
 - 网关 `/voice on|off|tts|status|doctor` 可切换口语化回复并报告语音 I/O 就绪状态，不污染 prompt cache 和聊天历史
+- 网关 `/update` 会先在聊天中提示更新并重启；新 Gateway 连接适配器后，会主动回报更新成功、当前版本和本次 Release Notes 中的功能要点
 - TUI `/config [field]` 可查看脱敏运行配置摘要；`/gateway [cmd]` 可查看已配置适配器、缓存频道目标和生命周期事件；`/sessions [cmd]` 可浏览已保存 SQLite 会话；`/skills [cmd]` 可浏览/搜索本地 Skills Hub 元数据；`/cron [cmd]` 可在本地管理持久化 cron 数据库；`/undo [N]` 可把近期提示词放回输入框继续编辑；`/checkpoints [cmd]` 可在不进入模型循环的情况下查看和管理共享 shadow-git 检查点；`/voice status` 与可配置 Ctrl+B/Ctrl+字母按键录音共用 `voice.*` 配置、TTS/转写工具、音频环境检查、PCM16 WAV 录音产物校验、超大 WAV 分块 STT 派发、本地 TTS 播放启动、支持录音后端和自动 transcript 提交的 `voice_capture` 工具、连续重启录音、二次按键取消录音、三次无语音自动退出，以及 Hermes 风格开始/停止提示音
 
 **可扩展**

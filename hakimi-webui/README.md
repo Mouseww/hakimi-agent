@@ -19,7 +19,7 @@ Start the Hakimi HTTP server separately, then run:
 npm run dev
 ```
 
-The Vite dev server proxies `/api/*` and `/v1/*` to `http://127.0.0.1:3001` without rewriting path prefixes, matching the Rust server router.
+The Vite dev server proxies `/api/*` and `/v1/*` to `http://127.0.0.1:3005` without rewriting path prefixes, matching the Rust server router.
 
 ## Build
 

@@ -1,6 +1,6 @@
 //! Standalone HTTP API server binary for the Hakimi Agent.
 //!
-//! Usage: hakimi-server [--addr 127.0.0.1:3000]
+//! Usage: hakimi-server [--addr 127.0.0.1:3005]
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use tracing::{info, warn};
 #[command(name = "hakimi-server", about = "Hakimi Agent HTTP API server")]
 struct Args {
     /// Address to bind the HTTP server to.
-    #[arg(long, default_value = "127.0.0.1:3000")]
+    #[arg(long, default_value = "127.0.0.1:3005")]
     addr: String,
 
     /// Model identifier override.
