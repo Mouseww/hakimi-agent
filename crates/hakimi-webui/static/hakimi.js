@@ -20,18 +20,51 @@ const $ = (id) => document.getElementById(id);
 const qs = (sel, ctx) => (ctx || document).querySelector(sel);
 const qsa = (sel, ctx) => (ctx || document).querySelectorAll(sel);
 
+// ── WebUI auth token ──
+const AUTH_TOKEN_KEY = 'hakimi-webui-token';
+
+function getAuthToken() {
+  try { return (localStorage.getItem(AUTH_TOKEN_KEY) || '').trim(); }
+  catch (e) { return ''; }
+}
+
+function setAuthToken(token) {
+  try {
+    if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch (e) {}
+}
+
+function authHeaders(extra) {
+  const headers = { ...(extra || {}) };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+async function promptForAuthToken(reason) {
+  const token = prompt(reason || '请输入 WebUI 密码');
+  if (!token) return false;
+  setAuthToken(token.trim());
+  return true;
+}
+
 // ── API wrapper ──
 async function api(method, path, body) {
   const base = document.baseURI || location.href;
   const url = new URL(path.startsWith('/') ? path.slice(1) : path, base);
   const opts = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
   };
   if (body !== undefined) opts.body = JSON.stringify(body);
 
   const res = await fetch(url.href, opts);
+  if (res.status === 401) {
+    const authed = await promptForAuthToken('WebUI 需要密码，请输入后自动重试');
+    if (authed) return api(method, path, body);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`API ${method} ${path} ${res.status}: ${text.slice(0, 200)}`);
@@ -324,6 +357,11 @@ async function sendMessage() {
   input.value = '';
   input.style.height = 'auto';
 
+  // Show the user's message immediately so failures are visible instead of looking like no-op.
+  const userMsg = { role: 'user', content: text, id: 'local-' + Date.now(), timestamp: new Date().toISOString() };
+  S.messages.push(userMsg);
+  renderMessages();
+
   // Ensure we have a session
   if (!S.session) {
     try {
@@ -334,14 +372,16 @@ async function sendMessage() {
       S.session = { id: sessionId };
     } catch (e) {
       console.error('send: create session error:', e);
+      S.messages.push({
+        role: 'assistant',
+        content: '❌ 无法创建会话: ' + e.message,
+        id: 'err-' + Date.now(),
+        timestamp: new Date().toISOString(),
+      });
+      renderMessages();
       return;
     }
   }
-
-  // Show user message
-  const userMsg = { role: 'user', content: text, id: 'local-' + Date.now(), timestamp: new Date().toISOString() };
-  S.messages.push(userMsg);
-  renderMessages();
 
   S.busy = true;
   $('sendBtn').disabled = true;
@@ -354,10 +394,20 @@ async function sendMessage() {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       credentials: 'include',
       body: JSON.stringify({ message: text }),
     });
+
+    if (response.status === 401) {
+      const authed = await promptForAuthToken('WebUI 需要密码，请输入后重新发送');
+      if (authed) {
+        S.busy = false;
+        $('sendBtn').disabled = false;
+        input.value = text;
+        return sendMessage();
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
