@@ -2851,7 +2851,7 @@ async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>
                     "response": response,
                     "session_id": session_id,
                 });
-                let _ = tx.send(format!("__DONE__{}", done.to_string())).await;
+                let _ = tx.send(format!("__DONE__{done}")).await;
             }
             Err(e) => {
                 let _ = tx.send(format!("__ERROR__{}", e)).await;
@@ -2864,16 +2864,12 @@ async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>
         rx.recv().await.map(|msg| {
             if let Some(payload) = msg.strip_prefix("__DONE__") {
                 (
-                    Ok::<Event, Infallible>(
-                        Event::default().event("done").data(payload.to_string()),
-                    ),
+                    Ok::<Event, Infallible>(Event::default().event("done").data(payload)),
                     rx,
                 )
             } else if let Some(payload) = msg.strip_prefix("__ERROR__") {
                 (
-                    Ok::<Event, Infallible>(
-                        Event::default().event("error").data(payload.to_string()),
-                    ),
+                    Ok::<Event, Infallible>(Event::default().event("error").data(payload)),
                     rx,
                 )
             } else {
@@ -4265,6 +4261,13 @@ mod tests {
             session_db: Arc::new(Mutex::new(db)),
             response_store: Arc::new(Mutex::new(ResponsesStore::new(100))),
             run_store: Arc::new(Mutex::new(RunsStore::default())),
+            knowledge_provider: Arc::new(Mutex::new(hakimi_knowledge::KnowledgeProvider::new(
+                std::env::temp_dir().join(format!(
+                    "hakimi-test-knowledge-{}-{}.json",
+                    std::process::id(),
+                    unix_timestamp_millis()
+                )),
+            ))),
         }
     }
 
