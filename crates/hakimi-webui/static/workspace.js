@@ -282,7 +282,7 @@ async function handleContextAction(action) {
 
       const fullPath = basePath === '/' ? '/' + name : basePath + '/' + name;
       try {
-        await api('POST', '/api/workspace/create', { path: fullPath, type: isFile ? 'file' : 'dir' });
+        await api('POST', '/api/workspace/create', { path: fullPath, is_dir: !isFile });
         loadWorkspace(basePath);
       } catch (e) {
         alert('创建失败: ' + e.message);
@@ -299,7 +299,7 @@ async function handleContextAction(action) {
       const parentPath = fullPath.substring(0, fullPath.lastIndexOf('/')) || '/';
       const newPath = parentPath === '/' ? '/' + newName : parentPath + '/' + newName;
       try {
-        await api('POST', '/api/workspace/rename', { path: fullPath, new_path: newPath });
+        await api('POST', '/api/workspace/rename', { old_path: fullPath, new_path: newPath });
         loadWorkspace(parentPath);
       } catch (e) {
         alert('重命名失败: ' + e.message);
@@ -313,7 +313,7 @@ async function handleContextAction(action) {
 
       const parentPath = delPath.substring(0, delPath.lastIndexOf('/')) || '/';
       try {
-        await api('POST', '/api/workspace/delete', { path: delPath });
+        await api('POST', '/api/workspace/delete', { path: delPath, recursive: true });
         loadWorkspace(parentPath);
       } catch (e) {
         alert('删除失败: ' + e.message);

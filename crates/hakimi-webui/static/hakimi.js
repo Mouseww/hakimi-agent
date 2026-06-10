@@ -466,13 +466,19 @@ function toggleRightPanel() {
 // ── Control Center ──
 function openControlCenter(panel) {
   $('control-center').hidden = false;
+  const activePanel = panel || 'settings';
   qsa('.cc-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.panel === (panel || 'settings'));
+    t.classList.toggle('active', t.dataset.panel === activePanel);
   });
+  if (activePanel === 'settings') renderSettingsPanel();
+  else if (activePanel === 'skills') renderSkillsPanel();
+  else if (activePanel === 'memory') renderMemoryPanel();
+  else if (activePanel === 'cron') renderCronPanel();
 }
 
 function closeControlCenter() {
-  $('control-center').hidden = true;
+  const modal = $('control-center');
+  if (modal) modal.hidden = true;
 }
 
 // ── CC Rendering: Settings ──
@@ -792,8 +798,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  $('closeCC').addEventListener('click', closeControlCenter);
-  qs('.modal-overlay').addEventListener('click', closeControlCenter);
+  $('closeCC')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeControlCenter();
+  });
+  qs('#control-center .modal-overlay')?.addEventListener('click', closeControlCenter);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeControlCenter();
+  });
 
   // Session search filter
   let searchTimer;

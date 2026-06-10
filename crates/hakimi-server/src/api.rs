@@ -1151,12 +1151,14 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCod
 
 /// Resolve a relative path within the working directory, rejecting `..` escapes.
 fn resolve_workspace_path(relative: &str) -> Result<std::path::PathBuf, (StatusCode, String)> {
-    if relative.is_empty() {
+    let trimmed = relative.trim();
+    let normalized = trimmed.trim_start_matches('/');
+    if normalized.is_empty() {
         return Ok(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
     }
 
     // Reject paths that contain `..` components anywhere.
-    for component in std::path::Path::new(relative).components() {
+    for component in std::path::Path::new(normalized).components() {
         if let std::path::Component::ParentDir = component {
             return Err((
                 StatusCode::FORBIDDEN,
@@ -1166,7 +1168,7 @@ fn resolve_workspace_path(relative: &str) -> Result<std::path::PathBuf, (StatusC
     }
 
     let base = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let joined = base.join(relative);
+    let joined = base.join(normalized);
 
     // Extra safety: canonicalize and ensure it stays within base.
     let canonical_base = std::fs::canonicalize(&base).unwrap_or(base.clone());
@@ -4091,6 +4093,7 @@ mod tests {
     // ---------- helpers ----------
 
     static KANBAN_ENV_LOCK: Mutex<()> = Mutex::const_new(());
+    static WORKSPACE_CWD_LOCK: Mutex<()> = Mutex::const_new(());
 
     struct EnvVarGuard {
         key: &'static str,
@@ -4406,6 +4409,58 @@ mod tests {
             let body = String::from_utf8(body.to_vec()).unwrap();
             assert!(body.contains(expected_body), "{uri}");
         }
+    }
+
+    #[tokio::test]
+    async fn test_workspace_root_path_slash_lists_workdir() {
+        let _guard = WORKSPACE_CWD_LOCK.lock().await;
+        let temp = tempfile::tempdir().unwrap();
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp.path()).unwrap();
+        std::fs::write(temp.path().join("hakimi-workspace-smoke.txt"), "ok").unwrap();
+
+        let state = test_state();
+        let app = build_router(state);
+        let req = Request::builder()
+            .uri("/api/workspace/list?path=%2F")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        std::env::set_current_dir(original).unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let names: Vec<&str> = json["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry["name"].as_str())
+            .collect();
+        assert!(names.contains(&"hakimi-workspace-smoke.txt"));
+    }
+
+    #[tokio::test]
+    async fn test_workspace_path_escape_still_forbidden() {
+        let _guard = WORKSPACE_CWD_LOCK.lock().await;
+        let temp = tempfile::tempdir().unwrap();
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp.path()).unwrap();
+
+        let state = test_state();
+        let app = build_router(state);
+        let req = Request::builder()
+            .uri("/api/workspace/list?path=..")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        std::env::set_current_dir(original).unwrap();
+
+        assert_eq!(resp.status(), http::StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
