@@ -1,6 +1,9 @@
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Native hidden must beat component display rules such as `.modal { display:flex }`. */
+[hidden] { display: none !important; }
+
 /* ── CSS Variables (Dark) ── */
 :root {
   --bg: #0A0A14;

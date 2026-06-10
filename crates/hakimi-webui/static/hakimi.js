@@ -478,7 +478,10 @@ function openControlCenter(panel) {
 
 function closeControlCenter() {
   const modal = $('control-center');
-  if (modal) modal.hidden = true;
+  if (!modal) return;
+  modal.hidden = true;
+  modal.setAttribute('hidden', '');
+  modal.classList.remove('open');
 }
 
 // ── CC Rendering: Settings ──
@@ -798,12 +801,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  $('closeCC')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    closeControlCenter();
-  });
-  qs('#control-center .modal-overlay')?.addEventListener('click', closeControlCenter);
+  document.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('#closeCC') || target.matches('#control-center .modal-overlay')) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeControlCenter();
+    }
+  }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeControlCenter();
   });
