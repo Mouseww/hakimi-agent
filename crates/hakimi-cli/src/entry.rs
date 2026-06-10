@@ -5543,22 +5543,16 @@ async fn build_agent(
 // ---------------------------------------------------------------------------
 
 /// Start the HTTP API server.
-fn start_server(
+async fn start_server(
     agent: hakimi_core::AIAgent,
     addr: &str,
     config: hakimi_config::HakimiConfig,
 ) -> Result<()> {
     info!(addr = %addr, "starting Hakimi Agent API server");
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    // Removed `async move` to fix lint
-    rt.block_on(async {
-        let db = hakimi_session::SessionDB::new(std::path::Path::new(":memory:"))?;
-        hakimi_server::Server::new(addr, agent, config, db)?
-            .serve(addr.parse().unwrap())
-            .await
-    })?;
+    let db = hakimi_session::SessionDB::new(std::path::Path::new(":memory:"))?;
+    hakimi_server::Server::new(addr, agent, config, db)?
+        .serve(addr.parse().unwrap())
+        .await?;
     Ok(())
 }
 
@@ -7616,7 +7610,7 @@ pub async fn run() -> Result<()> {
     }
 
     if args.serve {
-        return start_server(agent, &args.addr, config);
+        return start_server(agent, &args.addr, config).await;
     }
     if args.gateway.is_some() {
         let skill_store = agent

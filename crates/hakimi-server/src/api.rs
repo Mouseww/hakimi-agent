@@ -1566,14 +1566,45 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .nest("/api", api_routes)
         .nest("/v1", v1_routes)
-        .fallback_service(
-            tower_http::services::fs::ServeDir::new("../hakimi-webui/static")
-                .append_index_html_on_directories(true),
-        )
+        .route("/", get(webui_index))
+        .route("/index.html", get(webui_index))
+        .route("/favicon.svg", get(webui_favicon))
+        .route("/static/{*path}", get(webui_static_asset))
+        .fallback(get(webui_index))
         .with_state(state)
 }
 
-// ---------------------------------------------------------------------------
+const WEBUI_INDEX_HTML: &str = include_str!("../../hakimi-webui/static/index.html");
+const WEBUI_HAKIMI_JS: &str = include_str!("../../hakimi-webui/static/hakimi.js");
+const WEBUI_COMPOSER_JS: &str = include_str!("../../hakimi-webui/static/composer.js");
+const WEBUI_WORKSPACE_JS: &str = include_str!("../../hakimi-webui/static/workspace.js");
+const WEBUI_STYLE_CSS: &str = include_str!("../../hakimi-webui/static/style.css");
+const WEBUI_FAVICON_SVG: &str = include_str!("../../hakimi-webui/static/favicon.svg");
+
+fn static_webui_response(content_type: &'static str, body: &'static str) -> Response {
+    ([(header::CONTENT_TYPE, content_type)], body).into_response()
+}
+
+async fn webui_index() -> Response {
+    static_webui_response("text/html; charset=utf-8", WEBUI_INDEX_HTML)
+}
+
+async fn webui_favicon() -> Response {
+    static_webui_response("image/svg+xml; charset=utf-8", WEBUI_FAVICON_SVG)
+}
+
+async fn webui_static_asset(Path(path): Path<String>) -> Response {
+    match path.as_str() {
+        "hakimi.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_HAKIMI_JS),
+        "composer.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_COMPOSER_JS),
+        "workspace.js" => {
+            static_webui_response("text/javascript; charset=utf-8", WEBUI_WORKSPACE_JS)
+        }
+        "style.css" => static_webui_response("text/css; charset=utf-8", WEBUI_STYLE_CSS),
+        "favicon.svg" => static_webui_response("image/svg+xml; charset=utf-8", WEBUI_FAVICON_SVG),
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
+}
 // Handlers
 // ---------------------------------------------------------------------------
 
@@ -4339,6 +4370,54 @@ mod tests {
             .unwrap();
         let json: HealthResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.status, "ok");
+    }
+
+    #[tokio::test]
+    async fn test_embedded_webui_assets_are_served_without_filesystem_cwd() {
+        let state = test_state();
+        let app = build_router(state);
+
+        for (uri, expected_type, expected_body) in [
+            ("/", "text/html", "Hakimi"),
+            ("/index.html", "text/html", "workspace.js"),
+            ("/static/hakimi.js", "text/javascript", "Hakimi"),
+            ("/static/composer.js", "text/javascript", "SLASH_COMMANDS"),
+            ("/static/workspace.js", "text/javascript", "workspace"),
+            ("/static/style.css", "text/css", "workspace"),
+            ("/static/favicon.svg", "image/svg+xml", "<svg"),
+            ("/favicon.svg", "image/svg+xml", "<svg"),
+        ] {
+            let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(resp.status(), http::StatusCode::OK, "{uri}");
+            let content_type = resp
+                .headers()
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            assert!(
+                content_type.starts_with(expected_type),
+                "{uri}: {content_type}"
+            );
+
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let body = String::from_utf8(body.to_vec()).unwrap();
+            assert!(body.contains(expected_body), "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unknown_static_asset_returns_404() {
+        let state = test_state();
+        let app = build_router(state);
+        let req = Request::builder()
+            .uri("/static/missing.js")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

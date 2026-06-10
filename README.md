@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.247-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.248-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1767-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -45,7 +45,10 @@ cargo install hakimi-agent
 ```bash
 hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
+hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+`hakimi --serve` ships the WebUI assets inside the release binary, so `/`, `/static/style.css`, `/static/hakimi.js`, `/static/composer.js`, `/static/workspace.js`, and `/static/favicon.svg` work from any current directory without copying a separate `static/` folder.
 
 ---
 
