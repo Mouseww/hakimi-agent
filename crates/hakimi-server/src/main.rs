@@ -172,6 +172,14 @@ async fn build_agent(
                 .ok()
                 .filter(|s| !s.is_empty())
         })
+        .or_else(|| {
+            let key = config.model.api_key.trim().to_string();
+            (!key.is_empty()).then_some(key)
+        })
+        .or_else(|| {
+            let key = config.delegation.api_key.trim().to_string();
+            (!key.is_empty()).then_some(key)
+        })
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
 

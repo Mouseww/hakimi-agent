@@ -25,6 +25,7 @@ pub struct AppState {
     pub session_db: Arc<Mutex<hakimi_session::SessionDB>>,
     pub response_store: Arc<Mutex<crate::api::ResponsesStore>>,
     pub run_store: Arc<Mutex<crate::api::RunsStore>>,
+    pub knowledge_provider: Arc<Mutex<hakimi_knowledge::KnowledgeProvider>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -46,12 +47,19 @@ impl Server {
         config: hakimi_config::HakimiConfig,
         session_db: hakimi_session::SessionDB,
     ) -> Result<Self> {
+        let hakimi_dir = dirs::home_dir()
+            .map(|h| h.join(".hakimi"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".hakimi"));
+        let knowledge_path = hakimi_dir.join("knowledge.json");
+        let knowledge_provider = hakimi_knowledge::KnowledgeProvider::new(knowledge_path);
+
         let state = AppState {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(config)),
             session_db: Arc::new(Mutex::new(session_db)),
             response_store: Arc::new(Mutex::new(crate::api::ResponsesStore::default())),
             run_store: Arc::new(Mutex::new(crate::api::RunsStore::default())),
+            knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
         };
         Ok(Self { state })
     }

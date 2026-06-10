@@ -45,6 +45,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::Infallible;
 use std::path::{Path as FsPath, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -121,6 +122,68 @@ pub struct RunCreateRequest {
     pub messages: Vec<ChatCompletionsMessage>,
     #[serde(default)]
     pub stream: Option<JsonValue>,
+}
+
+// ---------------------------------------------------------------------------
+// Workspace API types
+// ---------------------------------------------------------------------------
+
+/// Query parameters for GET /api/workspace/list and GET /api/workspace/read.
+#[derive(Debug, Deserialize)]
+pub struct WorkspacePathQuery {
+    pub path: Option<String>,
+}
+
+/// Request body for POST /api/workspace/create.
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceCreateRequest {
+    pub path: String,
+    #[serde(default)]
+    pub is_dir: bool,
+}
+
+/// Request body for POST /api/workspace/rename.
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceRenameRequest {
+    pub old_path: String,
+    pub new_path: String,
+}
+
+/// Request body for POST /api/workspace/delete.
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceDeleteRequest {
+    pub path: String,
+    #[serde(default)]
+    pub recursive: bool,
+}
+
+/// Single directory entry returned by workspace/list.
+#[derive(Debug, Serialize)]
+pub struct WorkspaceListEntry {
+    pub name: String,
+    pub entry_type: String, // "file" or "dir"
+    pub size: u64,
+    pub is_dir: bool,
+    pub is_git_tracked: bool,
+    pub git_status: Option<String>,
+}
+
+/// Response for GET /api/workspace/list.
+#[derive(Debug, Serialize)]
+pub struct WorkspaceListResponse {
+    pub entries: Vec<WorkspaceListEntry>,
+}
+
+/// Response for GET /api/workspace/read.
+#[derive(Debug, Serialize)]
+pub struct WorkspaceReadResponse {
+    pub content: String,
+}
+
+/// Generic success response.
+#[derive(Debug, Serialize)]
+pub struct WorkspaceSuccessResponse {
+    pub success: bool,
 }
 
 /// Response body for POST /chat.
@@ -1082,11 +1145,358 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCod
     Err(StatusCode::UNAUTHORIZED)
 }
 
+// ---------------------------------------------------------------------------
+// Workspace helpers
+// ---------------------------------------------------------------------------
+
+/// Resolve a relative path within the working directory, rejecting `..` escapes.
+fn resolve_workspace_path(relative: &str) -> Result<std::path::PathBuf, (StatusCode, String)> {
+    if relative.is_empty() {
+        return Ok(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+    }
+
+    // Reject paths that contain `..` components anywhere.
+    for component in std::path::Path::new(relative).components() {
+        if let std::path::Component::ParentDir = component {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Path contains '..', which is not allowed".to_string(),
+            ));
+        }
+    }
+
+    let base = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let joined = base.join(relative);
+
+    // Extra safety: canonicalize and ensure it stays within base.
+    let canonical_base = std::fs::canonicalize(&base).unwrap_or(base.clone());
+    let canonical_joined = std::fs::canonicalize(&joined).unwrap_or(joined.clone());
+    if !canonical_joined.starts_with(&canonical_base) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Path escapes the working directory".to_string(),
+        ));
+    }
+
+    Ok(joined)
+}
+
+/// Build a map of relative path -> git porcelain status from `git status --porcelain`.
+fn git_status_map(dir: &std::path::Path) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    if !dir.join(".git").is_dir() {
+        return map;
+    }
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            &dir.to_string_lossy(),
+            "status",
+            "--porcelain",
+            "-uall",
+        ])
+        .output();
+    let Ok(output) = output else {
+        return map;
+    };
+    if !output.status.success() {
+        return map;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        if line.len() < 3 {
+            continue;
+        }
+        let status = &line[..2];
+        let path_str = line[3..].to_string();
+        map.insert(path_str, status.to_string());
+    }
+    map
+}
+
+/// Given a `git_status_map` and a list of entries, set `is_git_tracked` and `git_status`.
+fn apply_git_status(
+    entries: &mut [WorkspaceListEntry],
+    _dir: &std::path::Path,
+    git_map: &std::collections::HashMap<String, String>,
+) {
+    for entry in entries.iter_mut() {
+        if let Some(status) = git_map.get(&entry.name) {
+            entry.is_git_tracked = true;
+            entry.git_status = Some(status.clone());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace handlers
+// ---------------------------------------------------------------------------
+
+/// GET /api/workspace/list — list directory contents.
+async fn workspace_list(
+    Query(query): Query<WorkspacePathQuery>,
+) -> Result<Json<WorkspaceListResponse>, (StatusCode, String)> {
+    let path = resolve_workspace_path(query.path.as_deref().unwrap_or(""))?;
+    let mut entries = Vec::new();
+    let read_dir = std::fs::read_dir(&path).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read directory: {e}"),
+        )
+    })?;
+
+    for entry in read_dir {
+        let entry = entry.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read directory entry: {e}"),
+            )
+        })?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let size = if is_dir {
+            0
+        } else {
+            entry.metadata().map(|m| m.len()).unwrap_or(0)
+        };
+        entries.push(WorkspaceListEntry {
+            name,
+            entry_type: if is_dir {
+                "dir".to_string()
+            } else {
+                "file".to_string()
+            },
+            size,
+            is_dir,
+            is_git_tracked: false,
+            git_status: None,
+        });
+    }
+
+    // Sort: directories first, then files, both alphabetically.
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name)));
+
+    // Apply git status when available.
+    let git_map = git_status_map(&path);
+    if !git_map.is_empty() {
+        apply_git_status(&mut entries, &path, &git_map);
+    }
+
+    Ok(Json(WorkspaceListResponse { entries }))
+}
+
+/// GET /api/workspace/read — read file contents.
+async fn workspace_read(
+    Query(query): Query<WorkspacePathQuery>,
+) -> Result<Json<WorkspaceReadResponse>, (StatusCode, String)> {
+    let path = resolve_workspace_path(query.path.as_deref().unwrap_or(""))?;
+    let content = std::fs::read_to_string(&path).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read file: {e}"),
+        )
+    })?;
+    Ok(Json(WorkspaceReadResponse { content }))
+}
+
+/// POST /api/workspace/create — create file or directory.
+async fn workspace_create(
+    Json(req): Json<WorkspaceCreateRequest>,
+) -> Result<Json<WorkspaceSuccessResponse>, (StatusCode, String)> {
+    let path = resolve_workspace_path(&req.path)?;
+    if req.is_dir {
+        std::fs::create_dir_all(&path).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create directory: {e}"),
+            )
+        })?;
+    } else {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create parent directory: {e}"),
+                )
+            })?;
+        }
+        std::fs::write(&path, b"").map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create file: {e}"),
+            )
+        })?;
+    }
+    Ok(Json(WorkspaceSuccessResponse { success: true }))
+}
+
+/// POST /api/workspace/rename — rename file or directory.
+async fn workspace_rename(
+    Json(req): Json<WorkspaceRenameRequest>,
+) -> Result<Json<WorkspaceSuccessResponse>, (StatusCode, String)> {
+    let old = resolve_workspace_path(&req.old_path)?;
+    let new = resolve_workspace_path(&req.new_path)?;
+    std::fs::rename(&old, &new).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to rename: {e}"),
+        )
+    })?;
+    Ok(Json(WorkspaceSuccessResponse { success: true }))
+}
+
+/// POST /api/workspace/delete — delete file or directory.
+async fn workspace_delete(
+    Json(req): Json<WorkspaceDeleteRequest>,
+) -> Result<Json<WorkspaceSuccessResponse>, (StatusCode, String)> {
+    let path = resolve_workspace_path(&req.path)?;
+    if path.is_dir() {
+        if req.recursive {
+            std::fs::remove_dir_all(&path).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to delete directory: {e}"),
+                )
+            })?;
+        } else {
+            std::fs::remove_dir(&path).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to delete directory: {e}"),
+                )
+            })?;
+        }
+    } else {
+        std::fs::remove_file(&path).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to delete file: {e}"),
+            )
+        })?;
+    }
+    Ok(Json(WorkspaceSuccessResponse { success: true }))
+}
+
+// ---------------------------------------------------------------------------
+// Memory / Knowledge Base API handlers
+// ---------------------------------------------------------------------------
+
+/// Query string for memory search.
+#[derive(Debug, Deserialize)]
+pub struct MemorySearchParams {
+    pub q: Option<String>,
+}
+
+/// GET /api/memory/stats — get knowledge base stats.
+async fn memory_stats(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let kp = state.knowledge_provider.lock().await;
+    let snapshot = kp.graph_snapshot().await;
+    let stats = snapshot.stats();
+    Json(json!({
+        "node_count": stats.node_count,
+        "edge_count": stats.edge_count,
+        "connected_components": stats.connected_components,
+        "avg_degree": stats.avg_degree,
+    }))
+}
+
+/// GET /api/memory/search?q=... — search the knowledge base.
+async fn memory_search(
+    State(state): State<AppState>,
+    Query(params): Query<MemorySearchParams>,
+) -> Json<serde_json::Value> {
+    let query = params.q.unwrap_or_default();
+    if query.is_empty() {
+        return Json(json!({
+            "results": [],
+            "count": 0,
+            "query": "",
+        }));
+    }
+
+    let kp = state.knowledge_provider.lock().await;
+    let snapshot = kp.graph_snapshot().await;
+    let nodes = snapshot.search(&query);
+    let results: Vec<serde_json::Value> = nodes
+        .iter()
+        .map(|n| {
+            json!({
+                "key": n.key(),
+                "kind": n.kind(),
+            })
+        })
+        .collect();
+    Json(json!({
+        "results": results,
+        "count": results.len(),
+        "query": query,
+    }))
+}
+
+/// GET /api/memory/entities — list recent entities.
+async fn memory_entities(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let kp = state.knowledge_provider.lock().await;
+    let snapshot = kp.graph_snapshot().await;
+    let nodes = snapshot.all_nodes();
+    let entities: Vec<serde_json::Value> = nodes
+        .iter()
+        .map(|n| {
+            json!({
+                "key": n.key(),
+                "kind": n.kind(),
+            })
+        })
+        .collect();
+    Json(json!({
+        "entities": entities,
+        "count": entities.len(),
+    }))
+}
+
+/// GET /api/memory/entities/:id — get entity details.
+async fn memory_entity_detail(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Json<serde_json::Value> {
+    let kp = state.knowledge_provider.lock().await;
+    let snapshot = kp.graph_snapshot().await;
+
+    let node = match snapshot.get_node(&id) {
+        Some(n) => n,
+        None => {
+            return Json(json!({
+                "error": "Entity not found",
+                "key": id,
+            }));
+        }
+    };
+
+    // Gather neighbors
+    let neighbors = snapshot.query_neighbors(&id, 1);
+    let neighbor_list: Vec<serde_json::Value> = neighbors
+        .iter()
+        .map(|n| {
+            json!({
+                "key": n.key(),
+                "kind": n.kind(),
+            })
+        })
+        .collect();
+
+    Json(json!({
+        "key": node.key(),
+        "kind": node.kind(),
+        "neighbors": neighbor_list,
+        "neighbor_count": neighbor_list.len(),
+    }))
+}
+
 /// Build the axum Router with all API routes.
 pub fn build_router(state: AppState) -> Router {
     // API routes that need authentication
     let mut api_routes = Router::new()
         .route("/chat", post(chat))
+        .route("/chat/stream", post(chat_stream))
         .route("/sessions", get(list_sessions))
         .route("/sessions", post(create_session))
         .route("/sessions/search", get(search_sessions))
@@ -1115,7 +1525,17 @@ pub fn build_router(state: AppState) -> Router {
         .route("/kanban/tasks", post(kanban_task_create))
         .route("/kanban/tasks/{id}", get(kanban_task_detail))
         .route("/kanban/tasks/{id}", patch(kanban_task_update))
-        .route("/kanban/tasks/{id}/comments", post(kanban_task_comment));
+        .route("/kanban/tasks/{id}/comments", post(kanban_task_comment))
+        .route("/workspace/list", get(workspace_list))
+        .route("/workspace/read", get(workspace_read))
+        .route("/workspace/create", post(workspace_create))
+        .route("/workspace/rename", post(workspace_rename))
+        .route("/workspace/delete", post(workspace_delete))
+        // Knowledge / Memory panel
+        .route("/memory/stats", get(memory_stats))
+        .route("/memory/search", get(memory_search))
+        .route("/memory/entities", get(memory_entities))
+        .route("/memory/entities/{id}", get(memory_entity_detail));
 
     let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
     if !password.is_empty() {
@@ -1146,7 +1566,10 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .nest("/api", api_routes)
         .nest("/v1", v1_routes)
-        .fallback_service(tower_http::services::ServeDir::new("../hakimi-webui/dist"))
+        .fallback_service(
+            tower_http::services::fs::ServeDir::new("../hakimi-webui/static")
+                .append_index_html_on_directories(true),
+        )
         .with_state(state)
 }
 
@@ -2392,6 +2815,77 @@ async fn chat(
             ))
         }
     }
+}
+
+/// POST /chat/stream — send a message, stream the response via SSE.
+///
+/// Events:
+///   - `event: token\n data: <text_chunk>\n\n`
+///   - `event: done\n  data: {"response":"<full_text>","session_id":"<id>"}\n\n`
+///   - `event: error\n data: <error_message>\n\n`
+async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>) -> Response {
+    info!(message_len = req.message.len(), "POST /chat/stream");
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<String>(512);
+
+    // Lock agent, configure streaming callback, then clone so we can drop the lock.
+    let mut cloned_agent = {
+        let mut agent = state.agent.lock().await;
+        agent.set_streaming(true);
+        agent.set_streaming_callback(Some(Arc::new({
+            let tx = tx.clone();
+            move |token: String| {
+                let _ = tx.blocking_send(token);
+            }
+        })));
+        agent.clone()
+    };
+
+    let session_id = cloned_agent.session_id().to_string();
+
+    // Run the chat in a background task.
+    tokio::spawn(async move {
+        match cloned_agent.chat(&req.message).await {
+            Ok(response) => {
+                let done = serde_json::json!({
+                    "response": response,
+                    "session_id": session_id,
+                });
+                let _ = tx.send(format!("__DONE__{}", done.to_string())).await;
+            }
+            Err(e) => {
+                let _ = tx.send(format!("__ERROR__{}", e)).await;
+            }
+        }
+    });
+
+    // Convert mpsc receiver into an SSE stream.
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        rx.recv().await.map(|msg| {
+            if let Some(payload) = msg.strip_prefix("__DONE__") {
+                (
+                    Ok::<Event, Infallible>(
+                        Event::default().event("done").data(payload.to_string()),
+                    ),
+                    rx,
+                )
+            } else if let Some(payload) = msg.strip_prefix("__ERROR__") {
+                (
+                    Ok::<Event, Infallible>(
+                        Event::default().event("error").data(payload.to_string()),
+                    ),
+                    rx,
+                )
+            } else {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("token").data(msg)),
+                    rx,
+                )
+            }
+        })
+    });
+
+    Sse::new(stream).into_response()
 }
 
 /// POST /v1/chat/completions — OpenAI-compatible chat with optional SSE snapshot output.

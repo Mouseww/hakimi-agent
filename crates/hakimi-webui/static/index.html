@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Hakimi</title>
+<!-- base href for subpath mount support -->
+<script>(function(){var p=location.pathname,i=p.indexOf('/session/');document.write('<base href="'+location.origin+(i>=0?p.slice(0,i+1):(p.endsWith('/')?p:p.replace(/\/[^/]*$/,'/')||'/'))+'">');})()</script>
+<link rel="icon" type="image/svg+xml" href="static/favicon.svg">
+<link rel="stylesheet" href="static/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+<!-- Preload theme to prevent flash -->
+<script>
+(function(){
+  try {
+    var t=(localStorage.getItem('hakimi-theme')||'dark').toLowerCase();
+    if(t==='dark') document.documentElement.classList.add('dark');
+    else if(t==='system'&&window.matchMedia('(prefers-color-scheme:dark)').matches) document.documentElement.classList.add('dark');
+  } catch(e) { document.documentElement.classList.add('dark'); }
+})();
+</script>
+</head>
+<body>
+<div id="app">
+  <!-- ════ Left Sidebar ════ -->
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <h1 id="brand">Hakimi</h1>
+      <button id="newChatBtn" class="icon-btn" title="新会话">＋</button>
+    </div>
+    <div id="session-search-wrap">
+      <input id="sessionSearch" type="search" placeholder="搜索会话…" autocomplete="off">
+    </div>
+    <div id="session-list"><!-- 会话列表由 JS 动态渲染 --></div>
+    <div id="sidebar-footer">
+      <button id="settingsBtn" class="icon-btn" title="设置">⚙</button>
+      <button id="toggleThemeBtn" class="icon-btn" title="切换主题">🌓</button>
+      <span id="status-indicator" class="status-dot" title="连接状态"></span>
+    </div>
+  </aside>
+
+  <!-- ════ Center: Chat ════ -->
+  <main id="main-panel">
+    <div id="topbar">
+      <span id="topbar-title">Hakimi Agent</span>
+      <span id="topbar-model" class="topbar-badge"></span>
+      <span id="topbar-profile" class="topbar-badge"></span>
+      <div id="topbar-right">
+        <button id="workspaceToggle" class="icon-btn" title="工作区">📁</button>
+      </div>
+    </div>
+    <div id="chat-container">
+      <div id="messages"><!-- 消息由 JS 动态渲染 --></div>
+      <div id="offline-banner" class="banner" hidden>⚠️ 离线模式</div>
+    </div>
+    <div id="composer">
+      <div id="composer-toolbar">
+        <span id="slash-hint"></span>
+      </div>
+      <div id="composer-row">
+        <textarea id="msg-input" rows="1" placeholder="给 Hakimi 发消息… (/)斜杠命令" autocomplete="off"></textarea>
+        <button id="sendBtn" class="primary-btn" title="发送">➤</button>
+      </div>
+      <div id="composer-footer">
+        <span id="context-ring" title="上下文使用量"></span>
+        <span id="active-profile-badge"></span>
+      </div>
+    </div>
+  </main>
+
+  <!-- ════ Right Panel (hidden by default) ════ -->
+  <aside id="right-panel" hidden>
+    <div id="right-panel-header">
+      <span id="right-panel-title">工作区</span>
+      <button id="closeRightPanel" class="icon-btn">✕</button>
+    </div>
+    <div id="right-panel-content"><!-- 由 JS 动态渲染 --></div>
+  </aside>
+</div>
+
+<!-- ════ Modal: 控制中心 ════ -->
+<div id="control-center" class="modal" hidden>
+  <div class="modal-overlay"></div>
+  <div class="modal-body">
+    <div id="cc-tabs">
+      <button class="cc-tab active" data-panel="settings">设置</button>
+      <button class="cc-tab" data-panel="skills">技能</button>
+      <button class="cc-tab" data-panel="memory">记忆</button>
+      <button class="cc-tab" data-panel="cron">定时任务</button>
+    </div>
+    <div id="cc-content"><!-- 由 JS 动态渲染 --></div>
+    <button id="closeCC" class="icon-btn modal-close">✕</button>
+  </div>
+</div>
+
+<script src="static/composer.js"></script>
+<script src="static/workspace.js"></script>
+<script src="static/hakimi.js"></script>
+</body>
+</html>
