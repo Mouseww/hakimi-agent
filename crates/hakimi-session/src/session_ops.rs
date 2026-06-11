@@ -67,6 +67,8 @@ pub trait SessionOps {
 
     fn delete_session(&self, id: &str) -> Result<bool>;
 
+    fn clear_session_messages(&self, id: &str) -> Result<bool>;
+
     fn get_session_with_messages(
         &self,
         session_id: &str,
@@ -323,6 +325,46 @@ impl SessionOps for SessionDB {
         tx.commit()
             .context("Failed to commit session delete transaction")?;
         Ok(deleted)
+    }
+
+    fn clear_session_messages(&self, id: &str) -> Result<bool> {
+        let mut conn = self.conn().lock().unwrap();
+        let tx = conn
+            .transaction()
+            .context("Failed to start session message clear transaction")?;
+        let exists: Option<String> = tx
+            .query_row(
+                "SELECT id FROM sessions WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("Failed to check session before clearing messages")?;
+        if exists.is_none() {
+            tx.commit()
+                .context("Failed to commit no-op session message clear transaction")?;
+            return Ok(false);
+        }
+
+        tx.execute("DELETE FROM messages WHERE session_id = ?1", params![id])
+            .context("Failed to clear session messages")?;
+        tx.execute(
+            "UPDATE sessions SET
+                message_count = 0,
+                tool_call_count = 0,
+                input_tokens = 0,
+                output_tokens = 0,
+                cache_read_tokens = 0,
+                cache_write_tokens = 0,
+                reasoning_tokens = 0,
+                api_call_count = 0
+             WHERE id = ?1",
+            params![id],
+        )
+        .context("Failed to reset session counters after clearing messages")?;
+        tx.commit()
+            .context("Failed to commit session message clear transaction")?;
+        Ok(true)
     }
 
     fn get_session_with_messages(
@@ -607,6 +649,45 @@ mod tests {
 
         let child = db.get_session(&child_id).unwrap().unwrap();
         assert_eq!(child.parent_session_id.as_deref(), Some(parent_id.as_str()));
+    }
+
+    #[test]
+    fn test_clear_session_messages_keeps_session_and_resets_counters() {
+        use crate::message_ops::MessageOps;
+        use hakimi_common::{Message, Usage};
+
+        let db = test_db();
+        let id = db
+            .create_session("web", None, Some("test-model"), None)
+            .unwrap();
+        db.save_message(&id, &Message::user("persistent clear marker"))
+            .unwrap();
+        db.save_message(&id, &Message::assistant("assistant reply"))
+            .unwrap();
+        db.update_session_totals(
+            &id,
+            &Usage {
+                prompt_tokens: 7,
+                completion_tokens: 11,
+                total_tokens: 18,
+                cached_tokens: 3,
+                reasoning_tokens: 5,
+            },
+            1,
+        )
+        .unwrap();
+
+        assert!(db.clear_session_messages(&id).unwrap());
+        let meta = db.get_session(&id).unwrap().expect("session remains");
+        assert_eq!(meta.message_count, 0);
+        assert_eq!(meta.input_tokens, 0);
+        assert_eq!(meta.output_tokens, 0);
+        assert_eq!(meta.cache_read_tokens, 0);
+        assert_eq!(meta.reasoning_tokens, 0);
+        assert_eq!(meta.api_call_count, 0);
+        assert!(db.get_messages(&id).unwrap().is_empty());
+        assert!(db.search_messages("persistent", 5).unwrap().is_empty());
+        assert!(!db.clear_session_messages("missing-session").unwrap());
     }
 
     #[test]

@@ -1774,6 +1774,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sessions/{id}", patch(update_session))
         .route("/sessions/{id}", delete(delete_session))
         .route("/sessions/{id}/messages", get(get_session_messages))
+        .route("/sessions/{id}/messages", delete(clear_session_messages))
         .route("/sessions/{id}/fork", post(fork_session))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
@@ -3960,6 +3961,40 @@ async fn delete_session(
         "object": "hakimi.session.deleted",
         "id": id,
         "deleted": true
+    })))
+}
+
+/// DELETE /sessions/:id/messages — clear messages for a session without deleting the session row.
+async fn clear_session_messages(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+
+    let id = id.trim().to_string();
+    validate_api_session_id(&id)?;
+    let cleared = state
+        .session_db
+        .lock()
+        .await
+        .clear_session_messages(&id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to clear session messages: {e}"),
+            )
+        })?;
+    if !cleared {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("Session not found: {id}"),
+        ));
+    }
+
+    Ok(Json(json!({
+        "object": "hakimi.session.messages.clear",
+        "id": id,
+        "cleared": true
     })))
 }
 
@@ -6777,6 +6812,42 @@ mod tests {
             Some("Use the release checklist")
         );
         assert!(messages.messages[0].has_reasoning);
+    }
+
+    #[tokio::test]
+    async fn test_clear_session_messages_endpoint_persists_empty_transcript() {
+        let state = test_state();
+        let session_id = {
+            let db = state.session_db.lock().await;
+            let session_id = db
+                .create_session("api-test", Some("user1"), Some("test-model"), None)
+                .unwrap();
+            db.save_message(&session_id, &hakimi_common::Message::user("clear me"))
+                .unwrap();
+            db.save_message(
+                &session_id,
+                &hakimi_common::Message::assistant("cleared reply"),
+            )
+            .unwrap();
+            session_id
+        };
+
+        let app = build_router(state.clone());
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/api/sessions/{session_id}/messages"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let db = state.session_db.lock().await;
+        let meta = db
+            .get_session(&session_id)
+            .unwrap()
+            .expect("session remains");
+        assert_eq!(meta.message_count, 0);
+        assert!(db.get_messages(&session_id).unwrap().is_empty());
     }
 
     #[tokio::test]

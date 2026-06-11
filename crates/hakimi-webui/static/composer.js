@@ -67,8 +67,7 @@ function setupSlashCommands(input) {
 function executeSlashCommand(cmd) {
   switch (cmd) {
     case 'clear':
-      S.messages = [];
-      renderMessages();
+      clearCurrentSessionMessages();
       break;
     case 'new':
       newSession();
@@ -98,6 +97,47 @@ function executeSlashCommand(cmd) {
       S.messages.push(helpMsg);
       renderMessages();
       break;
+  }
+}
+
+async function clearCurrentSessionMessages() {
+  if (!S.session) {
+    S.messages = [];
+    renderMessages();
+    return;
+  }
+
+  const sessionId = S.session.id || S.session.session_id;
+  if (!sessionId) {
+    S.messages = [];
+    renderMessages();
+    return;
+  }
+
+  try {
+    await api('DELETE', `/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+    S.messages = [];
+    if (S.session) {
+      S.session.message_count = 0;
+      S.session.input_tokens = 0;
+      S.session.output_tokens = 0;
+      S.session.cache_read_tokens = 0;
+      S.session.cache_write_tokens = 0;
+      S.session.reasoning_tokens = 0;
+      S.session.api_call_count = 0;
+    }
+    renderMessages();
+    renderSessions();
+    updateTopbar();
+    loadSessions();
+  } catch (e) {
+    S.messages.push({
+      role: 'assistant',
+      content: '❌ 清空当前会话失败: ' + e.message,
+      id: 'clear-error-' + Date.now(),
+      timestamp: new Date().toISOString(),
+    });
+    renderMessages();
   }
 }
 
