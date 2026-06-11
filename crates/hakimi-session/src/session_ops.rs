@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 use uuid::Uuid;
@@ -60,6 +60,8 @@ pub trait SessionOps {
     fn end_session(&self, id: &str, reason: &str) -> Result<()>;
 
     fn set_title(&self, session_id: &str, title: &str) -> Result<()>;
+
+    fn set_unique_title(&self, session_id: &str, title: &str) -> Result<String>;
 
     fn clear_title(&self, session_id: &str) -> Result<()>;
 
@@ -252,6 +254,44 @@ impl SessionOps for SessionDB {
             anyhow::bail!("Session {session_id} not found for set_title");
         }
         Ok(())
+    }
+
+    fn set_unique_title(&self, session_id: &str, title: &str) -> Result<String> {
+        let conn = self.conn().lock().unwrap();
+        let mut candidate = title.trim().to_string();
+        if candidate.is_empty() {
+            candidate = "Untitled session".to_string();
+        }
+
+        let base = candidate.clone();
+        let mut attempt = 1usize;
+        loop {
+            let conflict: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM sessions WHERE title = ?1 AND id != ?2 LIMIT 1",
+                    params![candidate, session_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .context("Failed to check session title uniqueness")?;
+
+            if conflict.is_none() {
+                let updated = conn
+                    .execute(
+                        "UPDATE sessions SET title = ?2 WHERE id = ?1",
+                        params![session_id, candidate],
+                    )
+                    .context("Failed to set unique session title")?;
+
+                if updated == 0 {
+                    anyhow::bail!("Session {session_id} not found for set_unique_title");
+                }
+                return Ok(candidate);
+            }
+
+            attempt += 1;
+            candidate = format!("{base} ({attempt})");
+        }
     }
 
     fn clear_title(&self, session_id: &str) -> Result<()> {

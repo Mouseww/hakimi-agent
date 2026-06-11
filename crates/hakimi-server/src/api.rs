@@ -3609,7 +3609,7 @@ async fn create_session(
     })?;
 
     if let Some(title) = req.title.as_deref()
-        && let Err(e) = db.set_title(&id, title)
+        && let Err(e) = db.set_unique_title(&id, title)
     {
         let _ = db.delete_session(&id);
         return Err(api_error(
@@ -3874,7 +3874,7 @@ async fn fork_session(
         })?;
     }
     if let Some(title) = req.title.as_deref()
-        && let Err(e) = db.set_title(&fork_id, title)
+        && let Err(e) = db.set_unique_title(&fork_id, title)
     {
         let _ = db.delete_session(&fork_id);
         return Err(api_error(
