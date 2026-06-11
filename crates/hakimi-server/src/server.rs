@@ -26,6 +26,7 @@ pub struct AppState {
     pub response_store: Arc<Mutex<crate::api::ResponsesStore>>,
     pub run_store: Arc<Mutex<crate::api::RunsStore>>,
     pub knowledge_provider: Arc<Mutex<hakimi_knowledge::KnowledgeProvider>>,
+    pub webui_password: Arc<Mutex<String>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,7 @@ impl Server {
         let knowledge_path = hakimi_dir.join("knowledge.json");
         let knowledge_provider = hakimi_knowledge::KnowledgeProvider::new(knowledge_path);
 
+        let initial_webui_password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
         let state = AppState {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(config)),
@@ -60,6 +62,7 @@ impl Server {
             response_store: Arc::new(Mutex::new(crate::api::ResponsesStore::default())),
             run_store: Arc::new(Mutex::new(crate::api::RunsStore::default())),
             knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
+            webui_password: Arc::new(Mutex::new(initial_webui_password)),
         };
         Ok(Self { state })
     }

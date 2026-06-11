@@ -1183,7 +1183,9 @@ html, body { background: var(--bg-glow); font-feature-settings: "cv01", "ss03"; 
   body.mobile-sidebar-open { overflow: hidden; }
   #main-panel { min-width: 0; width: 100vw; height: 100dvh; }
   #topbar { padding: 8px 10px; gap: 8px; min-width: 0; }
-  #topbar-title { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #topbar-title { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border-radius: 10px; padding: 4px 8px; }
+  #topbar-title::after { content: '⌄'; margin-left: 6px; color: var(--text-dim); font-size: 12px; }
+  body.mobile-sidebar-open #topbar-title::after { content: '⌃'; }
   #topbar-model, #topbar-profile { display: none; }
   #topbar-right { margin-left: 0; }
   #workspaceToggle { display: none; }

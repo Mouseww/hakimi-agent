@@ -623,11 +623,34 @@ function setMobileSidebar(open) {
   sidebar.classList.toggle('mobile-open', !!open);
   document.body.classList.toggle('mobile-sidebar-open', !!open);
   if (scrim) scrim.hidden = !open;
+  const topbarTitle = $('topbar-title');
+  if (topbarTitle) topbarTitle.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 function toggleMobileSidebar() {
   const sidebar = $('sidebar');
   setMobileSidebar(!(sidebar && sidebar.classList.contains('mobile-open')));
+}
+
+function currentSessionTitle() {
+  if (!S.session) return 'Hakimi Agent';
+  return S.session.title || S.session.name || '新会话';
+}
+
+function updateTopbar() {
+  const title = $('topbar-title');
+  if (title) {
+    title.textContent = currentSessionTitle();
+    title.title = '点击切换会话列表';
+  }
+}
+
+function isMobileViewport() {
+  return window.matchMedia && window.matchMedia('(max-width: 860px)').matches;
+}
+
+function toggleSessionsFromTitle() {
+  if (isMobileViewport()) toggleMobileSidebar();
 }
 
 // ── Right panel toggle ──
@@ -894,9 +917,11 @@ async function renderCronPanel() {
       <tr>
         <td>${esc(j.name || j.id || '—')}</td>
         <td><code class="cc-cron-expr">${esc(j.schedule || j.cron || '—')}</code></td>
-        <td>${esc(j.command || j.task || j.action || '—')}</td>
+        <td>${esc(j.prompt || j.command || j.task || j.action || '—')}</td>
         <td><span class="cc-skill-cat" style="${j.enabled===false ? 'background:rgba(224,80,80,0.1);color:var(--error);' : ''}">${j.enabled===false ? '已停用' : '已启用'}</span></td>
-        <td>
+        <td class="cc-actions">
+          <button class="cc-btn cc-btn-sm" onclick="runCronJob('${esc(j.id || j.name)}')" title="立即运行">▶</button>
+          <button class="cc-btn cc-btn-sm" onclick="${j.enabled===false ? 'resumeCronJob' : 'pauseCronJob'}('${esc(j.id || j.name)}')" title="${j.enabled===false ? '恢复' : '暂停'}">${j.enabled===false ? '启' : '停'}</button>
           <button class="cc-btn cc-btn-sm danger" onclick="deleteCronJob('${esc(j.id || j.name)}')" title="删除">🗑</button>
         </td>
       </tr>
@@ -916,14 +941,62 @@ async function renderCronPanel() {
   }
 }
 
-function newCronJob() {
-  console.log('newCronJob stub');
-  alert('新建定时任务功能暂未实现');
+async function newCronJob() {
+  const name = prompt('任务名称', 'WebUI 定时任务');
+  if (name === null) return;
+  const schedule = prompt('执行频率：例如 every 30m、every 2h、0 9 * * *', 'every 30m');
+  if (!schedule) return;
+  const promptText = prompt('任务提示词 / 要执行的内容');
+  if (!promptText) return;
+  try {
+    await api('POST', '/api/cron/jobs', {
+      name: name.trim() || 'WebUI 定时任务',
+      schedule: schedule.trim(),
+      prompt: promptText.trim(),
+      deliver: 'origin',
+    });
+    await renderCronPanel();
+  } catch (e) {
+    alert('创建定时任务失败: ' + e.message);
+  }
 }
 
-function deleteCronJob(id) {
-  console.log('deleteCronJob stub', id);
-  alert('删除定时任务功能暂未实现 (ID: ' + id + ')');
+async function deleteCronJob(id) {
+  if (!id) return;
+  if (!confirm('删除定时任务 ' + id + '？')) return;
+  try {
+    await api('DELETE', '/api/cron/jobs/' + encodeURIComponent(id));
+    await renderCronPanel();
+  } catch (e) {
+    alert('删除定时任务失败: ' + e.message);
+  }
+}
+
+async function pauseCronJob(id) {
+  try {
+    await api('POST', '/api/cron/jobs/' + encodeURIComponent(id) + '/pause');
+    await renderCronPanel();
+  } catch (e) {
+    alert('暂停定时任务失败: ' + e.message);
+  }
+}
+
+async function resumeCronJob(id) {
+  try {
+    await api('POST', '/api/cron/jobs/' + encodeURIComponent(id) + '/resume');
+    await renderCronPanel();
+  } catch (e) {
+    alert('恢复定时任务失败: ' + e.message);
+  }
+}
+
+async function runCronJob(id) {
+  try {
+    await api('POST', '/api/cron/jobs/' + encodeURIComponent(id) + '/run');
+    await renderCronPanel();
+  } catch (e) {
+    alert('立即运行定时任务失败: ' + e.message);
+  }
 }
 
 // ── Textarea auto-resize ──
@@ -967,6 +1040,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('toggleThemeBtn').addEventListener('click', toggleTheme);
   const mobileMenuBtn = $('mobileMenuBtn');
   if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileSidebar);
+  const topbarTitle = $('topbar-title');
+  if (topbarTitle) topbarTitle.addEventListener('click', toggleSessionsFromTitle);
+  updateTopbar();
   const mobileScrim = $('mobile-scrim');
   if (mobileScrim) mobileScrim.addEventListener('click', () => setMobileSidebar(false));
   $('settingsBtn').addEventListener('click', () => openControlCenter('settings'));

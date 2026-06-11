@@ -61,6 +61,7 @@ use axum::{
     },
     routing::{delete, get, patch, post},
 };
+use chrono::Utc;
 use futures::{StreamExt, stream};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -71,6 +72,8 @@ use tracing::{info, warn};
 
 use crate::server::AppState;
 use hakimi_common::Message as CoreMessage;
+use hakimi_cron::persistence::PersistentCronStore;
+use hakimi_cron::{CronJob, CronRepeat, parse_schedule, validate_cron_prompt};
 use hakimi_session::{MessageOps, SessionOps};
 
 // ---------------------------------------------------------------------------
@@ -211,6 +214,28 @@ pub struct CronJobInfo {
     pub deliver: Option<String>,
     pub repeat_times: Option<i64>,
     pub repeat_completed: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CronJobCreateRequest {
+    pub name: Option<String>,
+    pub schedule: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub enabled_toolsets: Vec<String>,
+    #[serde(default)]
+    pub context_from: Vec<String>,
+    pub deliver: Option<String>,
+    pub repeat: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CronJobMutationResponse {
+    pub object: String,
+    pub success: bool,
+    pub job: Option<CronJobInfo>,
 }
 
 /// Response body for POST /chat.
@@ -489,6 +514,7 @@ pub struct ConfigUpdate {
     pub embedding_dimension: Option<usize>,
     pub embedding_batch_size: Option<usize>,
     pub embedding_normalize: Option<bool>,
+    pub password: Option<String>,
 }
 
 /// Request body for POST /mcp/servers.
@@ -1156,12 +1182,20 @@ impl RunsStore {
 // Route builder
 // ---------------------------------------------------------------------------
 
-async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCode> {
+async fn auth_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let password = state.webui_password.lock().await.clone();
+    if password.trim().is_empty() {
+        return Ok(next.run(req).await);
+    }
+
     let auth_header = req
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
-    let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
 
     if let Some(auth) = auth_header
         && auth == format!("Bearer {}", password)
@@ -1410,15 +1444,56 @@ async fn workspace_delete(
 // Cron API handlers
 // ---------------------------------------------------------------------------
 
-/// GET /api/cron/jobs — list persisted cron jobs for the WebUI settings panel.
-async fn cron_jobs() -> Result<Json<CronJobsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let home = std::env::var("HAKIMI_HOME")
+fn cron_store_path() -> PathBuf {
+    std::env::var("HAKIMI_HOME")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
         .or_else(|| dirs::home_dir().map(|home| home.join(".hakimi")))
-        .unwrap_or_else(|| PathBuf::from(".hakimi"));
-    let db_path = home.join("cron.db");
+        .unwrap_or_else(|| PathBuf::from(".hakimi"))
+        .join("cron.db")
+}
+
+fn cron_error(status: StatusCode, error: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        status,
+        Json(ErrorResponse {
+            error: error.into(),
+        }),
+    )
+}
+
+fn cron_job_info(job: &CronJob) -> CronJobInfo {
+    let (schedule_type, schedule_value) = match &job.schedule {
+        hakimi_cron::CronSchedule::IntervalMinutes(minutes) => {
+            ("minutes".to_string(), minutes.to_string())
+        }
+        hakimi_cron::CronSchedule::IntervalHours(hours) => ("hours".to_string(), hours.to_string()),
+        hakimi_cron::CronSchedule::CronExpr(expr) => ("cron".to_string(), expr.clone()),
+    };
+    CronJobInfo {
+        id: job.id.clone(),
+        name: job.name.clone(),
+        schedule: if schedule_type == "cron" {
+            schedule_value.clone()
+        } else {
+            format!("{} {}", schedule_type, schedule_value)
+        },
+        schedule_type,
+        prompt: job.prompt.clone(),
+        enabled: job.enabled,
+        last_run: job.last_run.map(|t| t.to_rfc3339()),
+        next_run: job.next_run.map(|t| t.to_rfc3339()),
+        created_at: None,
+        deliver: job.deliver.clone(),
+        repeat_times: job.repeat.times.map(i64::from),
+        repeat_completed: Some(i64::from(job.repeat.completed)),
+    }
+}
+
+/// GET /api/cron/jobs — list persisted cron jobs for the WebUI settings panel.
+async fn cron_jobs() -> Result<Json<CronJobsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let db_path = cron_store_path();
     if !db_path.exists() {
         return Ok(Json(CronJobsResponse {
             object: "list".to_string(),
@@ -1427,52 +1502,21 @@ async fn cron_jobs() -> Result<Json<CronJobsResponse>, (StatusCode, Json<ErrorRe
         }));
     }
 
-    let jobs = tokio::task::spawn_blocking(move || -> rusqlite::Result<Vec<CronJobInfo>> {
-        let conn = Connection::open(db_path)?;
-        let mut stmt = conn.prepare(
-            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run, created_at, deliver, repeat_times, repeat_completed
-             FROM cron_jobs
-             ORDER BY COALESCE(next_run, created_at) ASC, created_at DESC",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            let schedule_type: String = row.get(2)?;
-            let schedule_value: String = row.get(3)?;
-            Ok(CronJobInfo {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                schedule: if schedule_type.trim().is_empty() {
-                    schedule_value.clone()
-                } else {
-                    format!("{} {}", schedule_type, schedule_value)
-                },
-                schedule_type,
-                prompt: row.get(4)?,
-                enabled: row.get::<_, i64>(5)? != 0,
-                last_run: row.get(6)?,
-                next_run: row.get(7)?,
-                created_at: row.get(8)?,
-                deliver: row.get(9)?,
-                repeat_times: row.get(10)?,
-                repeat_completed: row.get(11)?,
-            })
-        })?;
-        rows.collect()
+    let jobs = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<CronJobInfo>> {
+        let store = PersistentCronStore::open(&db_path)?;
+        Ok(store.load_all()?.iter().map(cron_job_info).collect())
     })
     .await
     .map_err(|e| {
-        (
+        cron_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to join cron job query: {e}"),
-            }),
+            format!("Failed to join cron job query: {e}"),
         )
     })?
     .map_err(|e| {
-        (
+        cron_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to list cron jobs: {e}"),
-            }),
+            format!("Failed to list cron jobs: {e}"),
         )
     })?;
 
@@ -1480,6 +1524,126 @@ async fn cron_jobs() -> Result<Json<CronJobsResponse>, (StatusCode, Json<ErrorRe
         object: "list".to_string(),
         total: jobs.len(),
         jobs,
+    }))
+}
+
+/// POST /api/cron/jobs — create a persisted cron job.
+async fn cron_create_job(
+    Json(req): Json<CronJobCreateRequest>,
+) -> Result<Json<CronJobMutationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    validate_cron_prompt(&req.prompt)
+        .map_err(|e| cron_error(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let schedule = parse_schedule(&req.schedule)
+        .map_err(|e| cron_error(StatusCode::BAD_REQUEST, format!("Invalid schedule: {e}")))?;
+    let name = req
+        .name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "WebUI cron job".to_string());
+    let mut job = CronJob::new(name, schedule, req.prompt);
+    job.skills = req.skills;
+    job.enabled_toolsets = (!req.enabled_toolsets.is_empty()).then_some(req.enabled_toolsets);
+    job.context_from = req.context_from;
+    job.deliver = req.deliver.filter(|deliver| !deliver.trim().is_empty());
+    job.repeat = CronRepeat::new(req.repeat);
+
+    let db_path = cron_store_path();
+    let saved = tokio::task::spawn_blocking(move || -> anyhow::Result<CronJobInfo> {
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let store = PersistentCronStore::open(&db_path)?;
+        store.save_job(&job)?;
+        Ok(cron_job_info(&job))
+    })
+    .await
+    .map_err(|e| {
+        cron_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to join cron job create: {e}"),
+        )
+    })?
+    .map_err(|e| {
+        cron_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to create cron job: {e}"),
+        )
+    })?;
+
+    Ok(Json(CronJobMutationResponse {
+        object: "cron.job".to_string(),
+        success: true,
+        job: Some(saved),
+    }))
+}
+
+async fn cron_delete_job(
+    Path(id): Path<String>,
+) -> Result<Json<CronJobMutationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    cron_store_mutate(id, |store, id| store.remove_job(id)).await
+}
+
+async fn cron_pause_job(
+    Path(id): Path<String>,
+) -> Result<Json<CronJobMutationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    cron_store_mutate(id, |store, id| store.set_enabled(id, false)).await
+}
+
+async fn cron_resume_job(
+    Path(id): Path<String>,
+) -> Result<Json<CronJobMutationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    cron_store_mutate(id, |store, id| store.set_enabled(id, true)).await
+}
+
+async fn cron_run_job_now(
+    Path(id): Path<String>,
+) -> Result<Json<CronJobMutationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    cron_store_mutate(id, |store, id| store.trigger_now(id, Utc::now())).await
+}
+
+async fn cron_store_mutate<F>(
+    id: String,
+    action: F,
+) -> Result<Json<CronJobMutationResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    F: FnOnce(&PersistentCronStore, &str) -> anyhow::Result<bool> + Send + 'static,
+{
+    let db_path = cron_store_path();
+    let exists_before = db_path.exists();
+    let mutation =
+        tokio::task::spawn_blocking(move || -> anyhow::Result<(bool, Option<CronJobInfo>)> {
+            if !exists_before {
+                return Ok((false, None));
+            }
+            let store = PersistentCronStore::open(&db_path)?;
+            let changed = action(&store, &id)?;
+            if !changed {
+                return Ok((false, None));
+            }
+            Ok((true, store.get_job(&id)?.as_ref().map(cron_job_info)))
+        })
+        .await
+        .map_err(|e| {
+            cron_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to join cron job mutation: {e}"),
+            )
+        })?
+        .map_err(|e| {
+            cron_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update cron job: {e}"),
+            )
+        })?;
+
+    let (changed, updated) = mutation;
+    if !changed {
+        return Err(cron_error(StatusCode::NOT_FOUND, "Cron job not found"));
+    }
+
+    Ok(Json(CronJobMutationResponse {
+        object: "cron.job".to_string(),
+        success: true,
+        job: updated,
     }))
 }
 
@@ -1638,16 +1802,21 @@ pub fn build_router(state: AppState) -> Router {
         .route("/workspace/rename", post(workspace_rename))
         .route("/workspace/delete", post(workspace_delete))
         .route("/cron/jobs", get(cron_jobs))
+        .route("/cron/jobs", post(cron_create_job))
+        .route("/cron/jobs/{id}", delete(cron_delete_job))
+        .route("/cron/jobs/{id}/pause", post(cron_pause_job))
+        .route("/cron/jobs/{id}/resume", post(cron_resume_job))
+        .route("/cron/jobs/{id}/run", post(cron_run_job_now))
         // Knowledge / Memory panel
         .route("/memory/stats", get(memory_stats))
         .route("/memory/search", get(memory_search))
         .route("/memory/entities", get(memory_entities))
         .route("/memory/entities/{id}", get(memory_entity_detail));
 
-    let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
-    if !password.is_empty() {
-        api_routes = api_routes.route_layer(middleware::from_fn(auth_middleware));
-    }
+    api_routes = api_routes.route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        auth_middleware,
+    ));
 
     // Health check can be unauthenticated
     let api_routes = api_routes.route("/health", get(health));
@@ -1665,10 +1834,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/runs/{id}", get(get_run))
         .route("/runs/{id}/events", get(get_run_events))
         .route("/runs/{id}/stop", post(stop_run));
-    let password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
-    if !password.is_empty() {
-        v1_routes = v1_routes.route_layer(middleware::from_fn(auth_middleware));
-    }
+    v1_routes = v1_routes.route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        auth_middleware,
+    ));
 
     Router::new()
         .nest("/api", api_routes)
@@ -4215,6 +4384,13 @@ async fn update_config(
     if let Some(v) = update.embedding_normalize {
         config.embedding.normalize = v;
     }
+    drop(config);
+
+    if let Some(password) = update.password {
+        *state.webui_password.lock().await = password;
+    }
+
+    let config = state.config.lock().await;
 
     // Return the updated config (sanitized).
     let response = SanitizedConfig {
@@ -4484,6 +4660,7 @@ mod tests {
             session_db: Arc::new(Mutex::new(db)),
             response_store: Arc::new(Mutex::new(ResponsesStore::new(100))),
             run_store: Arc::new(Mutex::new(RunsStore::default())),
+            webui_password: Arc::new(Mutex::new(String::new())),
             knowledge_provider: Arc::new(Mutex::new(hakimi_knowledge::KnowledgeProvider::new(
                 std::env::temp_dir().join(format!(
                     "hakimi-test-knowledge-{}-{}.json",
