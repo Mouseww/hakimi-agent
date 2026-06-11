@@ -5547,9 +5547,16 @@ async fn start_server(
     agent: hakimi_core::AIAgent,
     addr: &str,
     config: hakimi_config::HakimiConfig,
+    runtime_home: &hakimi_common::RuntimeHome,
 ) -> Result<()> {
     info!(addr = %addr, "starting Hakimi Agent API server");
-    let db = hakimi_session::SessionDB::new(std::path::Path::new(":memory:"))?;
+    let db_path = runtime_home.sessions_db_path();
+    let db = tokio::task::spawn_blocking(move || {
+        let db = hakimi_session::SessionDB::new(&db_path)?;
+        db.initialize()?;
+        Ok::<_, anyhow::Error>(db)
+    })
+    .await??;
     hakimi_server::Server::new(addr, agent, config, db)?
         .serve(addr.parse().unwrap())
         .await?;
@@ -7610,7 +7617,7 @@ pub async fn run() -> Result<()> {
     }
 
     if args.serve {
-        return start_server(agent, &args.addr, config).await;
+        return start_server(agent, &args.addr, config, &runtime_home).await;
     }
     if args.gateway.is_some() {
         let skill_store = agent
