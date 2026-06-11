@@ -22,9 +22,14 @@
 (function(){
   try {
     var t=(localStorage.getItem('hakimi-theme')||'dark').toLowerCase();
-    if(t==='dark') document.documentElement.classList.add('dark');
-    else if(t==='system'&&window.matchMedia('(prefers-color-scheme:dark)').matches) document.documentElement.classList.add('dark');
-  } catch(e) { document.documentElement.classList.add('dark'); }
+    var themes={dark:1,obsidian:1,midnight:1,light:1,system:1};
+    if(!themes[t]) t='dark';
+    var resolved=t;
+    if(t==='system') resolved=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
+    document.documentElement.dataset.theme=resolved;
+    document.documentElement.dataset.themeChoice=t;
+    if(resolved!=='light') document.documentElement.classList.add('dark');
+  } catch(e) { document.documentElement.dataset.theme='dark'; document.documentElement.classList.add('dark'); }
 })();
 </script>
 </head>

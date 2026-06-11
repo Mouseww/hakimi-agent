@@ -554,16 +554,34 @@ async function checkHealth() {
   }
 }
 
-// ── Theme toggle ──
-function applyTheme(theme) {
-  const normalized = ['dark', 'light', 'system'].includes(theme) ? theme : 'dark';
+// ── Theme / skin toggle ──
+const THEMES = {
+  dark: { label: 'Linear Dark', desc: '冷静黑灰 + 紫色高亮' },
+  obsidian: { label: 'Obsidian', desc: '深海黑 + 祖母绿高亮' },
+  midnight: { label: 'Midnight', desc: '午夜紫 + 霓虹粉高亮' },
+  light: { label: 'Light', desc: '通透浅色 + 蓝紫高亮' },
+  system: { label: '跟随系统', desc: '自动匹配系统明暗' },
+};
+const THEME_ORDER = ['dark', 'obsidian', 'midnight', 'light', 'system'];
+
+function resolveTheme(theme) {
+  const normalized = Object.prototype.hasOwnProperty.call(THEMES, theme) ? theme : 'dark';
+  if (normalized !== 'system') return normalized;
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const useDark = normalized === 'dark' || (normalized === 'system' && prefersDark);
-  document.documentElement.classList.toggle('dark', useDark);
-  document.documentElement.dataset.theme = normalized;
+  return prefersDark ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+  const normalized = Object.prototype.hasOwnProperty.call(THEMES, theme) ? theme : 'dark';
+  const resolved = resolveTheme(normalized);
+  document.documentElement.classList.toggle('dark', resolved !== 'light');
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.dataset.themeChoice = normalized;
   S.theme = normalized;
   try { localStorage.setItem('hakimi-theme', normalized); } catch (e) {}
-  qsa('.cc-theme-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.t === normalized));
+  qsa('.cc-theme-btn,.cc-theme-card').forEach(btn => btn.classList.toggle('active', btn.dataset.t === normalized));
+  const toggle = $('toggleThemeBtn');
+  if (toggle) toggle.title = `切换皮肤 · 当前 ${THEMES[normalized].label}`;
 }
 
 function setTheme(theme) {
@@ -572,7 +590,8 @@ function setTheme(theme) {
 
 function toggleTheme() {
   const current = S.theme || 'dark';
-  applyTheme(current === 'dark' ? 'light' : 'dark');
+  const idx = THEME_ORDER.indexOf(current);
+  applyTheme(THEME_ORDER[(idx + 1) % THEME_ORDER.length]);
 }
 
 // ── Right panel toggle ──
@@ -626,9 +645,14 @@ async function renderSettingsPanel() {
       modelOptions = `<option value="" disabled>未获取到模型</option>`;
     }
 
-    const themeOptions = ['dark', 'light', 'system'].map(t =>
-      `<button class="cc-theme-btn${t === currentTheme ? ' active' : ''}" data-t="${t}" onclick="setTheme('${t}')">${t === 'dark' ? '深色' : t === 'light' ? '浅色' : '跟随系统'}</button>`
-    ).join('');
+    const themeOptions = THEME_ORDER.map(t => {
+      const meta = THEMES[t];
+      return `<button type="button" class="cc-theme-card${t === currentTheme ? ' active' : ''}" data-t="${t}" onclick="setTheme('${t}')">
+        <span class="cc-theme-card-title">${esc(meta.label)}</span>
+        <span class="cc-theme-card-desc">${esc(meta.desc)}</span>
+        <span class="cc-theme-swatch"><span></span><span></span><span></span></span>
+      </button>`;
+    }).join('');
 
     cc.innerHTML = `
       <div id="cc-settings-msg" hidden></div>
@@ -639,8 +663,8 @@ async function renderSettingsPanel() {
       </div>
       <div class="cc-section-title">外观</div>
       <div class="cc-form-group">
-        <label class="cc-label">主题</label>
-        <div class="cc-theme-group">${themeOptions}</div>
+        <label class="cc-label">皮肤</label>
+        <div class="cc-theme-grid">${themeOptions}</div>
       </div>
       <div class="cc-section-title">安全</div>
       <div class="cc-form-group">
