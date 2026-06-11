@@ -29,6 +29,7 @@
 //! - `POST /kanban/tasks`    — Create a dashboard Kanban task
 //! - `PATCH /kanban/tasks/:id` — Update a dashboard Kanban task status/assignee
 //! - `POST /kanban/tasks/:id/comments` — Append a dashboard Kanban task comment
+//! - `GET  /cron/jobs`       — Dashboard cron job inventory
 //! - `GET  /v1/models`       — OpenAI-compatible model discovery
 //! - `GET  /v1/capabilities` — Machine-readable API capability discovery
 //! - `GET  /v1/skills`       — List loaded runtime skills without skill bodies
@@ -184,6 +185,29 @@ pub struct WorkspaceReadResponse {
 #[derive(Debug, Serialize)]
 pub struct WorkspaceSuccessResponse {
     pub success: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CronJobsResponse {
+    pub object: String,
+    pub total: usize,
+    pub jobs: Vec<CronJobInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CronJobInfo {
+    pub id: String,
+    pub name: String,
+    pub schedule: String,
+    pub schedule_type: String,
+    pub prompt: String,
+    pub enabled: bool,
+    pub last_run: Option<String>,
+    pub next_run: Option<String>,
+    pub created_at: Option<String>,
+    pub deliver: Option<String>,
+    pub repeat_times: Option<i64>,
+    pub repeat_completed: Option<i64>,
 }
 
 /// Response body for POST /chat.
@@ -1380,6 +1404,83 @@ async fn workspace_delete(
 }
 
 // ---------------------------------------------------------------------------
+// Cron API handlers
+// ---------------------------------------------------------------------------
+
+/// GET /api/cron/jobs — list persisted cron jobs for the WebUI settings panel.
+async fn cron_jobs() -> Result<Json<CronJobsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let home = std::env::var("HAKIMI_HOME")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".hakimi")))
+        .unwrap_or_else(|| PathBuf::from(".hakimi"));
+    let db_path = home.join("cron.db");
+    if !db_path.exists() {
+        return Ok(Json(CronJobsResponse {
+            object: "list".to_string(),
+            total: 0,
+            jobs: Vec::new(),
+        }));
+    }
+
+    let jobs = tokio::task::spawn_blocking(move || -> rusqlite::Result<Vec<CronJobInfo>> {
+        let conn = Connection::open(db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run, created_at, deliver, repeat_times, repeat_completed
+             FROM cron_jobs
+             ORDER BY COALESCE(next_run, created_at) ASC, created_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let schedule_type: String = row.get(2)?;
+            let schedule_value: String = row.get(3)?;
+            Ok(CronJobInfo {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                schedule: if schedule_type.trim().is_empty() {
+                    schedule_value.clone()
+                } else {
+                    format!("{} {}", schedule_type, schedule_value)
+                },
+                schedule_type,
+                prompt: row.get(4)?,
+                enabled: row.get::<_, i64>(5)? != 0,
+                last_run: row.get(6)?,
+                next_run: row.get(7)?,
+                created_at: row.get(8)?,
+                deliver: row.get(9)?,
+                repeat_times: row.get(10)?,
+                repeat_completed: row.get(11)?,
+            })
+        })?;
+        rows.collect()
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to join cron job query: {e}"),
+            }),
+        )
+    })?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to list cron jobs: {e}"),
+            }),
+        )
+    })?;
+
+    Ok(Json(CronJobsResponse {
+        object: "list".to_string(),
+        total: jobs.len(),
+        jobs,
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Memory / Knowledge Base API handlers
 // ---------------------------------------------------------------------------
 
@@ -1533,6 +1634,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/workspace/create", post(workspace_create))
         .route("/workspace/rename", post(workspace_rename))
         .route("/workspace/delete", post(workspace_delete))
+        .route("/cron/jobs", get(cron_jobs))
         // Knowledge / Memory panel
         .route("/memory/stats", get(memory_stats))
         .route("/memory/search", get(memory_search))
@@ -2868,7 +2970,10 @@ async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>
         agent.set_streaming_callback(Some(Arc::new({
             let tx = tx.clone();
             move |token: String| {
-                let _ = tx.blocking_send(token);
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    let _ = tx.send(token).await;
+                });
             }
         })));
         agent.clone()

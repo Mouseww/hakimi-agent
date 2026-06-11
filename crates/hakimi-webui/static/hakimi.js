@@ -294,12 +294,41 @@ function renderSessions() {
     const time = s.started_at || s.updated_at || '';
 
     item.innerHTML = `
+      <button class="session-delete" title="删除会话" aria-label="删除会话">×</button>
       <div class="session-item-title">${esc(title)}</div>
       <div class="session-item-meta">${msgCount} 条消息${time ? ' · ' + fmtDate(time) : ''}</div>`;
 
     item.addEventListener('click', () => loadSession(s.id));
+    const del = item.querySelector('.session-delete');
+    if (del) {
+      del.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteSession(s.id, title);
+      });
+    }
     list.appendChild(item);
   });
+}
+
+async function deleteSession(sessionId, title) {
+  if (!sessionId || S.busy) return;
+  const ok = confirm(`删除会话「${title || sessionId}」？此操作不可恢复。`);
+  if (!ok) return;
+  try {
+    await api('DELETE', `/api/sessions/${encodeURIComponent(sessionId)}`);
+    S.sessions = (S.sessions || []).filter(s => s.id !== sessionId && s.session_id !== sessionId);
+    if (S.session && (S.session.id === sessionId || S.session.session_id === sessionId)) {
+      S.session = null;
+      S.messages = [];
+      renderMessages();
+      updateTopbar();
+    }
+    renderSessions();
+    await loadSessions();
+  } catch (e) {
+    alert('删除会话失败: ' + e.message);
+  }
 }
 
 // ── Load a session ──
@@ -501,10 +530,24 @@ async function checkHealth() {
 }
 
 // ── Theme toggle ──
+function applyTheme(theme) {
+  const normalized = ['dark', 'light', 'system'].includes(theme) ? theme : 'dark';
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const useDark = normalized === 'dark' || (normalized === 'system' && prefersDark);
+  document.documentElement.classList.toggle('dark', useDark);
+  document.documentElement.dataset.theme = normalized;
+  S.theme = normalized;
+  try { localStorage.setItem('hakimi-theme', normalized); } catch (e) {}
+  qsa('.cc-theme-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.t === normalized));
+}
+
+function setTheme(theme) {
+  applyTheme(theme);
+}
+
 function toggleTheme() {
-  const isDark = document.documentElement.classList.toggle('dark');
-  S.theme = isDark ? 'dark' : 'light';
-  try { localStorage.setItem('hakimi-theme', S.theme); } catch (e) {}
+  const current = S.theme || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
 }
 
 // ── Right panel toggle ──
@@ -547,7 +590,7 @@ async function renderSettingsPanel() {
 
     const models = (modelsResp.data || modelsResp || []).filter(m => typeof m === 'string' ? m : m?.id);
     const defaultModel = config.default_model || config.model || '';
-    const currentTheme = (config.theme || 'dark').toLowerCase();
+    const currentTheme = (S.theme || 'dark').toLowerCase();
 
     // Build model options
     let modelOptions = models.map(m => {
@@ -747,7 +790,8 @@ async function renderCronPanel() {
 
   try {
     const resp = await api('GET', '/api/cron/jobs').catch(() => ({ jobs: [] }));
-    const jobs = resp.jobs || resp.data || resp || [];
+    const rawJobs = resp.jobs || resp.data || resp || [];
+    const jobs = Array.isArray(rawJobs) ? rawJobs : [];
 
     const table = `<table class="cc-table">
   <thead>
@@ -808,6 +852,7 @@ function autoResize(ta) {
 // ═════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Hakimi WebUI booting...');
+  try { applyTheme(localStorage.getItem('hakimi-theme') || S.theme || 'dark'); } catch (e) { applyTheme(S.theme || 'dark'); }
 
   await checkHealth();
   setInterval(checkHealth, 30000);

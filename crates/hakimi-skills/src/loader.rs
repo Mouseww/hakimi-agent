@@ -200,31 +200,34 @@ fn parse_skill(raw: &str, path: &Path) -> Result<Skill> {
         let mut skill: Skill = serde_yaml::from_str(yaml_content)
             .with_context(|| format!("invalid YAML frontmatter in {}", path.display()))?;
 
-        // Use filename as fallback name
+        // Use filename as fallback name. Directory-style skills conventionally
+        // store their content in `<skill-name>/SKILL.md`; in that case the
+        // file stem is always just "SKILL", so fall back to the parent directory
+        // name to avoid exposing dozens of undifferentiated "SKILL" entries in
+        // the WebUI and CLI.
         if skill.name.is_empty() {
-            skill.name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unnamed")
-                .to_string();
+            skill.name = fallback_skill_name(path);
         }
 
         skill.normalize_metadata();
         skill.content = trimmed[body_start..].trim().to_string();
+        if skill.description.trim().is_empty()
+            && let Some(description) = infer_skill_description(&skill.content)
+        {
+            skill.description = description;
+        }
         return Ok(skill);
     }
 
     // No frontmatter — use filename as name, entire content as body
-    let name = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unnamed")
-        .to_string();
+    let name = fallback_skill_name(path);
+    let content = trimmed.to_string();
+    let description = infer_skill_description(&content).unwrap_or_default();
 
     Ok(Skill {
         name,
-        description: String::new(),
-        content: trimmed.to_string(),
+        description,
+        content,
         trigger: None,
         tags: Vec::new(),
         phases: Vec::new(),
@@ -234,6 +237,32 @@ fn parse_skill(raw: &str, path: &Path) -> Result<Skill> {
         provenance: crate::skill::SkillProvenance::default(),
         metadata: crate::skill::SkillMetadata::default(),
     })
+}
+
+fn fallback_skill_name(path: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unnamed");
+    if stem.eq_ignore_ascii_case("skill")
+        && let Some(parent_name) = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .filter(|s| !s.trim().is_empty())
+    {
+        return parent_name.to_string();
+    }
+    stem.to_string()
+}
+
+fn infer_skill_description(content: &str) -> Option<String> {
+    content
+        .lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("# ").map(str::trim))
+        .filter(|title| !title.is_empty())
+        .map(|title| title.chars().take(160).collect())
 }
 
 #[derive(Debug, Clone, Default)]
