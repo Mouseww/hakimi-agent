@@ -2961,25 +2961,28 @@ async fn chat(
 async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>) -> Response {
     info!(message_len = req.message.len(), "POST /chat/stream");
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<String>(512);
+    let (tx_for_handler, rx) = tokio::sync::mpsc::channel::<String>(512);
 
-    // Lock agent, configure streaming callback, then clone so we can drop the lock.
+    // Clone the agent, then attach this request's streaming callback only to the clone.
+    // Do not store the request-local `tx` callback on the shared AppState agent:
+    // that keeps the sender alive after the `done` event and the browser waits forever.
     let mut cloned_agent = {
-        let mut agent = state.agent.lock().await;
-        agent.set_streaming(true);
-        agent.set_streaming_callback(Some(Arc::new({
-            let tx = tx.clone();
-            move |token: String| {
-                let tx = tx.clone();
-                tokio::spawn(async move {
-                    let _ = tx.send(token).await;
-                });
-            }
-        })));
+        let agent = state.agent.lock().await;
         agent.clone()
     };
+    cloned_agent.set_streaming(true);
+    cloned_agent.set_streaming_callback(Some(Arc::new({
+        let tx = tx_for_handler.clone();
+        move |token: String| {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let _ = tx.send(token).await;
+            });
+        }
+    })));
 
     let session_id = cloned_agent.session_id().to_string();
+    let tx = tx_for_handler.clone();
 
     // Run the chat in a background task.
     tokio::spawn(async move {
@@ -2996,6 +2999,9 @@ async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>
             }
         }
     });
+    // Drop the handler's original sender after moving a clone into the worker.
+    // Otherwise the SSE receiver never observes channel closure after `done/error`.
+    drop(tx_for_handler);
 
     // Convert mpsc receiver into an SSE stream.
     let stream = futures::stream::unfold(rx, |mut rx| async {
@@ -4303,7 +4309,7 @@ mod tests {
         async fn execute_streaming(
             &self,
             _model: &str,
-            _messages: &[hakimi_common::Message],
+            messages: &[hakimi_common::Message],
             _tools: &[hakimi_common::ToolDefinition],
             _params: &hakimi_transports::RequestParams,
         ) -> hakimi_common::Result<
@@ -4315,7 +4321,19 @@ mod tests {
                 >,
             >,
         > {
-            Ok(Box::pin(futures::stream::empty()))
+            let prompt = messages
+                .iter()
+                .rev()
+                .find_map(|message| message.content.as_deref())
+                .unwrap_or_default()
+                .to_string();
+            Ok(Box::pin(futures::stream::iter(vec![
+                Ok(hakimi_transports::StreamEvent::ContentDelta(format!(
+                    "stub response to: {prompt}"
+                ))),
+                Ok(hakimi_transports::StreamEvent::Finished("stop".to_string())),
+                Ok(hakimi_transports::StreamEvent::Done),
+            ])))
         }
     }
 
@@ -4943,6 +4961,37 @@ mod tests {
             agent.messages().is_empty(),
             "streaming chat completions should not mutate the shared /api/chat history"
         );
+    }
+
+    #[tokio::test]
+    async fn test_api_chat_stream_closes_after_done_event() {
+        let state = test_state();
+        let app = build_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/chat/stream")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({ "message": "hello" }).to_string()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let mut stream = resp.into_body().into_data_stream();
+        let mut events = String::new();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.unwrap();
+                events.push_str(&String::from_utf8_lossy(&chunk));
+                if events.contains("event: done") {
+                    return;
+                }
+            }
+            panic!("/api/chat/stream ended before sending done event: {events:?}");
+        })
+        .await
+        .expect("/api/chat/stream should emit done promptly");
+        assert!(events.contains("stub response to: hello"));
     }
 
     #[tokio::test]

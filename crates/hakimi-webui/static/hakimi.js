@@ -419,6 +419,13 @@ async function sendMessage() {
   const base = document.baseURI || location.href;
   const url = new URL('api/chat/stream', base).href;
   let fullText = '';
+  let streamFinished = false;
+
+  const unlockComposer = () => {
+    S.busy = false;
+    const btn = $('sendBtn');
+    if (btn) btn.disabled = false;
+  };
 
   try {
     const response = await fetch(url, {
@@ -471,12 +478,21 @@ async function sendMessage() {
               fullText = payload.response || fullText;
             } catch (e) { /* use accumulated text */ }
             finalizeStream(fullText, 'resp-' + Date.now());
+            streamFinished = true;
+            unlockComposer();
+            try { await reader.cancel(); } catch (e) {}
+            break;
           } else if (eventType === 'error') {
             finalizeStream('❌ ' + data, 'err-' + Date.now());
+            streamFinished = true;
+            unlockComposer();
+            try { await reader.cancel(); } catch (e) {}
+            break;
           }
           eventType = '';
         }
       }
+      if (streamFinished) break;
     }
   } catch (e) {
     console.error('sendMessage SSE error:', e);
@@ -502,8 +518,7 @@ async function sendMessage() {
       renderMessages();
     }
   } finally {
-    S.busy = false;
-    $('sendBtn').disabled = false;
+    unlockComposer();
     input.focus();
     loadSessions();
   }
