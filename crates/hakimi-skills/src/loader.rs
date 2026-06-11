@@ -438,10 +438,20 @@ Content."#;
         let skill = parse_skill(raw, path).unwrap();
 
         assert_eq!(skill.name, "simple");
-        assert_eq!(skill.description, "");
+        assert_eq!(skill.description, "Simple Skill");
         assert_eq!(skill.trigger, None);
         assert!(skill.tags.is_empty());
         assert_eq!(skill.content, "# Simple Skill\nJust some content.");
+    }
+
+    #[test]
+    fn test_parse_directory_style_skill_md_uses_parent_dir_name() {
+        let raw = "# Directory Skill\nReusable workflow.";
+        let path = Path::new("directory-skill/SKILL.md");
+        let skill = parse_skill(raw, path).unwrap();
+
+        assert_eq!(skill.name, "directory-skill");
+        assert_eq!(skill.description, "Directory Skill");
     }
 
     #[test]
