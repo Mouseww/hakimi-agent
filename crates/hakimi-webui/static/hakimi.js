@@ -308,7 +308,7 @@ function renderSessions() {
       <div class="session-item-title">${esc(title)}</div>
       <div class="session-item-meta">${msgCount} 条消息${time ? ' · ' + fmtDate(time) : ''}</div>`;
 
-    item.addEventListener('click', () => loadSession(s.id));
+    item.addEventListener('click', () => { loadSession(s.id); setMobileSidebar(false); });
     const del = item.querySelector('.session-delete');
     if (del) {
       del.addEventListener('click', (e) => {
@@ -564,6 +564,22 @@ const THEMES = {
 };
 const THEME_ORDER = ['dark', 'obsidian', 'midnight', 'light', 'system'];
 
+const THEME_VARS = {
+  dark: {
+    '--bg':'#08090a','--bg-glow':'radial-gradient(circle at 50% -20%, rgba(113,112,255,0.16), transparent 36%), radial-gradient(circle at 92% 8%, rgba(94,106,210,0.12), transparent 28%), #08090a','--sidebar-bg':'rgba(15,16,17,0.92)','--surface':'rgba(255,255,255,0.035)','--surface-2':'rgba(255,255,255,0.055)','--surface-hover':'rgba(255,255,255,0.075)','--panel':'rgba(15,16,17,0.76)','--panel-solid':'#0f1011','--border':'rgba(255,255,255,0.075)','--border-light':'rgba(255,255,255,0.14)','--text':'#f7f8f8','--text-muted':'#a8afb9','--text-dim':'#686e78','--accent':'#7170ff','--accent-hover':'#8b8aff','--accent-bg':'rgba(113,112,255,0.14)','--accent-contrast':'#ffffff','--shadow':'0 20px 70px rgba(0,0,0,0.42)','--shadow-soft':'0 10px 36px rgba(0,0,0,0.26)','--ring':'0 0 0 1px rgba(113,112,255,0.22), 0 0 0 4px rgba(113,112,255,0.12)'
+  },
+  obsidian: {
+    '--bg':'#05070b','--bg-glow':'radial-gradient(circle at 30% -12%, rgba(24,211,160,0.18), transparent 32%), radial-gradient(circle at 88% 12%, rgba(73,131,255,0.12), transparent 28%), #05070b','--sidebar-bg':'rgba(8,12,18,0.93)','--surface':'rgba(255,255,255,0.035)','--surface-2':'rgba(255,255,255,0.06)','--surface-hover':'rgba(24,211,160,0.10)','--panel':'rgba(10,14,21,0.78)','--panel-solid':'#0a0e15','--border':'rgba(185,219,255,0.08)','--border-light':'rgba(185,219,255,0.16)','--text':'#edf7ff','--text-muted':'#a5b3c5','--text-dim':'#667286','--accent':'#18d3a0','--accent-hover':'#52e6bd','--accent-bg':'rgba(24,211,160,0.13)','--accent-contrast':'#02130e','--shadow':'0 20px 70px rgba(0,0,0,0.48)','--shadow-soft':'0 10px 36px rgba(0,0,0,0.30)','--ring':'0 0 0 1px rgba(24,211,160,0.28), 0 0 0 4px rgba(24,211,160,0.12)'
+  },
+  midnight: {
+    '--bg':'#0a0613','--bg-glow':'radial-gradient(circle at 18% 0%, rgba(255,82,161,0.16), transparent 32%), radial-gradient(circle at 84% 8%, rgba(124,92,255,0.20), transparent 30%), #0a0613','--sidebar-bg':'rgba(16,10,29,0.92)','--surface':'rgba(255,255,255,0.04)','--surface-2':'rgba(255,255,255,0.065)','--surface-hover':'rgba(255,82,161,0.10)','--panel':'rgba(17,11,31,0.78)','--panel-solid':'#110b1f','--border':'rgba(236,207,255,0.085)','--border-light':'rgba(236,207,255,0.17)','--text':'#fbf6ff','--text-muted':'#bcaed0','--text-dim':'#776986','--accent':'#ff52a1','--accent-hover':'#ff7ab8','--accent-bg':'rgba(255,82,161,0.13)','--accent-contrast':'#ffffff','--shadow':'0 20px 70px rgba(0,0,0,0.48)','--shadow-soft':'0 10px 36px rgba(0,0,0,0.30)','--ring':'0 0 0 1px rgba(255,82,161,0.28), 0 0 0 4px rgba(255,82,161,0.12)'
+  },
+  light: {
+    '--bg':'#f6f7fb','--bg-glow':'radial-gradient(circle at 18% -16%, rgba(94,106,210,0.16), transparent 30%), radial-gradient(circle at 90% 0%, rgba(14,165,233,0.11), transparent 28%), #f6f7fb','--sidebar-bg':'rgba(255,255,255,0.88)','--surface':'rgba(17,24,39,0.035)','--surface-2':'rgba(17,24,39,0.06)','--surface-hover':'rgba(94,106,210,0.10)','--panel':'rgba(255,255,255,0.74)','--panel-solid':'#ffffff','--border':'rgba(17,24,39,0.10)','--border-light':'rgba(17,24,39,0.18)','--text':'#111827','--text-muted':'#4b5563','--text-dim':'#8a94a6','--accent':'#5e6ad2','--accent-hover':'#4854c8','--accent-bg':'rgba(94,106,210,0.12)','--accent-contrast':'#ffffff','--shadow':'0 22px 70px rgba(17,24,39,0.14)','--shadow-soft':'0 10px 30px rgba(17,24,39,0.10)','--ring':'0 0 0 1px rgba(94,106,210,0.28), 0 0 0 4px rgba(94,106,210,0.14)'
+  },
+};
+
+
 function resolveTheme(theme) {
   const normalized = Object.prototype.hasOwnProperty.call(THEMES, theme) ? theme : 'dark';
   if (normalized !== 'system') return normalized;
@@ -574,14 +590,19 @@ function resolveTheme(theme) {
 function applyTheme(theme) {
   const normalized = Object.prototype.hasOwnProperty.call(THEMES, theme) ? theme : 'dark';
   const resolved = resolveTheme(normalized);
-  document.documentElement.classList.toggle('dark', resolved !== 'light');
-  document.documentElement.dataset.theme = resolved;
-  document.documentElement.dataset.themeChoice = normalized;
+  const root = document.documentElement;
+  const vars = THEME_VARS[resolved] || THEME_VARS.dark;
+  Object.entries(vars).forEach(([key, value]) => root.style.setProperty(key, value));
+  root.classList.toggle('dark', resolved !== 'light');
+  root.dataset.theme = resolved;
+  root.dataset.themeChoice = normalized;
+  root.style.colorScheme = resolved === 'light' ? 'light' : 'dark';
   S.theme = normalized;
   try { localStorage.setItem('hakimi-theme', normalized); } catch (e) {}
   qsa('.cc-theme-btn,.cc-theme-card').forEach(btn => btn.classList.toggle('active', btn.dataset.t === normalized));
   const toggle = $('toggleThemeBtn');
   if (toggle) toggle.title = `切换皮肤 · 当前 ${THEMES[normalized].label}`;
+  window.dispatchEvent(new CustomEvent('hakimi-theme-change', { detail: { theme: normalized, resolved } }));
 }
 
 function setTheme(theme) {
@@ -592,6 +613,21 @@ function toggleTheme() {
   const current = S.theme || 'dark';
   const idx = THEME_ORDER.indexOf(current);
   applyTheme(THEME_ORDER[(idx + 1) % THEME_ORDER.length]);
+}
+
+// ── Mobile sidebar ──
+function setMobileSidebar(open) {
+  const sidebar = $('sidebar');
+  const scrim = $('mobile-scrim');
+  if (!sidebar) return;
+  sidebar.classList.toggle('mobile-open', !!open);
+  document.body.classList.toggle('mobile-sidebar-open', !!open);
+  if (scrim) scrim.hidden = !open;
+}
+
+function toggleMobileSidebar() {
+  const sidebar = $('sidebar');
+  setMobileSidebar(!(sidebar && sidebar.classList.contains('mobile-open')));
 }
 
 // ── Right panel toggle ──
@@ -929,6 +965,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('newChatBtn').addEventListener('click', newSession);
   $('toggleThemeBtn').addEventListener('click', toggleTheme);
+  const mobileMenuBtn = $('mobileMenuBtn');
+  if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileSidebar);
+  const mobileScrim = $('mobile-scrim');
+  if (mobileScrim) mobileScrim.addEventListener('click', () => setMobileSidebar(false));
   $('settingsBtn').addEventListener('click', () => openControlCenter('settings'));
   $('workspaceToggle').addEventListener('click', toggleRightPanel);
   $('closeRightPanel').addEventListener('click', toggleRightPanel);
