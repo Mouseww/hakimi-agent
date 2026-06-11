@@ -271,6 +271,16 @@ function finalizeStream(fullText, msgId) {
     const body = streamingMsg.querySelector('.msg-body');
     if (body) body.innerHTML = renderMd(fullText);
   }
+
+  const existing = S.messages.find(m => m && m.id === msgId);
+  if (!existing) {
+    S.messages.push({
+      role: 'assistant',
+      content: fullText || '',
+      id: msgId || 'resp-' + Date.now(),
+      timestamp: new Date().toISOString(),
+    });
+  }
 }
 
 // ── Render sessions list ──
@@ -432,7 +442,7 @@ async function sendMessage() {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       credentials: 'include',
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, session_id: S.session && (S.session.id || S.session.session_id) }),
     });
 
     if (response.status === 401) {
@@ -498,7 +508,7 @@ async function sendMessage() {
     console.error('sendMessage SSE error:', e);
     // Fallback: try non-streaming POST /api/chat
     try {
-      const resp = await api('POST', '/api/chat', { message: text });
+      const resp = await api('POST', '/api/chat', { message: text, session_id: S.session && (S.session.id || S.session.session_id) });
       const asstMsg = {
         role: 'assistant',
         content: resp.response || '',

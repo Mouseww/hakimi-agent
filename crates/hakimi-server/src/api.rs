@@ -70,6 +70,8 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::server::AppState;
+use hakimi_common::Message as CoreMessage;
+use hakimi_session::{MessageOps, SessionOps};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -79,6 +81,7 @@ use crate::server::AppState;
 #[derive(Debug, Deserialize)]
 pub struct ChatRequest {
     pub message: String,
+    pub session_id: Option<String>,
 }
 
 /// Request body for POST /v1/chat/completions.
@@ -2962,6 +2965,13 @@ async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>
     info!(message_len = req.message.len(), "POST /chat/stream");
 
     let (tx_for_handler, rx) = tokio::sync::mpsc::channel::<String>(512);
+    let user_message = req.message.clone();
+    let requested_session_id = req
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
 
     // Clone the agent, then attach this request's streaming callback only to the clone.
     // Do not store the request-local `tx` callback on the shared AppState agent:
@@ -2970,6 +2980,42 @@ async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>
         let agent = state.agent.lock().await;
         agent.clone()
     };
+
+    if let Some(session_id) = requested_session_id.as_deref() {
+        let restored = {
+            let db = state.session_db.lock().await;
+            match db.get_session(session_id) {
+                Ok(Some(_)) => db.restore_session(session_id, None),
+                Ok(None) => Err(anyhow::anyhow!("session not found: {session_id}")),
+                Err(e) => Err(e),
+            }
+        };
+
+        match restored {
+            Ok(messages) => {
+                cloned_agent.set_session_id(session_id.to_string());
+                cloned_agent.clear_messages();
+                for message in messages {
+                    cloned_agent.add_message(message);
+                }
+            }
+            Err(e) => {
+                let _ = tx_for_handler.send(format!("__ERROR__{e}")).await;
+                drop(tx_for_handler);
+                let stream = futures::stream::unfold(rx, |mut rx| async {
+                    rx.recv().await.map(|msg| {
+                        let payload = msg.strip_prefix("__ERROR__").unwrap_or(&msg).to_string();
+                        (
+                            Ok::<Event, Infallible>(Event::default().event("error").data(payload)),
+                            rx,
+                        )
+                    })
+                });
+                return Sse::new(stream).into_response();
+            }
+        }
+    }
+
     cloned_agent.set_streaming(true);
     cloned_agent.set_streaming_callback(Some(Arc::new({
         let tx = tx_for_handler.clone();
@@ -2982,12 +3028,32 @@ async fn chat_stream(State(state): State<AppState>, Json(req): Json<ChatRequest>
     })));
 
     let session_id = cloned_agent.session_id().to_string();
+    let should_persist = requested_session_id.is_some();
     let tx = tx_for_handler.clone();
+    let session_db = state.session_db.clone();
 
     // Run the chat in a background task.
     tokio::spawn(async move {
-        match cloned_agent.chat(&req.message).await {
+        match cloned_agent.chat(&user_message).await {
             Ok(response) => {
+                if should_persist {
+                    let persist_result = {
+                        let db = session_db.lock().await;
+                        db.save_message(&session_id, &CoreMessage::user(user_message.clone()))
+                            .and_then(|_| {
+                                db.save_message(
+                                    &session_id,
+                                    &CoreMessage::assistant(response.clone()),
+                                )
+                            })
+                    };
+
+                    if let Err(e) = persist_result {
+                        let _ = tx.send(format!("__ERROR__{e}")).await;
+                        return;
+                    }
+                }
+
                 let done = serde_json::json!({
                     "response": response,
                     "session_id": session_id,
@@ -4992,6 +5058,66 @@ mod tests {
         .await
         .expect("/api/chat/stream should emit done promptly");
         assert!(events.contains("stub response to: hello"));
+    }
+
+    #[tokio::test]
+    async fn test_api_chat_stream_persists_messages_to_requested_session() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        {
+            let db = state.session_db.lock().await;
+            db.create_session_with_id(
+                "persist-session",
+                "webui",
+                None,
+                Some("test-model"),
+                None,
+                None,
+            )
+            .unwrap();
+        }
+
+        for message in ["first", "second"] {
+            let req = Request::builder()
+                .method("POST")
+                .uri("/api/chat/stream")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "message": message, "session_id": "persist-session" }).to_string(),
+                ))
+                .unwrap();
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(resp.status(), http::StatusCode::OK);
+
+            let mut stream = resp.into_body().into_data_stream();
+            let mut events = String::new();
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.unwrap();
+                    events.push_str(&String::from_utf8_lossy(&chunk));
+                    if events.contains("event: done") {
+                        return;
+                    }
+                }
+                panic!("/api/chat/stream ended before sending done event: {events:?}");
+            })
+            .await
+            .expect("/api/chat/stream should emit done promptly");
+        }
+
+        let db = state.session_db.lock().await;
+        let messages = db.get_messages("persist-session").unwrap();
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0].content.as_deref(), Some("first"));
+        assert_eq!(
+            messages[1].content.as_deref(),
+            Some("stub response to: first")
+        );
+        assert_eq!(messages[2].content.as_deref(), Some("second"));
+        assert_eq!(
+            messages[3].content.as_deref(),
+            Some("stub response to: second")
+        );
     }
 
     #[tokio::test]
