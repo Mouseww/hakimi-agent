@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     cache_write_tokens INTEGER DEFAULT 0,
     reasoning_tokens INTEGER DEFAULT 0,
     title TEXT,
-    api_call_count INTEGER DEFAULT 0
+    api_call_count INTEGER DEFAULT 0,
+    workdir TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (

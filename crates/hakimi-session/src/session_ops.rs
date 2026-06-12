@@ -31,6 +31,7 @@ pub struct SessionMeta {
     pub reasoning_tokens: i64,
     pub title: Option<String>,
     pub api_call_count: i32,
+    pub workdir: Option<String>,
 }
 
 /// Trait providing session CRUD operations on a `SessionDB`.
@@ -161,7 +162,7 @@ impl SessionOps for SessionDB {
                 "SELECT id, source, user_id, model, system_prompt, parent_session_id,
                         started_at, ended_at, end_reason, message_count, tool_call_count,
                         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                        reasoning_tokens, title, api_call_count
+                        reasoning_tokens, title, api_call_count, workdir
                  FROM sessions WHERE id = ?1",
             )
             .context("Failed to prepare get_session statement")?;
@@ -186,6 +187,7 @@ impl SessionOps for SessionDB {
                 reasoning_tokens: row.get(15)?,
                 title: row.get(16)?,
                 api_call_count: row.get(17)?,
+                workdir: row.get(18)?,
             })
         });
 
@@ -393,14 +395,14 @@ impl SessionOps for SessionDB {
                 "SELECT id, source, user_id, model, system_prompt, parent_session_id,
                         started_at, ended_at, end_reason, message_count, tool_call_count,
                         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                        reasoning_tokens, title, api_call_count
+                        reasoning_tokens, title, api_call_count, workdir
                  FROM sessions WHERE source = ?1 ORDER BY started_at DESC LIMIT ?2"
             }
             None => {
                 "SELECT id, source, user_id, model, system_prompt, parent_session_id,
                         started_at, ended_at, end_reason, message_count, tool_call_count,
                         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                        reasoning_tokens, title, api_call_count
+                        reasoning_tokens, title, api_call_count, workdir
                  FROM sessions ORDER BY started_at DESC LIMIT ?1"
             }
         };
@@ -446,6 +448,7 @@ fn row_to_session_meta(row: &rusqlite::Row) -> rusqlite::Result<SessionMeta> {
         reasoning_tokens: row.get(15)?,
         title: row.get(16)?,
         api_call_count: row.get(17)?,
+        workdir: row.get(18)?,
     })
 }
 

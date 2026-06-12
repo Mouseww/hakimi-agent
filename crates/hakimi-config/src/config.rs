@@ -63,6 +63,14 @@ fn default_provider() -> String {
     "auto".to_string()
 }
 
+impl Default for WebuiConfig {
+    fn default() -> Self {
+        Self {
+            password: String::new(),
+        }
+    }
+}
+
 impl Default for ModelConfig {
     fn default() -> Self {
         Self {
@@ -605,9 +613,21 @@ pub struct HakimiConfig {
     #[serde(default)]
     pub tools: ToolsConfig,
 
+    /// WebUI configuration.
+    #[serde(default)]
+    pub webui: WebuiConfig,
+
     /// Named roles — each can bind to its own bot(s).
     #[serde(default)]
     pub roles: HashMap<String, RoleConfig>,
+}
+
+/// WebUI server configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebuiConfig {
+    /// Password for WebUI access (Bearer token).
+    #[serde(default)]
+    pub password: String,
 }
 
 /// Configuration for all gateway platforms.

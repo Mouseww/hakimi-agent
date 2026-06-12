@@ -54,7 +54,12 @@ impl Server {
         let knowledge_path = hakimi_dir.join("knowledge.json");
         let knowledge_provider = hakimi_knowledge::KnowledgeProvider::new(knowledge_path);
 
-        let initial_webui_password = std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default();
+        // Load webui password from config, fallback to env var
+        let initial_webui_password = if !config.webui.password.is_empty() {
+            config.webui.password.clone()
+        } else {
+            std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default()
+        };
         let state = AppState {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(config)),
