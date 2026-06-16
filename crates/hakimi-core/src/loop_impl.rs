@@ -555,12 +555,36 @@ async fn process_tool_calls(
 ) {
     let tool_calls = response.tool_calls.as_ref().unwrap();
 
-    debug!(count = tool_calls.len(), "Processing tool calls");
+    debug!(count = tool_calls.len(), "Processing tool calls (raw)");
+    
+    // Filter out empty tool calls (caused by index=1 streaming chunks creating empty index=0 placeholder)
+    let valid_tool_calls: Vec<_> = tool_calls
+        .iter()
+        .filter(|tc| !tc.name.is_empty())
+        .cloned()
+        .collect();
+    
+    debug!(
+        raw_count = tool_calls.len(),
+        valid_count = valid_tool_calls.len(),
+        "Filtered tool calls"
+    );
+    
+    // Debug: print all valid tool calls with their names and IDs
+    for (idx, tc) in valid_tool_calls.iter().enumerate() {
+        debug!(
+            idx = idx,
+            name = %tc.name,
+            id = %tc.id,
+            args_len = tc.arguments.len(),
+            "Valid tool call"
+        );
+    }
 
     // Append the assistant message (with tool_calls) to history.
     let assistant_msg = build_assistant_message_with_tools(
         response.content.clone(),
-        tool_calls,
+        &valid_tool_calls,
         response.reasoning.clone(),
     );
     agent.messages.push(assistant_msg);
@@ -569,7 +593,7 @@ async fn process_tool_calls(
     let mut futures = Vec::new();
     let mut halt_message = None;
     // First check guardrails and collect safe tools to dispatch
-    for tc in tool_calls {
+    for tc in &valid_tool_calls {
         let args: serde_json::Value =
             serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
         let mut arg_summary = String::new();

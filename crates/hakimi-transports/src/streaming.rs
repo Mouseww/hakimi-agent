@@ -601,7 +601,7 @@ impl Stream for SseEventStream {
 /// Detect SSE format from the first event.
 ///
 /// Returns the detected mode based on event type and payload structure:
-/// - Anthropic: has explicit `event:` lines like `message_start`, `content_block_start`
+/// - Anthropic: has explicit `event:` lines or `"type":"message_start"` in payload
 /// - Gemini: payload contains `"candidates":[...]` structure
 /// - OpenAI: default fallback (no explicit event type, contains `"choices":[...]`)
 fn detect_sse_format(event_type: &Option<String>, payload: &str) -> SseMode {
@@ -617,7 +617,16 @@ fn detect_sse_format(event_type: &Option<String>, payload: &str) -> SseMode {
         }
     }
 
-    // Check payload structure.
+    // Check payload structure for Anthropic format markers.
+    if payload.contains("\"type\":\"message_start\"")
+        || payload.contains("\"type\":\"content_block_start\"")
+        || payload.contains("\"type\":\"content_block_delta\"")
+        || payload.contains("\"type\":\"message_delta\"")
+    {
+        return SseMode::Anthropic;
+    }
+
+    // Check payload structure for Gemini.
     if payload.contains("\"candidates\"") {
         return SseMode::Gemini;
     }
@@ -1032,12 +1041,20 @@ mod tests {
 
     #[test]
     fn test_detect_sse_format_anthropic() {
+        // Test with explicit event type
         let event_type = Some("message_start".to_string());
         let payload = r#"{"type":"message_start"}"#;
         assert_eq!(detect_sse_format(&event_type, payload), SseMode::Anthropic);
 
-        let event_type = Some("content_block_start".to_string());
-        let payload = r#"{"type":"content_block_start"}"#;
+        // Test with payload-only detection (no event type)
+        let event_type = None;
+        let payload = r#"{"type":"message_start","message":{"id":"msg_123"}}"#;
+        assert_eq!(detect_sse_format(&event_type, payload), SseMode::Anthropic);
+
+        let payload = r#"{"type":"content_block_start","index":0}"#;
+        assert_eq!(detect_sse_format(&event_type, payload), SseMode::Anthropic);
+
+        let payload = r#"{"type":"content_block_delta","delta":{"text":"Hi"}}"#;
         assert_eq!(detect_sse_format(&event_type, payload), SseMode::Anthropic);
     }
 

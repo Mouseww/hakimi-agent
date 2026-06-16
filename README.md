@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.262-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.263-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -48,11 +48,18 @@ hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
 
-**v0.3.262 — SSE format auto-detection:**
-- `ChatCompletionsTransport` now uses `SseEventStream::auto()` for automatic format detection
-- First SSE event dynamically determines parser mode (Anthropic/OpenAI/Gemini)
-- Eliminates "thinking loop" caused by `api_mode: chat_completions` misconfiguration
-- Router endpoints returning Anthropic Messages API format now work seamlessly
+**v0.3.263 — 修复 Router index=1 工具调用导致的空占位符 bug:**
+- 过滤掉流式累积产生的空工具调用（某些 Router 后端从 index=1 开始计数）
+- `process_tool_calls` 在处理前移除 `name.is_empty()` 的占位符工具调用
+- 增强调试日志：显示原始/有效工具调用数量和详细信息
+- 修复 `WebuiConfig` Clippy 警告（使用 `derive(Default)` 替代手动实现）
+- 彻底解决"思考循环"：空工具名不再触发 guardrail 警告或错误提示
+
+**v0.3.262 — SSE 格式自动检测:**
+- `ChatCompletionsTransport` 使用 `SseEventStream::auto()` 实现自动格式检测
+- 首个 SSE 事件动态决定解析器模式（Anthropic/OpenAI/Gemini）
+- 消除因 `api_mode: chat_completions` 配置错误导致的"思考循环"
+- Router 端点返回 Anthropic Messages API 格式时无缝工作
 
 **v0.3.261 — WebUI password + session workdir binding:**
 - WebUI password can now be configured in `config.yaml` (`webui.password`) or via Settings panel
