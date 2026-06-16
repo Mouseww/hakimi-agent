@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.261-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.262-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,12 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.262 — SSE format auto-detection:**
+- `ChatCompletionsTransport` now uses `SseEventStream::auto()` for automatic format detection
+- First SSE event dynamically determines parser mode (Anthropic/OpenAI/Gemini)
+- Eliminates "thinking loop" caused by `api_mode: chat_completions` misconfiguration
+- Router endpoints returning Anthropic Messages API format now work seamlessly
 
 **v0.3.261 — WebUI password + session workdir binding:**
 - WebUI password can now be configured in `config.yaml` (`webui.password`) or via Settings panel

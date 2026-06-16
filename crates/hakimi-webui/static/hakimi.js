@@ -42,11 +42,38 @@ function authHeaders(extra) {
   return headers;
 }
 
+function showLoginScreen() {
+  const screen = $('login-screen');
+  const input = $('login-password');
+  const error = $('login-error');
+  if (!screen || !input) return false;
+  
+  screen.hidden = false;
+  error.hidden = true;
+  input.value = '';
+  setTimeout(() => input.focus(), 100);
+  
+  return new Promise((resolve) => {
+    const form = $('login-form');
+    const handler = (e) => {
+      e.preventDefault();
+      const token = input.value.trim();
+      if (!token) {
+        error.textContent = '密码不能为空';
+        error.hidden = false;
+        return;
+      }
+      setAuthToken(token);
+      screen.hidden = true;
+      form.removeEventListener('submit', handler);
+      resolve(true);
+    };
+    form.addEventListener('submit', handler);
+  });
+}
+
 async function promptForAuthToken(reason) {
-  const token = prompt(reason || '请输入 WebUI 密码');
-  if (!token) return false;
-  setAuthToken(token.trim());
-  return true;
+  return showLoginScreen();
 }
 
 // ── API wrapper ──
@@ -1092,5 +1119,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     initWorkspace();
   }
 
+  // Check if auth is required on page load
+  checkAuthOnLoad();
+
   console.log('Hakimi WebUI ready!');
 });
+
+async function checkAuthOnLoad() {
+  const token = getAuthToken();
+  if (token) return; // Already have token, assume valid
+  
+  // Probe with a simple API call to see if we get 401
+  try {
+    await fetch('/api/config', {
+      method: 'GET',
+      headers: authHeaders(),
+      credentials: 'include',
+    });
+  } catch (e) {
+    // Network error, let it pass
+  }
+}

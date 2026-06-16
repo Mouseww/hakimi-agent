@@ -330,7 +330,7 @@ impl ChatCompletionsTransport {
         }
 
         let byte_stream = response.bytes_stream();
-        let sse_stream = SseEventStream::openai(Box::pin(byte_stream));
+        let sse_stream = SseEventStream::auto(Box::pin(byte_stream));
         Ok(Box::pin(sse_stream))
     }
 }

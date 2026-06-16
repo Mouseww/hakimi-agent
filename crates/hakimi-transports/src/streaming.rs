@@ -427,6 +427,8 @@ enum SseMode {
     OpenAi,
     Anthropic,
     Gemini,
+    /// Auto-detect mode: will switch to the correct mode after seeing the first event.
+    Auto,
 }
 
 impl SseEventStream {
@@ -475,6 +477,25 @@ impl SseEventStream {
         }
     }
 
+    /// Create a new SSE event stream with automatic format detection.
+    ///
+    /// The stream will auto-detect whether the provider is using Anthropic or OpenAI
+    /// format by examining the first event. This is useful for OpenAI-compatible
+    /// endpoints that may return Anthropic-formatted SSE events.
+    pub fn auto(
+        inner: Pin<
+            Box<dyn Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send>,
+        >,
+    ) -> Self {
+        Self {
+            inner,
+            buffer: SseFullBuffer::new(),
+            done: false,
+            pending: Vec::new(),
+            mode: SseMode::Auto,
+        }
+    }
+
     fn poll_inner(
         &mut self,
         cx: &mut Context<'_>,
@@ -487,6 +508,15 @@ impl SseEventStream {
                     let pairs = self.buffer.feed(&chunk);
 
                     for (event_type, payload) in pairs {
+                        // Auto-detect format on first event.
+                        if self.mode == SseMode::Auto {
+                            self.mode = detect_sse_format(&event_type, &payload);
+                            tracing::info!(
+                                detected_mode = ?self.mode,
+                                "auto-detected SSE format from first event"
+                            );
+                        }
+
                         if self.mode != SseMode::Anthropic && payload == "[DONE]" {
                             self.done = true;
                             self.pending.push(StreamEvent::Done);
@@ -505,6 +535,11 @@ impl SseEventStream {
                                 self.pending.extend(events);
                             }
                             SseMode::OpenAi => {
+                                let events = parse_openai_chunk(&payload);
+                                self.pending.extend(events);
+                            }
+                            SseMode::Auto => {
+                                // Should not reach here after first event, but fallback to OpenAI.
                                 let events = parse_openai_chunk(&payload);
                                 self.pending.extend(events);
                             }
@@ -559,6 +594,37 @@ impl Stream for SseEventStream {
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+// ── Auto-detection helper ──────────────────────────────────────────────────
+
+/// Detect SSE format from the first event.
+///
+/// Returns the detected mode based on event type and payload structure:
+/// - Anthropic: has explicit `event:` lines like `message_start`, `content_block_start`
+/// - Gemini: payload contains `"candidates":[...]` structure
+/// - OpenAI: default fallback (no explicit event type, contains `"choices":[...]`)
+fn detect_sse_format(event_type: &Option<String>, payload: &str) -> SseMode {
+    // Anthropic uses explicit event types like "message_start", "content_block_start".
+    if let Some(et) = event_type {
+        let et_lower = et.to_lowercase();
+        if et_lower.contains("message_start")
+            || et_lower.contains("content_block")
+            || et_lower.contains("message_delta")
+            || et_lower.contains("message_stop")
+        {
+            return SseMode::Anthropic;
+        }
+    }
+
+    // Check payload structure.
+    if payload.contains("\"candidates\"") {
+        return SseMode::Gemini;
+    }
+
+    // OpenAI format typically has "choices" array.
+    // Default to OpenAI if no other format detected.
+    SseMode::OpenAi
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -962,5 +1028,30 @@ mod tests {
             StreamEvent::ContentDelta(s) => assert_eq!(s, "Hi"),
             _ => panic!("expected ContentDelta"),
         }
+    }
+
+    #[test]
+    fn test_detect_sse_format_anthropic() {
+        let event_type = Some("message_start".to_string());
+        let payload = r#"{"type":"message_start"}"#;
+        assert_eq!(detect_sse_format(&event_type, payload), SseMode::Anthropic);
+
+        let event_type = Some("content_block_start".to_string());
+        let payload = r#"{"type":"content_block_start"}"#;
+        assert_eq!(detect_sse_format(&event_type, payload), SseMode::Anthropic);
+    }
+
+    #[test]
+    fn test_detect_sse_format_gemini() {
+        let event_type = None;
+        let payload = r#"{"candidates":[{"content":{"parts":[{"text":"Hi"}]}}]}"#;
+        assert_eq!(detect_sse_format(&event_type, payload), SseMode::Gemini);
+    }
+
+    #[test]
+    fn test_detect_sse_format_openai() {
+        let event_type = None;
+        let payload = r#"{"choices":[{"delta":{"content":"Hi"}}]}"#;
+        assert_eq!(detect_sse_format(&event_type, payload), SseMode::OpenAi);
     }
 }

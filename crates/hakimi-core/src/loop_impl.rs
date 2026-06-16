@@ -797,6 +797,20 @@ async fn dispatch_tool(
     tool_ctx: &hakimi_common::ToolContext,
     tc: &ToolCall,
 ) -> Message {
+    // Reject tool calls with empty names (formatting error from LLM).
+    if tc.name.is_empty() {
+        warn!(
+            call_id = %tc.id,
+            raw_args = %tc.arguments,
+            "Rejecting tool call with empty name - LLM formatting error"
+        );
+        return Message::tool_result(
+            &tc.id,
+            "",
+            "Error: Tool call has an empty name. This is a formatting error. You must specify a valid tool name such as read_file, write_file, terminal, search_files, or patch. Please retry with the correct tool name."
+        );
+    }
+
     // Parse the JSON arguments.
     let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_else(|e| {
         warn!(
