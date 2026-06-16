@@ -556,20 +556,20 @@ async fn process_tool_calls(
     let tool_calls = response.tool_calls.as_ref().unwrap();
 
     debug!(count = tool_calls.len(), "Processing tool calls (raw)");
-    
+
     // Filter out empty tool calls (caused by index=1 streaming chunks creating empty index=0 placeholder)
     let valid_tool_calls: Vec<_> = tool_calls
         .iter()
         .filter(|tc| !tc.name.is_empty())
         .cloned()
         .collect();
-    
+
     debug!(
         raw_count = tool_calls.len(),
         valid_count = valid_tool_calls.len(),
         "Filtered tool calls"
     );
-    
+
     // Debug: print all valid tool calls with their names and IDs
     for (idx, tc) in valid_tool_calls.iter().enumerate() {
         debug!(
