@@ -807,7 +807,7 @@ async fn dispatch_tool(
         return Message::tool_result(
             &tc.id,
             "",
-            "Error: Tool call has an empty name. This is a formatting error. You must specify a valid tool name such as read_file, write_file, terminal, search_files, or patch. Please retry with the correct tool name."
+            "Error: Tool call has an empty name. This is a formatting error. You must specify a valid tool name such as read_file, write_file, terminal, search_files, or patch. Please retry with the correct tool name.",
         );
     }
 
