@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.263-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.264-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,13 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.264 — 上下文压缩通知 (Context Compression Notifications):**
+- 🗜️ **主动压缩通知**：当上下文接近限制时（`should_compress()` 触发），通过 `streaming_callback` 实时通知用户"正在自动压缩"
+- ⚠️ **溢出恢复通知**：API 返回 `context_length_exceeded` 错误时，通知用户"上下文溢出，正在压缩并重试"
+- ✅ **完成反馈**：压缩完成后发送"压缩完成，继续/重试任务"，让用户清楚任务未中断
+- 🎯 **用户体验提升**：杜绝长任务假死错觉 — 用户始终知道 Agent 在做什么
+- 📍 **实现位置**：`loop_impl.rs` 第 159-173 行（主动压缩）+ 196-214 行（溢出恢复）
 
 **v0.3.263 — 修复 Router index=1 工具调用导致的空占位符 bug:**
 - 过滤掉流式累积产生的空工具调用（某些 Router 后端从 index=1 开始计数）

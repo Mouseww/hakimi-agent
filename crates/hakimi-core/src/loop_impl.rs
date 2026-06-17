@@ -161,9 +161,17 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             let engine = agent.context_engine.read().await;
             if engine.should_compress() {
                 drop(engine);
+                // Notify user before compression
+                if let Some(ref cb) = agent.streaming_callback {
+                    cb("\\u{001e}hakimi_tool:🗜️ 上下文接近限制，正在自动压缩...".to_string());
+                }
                 let engine = agent.context_engine.write().await;
                 engine.compress(&mut agent.messages).await?;
                 info!("Context compression applied");
+                // Notify user after compression
+                if let Some(ref cb) = agent.streaming_callback {
+                    cb("\\u{001e}hakimi_tool:✅ 上下文压缩完成，继续任务。".to_string());
+                }
             }
         }
 
@@ -194,8 +202,16 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                         return Err(e);
                     }
                     warn!(error = %e, "Context overflow detected — compressing and retrying");
+                    // Notify user before compression
+                    if let Some(ref cb) = agent.streaming_callback {
+                        cb("\\u{001e}hakimi_tool:⚠️ 上下文溢出，正在压缩并重试...".to_string());
+                    }
                     let engine = agent.context_engine.write().await;
                     engine.compress(&mut agent.messages).await?;
+                    // Notify user after compression
+                    if let Some(ref cb) = agent.streaming_callback {
+                        cb("\\u{001e}hakimi_tool:✅ 上下文压缩完成，重试请求。".to_string());
+                    }
                     continue;
                 }
                 return Err(e);
