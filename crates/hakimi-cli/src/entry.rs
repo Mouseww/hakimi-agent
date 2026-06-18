@@ -6088,19 +6088,23 @@ Just send a message to chat with me!"
                         "⏹️ 已停止当前任务。".to_string()
                     }
                     Some(Command::Clear) => {
-                        {
+                        // Clear conversation history and usage for this chat only
+                        let had_history = {
                             let mut histories = histories_clone.lock().await;
-                            histories.remove(&chat_id);
-                        }
+                            histories.remove(&chat_id).is_some()
+                        };
                         {
                             let mut usage = last_usage.lock().await;
                             usage.remove(&chat_id);
                         }
-                        {
-                            let mut a = agent_clone.lock().await;
-                            a.clear_messages();
+                        // Note: Do NOT call agent.clear_messages() here!
+                        // The agent is shared across all chats. Each chat's history
+                        // is stored separately in the histories HashMap.
+                        if had_history {
+                            "🧹 当前对话历史已清空。".to_string()
+                        } else {
+                            "ℹ️ 当前对话没有历史记录。".to_string()
                         }
-                        "🧹 Conversation history cleared.".to_string()
                     }
                     Some(Command::Model(new_model)) => {
                         let mut a = agent_clone.lock().await;
