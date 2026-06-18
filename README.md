@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.266-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.268-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,25 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.268 — 修复 /clear 命令的多用户 bug (Critical Security Fix):**
+- 🔐 **安全修复**：移除 `/clear` 命令中的 `agent.clear_messages()` 调用
+- 🐛 **问题诊断**：Gateway 使用共享 Agent 架构，`agent.clear_messages()` 会影响所有聊天
+- ✅ **修复方案**：只清空当前聊天的 `histories` 和 `usage` 数据，不操作全局 Agent
+- 📝 **代码注释**：添加详细说明，防止未来重复引入此问题
+- 🎯 **用户隔离**：保证不同用户/聊天的对话历史完全隔离
+
+**v0.3.267 — 修复 /stop 命令队列清空功能:**
+- 🛑 **队列清空**：`/stop` 命令现在会同时清空消息队列
+- 📊 **详细反馈**：显示清空了多少条排队消息
+- 🎯 **用户体验**：解决 queue 模式下 `/stop` 后队列消息继续执行的问题
+
+**v0.3.266 — 消息队列功能 (参考 Hermes Agent):**
+- 📬 **Queue 模式**：新消息加入队列，任务按顺序执行（默认）
+- ⚡ **Interrupt 模式**：新消息立即中断当前任务（向后兼容）
+- 🎛️ **配置项**：`gateways.busy_input_mode` (`"queue"` | `"interrupt"`)
+- 💬 **用户提示**：排队时显示友好消息
+- 🔄 **架构对齐**：参考 Hermes Agent 的并发处理机制
 
 **v0.3.265 — 修复上下文压缩通知格式问题 (Hotfix):**
 - 🐛 **修复 Unicode 转义**：`\\u{001e}` → `\u{001e}`，Telegram 现在能正确识别消息前缀
