@@ -25,6 +25,12 @@ impl GatewayTaskControl {
     }
 }
 
+#[derive(Clone)]
+struct QueuedMessage {
+    text: Option<String>,
+    media_id: Option<String>,
+}
+
 fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
     format!("{platform}:{bot_id}:{chat_id}")
 }
@@ -5593,6 +5599,8 @@ async fn start_gateway(
         Arc::new(Mutex::new(HashMap::new()));
     let active_tasks: Arc<Mutex<HashMap<String, GatewayTaskControl>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let message_queues: Arc<Mutex<HashMap<String, VecDeque<QueuedMessage>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let voice_states: Arc<Mutex<HashMap<String, VoiceRuntimeState>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let last_usage: Arc<Mutex<HashMap<String, GatewayUsageSnapshot>>> =
@@ -5874,6 +5882,7 @@ async fn start_gateway(
         let histories_clone = histories_clone.clone();
         let turn_trackers = turn_trackers.clone();
         let active_tasks = active_tasks.clone();
+        let message_queues = message_queues.clone();
         let voice_states = voice_states.clone();
         let last_usage = last_usage.clone();
         let onboarding_state = onboarding_state.clone();
@@ -5891,18 +5900,42 @@ async fn start_gateway(
             let task_key = gateway_task_key(&platform, &bot_id, &chat_id);
             let task_id = uuid::Uuid::new_v4();
             let cancellation = CancellationToken::new();
+            
+            // Check busy input mode configuration
+            let busy_mode = config.gateways.busy_input_mode.as_str();
             {
                 let mut active = active_tasks.lock().await;
-                if let Some(previous) = active.insert(
+                if let Some(previous) = active.get(&task_key) {
+                    // There's already an active task for this chat
+                    if busy_mode == "queue" {
+                        // Queue mode: add message to queue and return
+                        drop(active); // Release lock before accessing message_queues
+                        message_queues.lock().await
+                            .entry(task_key.clone())
+                            .or_insert_with(VecDeque::new)
+                            .push_back(QueuedMessage {
+                                text: Some(text.clone()),
+                                media_id: media_id.clone(),
+                            });
+                        
+                        // Notify user that message was queued
+                        send_gateway_text(&gateway_clone, &platform, &bot_id, &chat_id, "⏳ 正在处理之前的消息，已将新消息加入队列...").await;
+                        return;
+                    } else {
+                        // Interrupt mode: cancel previous task
+                        previous.cancel();
+                        debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
+                    }
+                }
+                
+                // Insert the new task
+                active.insert(
                     task_key.clone(),
                     GatewayTaskControl {
                         id: task_id,
                         token: cancellation.clone(),
                     },
-                ) {
-                    previous.cancel();
-                    debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
-                }
+                );
             }
 
             // Start typing indicator.
@@ -6888,6 +6921,28 @@ Just send a message to chat with me!"
                         media: None,
                     };
                     let _ = gateway_clone.route_message(&reply).await;
+                }
+            }
+            
+            // Process queued messages if any
+            if let Some(queued_msg) = {
+                let mut queues = message_queues.lock().await;
+                queues.get_mut(&task_key).and_then(|q| q.pop_front())
+            } {
+                // There's a queued message, process it
+                debug!(platform = %platform, chat_id = %chat_id, "processing queued message");
+                
+                // Send the queued message back through the gateway to trigger processing
+                if let Some(text) = queued_msg.text {
+                    let msg = hakimi_gateway::GatewayMessage {
+                        platform: platform.clone(),
+                        bot_id: bot_id.clone(),
+                        chat_id: chat_id.clone(),
+                        user_id: String::new(),
+                        text,
+                        media: queued_msg.media_id,
+                    };
+                    let _ = gateway_clone.route_message(&msg).await;
                 }
             }
         });

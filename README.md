@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.265-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.266-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -309,6 +309,26 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Basic Hakimi WebUI operator console
 - [ ] WASM plugin runtime
 - [ ] Web dashboard PTY terminal, session-scoped streaming, and full Kanban UI
+
+---
+
+## Changelog
+
+### v0.3.266 (2026-06-18)
+**消息队列功能** - 参考 Hermes Agent 实现并发消息处理
+
+- 🎯 **新增配置项** `gateways.busy_input_mode`（默认 `"queue"`）
+  - `"queue"` 模式：新消息排队等待当前任务完成
+  - `"interrupt"` 模式：立即取消当前任务（原有行为）
+- 🔄 **队列处理机制**：任务完成后自动处理队列中的下一条消息
+- 💬 **用户友好提示**：队列模式下显示 "⏳ 正在处理之前的消息，已将新消息加入队列..."
+- 🧩 **无缝集成**：支持文本和媒体附件的队列化处理
+- 🐛 **向后兼容**：可通过配置切换回 interrupt 模式
+
+**技术细节**：
+- 添加 `QueuedMessage` 结构体和 per-chat 队列存储
+- 实现基于 `task_key` 的消息队列管理（`platform:bot_id:chat_id`）
+- 任务完成后通过 `gateway.route_message()` 递归触发下一条消息
 
 ---
 

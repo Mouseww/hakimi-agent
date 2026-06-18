@@ -634,6 +634,11 @@ pub struct GatewaysConfig {
     /// `*(silent)*`, `.`, or `no reply`, before they reach chat adapters.
     #[serde(default = "default_gateway_filter_silence_narration")]
     pub filter_silence_narration: bool,
+    /// Behavior when a new message arrives while an agent is already running.
+    /// - "interrupt": immediately cancel the running task and start a new one
+    /// - "queue": queue the new message and process it after the current task finishes
+    #[serde(default = "default_busy_input_mode")]
+    pub busy_input_mode: String,
     /// Streaming delivery behavior for gateway chat platforms.
     #[serde(default)]
     pub streaming: GatewayStreamingConfig,
@@ -681,12 +686,17 @@ fn default_gateway_filter_silence_narration() -> bool {
     true
 }
 
+fn default_busy_input_mode() -> String {
+    "queue".to_string()
+}
+
 impl Default for GatewaysConfig {
     fn default() -> Self {
         Self {
             allow_all: false,
             allowed_users: Vec::new(),
             filter_silence_narration: default_gateway_filter_silence_narration(),
+            busy_input_mode: default_busy_input_mode(),
             streaming: GatewayStreamingConfig::default(),
             telegram: TelegramGatewayConfig::default(),
             clawbot: ClawBotGatewayConfig::default(),
