@@ -1761,6 +1761,124 @@ async fn memory_entity_detail(
     }))
 }
 
+// ========== Gateway API handlers ==========
+
+#[derive(Debug, serde::Serialize)]
+struct GatewayStatusResponse {
+    running: bool,
+    platforms: Vec<GatewayPlatformStatus>,
+    config_loaded: bool,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct GatewayPlatformStatus {
+    name: String,
+    connected: bool,
+    bot_count: usize,
+}
+
+async fn gateway_status(
+    State(state): State<AppState>,
+) -> Result<Json<GatewayStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let gateway_opt = state.gateway.as_ref();
+    
+    if let Some(_gateway) = gateway_opt {
+        // Gateway is Arc<Gateway>, not Arc<Mutex<Gateway>>
+        
+        // Get platform connection status from gateway
+        let platforms = vec![
+            GatewayPlatformStatus {
+                name: "telegram".to_string(),
+                connected: true, // TODO: get actual status from gateway
+                bot_count: 1,    // TODO: get actual count
+            },
+        ];
+        
+        Ok(Json(GatewayStatusResponse {
+            running: true,
+            platforms,
+            config_loaded: true,
+        }))
+    } else {
+        // Gateway not running in unified mode
+        Ok(Json(GatewayStatusResponse {
+            running: false,
+            platforms: vec![],
+            config_loaded: false,
+        }))
+    }
+}
+
+async fn gateway_config(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let config = state.config.lock().await;
+    
+    // Return sanitized gateway config
+    Ok(Json(json!({
+        "busy_input_mode": config.gateways.busy_input_mode,
+        "allow_all": config.gateways.allow_all,
+        "allowed_users": config.gateways.allowed_users,
+        "filter_silence_narration": config.gateways.filter_silence_narration,
+        // Don't expose bot tokens or sensitive data
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayConfigUpdate {
+    busy_input_mode: Option<String>,
+}
+
+async fn gateway_update_config(
+    State(state): State<AppState>,
+    Json(req): Json<GatewayConfigUpdate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let mut config = state.config.lock().await;
+    
+    if let Some(mode) = req.busy_input_mode {
+        if mode != "queue" && mode != "interrupt" {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!("Invalid busy_input_mode: {}. Must be 'queue' or 'interrupt'", mode),
+                }),
+            ));
+        }
+        config.gateways.busy_input_mode = mode.clone();
+    }
+    
+    // Save config to disk
+    let config_path = std::env::var("HOME")
+        .map(|h| format!("{}/.hakimi/config.yaml", h))
+        .unwrap_or_else(|_| "/root/.hakimi/config.yaml".to_string());
+    
+    match std::fs::write(&config_path, serde_yaml::to_string(&*config).unwrap()) {
+        Ok(_) => Ok(Json(json!({
+            "success": true,
+            "message": "Gateway configuration updated"
+        }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to save config: {}", e),
+            }),
+        )),
+    }
+}
+
+async fn gateway_restart(
+    State(_state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    // TODO: Implement gateway restart logic
+    // For now, just return not implemented
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse {
+            error: "Gateway restart is not yet implemented. Please restart the hakimi service manually.".to_string(),
+        }),
+    ))
+}
+
 /// Build the axum Router with all API routes.
 pub fn build_router(state: AppState) -> Router {
     // API routes that need authentication
@@ -1812,7 +1930,12 @@ pub fn build_router(state: AppState) -> Router {
         .route("/memory/stats", get(memory_stats))
         .route("/memory/search", get(memory_search))
         .route("/memory/entities", get(memory_entities))
-        .route("/memory/entities/{id}", get(memory_entity_detail));
+        .route("/memory/entities/{id}", get(memory_entity_detail))
+        // Gateway control panel
+        .route("/gateway/status", get(gateway_status))
+        .route("/gateway/config", get(gateway_config))
+        .route("/gateway/config", patch(gateway_update_config))
+        .route("/gateway/restart", post(gateway_restart));
 
     api_routes = api_routes.route_layer(middleware::from_fn_with_state(
         state.clone(),

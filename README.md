@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.3.271-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.272-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.271-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.272-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,16 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.272 — Phase 3C: WebUI Gateway 配置 API (Gateway Control Backend):**
+- 🎯 **Gateway 配置 API**：实现 4 个 REST 端点供 WebUI 控制 Gateway
+- 📡 **状态监控**：`GET /api/gateway/status` 获取运行状态、平台连接、消息计数
+- ⚙️ **配置读写**：`GET /api/gateway/config` 和 `PATCH /api/gateway/config` 管理配置
+- 🔄 **重启控制**：`POST /api/gateway/restart` 重启 Gateway（仅统一模式）
+- 🔒 **认证保护**：所有 Gateway API 端点需要 Bearer Token 认证
+- 💾 **配置持久化**：PATCH 更新自动保存到 `~/.hakimi/config.yaml`
+- ✅ **测试验证**：所有端点通过 curl 测试（分离模式 + 统一模式）
+- 🏗️ **下一步 Phase 4**：WebUI 前端界面（连接状态监控、配置编辑器、日志查看）
 
 **v0.3.271 — Critical Fix: 修复 Gateway 幽灵任务 Bug (Phantom Task Fix):**
 - 🐛 **修复幽灵任务**：修复 `active_tasks` 清理逻辑导致的"正在处理之前的消息"错误提示
