@@ -16,7 +16,7 @@ use crate::api;
 /// Application state shared across all request handlers.
 ///
 /// The agent is behind a `tokio::sync::Mutex` because `AIAgent::chat()` takes
-/// `&mut self` (it mutates conversation history). The config is behind a
+/// App state shared across all HTTP handlers. Each resource has a
 /// separate mutex so POST /config can update fields concurrently.
 #[derive(Clone)]
 pub struct AppState {
@@ -27,6 +27,8 @@ pub struct AppState {
     pub run_store: Arc<Mutex<crate::api::RunsStore>>,
     pub knowledge_provider: Arc<Mutex<hakimi_knowledge::KnowledgeProvider>>,
     pub webui_password: Arc<Mutex<String>>,
+    /// Gateway handle for unified mode (None in WebUI-only mode).
+    pub gateway: Option<Arc<hakimi_gateway::Gateway>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,7 @@ impl Server {
             run_store: Arc::new(Mutex::new(crate::api::RunsStore::default())),
             knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
             webui_password: Arc::new(Mutex::new(initial_webui_password)),
+            gateway: None, // WebUI-only mode
         };
         Ok(Self { state })
     }

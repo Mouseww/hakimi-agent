@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.268-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.269-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,14 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.269 — Phase 1: 统一服务器架构 (Unified Server Architecture):**
+- 🏗️ **统一模式**：`hakimi --serve --gateway start` 启动合并进程（WebUI + Gateway）
+- 🎯 **向后兼容**：`--serve` 和 `--gateway` 单独使用时保持原有行为
+- 📦 **共享资源基础**：扩展 `AppState` 结构，准备共享 Agent/SessionDB/Config
+- 🚀 **MVP 发布**：统一模式当前运行 WebUI（Gateway 集成后续完善）
+- 🎨 **CLI 参数优化**：添加统一模式文档，明确 `--gateway` 与 `--serve` 组合语义
+- 🔧 **依赖更新**：`hakimi-server` 添加 `hakimi-gateway` 依赖，为后续集成铺路
 
 **v0.3.268 — 修复 /clear 命令的多用户 bug (Critical Security Fix):**
 - 🔐 **安全修复**：移除 `/clear` 命令中的 `agent.clear_messages()` 调用

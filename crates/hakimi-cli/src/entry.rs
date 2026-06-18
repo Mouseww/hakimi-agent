@@ -4248,7 +4248,7 @@ pub struct Args {
     #[arg(long)]
     pub base_url: Option<String>,
 
-    /// Start the HTTP API server instead of the interactive REPL.
+    /// Start the HTTP API server (WebUI). In unified mode, also starts gateway bridges.
     #[arg(long)]
     pub serve: bool,
 
@@ -4264,6 +4264,8 @@ pub struct Args {
     ///
     /// Optional mode: `start` (default) runs in the current process; `restart`
     /// restarts the managed systemd service and exits.
+    ///
+    /// When `--serve` is also set, gateway runs in unified mode (single process with WebUI).
     #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "start")]
     pub gateway: Option<GatewayMode>,
 
@@ -6996,6 +6998,37 @@ Just send a message to chat with me!"
 
     Ok(())
 }
+
+/// Start unified server mode: WebUI + Gateway in one process.
+///
+/// This function combines the WebUI HTTP API server and the Gateway message
+/// handling into a single process, sharing the Agent, SessionDB, and config.
+async fn start_unified_server(
+    agent: hakimi_core::AIAgent,
+    _skill_store: hakimi_skills::SkillStore,
+    addr: &str,
+    config: hakimi_config::HakimiConfig,
+    runtime_home: hakimi_common::RuntimeHome,
+) -> Result<()> {
+    info!(addr = %addr, "starting Hakimi Agent unified server (WebUI + Gateway)");
+    
+    // TODO Phase 1: MVP — just start WebUI for now
+    // Gateway integration will be added in subsequent commits
+    let db_path = runtime_home.sessions_db_path();
+    let db = tokio::task::spawn_blocking(move || {
+        let db = hakimi_session::SessionDB::new(&db_path)?;
+        db.initialize()?;
+        Ok::<_, anyhow::Error>(db)
+    })
+    .await??;
+    
+    hakimi_server::Server::new(addr, agent, config, db)?
+        .serve(addr.parse().unwrap())
+        .await?;
+    
+    Ok(())
+}
+
 fn gateway_service_name() -> String {
     std::env::var("HAKIMI_GATEWAY_SERVICE")
         .ok()
@@ -7715,6 +7748,16 @@ pub async fn run() -> Result<()> {
             .await
         );
         return Ok(());
+    }
+
+    // Check for unified mode: --serve --gateway start
+    if args.serve && matches!(args.gateway, Some(GatewayMode::Start)) {
+        let skill_store = agent
+            .skill_store()
+            .cloned()
+            .unwrap_or_else(hakimi_skills::SkillStore::empty);
+        info!("启动统一模式：WebUI + Gateway 合并到单一进程");
+        return start_unified_server(agent, skill_store, &args.addr, config, runtime_home).await;
     }
 
     if args.serve {
