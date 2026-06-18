@@ -5900,7 +5900,7 @@ async fn start_gateway(
             let task_key = gateway_task_key(&platform, &bot_id, &chat_id);
             let task_id = uuid::Uuid::new_v4();
             let cancellation = CancellationToken::new();
-            
+
             // Check busy input mode configuration
             let busy_mode = config.gateways.busy_input_mode.as_str();
             {
@@ -5910,16 +5910,25 @@ async fn start_gateway(
                     if busy_mode == "queue" {
                         // Queue mode: add message to queue and return
                         drop(active); // Release lock before accessing message_queues
-                        message_queues.lock().await
+                        message_queues
+                            .lock()
+                            .await
                             .entry(task_key.clone())
                             .or_insert_with(VecDeque::new)
                             .push_back(QueuedMessage {
                                 text: Some(text.clone()),
                                 media_id: media_id.clone(),
                             });
-                        
+
                         // Notify user that message was queued
-                        send_gateway_text(&gateway_clone, &platform, &bot_id, &chat_id, "⏳ 正在处理之前的消息，已将新消息加入队列...").await;
+                        send_gateway_text(
+                            &gateway_clone,
+                            &platform,
+                            &bot_id,
+                            &chat_id,
+                            "⏳ 正在处理之前的消息，已将新消息加入队列...",
+                        )
+                        .await;
                         return;
                     } else {
                         // Interrupt mode: cancel previous task
@@ -5927,7 +5936,7 @@ async fn start_gateway(
                         debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
                     }
                 }
-                
+
                 // Insert the new task
                 active.insert(
                     task_key.clone(),
@@ -6923,7 +6932,7 @@ Just send a message to chat with me!"
                     let _ = gateway_clone.route_message(&reply).await;
                 }
             }
-            
+
             // Process queued messages if any
             if let Some(queued_msg) = {
                 let mut queues = message_queues.lock().await;
@@ -6931,7 +6940,7 @@ Just send a message to chat with me!"
             } {
                 // There's a queued message, process it
                 debug!(platform = %platform, chat_id = %chat_id, "processing queued message");
-                
+
                 // Send the queued message back through the gateway to trigger processing
                 if let Some(text) = queued_msg.text {
                     let msg = hakimi_gateway::GatewayMessage {
