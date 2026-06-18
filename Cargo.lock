@@ -868,6 +868,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "futf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1047,7 +1057,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "hakimi-agent"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "hakimi-cli",
@@ -1056,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cli"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "base64",
@@ -1066,6 +1076,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "flate2",
+ "fs2",
  "hakimi-common",
  "hakimi-config",
  "hakimi-context",
@@ -1099,7 +1110,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-common"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1115,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-config"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1129,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-context"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1145,7 +1156,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-core"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1170,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cron"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1188,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-gateway"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1207,7 +1218,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-knowledge"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1226,7 +1237,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-mcp"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1245,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-plugin"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1265,7 +1276,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-server"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1299,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-session"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1314,7 +1325,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-skills"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1330,7 +1341,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tools"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1359,7 +1370,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-transports"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1382,7 +1393,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tui"
-version = "0.3.266"
+version = "0.3.267"
 dependencies = [
  "anyhow",
  "base64",

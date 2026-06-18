@@ -44,6 +44,7 @@ flate2 = "1"
 tar = "0.4"
 zip = "2"
 base64.workspace = true
+fs2 = "0.4"
 
 [dev-dependencies]
 chrono = { workspace = true }

@@ -5582,6 +5582,26 @@ async fn start_gateway(
 
     info!("starting Hakimi Agent gateway mode");
 
+    // Acquire exclusive lock to prevent multiple gateway instances
+    let lock_path = runtime_home.home().join("gateway.lock");
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&lock_path)?;
+    
+    use fs2::FileExt;
+    if let Err(_) = lock_file.try_lock_exclusive() {
+        error!("Another Hakimi Gateway instance is already running. Stop it first or use a different HAKIMI_HOME.");
+        std::process::exit(1);
+    }
+    
+    // Keep lock_file alive for the entire gateway lifetime
+    // The lock will be automatically released when the process exits
+    let _gateway_lock = lock_file;
+
     // Initialize gateway.
     let mut gateway = hakimi_gateway::Gateway::new();
     gateway.set_filter_silence_narration(config.gateways.filter_silence_narration);
@@ -5821,12 +5841,25 @@ async fn start_gateway(
                             })
                             .is_some()
                     };
-                    let response = if stopped {
-                        "⏹️ 已停止当前任务。"
-                    } else {
-                        "ℹ️ 当前没有正在运行的任务。"
+                    
+                    // Also clear any queued messages for this chat
+                    let queued_count = {
+                        let mut queues = message_queues.lock().await;
+                        queues.remove(&key).map(|q| q.len()).unwrap_or(0)
                     };
-                    send_gateway_text(&gateway, &platform, &bot_id, &chat_id, response).await;
+                    
+                    let response = if stopped {
+                        if queued_count > 0 {
+                            format!("⏹️ 已停止当前任务并清空 {} 条排队消息。", queued_count)
+                        } else {
+                            "⏹️ 已停止当前任务。".to_string()
+                        }
+                    } else if queued_count > 0 {
+                        format!("⏹️ 已清空 {} 条排队消息。", queued_count)
+                    } else {
+                        "ℹ️ 当前没有正在运行的任务。".to_string()
+                    };
+                    send_gateway_text(&gateway, &platform, &bot_id, &chat_id, &response).await;
                     continue;
                 }
                 Some(Command::Restart) => {
