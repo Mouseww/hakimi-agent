@@ -5593,13 +5593,15 @@ async fn start_gateway(
         .create(true)
         .write(true)
         .open(&lock_path)?;
-    
+
     use fs2::FileExt;
     if let Err(_) = lock_file.try_lock_exclusive() {
-        error!("Another Hakimi Gateway instance is already running. Stop it first or use a different HAKIMI_HOME.");
+        error!(
+            "Another Hakimi Gateway instance is already running. Stop it first or use a different HAKIMI_HOME."
+        );
         std::process::exit(1);
     }
-    
+
     // Keep lock_file alive for the entire gateway lifetime
     // The lock will be automatically released when the process exits
     let _gateway_lock = lock_file;
@@ -5843,13 +5845,13 @@ async fn start_gateway(
                             })
                             .is_some()
                     };
-                    
+
                     // Also clear any queued messages for this chat
                     let queued_count = {
                         let mut queues = message_queues.lock().await;
                         queues.remove(&key).map(|q| q.len()).unwrap_or(0)
                     };
-                    
+
                     let response = if stopped {
                         if queued_count > 0 {
                             format!("⏹️ 已停止当前任务并清空 {} 条排队消息。", queued_count)
@@ -7011,7 +7013,7 @@ async fn start_unified_server(
     runtime_home: hakimi_common::RuntimeHome,
 ) -> Result<()> {
     info!(addr = %addr, "starting Hakimi Agent unified server (WebUI + Gateway)");
-    
+
     // TODO Phase 1: MVP — just start WebUI for now
     // Gateway integration will be added in subsequent commits
     let db_path = runtime_home.sessions_db_path();
@@ -7021,11 +7023,11 @@ async fn start_unified_server(
         Ok::<_, anyhow::Error>(db)
     })
     .await??;
-    
+
     hakimi_server::Server::new(addr, agent, config, db)?
         .serve(addr.parse().unwrap())
         .await?;
-    
+
     Ok(())
 }
 
