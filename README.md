@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.3.272-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.273-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.272-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.273-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,17 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.273 — Phase 4: WebUI Gateway 管理界面 (Gateway Management UI):**
+- 🎨 **完整前端界面**：新增 Gateway 标签页，提供可视化管理面板
+- 📊 **状态监控面板**：实时显示 Gateway 运行状态、已连接平台、消息计数
+- ⚙️ **配置编辑器**：可视化编辑繁忙模式、访问控制、用户白名单、过滤选项
+- 💾 **一键保存**：配置修改自动持久化到 `~/.hakimi/config.yaml`
+- 🔄 **重启控制**：WebUI 内一键重启 Gateway（统一模式）
+- 🎯 **实时刷新**：手动刷新按钮获取最新 Gateway 状态
+- 🖼️ **深色主题**：UI 样式与现有 WebUI 风格完全一致（268 行组件 + 300 行 CSS）
+- ✅ **TypeScript 全栈**：前后端类型安全，完整的 API 类型定义
+- 📦 **生产就绪**：前端已构建并集成到 WebUI，立即可用
 
 **v0.3.272 — Phase 3C: WebUI Gateway 配置 API (Gateway Control Backend):**
 - 🎯 **Gateway 配置 API**：实现 4 个 REST 端点供 WebUI 控制 Gateway

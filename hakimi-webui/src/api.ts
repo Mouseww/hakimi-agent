@@ -299,6 +299,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface GatewayPlatformStatus {
+  name?: string;
+  platform?: string;
+  bot_id?: string;
+  messages_sent?: number;
+  connected?: boolean;
+  bot_count?: number;
+}
+
+export interface GatewayStatusResponse {
+  running: boolean;
+  platforms: GatewayPlatformStatus[];
+  total_messages_sent?: number;
+  config_loaded?: boolean;
+}
+
+export interface GatewayConfigResponse {
+  busy_input_mode: string;
+  allow_all: boolean;
+  allowed_users: string[];
+  filter_silence_narration: boolean;
+}
+
 export const api = {
   health: () => request<HealthResponse>('/api/health'),
   status: () => request<DashboardStatus>('/api/status'),
@@ -328,5 +351,16 @@ export const api = {
     request<SanitizedConfig>('/api/config', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  getGatewayStatus: () => request<GatewayStatusResponse>('/api/gateway/status'),
+  getGatewayConfig: () => request<GatewayConfigResponse>('/api/gateway/config'),
+  updateGatewayConfig: (config: GatewayConfigResponse) =>
+    request<{ success: boolean; message: string }>('/api/gateway/config', {
+      method: 'PATCH',
+      body: JSON.stringify(config),
+    }),
+  restartGateway: () =>
+    request<{ success: boolean; message: string }>('/api/gateway/restart', {
+      method: 'POST',
     }),
 };

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
+import GatewayPanel from './GatewayPanel';
 import SettingsPanel from './SettingsPanel';
 import {
   api,
@@ -41,7 +42,7 @@ import {
   type WebhookResponse,
 } from './api';
 
-type RightPanel = 'runtime' | 'tools' | 'skills' | 'control';
+type RightPanel = 'runtime' | 'tools' | 'skills' | 'control' | 'gateway';
 
 type UiMessage = {
   id: string;
@@ -567,6 +568,15 @@ function App() {
               <Settings size={17} aria-hidden="true" />
               <span>Control</span>
             </button>
+            <button
+              className={rightPanel === 'gateway' ? 'is-active' : ''}
+              type="button"
+              onClick={() => setRightPanel('gateway')}
+              title="Gateway"
+            >
+              <Activity size={17} aria-hidden="true" />
+              <span>Gateway</span>
+            </button>
           </nav>
 
           <div className="right-panel-scroll">
@@ -754,6 +764,7 @@ function App() {
             )}
 
             {rightPanel === 'control' && <SettingsPanel />}
+            {rightPanel === 'gateway' && <GatewayPanel />}
           </div>
         </aside>
       </div>
