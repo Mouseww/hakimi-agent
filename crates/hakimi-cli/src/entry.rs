@@ -8186,13 +8186,13 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{}",
-        crate::skin::startup_banner_response(&config.display.skin, runtime_home.home(), true)
-    );
-    println!("🚧 Interactive REPL is currently under construction.");
-    println!("💡 Tip: Try running with --query \"your prompt\" or use the TUI (hakimi-tui).");
-    Ok(())
+    // Default behavior: start unified mode (WebUI + Gateway)
+    info!("未指定模式，启动默认统一模式：WebUI + Gateway");
+    let skill_store = agent
+        .skill_store()
+        .cloned()
+        .unwrap_or_else(hakimi_skills::SkillStore::empty);
+    start_unified_server(agent, skill_store, &args.addr, config, runtime_home).await
 }
 
 #[cfg(test)]

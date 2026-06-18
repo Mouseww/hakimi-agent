@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.3.273-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.274-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.273-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.274-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,14 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.274 — 统一模式成为默认行为 (Unified Mode by Default):**
+- 🚀 **默认统一模式**：`hakimi` 命令现在默认启动统一模式（WebUI + Gateway），无需额外参数
+- 🔄 **重启功能实现**：WebUI Gateway 面板的重启按钮现在可用（通过 systemd 重启）
+- ⚙️ **服务配置更新**：systemd 服务配置简化为 `hakimi --addr 127.0.0.1:3005`（自动启用统一模式）
+- 📦 **向后兼容**：`--serve` 和 `--gateway` 参数仍可用于显式控制模式
+- 🎯 **用户体验提升**：新用户无需理解复杂的模式选项，直接运行 `hakimi` 即可获得完整功能
+- 🔧 **部署简化**：单个 systemd 服务 `hakimi.service` 替代原 `hakimi-unified.service`
 
 **v0.3.273 — Phase 4: WebUI Gateway 管理界面 (Gateway Management UI):**
 - 🎨 **完整前端界面**：新增 Gateway 标签页，提供可视化管理面板

@@ -1870,14 +1870,33 @@ async fn gateway_update_config(
 async fn gateway_restart(
     State(_state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    // TODO: Implement gateway restart logic
-    // For now, just return not implemented
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Gateway restart is not yet implemented. Please restart the hakimi service manually.".to_string(),
-        }),
-    ))
+    // Restart hakimi via systemd
+    let output = tokio::process::Command::new("systemctl")
+        .args(["restart", "hakimi"])
+        .output()
+        .await;
+
+    match output {
+        Ok(out) if out.status.success() => Ok(Json(serde_json::json!({
+            "status": "restarting",
+            "message": "Hakimi service is restarting. The UI will reconnect automatically."
+        }))),
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("Failed to restart service: {}", stderr),
+                }),
+            ))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to execute systemctl: {}", e),
+            }),
+        )),
+    }
 }
 
 /// Build the axum Router with all API routes.
