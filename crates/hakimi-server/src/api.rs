@@ -1781,19 +1781,17 @@ async fn gateway_status(
     State(state): State<AppState>,
 ) -> Result<Json<GatewayStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
     let gateway_opt = state.gateway.as_ref();
-    
+
     if let Some(_gateway) = gateway_opt {
         // Gateway is Arc<Gateway>, not Arc<Mutex<Gateway>>
-        
+
         // Get platform connection status from gateway
-        let platforms = vec![
-            GatewayPlatformStatus {
-                name: "telegram".to_string(),
-                connected: true, // TODO: get actual status from gateway
-                bot_count: 1,    // TODO: get actual count
-            },
-        ];
-        
+        let platforms = vec![GatewayPlatformStatus {
+            name: "telegram".to_string(),
+            connected: true, // TODO: get actual status from gateway
+            bot_count: 1,    // TODO: get actual count
+        }];
+
         Ok(Json(GatewayStatusResponse {
             running: true,
             platforms,
@@ -1813,7 +1811,7 @@ async fn gateway_config(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let config = state.config.lock().await;
-    
+
     // Return sanitized gateway config
     Ok(Json(json!({
         "busy_input_mode": config.gateways.busy_input_mode,
@@ -1834,24 +1832,27 @@ async fn gateway_update_config(
     Json(req): Json<GatewayConfigUpdate>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let mut config = state.config.lock().await;
-    
+
     if let Some(mode) = req.busy_input_mode {
         if mode != "queue" && mode != "interrupt" {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
-                    error: format!("Invalid busy_input_mode: {}. Must be 'queue' or 'interrupt'", mode),
+                    error: format!(
+                        "Invalid busy_input_mode: {}. Must be 'queue' or 'interrupt'",
+                        mode
+                    ),
                 }),
             ));
         }
         config.gateways.busy_input_mode = mode.clone();
     }
-    
+
     // Save config to disk
     let config_path = std::env::var("HOME")
         .map(|h| format!("{}/.hakimi/config.yaml", h))
         .unwrap_or_else(|_| "/root/.hakimi/config.yaml".to_string());
-    
+
     match std::fs::write(&config_path, serde_yaml::to_string(&*config).unwrap()) {
         Ok(_) => Ok(Json(json!({
             "success": true,

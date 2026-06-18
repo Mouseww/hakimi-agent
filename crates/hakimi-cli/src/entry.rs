@@ -7179,8 +7179,14 @@ async fn start_unified_server(
                         } else {
                             "ℹ️ 当前没有正在运行的任务。".to_string()
                         };
-                        send_gateway_text(&gateway_for_msg, &platform, &bot_id, &chat_id, &response)
-                            .await;
+                        send_gateway_text(
+                            &gateway_for_msg,
+                            &platform,
+                            &bot_id,
+                            &chat_id,
+                            &response,
+                        )
+                        .await;
                         continue;
                     }
                     Some(Command::Clear) => {
@@ -7213,8 +7219,7 @@ async fn start_unified_server(
                         )
                         .await;
                         tokio::spawn(async move {
-                            let result =
-                                tokio::task::spawn_blocking(restart_gateway_service).await;
+                            let result = tokio::task::spawn_blocking(restart_gateway_service).await;
                             if let Err(err) = result {
                                 tracing::error!(error = %err, "failed to join gateway restart task");
                             }
@@ -7229,7 +7234,10 @@ async fn start_unified_server(
             }
 
             // TODO Phase 3B: Full message processing (Agent invocation, streaming, etc.)
-            tracing::info!("Gateway message received (full processing not yet implemented): {}", text);
+            tracing::info!(
+                "Gateway message received (full processing not yet implemented): {}",
+                text
+            );
             send_gateway_text(
                 &gateway_for_msg,
                 &platform,
@@ -7256,8 +7264,7 @@ async fn start_unified_server(
                         target_chat = c.to_string();
                     }
                 }
-                let bot_id =
-                    gateway_bot_id_for_platform(&gateway_queue_bot_ids, &target_platform);
+                let bot_id = gateway_bot_id_for_platform(&gateway_queue_bot_ids, &target_platform);
 
                 let msg = hakimi_gateway::GatewayMessage {
                     platform: target_platform,
