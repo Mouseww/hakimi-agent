@@ -6910,10 +6910,13 @@ Just send a message to chat with me!"
             cancellation.cancel();
             {
                 let mut active = active_tasks.lock().await;
-                if let Some(control) = active.get(&task_key)
-                    && control.id == task_id
-                {
-                    active.remove(&task_key);
+                // Remove only if the task ID matches (prevents removing a newer task)
+                // But if the key is missing, that's fine (already removed by /stop)
+                if let Some(control) = active.get(&task_key) {
+                    if control.id == task_id {
+                        active.remove(&task_key);
+                    }
+                    // If ID doesn't match, a newer task has started; don't remove it
                 }
             }
             {
@@ -7092,30 +7095,149 @@ async fn start_unified_server(
     .await;
 
     // Spawn Gateway message processing task
-    let _gateway_clone = gateway.clone();
-    let _gateway_bot_ids_clone = gateway_bot_ids.clone();
-    let _agent_for_gateway = agent_arc.clone();
-    let _histories_for_gateway = histories_clone.clone();
-    let _turn_trackers_for_gateway = turn_trackers.clone();
-    let _active_tasks_for_gateway = active_tasks.clone();
-    let _message_queues_for_gateway = message_queues.clone();
-    let _voice_states_for_gateway = voice_states.clone();
-    let _last_usage_for_gateway = last_usage.clone();
-    let _gateway_access_for_gateway = gateway_access.clone();
-    let _skill_store_for_gateway = skill_store_ref.clone();
-    let _onboarding_state_for_gateway = onboarding_state.clone();
-    let _onboarding_config_path_for_gateway = onboarding_config_path.clone();
-    let _runtime_home_for_gateway = runtime_home_arc.clone();
+    let gateway_for_msg = gateway.clone();
+    let gateway_bot_ids_for_msg = gateway_bot_ids.clone();
+    let _agent_for_msg = agent_arc.clone();
+    let histories_for_msg = histories_clone.clone();
+    let _turn_trackers_for_msg = turn_trackers.clone();
+    let active_tasks_for_msg = active_tasks.clone();
+    let message_queues_for_msg = message_queues.clone();
+    let _voice_states_for_msg = voice_states.clone();
+    let last_usage_for_msg = last_usage.clone();
+    let gateway_access_for_msg = gateway_access.clone();
+    let _skill_store_for_msg = skill_store_ref.clone();
+    let _onboarding_state_for_msg = onboarding_state.clone();
+    let _onboarding_config_path_for_msg = onboarding_config_path.clone();
+    let _runtime_home_for_msg = runtime_home_arc.clone();
 
     tokio::spawn(async move {
-        // TODO Phase 2: Full gateway message loop implementation
-        // This will handle incoming messages, commands, and agent interactions
-        // For now, just a placeholder that keeps the gateway alive
-        loop {
-            if let Some(_msg) = messages.recv().await {
-                // Message processing will be implemented here
-                tracing::debug!("Gateway message received (processing not yet implemented)");
+        // Gateway message processing loop
+        while let Some(msg) = messages.recv().await {
+            let chat_id = msg.chat_id.clone();
+            let bot_id = msg.bot_id.clone();
+            let platform = msg.platform.clone();
+            let text = msg.text.clone();
+            let media_id = msg.media.clone();
+
+            // Handle internal system messages
+            if platform == "__hakimi_system__" {
+                let mut routed = msg.clone();
+                if let Some((_, target_platform)) = text.rsplit_once("HAKIMI_ROUTE_PLATFORM=") {
+                    routed.platform = target_platform.trim().to_string();
+                    routed.text = text
+                        .replace(
+                            &format!("\n\nHAKIMI_ROUTE_PLATFORM={}", target_platform.trim()),
+                            "",
+                        )
+                        .trim()
+                        .to_string();
+                } else {
+                    routed.platform = "telegram".to_string();
+                }
+                if let Err(err) = gateway_for_msg.route_message(&routed).await {
+                    tracing::warn!(error = %err, "failed to route internal gateway notification");
+                }
+                continue;
             }
+
+            // Check access control
+            if !gateway_access_for_msg.allows(&msg) {
+                warn!(platform = %platform, bot_id = %bot_id, chat_id = %chat_id, user_id = %msg.user_id, "unauthorized gateway message dropped");
+                continue;
+            }
+
+            info!(platform = %platform, chat_id = %chat_id, has_media = media_id.is_some(), "received message via gateway");
+
+            // Handle slash commands
+            if text.starts_with('/') {
+                match Command::parse(&text) {
+                    Some(Command::Stop) => {
+                        let key = gateway_task_key(&platform, &bot_id, &chat_id);
+                        let stopped = {
+                            let mut active = active_tasks_for_msg.lock().await;
+                            active
+                                .remove(&key)
+                                .map(|control| {
+                                    control.cancel();
+                                })
+                                .is_some()
+                        };
+
+                        let queued_count = {
+                            let mut queues = message_queues_for_msg.lock().await;
+                            queues.remove(&key).map(|q| q.len()).unwrap_or(0)
+                        };
+
+                        let response = if stopped {
+                            if queued_count > 0 {
+                                format!("⏹️ 已停止当前任务并清空 {} 条排队消息。", queued_count)
+                            } else {
+                                "⏹️ 已停止当前任务。".to_string()
+                            }
+                        } else if queued_count > 0 {
+                            format!("⏹️ 已清空 {} 条排队消息。", queued_count)
+                        } else {
+                            "ℹ️ 当前没有正在运行的任务。".to_string()
+                        };
+                        send_gateway_text(&gateway_for_msg, &platform, &bot_id, &chat_id, &response)
+                            .await;
+                        continue;
+                    }
+                    Some(Command::Clear) => {
+                        let key = gateway_task_key(&platform, &bot_id, &chat_id);
+                        {
+                            let mut histories = histories_for_msg.lock().await;
+                            histories.remove(&chat_id);
+                        }
+                        {
+                            let mut usage = last_usage_for_msg.lock().await;
+                            usage.remove(&chat_id);
+                        }
+                        send_gateway_text(
+                            &gateway_for_msg,
+                            &platform,
+                            &bot_id,
+                            &chat_id,
+                            "🗑️ 已清空当前聊天的对话历史。",
+                        )
+                        .await;
+                        continue;
+                    }
+                    Some(Command::Restart) => {
+                        send_gateway_text(
+                            &gateway_for_msg,
+                            &platform,
+                            &bot_id,
+                            &chat_id,
+                            "🔄 正在重启 Hakimi Gateway...",
+                        )
+                        .await;
+                        tokio::spawn(async move {
+                            let result =
+                                tokio::task::spawn_blocking(restart_gateway_service).await;
+                            if let Err(err) = result {
+                                tracing::error!(error = %err, "failed to join gateway restart task");
+                            }
+                        });
+                        continue;
+                    }
+                    _ => {
+                        // Other commands not yet implemented
+                        tracing::debug!(command = %text, "Command received but not yet handled in unified mode");
+                    }
+                }
+            }
+
+            // TODO Phase 3B: Full message processing (Agent invocation, streaming, etc.)
+            tracing::info!("Gateway message received (full processing not yet implemented): {}", text);
+            send_gateway_text(
+                &gateway_for_msg,
+                &platform,
+                &bot_id,
+                &chat_id,
+                "⚠️ 统一模式消息处理功能开发中...",
+            )
+            .await;
         }
     });
 
@@ -7148,6 +7270,127 @@ async fn start_unified_server(
                 let _ = gateway_queue.route_message(&msg).await;
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    });
+
+    // Spawn Cron Scheduler daemon
+    let cron_agent_base = agent_arc.clone();
+    let cron_skill_store = skill_store_ref.clone();
+    let cron_runtime_home = runtime_home_arc.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+            let cron_db_path = cron_runtime_home.cron_db_path();
+
+            if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(&cron_db_path) {
+                let now = chrono::Utc::now();
+                let jobs =
+                    match store.claim_due_jobs(now, &cron_tick_lock_path_for_db(&cron_db_path)) {
+                        Ok(jobs) => jobs,
+                        Err(err) => {
+                            tracing::debug!(error = %err, "cron tick skipped");
+                            continue;
+                        }
+                    };
+
+                for job in jobs {
+                    if let Err(err) = hakimi_cron::validate_cron_prompt(&job.prompt) {
+                        tracing::warn!(
+                            job_id = %job.id,
+                            findings = ?err.findings(),
+                            "Cron job blocked by prompt-injection scanner"
+                        );
+                        let _ = store.set_enabled(&job.id, false);
+                        queue_cron_delivery(
+                            &job,
+                            format!("🛡️ **Cronjob '{}' Blocked**\n\n{}", job.name, err),
+                        );
+                        continue;
+                    }
+                    let cron_goal =
+                        match build_cron_delegation_goal(&job, Some(cron_skill_store.as_ref())) {
+                            Ok(goal) => goal,
+                            Err(err) => {
+                                tracing::warn!(
+                                    job_id = %job.id,
+                                    findings = ?err.findings(),
+                                    "Cron job blocked by assembled prompt scanner"
+                                );
+                                let _ = store.set_enabled(&job.id, false);
+                                queue_cron_delivery(
+                                    &job,
+                                    format!("🛡️ **Cronjob '{}' Blocked**\n\n{}", job.name, err),
+                                );
+                                continue;
+                            }
+                        };
+                    tracing::info!(job_id = %job.id, "Executing scheduled cron job");
+
+                    // Spawn execution
+                    let job_clone = job.clone();
+                    let base = cron_agent_base.clone();
+                    let cron_db_path_for_job = cron_db_path.clone();
+
+                    tokio::spawn(async move {
+                        let executor = {
+                            let a = base.lock().await;
+                            a.build_tool_context().delegate_executor
+                        };
+
+                        if let Some(exec) = executor {
+                            let toolsets = job_clone.enabled_toolsets.clone().unwrap_or_default();
+                            let res = exec
+                                .execute_delegation(&cron_goal, CRON_DELEGATION_CONTEXT, &toolsets)
+                                .await;
+
+                            match res {
+                                Ok(output) => {
+                                    if cron_success_output_should_deliver(&output) {
+                                        let queued = queue_cron_delivery(
+                                            &job_clone,
+                                            format!(
+                                                "⏰ **Cronjob '{}' Finished**\n\n{}",
+                                                job_clone.name, output
+                                            ),
+                                        );
+                                        if queued == 0 {
+                                            tracing::info!(
+                                                job_id = %job_clone.id,
+                                                "Cronjob output retained locally; no delivery target configured"
+                                            );
+                                        }
+                                    } else {
+                                        tracing::info!(
+                                            job_id = %job_clone.id,
+                                            "Cronjob output was empty or silent; skipping delivery"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!("Cronjob {} failed: {}", job_clone.id, e);
+                                }
+                            }
+                            if let Ok(store) = hakimi_cron::persistence::PersistentCronStore::open(
+                                &cron_db_path_for_job,
+                            ) {
+                                match store.complete_claimed_run(&job_clone.id) {
+                                    Ok(true) => tracing::info!(
+                                        job_id = %job_clone.id,
+                                        "Cronjob repeat limit reached; removed job"
+                                    ),
+                                    Ok(false) => {}
+                                    Err(err) => tracing::warn!(
+                                        job_id = %job_clone.id,
+                                        error = %err,
+                                        "Failed to update cron repeat completion"
+                                    ),
+                                }
+                            }
+                        }
+                    });
+                }
+            }
         }
     });
 

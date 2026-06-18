@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.3.270-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.271-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.270-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.271-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,13 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.271 — Critical Fix: 修复 Gateway 幽灵任务 Bug (Phantom Task Fix):**
+- 🐛 **修复幽灵任务**：修复 `active_tasks` 清理逻辑导致的"正在处理之前的消息"错误提示
+- 🔧 **根本原因**：任务完成时的 `task_id` 匹配条件在并发场景下可能失败，导致记录永久残留
+- 🎯 **修复方案**：重写清理逻辑，嵌套 `if` 代替 `let chains` 确保兼容性和正确性
+- ✅ **影响范围**：所有使用 Gateway 的用户（Telegram Bot、Discord Bot 等）
+- 🔒 **稳定性提升**：消除了导致 Gateway 假死的关键 bug
 
 **v0.3.270 — Phase 2: Gateway 完整集成到统一服务器 (Full Gateway Integration):**
 - 🎯 **Gateway 完整集成**：`hakimi --serve --gateway start` 现在完全整合 Gateway 和 WebUI
