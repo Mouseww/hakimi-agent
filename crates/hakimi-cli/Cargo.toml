@@ -21,6 +21,7 @@ hakimi-plugin = { path = "../hakimi-plugin" }
 hakimi-skills = { path = "../hakimi-skills" }
 hakimi-server = { path = "../hakimi-server" }
 hakimi-cron = { path = "../hakimi-cron" }
+axum = { version = "0.8", features = ["json"] }
 clap = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }

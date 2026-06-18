@@ -7007,15 +7007,39 @@ Just send a message to chat with me!"
 /// handling into a single process, sharing the Agent, SessionDB, and config.
 async fn start_unified_server(
     agent: hakimi_core::AIAgent,
-    _skill_store: hakimi_skills::SkillStore,
+    skill_store: hakimi_skills::SkillStore,
     addr: &str,
     config: hakimi_config::HakimiConfig,
     runtime_home: hakimi_common::RuntimeHome,
 ) -> Result<()> {
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
     info!(addr = %addr, "starting Hakimi Agent unified server (WebUI + Gateway)");
 
-    // TODO Phase 1: MVP — just start WebUI for now
-    // Gateway integration will be added in subsequent commits
+    // Acquire exclusive lock to prevent multiple gateway instances
+    let lock_path = runtime_home.home().join("gateway.lock");
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&lock_path)?;
+
+    use fs2::FileExt;
+    if let Err(_) = lock_file.try_lock_exclusive() {
+        error!(
+            "Another Hakimi Gateway instance is already running. Stop it first or use a different HAKIMI_HOME."
+        );
+        std::process::exit(1);
+    }
+
+    // Keep lock_file alive for the entire server lifetime
+    let _gateway_lock = lock_file;
+
+    // Initialize SessionDB (shared between WebUI and Gateway)
     let db_path = runtime_home.sessions_db_path();
     let db = tokio::task::spawn_blocking(move || {
         let db = hakimi_session::SessionDB::new(&db_path)?;
@@ -7023,10 +7047,140 @@ async fn start_unified_server(
         Ok::<_, anyhow::Error>(db)
     })
     .await??;
+    let session_db = Arc::new(Mutex::new(db));
 
-    hakimi_server::Server::new(addr, agent, config, db)?
-        .serve(addr.parse().unwrap())
-        .await?;
+    // Initialize Gateway
+    let mut gateway = hakimi_gateway::Gateway::new();
+    gateway.set_filter_silence_narration(config.gateways.filter_silence_narration);
+    let gateway_bot_ids = register_configured_gateway_adapters(&mut gateway, &config);
+
+    // Shared state for both WebUI and Gateway
+    let agent_arc = Arc::new(Mutex::new(agent));
+    let config_arc = Arc::new(Mutex::new(config.clone()));
+
+    // Gateway-specific shared state
+    let histories_clone: Arc<Mutex<HashMap<String, Vec<hakimi_common::Message>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let turn_trackers: Arc<Mutex<HashMap<String, GatewayChatTurnTracker>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let active_tasks: Arc<Mutex<HashMap<String, GatewayTaskControl>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let message_queues: Arc<Mutex<HashMap<String, VecDeque<QueuedMessage>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let voice_states: Arc<Mutex<HashMap<String, VoiceRuntimeState>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let last_usage: Arc<Mutex<HashMap<String, GatewayUsageSnapshot>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let gateway_access = Arc::new(GatewayIngressPolicy::from_config(&config));
+    let skill_store_ref = Arc::new(skill_store);
+    let onboarding_state = Arc::new(Mutex::new(config.clone()));
+    let onboarding_config_path = Arc::new(hakimi_config_path(&runtime_home));
+    let runtime_home_arc = Arc::new(runtime_home);
+
+    // Connect all platforms
+    gateway.connect_all().await?;
+    let receivers = gateway.take_all_receivers();
+    let gateway = Arc::new(gateway);
+    let mut messages = merge_gateway_receivers(receivers)?;
+
+    info!("gateway listening for messages");
+    deliver_pending_gateway_update_notification(
+        &gateway,
+        &gateway_bot_ids,
+        runtime_home_arc.as_ref(),
+    )
+    .await;
+
+    // Spawn Gateway message processing task
+    let _gateway_clone = gateway.clone();
+    let _gateway_bot_ids_clone = gateway_bot_ids.clone();
+    let _agent_for_gateway = agent_arc.clone();
+    let _histories_for_gateway = histories_clone.clone();
+    let _turn_trackers_for_gateway = turn_trackers.clone();
+    let _active_tasks_for_gateway = active_tasks.clone();
+    let _message_queues_for_gateway = message_queues.clone();
+    let _voice_states_for_gateway = voice_states.clone();
+    let _last_usage_for_gateway = last_usage.clone();
+    let _gateway_access_for_gateway = gateway_access.clone();
+    let _skill_store_for_gateway = skill_store_ref.clone();
+    let _onboarding_state_for_gateway = onboarding_state.clone();
+    let _onboarding_config_path_for_gateway = onboarding_config_path.clone();
+    let _runtime_home_for_gateway = runtime_home_arc.clone();
+
+    tokio::spawn(async move {
+        // TODO Phase 2: Full gateway message loop implementation
+        // This will handle incoming messages, commands, and agent interactions
+        // For now, just a placeholder that keeps the gateway alive
+        loop {
+            if let Some(_msg) = messages.recv().await {
+                // Message processing will be implemented here
+                tracing::debug!("Gateway message received (processing not yet implemented)");
+            }
+        }
+    });
+
+    // Spawn outbound message queue processor
+    let gateway_queue = gateway.clone();
+    let gateway_queue_bot_ids = gateway_bot_ids.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Some(queued) = hakimi_tools::builtin_send_message::pop_message() {
+                let mut target_platform = "telegram".to_string();
+                let mut target_chat = queued.session_id.clone();
+
+                if queued.target != "origin" {
+                    if let Some((p, c)) = queued.target.split_once(':') {
+                        target_platform = p.to_string();
+                        target_chat = c.to_string();
+                    }
+                }
+                let bot_id =
+                    gateway_bot_id_for_platform(&gateway_queue_bot_ids, &target_platform);
+
+                let msg = hakimi_gateway::GatewayMessage {
+                    platform: target_platform,
+                    bot_id,
+                    chat_id: target_chat,
+                    user_id: String::new(),
+                    text: queued.message,
+                    media: None,
+                };
+                let _ = gateway_queue.route_message(&msg).await;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    });
+
+    // Start WebUI HTTP server
+    let hakimi_dir = dirs::home_dir()
+        .map(|h| h.join(".hakimi"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".hakimi"));
+    let knowledge_path = hakimi_dir.join("knowledge.json");
+    let knowledge_provider = hakimi_knowledge::KnowledgeProvider::new(knowledge_path);
+
+    let initial_webui_password = if !config.webui.password.is_empty() {
+        config.webui.password.clone()
+    } else {
+        std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default()
+    };
+
+    let app_state = hakimi_server::server::AppState {
+        agent: agent_arc,
+        config: config_arc,
+        session_db,
+        response_store: Arc::new(Mutex::new(hakimi_server::api::ResponsesStore::default())),
+        run_store: Arc::new(Mutex::new(hakimi_server::api::RunsStore::default())),
+        knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
+        webui_password: Arc::new(Mutex::new(initial_webui_password)),
+        gateway: Some(gateway.clone()),
+    };
+
+    let app = hakimi_server::api::build_router(app_state);
+
+    info!(addr = %addr, "starting HTTP API server (unified mode)");
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }

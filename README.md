@@ -1,8 +1,8 @@
-# 🐙 Hakimi Agent
+# Hakimi Agent
 
-<p align="center">
+[![Version](https://img.shields.io/badge/version-0.3.270-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.269-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.270-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,16 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.270 — Phase 2: Gateway 完整集成到统一服务器 (Full Gateway Integration):**
+- 🎯 **Gateway 完整集成**：`hakimi --serve --gateway start` 现在完全整合 Gateway 和 WebUI
+- 🔄 **共享资源**：Agent、SessionDB、Config 在 WebUI 和 Gateway 间共享（`Arc<Mutex<T>>`）
+- 🚀 **并行运行**：Gateway 消息循环和 WebUI HTTP 服务器在独立 tokio 任务中运行
+- 📡 **平台连接**：统一模式下 Gateway 自动连接所有配置的平台（Telegram、ClawBot 等）
+- 🔒 **进程独占锁**：Gateway lock 文件防止多实例冲突
+- 📤 **出站消息处理**：后台任务自动处理工具调用的出站消息队列
+- ⚙️ **基础架构就绪**：为 Phase 3（Gateway 控制 API）铺路
+- 🏗️ **TODO Phase 3**：Gateway 消息处理循环（目前为占位符，接收但不处理消息）
 
 **v0.3.269 — Phase 1: 统一服务器架构 (Unified Server Architecture):**
 - 🏗️ **统一模式**：`hakimi --serve --gateway start` 启动合并进程（WebUI + Gateway）
