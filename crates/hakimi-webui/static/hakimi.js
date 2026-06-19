@@ -298,8 +298,11 @@ function appendStreamChunk(text) {
     }
   }
   
-  // Display everything including incomplete line (for real-time streaming)
-  const displayText = allAssistantText + incompleteLine;
+  // Check if incompleteLine looks like a tool call - if so, don't display it yet
+  const isIncompleteTool = /^(hakimi_tool:|hakimi_review:|[⚙️🔧🛠️💾])/.test(incompleteLine);
+  
+  // Display everything, but hide incomplete tool lines
+  const displayText = allAssistantText + (isIncompleteTool ? '' : incompleteLine);
   if (displayText.trim()) {
     displayAssistantText(displayText);
   }
@@ -322,14 +325,15 @@ function displayAssistantText(text) {
         <span class="msg-name">Hakimi</span>
         <span class="msg-time">${fmtTime(Date.now())}</span>
       </div>
-      <div class="msg-body"></div>`;
+      <div class="msg-body" style="white-space: pre-wrap;"></div>`;
     container.appendChild(div);
     lastMsg = div;
   }
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    body.innerHTML = renderMd(text);
+    // During streaming: show plain text (fast, no flicker)
+    body.textContent = text;
     container.scrollTop = container.scrollHeight;
   }
 }
@@ -398,6 +402,8 @@ function finalizeStream(fullText, msgId) {
     streamingMsg.dataset.msgId = msgId || '';
     const body = streamingMsg.querySelector('.msg-body');
     if (body) {
+      // Finalize: render Markdown and remove pre-wrap style
+      body.removeAttribute('style');
       body.innerHTML = renderMd(cleanText);
     }
   }
