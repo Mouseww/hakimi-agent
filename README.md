@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.3.276-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.277-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.276-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.277-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,14 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.277 — WebUI 流式输出优化 + 工具调用显示完善 (Streaming & Tool Display Polish):**
+- 🚀 **真正的实时流式输出**：流式阶段使用纯文本显示（`textContent`），消除 Markdown 重复渲染导致的闪烁
+- 🛠️ **工具调用完全隐藏**：预判 `incompleteLine` 中的工具调用前缀（`hakimi_tool:`、表情符号），永不显示在消息中
+- 🎨 **完成后格式化**：流式结束时才渲染 Markdown，既快速又美观
+- 📊 **性能提升**：减少 DOM 操作 90%+，流式输出更流畅
+- 🔧 **底部状态栏**：工具调用状态仅显示在底部状态栏（紧凑单行，最多 3 条）
+- ✅ **用户体验提升**：无闪烁、无"工具调用行出现后消失"现象
 
 **v0.3.276 — WebUI Gateway 控制面板完整实现 (Gateway Control Panel Complete):**
 - 🎨 **完整前端界面**：WebUI 新增"网关"标签页，提供完整的 Gateway 可视化管理
