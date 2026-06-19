@@ -5573,10 +5573,11 @@ async fn start_server(
 
 /// Start gateway mode.
 /// Process gateway messages loop - shared by separated and unified modes
+#[allow(clippy::too_many_arguments)]
 async fn process_gateway_messages_loop(
     mut messages: tokio::sync::mpsc::UnboundedReceiver<hakimi_gateway::GatewayMessage>,
     gateway: std::sync::Arc<hakimi_gateway::Gateway>,
-    gateway_bot_ids: std::collections::HashMap<String, String>,
+    _gateway_bot_ids: std::collections::HashMap<String, String>,
     agent_arc: std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
     histories_clone: std::sync::Arc<
         tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>,
@@ -5606,9 +5607,6 @@ async fn process_gateway_messages_loop(
     config: hakimi_config::HakimiConfig,
 ) -> Result<()> {
     use std::collections::{HashMap, VecDeque};
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
     while let Some(msg) = messages.recv().await {
         let chat_id = msg.chat_id.clone();
         let bot_id = msg.bot_id.clone();
@@ -6723,12 +6721,12 @@ Just send a message to chat with me!"
                 let mut active = active_tasks.lock().await;
                 // Remove only if the task ID matches (prevents removing a newer task)
                 // But if the key is missing, that's fine (already removed by /stop)
-                if let Some(control) = active.get(&task_key) {
-                    if control.id == task_id {
-                        active.remove(&task_key);
-                    }
-                    // If ID doesn't match, a newer task has started; don't remove it
+                if let Some(control) = active.get(&task_key)
+                    && control.id == task_id
+                {
+                    active.remove(&task_key);
                 }
+                // If ID doesn't match, a newer task has started; don't remove it
             }
             {
                 let mut trackers = turn_trackers.lock().await;
@@ -6834,11 +6832,12 @@ async fn start_gateway(
     }
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(&lock_path)?;
 
     use fs2::FileExt;
-    if let Err(_) = lock_file.try_lock_exclusive() {
+    if lock_file.try_lock_exclusive().is_err() {
         error!(
             "Another Hakimi Gateway instance is already running. Stop it first or use a different HAKIMI_HOME."
         );
@@ -6882,7 +6881,7 @@ async fn start_gateway(
     gateway.connect_all().await?;
     let receivers = gateway.take_all_receivers();
     let gateway = Arc::new(gateway);
-    let mut messages = merge_gateway_receivers(receivers)?;
+    let messages = merge_gateway_receivers(receivers)?;
 
     info!("gateway listening for messages");
     deliver_pending_gateway_update_notification(&gateway, &gateway_bot_ids, runtime_home.as_ref())
@@ -7088,11 +7087,12 @@ async fn start_unified_server(
     }
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(&lock_path)?;
 
     use fs2::FileExt;
-    if let Err(_) = lock_file.try_lock_exclusive() {
+    if lock_file.try_lock_exclusive().is_err() {
         error!(
             "Another Hakimi Gateway instance is already running. Stop it first or use a different HAKIMI_HOME."
         );
@@ -7144,7 +7144,7 @@ async fn start_unified_server(
     gateway.connect_all().await?;
     let receivers = gateway.take_all_receivers();
     let gateway = Arc::new(gateway);
-    let mut messages = merge_gateway_receivers(receivers)?;
+    let messages = merge_gateway_receivers(receivers)?;
 
     info!("gateway listening for messages");
     deliver_pending_gateway_update_notification(
@@ -7202,11 +7202,11 @@ async fn start_unified_server(
                 let mut target_platform = "telegram".to_string();
                 let mut target_chat = queued.session_id.clone();
 
-                if queued.target != "origin" {
-                    if let Some((p, c)) = queued.target.split_once(':') {
-                        target_platform = p.to_string();
-                        target_chat = c.to_string();
-                    }
+                if queued.target != "origin"
+                    && let Some((p, c)) = queued.target.split_once(':')
+                {
+                    target_platform = p.to_string();
+                    target_chat = c.to_string();
                 }
                 let bot_id = gateway_bot_id_for_platform(&gateway_queue_bot_ids, &target_platform);
 

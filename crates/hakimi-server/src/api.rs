@@ -4846,6 +4846,7 @@ mod tests {
                     unix_timestamp_millis()
                 )),
             ))),
+            gateway: None,
         }
     }
 
