@@ -405,9 +405,25 @@ function displayAssistantText(text) {
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    // During streaming: show plain text for better performance and avoid incomplete Markdown
-    // Markdown will be rendered once when streaming completes
-    body.textContent = text;
+    // During streaming: render Markdown in real-time, but handle incomplete blocks gracefully
+    // Check if there's an unclosed code block (odd number of ```)
+    const codeBlockCount = (text.match(/```/g) || []).length;
+    const hasUnclosedBlock = codeBlockCount % 2 !== 0;
+    
+    if (hasUnclosedBlock) {
+      // Find the last ``` position
+      const lastBlockStart = text.lastIndexOf('```');
+      // Render everything before the incomplete block
+      const completePart = text.substring(0, lastBlockStart);
+      const incompletePart = text.substring(lastBlockStart);
+      
+      // Render complete part as Markdown, show incomplete part as plain text
+      body.innerHTML = renderMd(completePart) + '<span class="streaming-incomplete">' + esc(incompletePart) + '</span>';
+    } else {
+      // All code blocks are closed, render normally
+      body.innerHTML = renderMd(text);
+    }
+    
     container.scrollTop = container.scrollHeight;
   }
 }
