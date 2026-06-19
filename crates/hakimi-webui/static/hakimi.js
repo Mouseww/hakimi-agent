@@ -332,8 +332,9 @@ function displayAssistantText(text) {
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    // During streaming: show plain text (fast, no flicker)
-    body.textContent = text;
+    // During streaming: show plain text with preserved line breaks
+    // Use innerText (preserves \n) instead of textContent (may collapse whitespace)
+    body.innerText = text;
     container.scrollTop = container.scrollHeight;
   }
 }
