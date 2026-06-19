@@ -213,21 +213,23 @@ function renderMessage(msg) {
   const div = document.createElement('div');
   div.className = 'msg';
   div.dataset.msgId = msg.id || '';
-  div.dataset.role = msg.role; // Add data-role for CSS styling
+  div.dataset.role = msg.role;
 
   div.innerHTML = `
-    <div class="msg-header">
-      <div class="msg-avatar ${isUser ? 'user' : 'assistant'}">${isUser ? 'U' : 'H'}</div>
-      <span class="msg-name">${isUser ? '你' : 'Hakimi'}</span>
-      ${msg.tool_call_count > 0 ? `<span class="tool-badge">🛠 ${msg.tool_call_count}</span>` : ''}
-      <span class="msg-time">${fmtDate(msg.timestamp || msg.created_at)}</span>
-      <div class="msg-actions">
-        <button class="msg-action-btn" data-action="copy" title="复制消息">📋</button>
-        <button class="msg-action-btn" data-action="delete" title="删除消息">🗑️</button>
+    <div class="msg-avatar ${isUser ? 'user' : 'assistant'}">${isUser ? 'U' : 'H'}</div>
+    <div class="msg-content">
+      <div class="msg-header">
+        <span class="msg-name">${isUser ? '你' : 'Hakimi'}</span>
+        <span class="msg-time">${fmtDate(msg.timestamp || msg.created_at)}</span>
+        ${msg.tool_call_count > 0 ? `<span class="tool-badge">🛠 ${msg.tool_call_count}</span>` : ''}
       </div>
-    </div>
-    <div class="msg-bubble">
-      <div class="msg-body">${renderMd(msg.content)}</div>
+      <div class="msg-bubble">
+        <div class="msg-actions">
+          <button class="msg-action-btn" data-action="copy" title="复制">📋</button>
+          <button class="msg-action-btn" data-action="delete" title="删除">🗑️</button>
+        </div>
+        <div class="msg-body">${renderMd(msg.content)}</div>
+      </div>
     </div>`;
 
   const bubble = div.querySelector('.msg-bubble');
@@ -377,15 +379,17 @@ function displayAssistantText(text) {
     const div = document.createElement('div');
     div.className = 'msg';
     div.dataset.msgId = 'streaming';
-    div.dataset.role = 'assistant'; // Add data-role for CSS styling
+    div.dataset.role = 'assistant';
     div.innerHTML = `
-      <div class="msg-header">
-        <div class="msg-avatar assistant">H</div>
-        <span class="msg-name">Hakimi</span>
-        <span class="msg-time">${fmtTime(Date.now())}</span>
-      </div>
-      <div class="msg-bubble">
-        <div class="msg-body"></div>
+      <div class="msg-avatar assistant">H</div>
+      <div class="msg-content">
+        <div class="msg-header">
+          <span class="msg-name">Hakimi</span>
+          <span class="msg-time">${fmtTime(Date.now())}</span>
+        </div>
+        <div class="msg-bubble">
+          <div class="msg-body"></div>
+        </div>
       </div>`;
     container.appendChild(div);
     lastMsg = div;
