@@ -1197,6 +1197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       else if (panel === 'skills') renderSkillsPanel();
       else if (panel === 'memory') renderMemoryPanel();
       else if (panel === 'cron') renderCronPanel();
+      else if (panel === 'gateway') renderGatewayPanel();
     });
   });
 
