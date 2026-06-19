@@ -5578,12 +5578,26 @@ async fn process_gateway_messages_loop(
     gateway: std::sync::Arc<hakimi_gateway::Gateway>,
     gateway_bot_ids: std::collections::HashMap<String, String>,
     agent_arc: std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
-    histories_clone: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>>,
-    turn_trackers: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, GatewayChatTurnTracker>>>,
-    active_tasks: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, GatewayTaskControl>>>,
-    message_queues: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, std::collections::VecDeque<QueuedMessage>>>>,
-    voice_states: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, VoiceRuntimeState>>>,
-    last_usage: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, GatewayUsageSnapshot>>>,
+    histories_clone: std::sync::Arc<
+        tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>,
+    >,
+    turn_trackers: std::sync::Arc<
+        tokio::sync::Mutex<std::collections::HashMap<String, GatewayChatTurnTracker>>,
+    >,
+    active_tasks: std::sync::Arc<
+        tokio::sync::Mutex<std::collections::HashMap<String, GatewayTaskControl>>,
+    >,
+    message_queues: std::sync::Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<String, std::collections::VecDeque<QueuedMessage>>,
+        >,
+    >,
+    voice_states: std::sync::Arc<
+        tokio::sync::Mutex<std::collections::HashMap<String, VoiceRuntimeState>>,
+    >,
+    last_usage: std::sync::Arc<
+        tokio::sync::Mutex<std::collections::HashMap<String, GatewayUsageSnapshot>>,
+    >,
     gateway_access: std::sync::Arc<GatewayIngressPolicy>,
     skill_store_ref: std::sync::Arc<hakimi_skills::SkillStore>,
     onboarding_state: std::sync::Arc<tokio::sync::Mutex<hakimi_config::HakimiConfig>>,
