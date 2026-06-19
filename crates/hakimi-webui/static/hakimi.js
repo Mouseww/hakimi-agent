@@ -405,9 +405,9 @@ function displayAssistantText(text) {
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    // During streaming: render Markdown in real-time for better UX
-    // v0.3.277-realtime-md
-    body.innerHTML = renderMd(text);
+    // During streaming: show plain text for better performance and avoid incomplete Markdown
+    // Markdown will be rendered once when streaming completes
+    body.textContent = text;
     container.scrollTop = container.scrollHeight;
   }
 }
