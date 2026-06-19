@@ -563,6 +563,37 @@ html, body {
   font-size: 12.5px;
 }
 
+/* Streaming block (incomplete code block during streaming) */
+.streaming-block {
+  background: var(--surface);
+  border: 1px dashed var(--border); /* Dashed border to indicate "in progress" */
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  opacity: 0.85; /* Slightly transparent */
+  position: relative;
+}
+
+.streaming-block::before {
+  content: '⏳ 输入中...';
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.streaming-code {
+  font-family: var(--font-mono);
+  white-space: pre;
+  display: block;
+}
+
 /* ── Tool Calls ── */
 .tool-card {
   border: 1px solid var(--border);

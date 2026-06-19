@@ -23,6 +23,162 @@ const qsa = (sel, ctx) => (ctx || document).querySelectorAll(sel);
 // ── WebUI auth token ──
 const AUTH_TOKEN_KEY = 'hakimi-webui-token';
 
+// ══════════════════════════════════════════════════════════════════════════
+// Message Processor — Transform LLM output before rendering
+// ══════════════════════════════════════════════════════════════════════════
+
+class MessageProcessor {
+  constructor() {
+    this.unclosedBlockCache = new Map(); // Cache for streaming state
+  }
+
+  /**
+   * Process message text for display
+   * @param {string} text - Raw message text from LLM
+   * @param {Object} options - Processing options
+   * @param {boolean} options.isStreaming - Whether message is still streaming
+   * @param {string} options.messageId - Message ID for caching
+   * @returns {Object} - { html, isComplete, metadata }
+   */
+  process(text, options = {}) {
+    if (!text) return { html: '', isComplete: true, metadata: {} };
+
+    const { isStreaming = false, messageId = 'default' } = options;
+    
+    // Step 1: Normalize text
+    const normalized = this.normalize(text);
+    
+    // Step 2: Detect incomplete blocks
+    const blockAnalysis = this.analyzeBlocks(normalized, messageId);
+    
+    // Step 3: Render based on completeness
+    let html;
+    if (blockAnalysis.hasUnclosed && isStreaming) {
+      // Split at last unclosed block and render separately
+      html = this.renderPartial(normalized, blockAnalysis);
+    } else {
+      // All blocks complete or not streaming, render normally
+      html = renderMd(normalized);
+    }
+    
+    return {
+      html,
+      isComplete: !blockAnalysis.hasUnclosed,
+      metadata: {
+        codeBlocks: blockAnalysis.total,
+        unclosedBlocks: blockAnalysis.unclosed,
+      }
+    };
+  }
+
+  /**
+   * Normalize text (handle line endings, etc.)
+   */
+  normalize(text) {
+    return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  }
+
+  /**
+   * Analyze code block completeness
+   */
+  analyzeBlocks(text, messageId) {
+    const blocks = text.match(/```/g) || [];
+    const total = Math.floor(blocks.length / 2);
+    const hasUnclosed = blocks.length % 2 !== 0;
+    
+    // Cache state for this message
+    if (hasUnclosed) {
+      this.unclosedBlockCache.set(messageId, {
+        position: text.lastIndexOf('```'),
+        timestamp: Date.now()
+      });
+    } else {
+      this.unclosedBlockCache.delete(messageId);
+    }
+    
+    return {
+      total,
+      unclosed: hasUnclosed ? 1 : 0,
+      hasUnclosed,
+      lastBlockStart: hasUnclosed ? text.lastIndexOf('```') : -1
+    };
+  }
+
+  /**
+   * Render partial message with incomplete blocks
+   */
+  renderPartial(text, analysis) {
+    const { lastBlockStart } = analysis;
+    
+    if (lastBlockStart === -1) {
+      return renderMd(text);
+    }
+    
+    // Split: complete part + incomplete part
+    const completePart = text.substring(0, lastBlockStart);
+    const incompletePart = text.substring(lastBlockStart);
+    
+    // Render complete part normally
+    const completeHtml = completePart ? renderMd(completePart) : '';
+    
+    // Show incomplete part with special styling
+    const incompleteHtml = `<pre class="streaming-block"><code class="streaming-code">${esc(incompletePart)}</code></pre>`;
+    
+    return completeHtml + incompleteHtml;
+  }
+
+  /**
+   * Auto-detect and wrap unformatted code (fallback for non-markdown code)
+   */
+  detectUnformattedCode(text) {
+    // Tree structures
+    if (/[├─└│]{2,}/.test(text) || /\|[─—-]{2,}/.test(text)) {
+      return { type: 'tree', confidence: 0.9 };
+    }
+    
+    // Indented code blocks (4+ spaces on multiple lines)
+    const lines = text.split('\n');
+    const indentedLines = lines.filter(l => /^    \S/.test(l));
+    if (indentedLines.length >= 3 && indentedLines.length / lines.length > 0.5) {
+      return { type: 'indented', confidence: 0.8 };
+    }
+    
+    // File paths or config-like content
+    if (/^[/.][^\s]+\.(js|py|rs|toml|json|yaml|md)/m.test(text)) {
+      return { type: 'config', confidence: 0.7 };
+    }
+    
+    return { type: 'text', confidence: 0 };
+  }
+
+  /**
+   * Clean up cache (call when message is finalized)
+   */
+  finalize(messageId) {
+    this.unclosedBlockCache.delete(messageId);
+  }
+
+  /**
+   * Clear old cache entries (call periodically)
+   */
+  cleanup(maxAge = 60000) {
+    const now = Date.now();
+    for (const [id, data] of this.unclosedBlockCache.entries()) {
+      if (now - data.timestamp > maxAge) {
+        this.unclosedBlockCache.delete(id);
+      }
+    }
+  }
+}
+
+// Global message processor instance
+const messageProcessor = new MessageProcessor();
+
+// Clean up cache every minute
+setInterval(() => messageProcessor.cleanup(), 60000);
+
+// ══════════════════════════════════════════════════════════════════════════
+
 function getAuthToken() {
   try { return (localStorage.getItem(AUTH_TOKEN_KEY) || '').trim(); }
   catch (e) { return ''; }
@@ -405,23 +561,17 @@ function displayAssistantText(text) {
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    // During streaming: render Markdown in real-time, but handle incomplete blocks gracefully
-    // Check if there's an unclosed code block (odd number of ```)
-    const codeBlockCount = (text.match(/```/g) || []).length;
-    const hasUnclosedBlock = codeBlockCount % 2 !== 0;
+    // Use MessageProcessor for intelligent rendering
+    const result = messageProcessor.process(text, {
+      isStreaming: true,
+      messageId: 'streaming'
+    });
     
-    if (hasUnclosedBlock) {
-      // Find the last ``` position
-      const lastBlockStart = text.lastIndexOf('```');
-      // Render everything before the incomplete block
-      const completePart = text.substring(0, lastBlockStart);
-      const incompletePart = text.substring(lastBlockStart);
-      
-      // Render complete part as Markdown, show incomplete part as plain text
-      body.innerHTML = renderMd(completePart) + '<span class="streaming-incomplete">' + esc(incompletePart) + '</span>';
-    } else {
-      // All code blocks are closed, render normally
-      body.innerHTML = renderMd(text);
+    body.innerHTML = result.html;
+    
+    // Optional: show metadata in dev mode
+    if (window.HAKIMI_DEBUG) {
+      console.log('[MessageProcessor]', result.metadata);
     }
     
     container.scrollTop = container.scrollHeight;
@@ -493,8 +643,16 @@ function finalizeStream(fullText, msgId) {
     streamingMsg.dataset.msgId = msgId || '';
     const body = streamingMsg.querySelector('.msg-body');
     if (body) {
-      // Finalize: ensure final Markdown rendering with clean text
-      body.innerHTML = renderMd(cleanText);
+      // Finalize: use MessageProcessor with isStreaming=false for final render
+      const result = messageProcessor.process(cleanText, {
+        isStreaming: false,
+        messageId: msgId || 'finalized'
+      });
+      body.innerHTML = result.html;
+      
+      // Clean up processor cache
+      messageProcessor.finalize('streaming');
+      messageProcessor.finalize(msgId);
     }
   }
 
