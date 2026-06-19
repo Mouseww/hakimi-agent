@@ -131,7 +131,7 @@ function renderMd(text) {
   if (!text) return '';
   let html = esc(text);
 
-  // Code blocks (before inline code) — use Prism.js if available
+  // Code blocks (must be first)
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const trimmed = esc(code.trim());
     const langClass = lang ? ` class="language-${esc(lang)}"` : '';
@@ -144,7 +144,7 @@ function renderMd(text) {
     return `<pre><code${langClass}>${highlighted}</code></pre>`;
   });
 
-  // Tables (before inline code)
+  // Tables
   html = html.replace(/(\|[^\n]+\|\n)+/g, (match) => {
     const lines = match.trim().split('\n');
     if (lines.length < 2) return match;
@@ -169,10 +169,10 @@ function renderMd(text) {
     return table;
   });
 
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Horizontal rules (--- or ***)
+  html = html.replace(/^(---|___|\*\*\*)$/gm, '<hr>');
 
-  // Headers (h4 before h3, h3 before h2, etc. to avoid conflicts)
+  // Headers (h4 before h3, etc.)
   html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -181,20 +181,23 @@ function renderMd(text) {
   // Blockquotes
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
 
-  // Bold / italic
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-  // Lists
+  // Lists (before bold/italic to avoid conflicts with *)
   html = html.replace(/^[*-] (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
   html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
 
-  // Paragraphs
+  // Bold / italic (BEFORE converting \n to <br>, use [\s\S] to match across lines)
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Paragraphs and line breaks (LAST)
   html = html.replace(/\n\n/g, '</p><p>');
   html = html.replace(/\n/g, '<br>');
 

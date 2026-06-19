@@ -439,6 +439,12 @@ html, body {
   margin: 8px 0;
 }
 
+.msg-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+
 .msg-body table {
   border-collapse: collapse;
   margin: 8px 0;
