@@ -481,7 +481,9 @@ async function loadSession(sessionId) {
       api('GET', `/api/sessions/${sessionId}/messages?limit=200`),
     ]);
     S.session = session;
-    S.messages = (msgsResp.messages || []).reverse();
+    // Backend returns messages in chronological order (oldest → newest)
+    // Keep that order: newest at the bottom (chat-style)
+    S.messages = msgsResp.messages || [];
     renderMessages();
     renderSessions();
     updateTopbar();
