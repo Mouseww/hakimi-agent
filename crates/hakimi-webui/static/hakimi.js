@@ -232,7 +232,8 @@ function renderToolCard(tc) {
     outDiv.className = 'tool-card-body';
     outDiv.style.borderTop = '1px solid var(--border)';
     outDiv.style.color = 'var(--text-muted)';
-    outDiv.textContent = tc.output;
+    outDiv.style.whiteSpace = 'pre-wrap';
+    outDiv.innerText = tc.output;  // Preserve line breaks in tool output
     card.appendChild(outDiv);
   }
 
@@ -375,7 +376,8 @@ function updateToolStatusDisplay(statusText) {
     .slice(-3)  // Only show last 3 tool calls
     .join('\n');
   
-  statusBar.textContent = cleanText;
+  statusBar.style.whiteSpace = 'pre-wrap';
+  statusBar.innerText = cleanText;  // Preserve line breaks in status bar
 }
 
 // ── Clear tool status display ──
