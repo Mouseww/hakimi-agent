@@ -429,9 +429,12 @@ html, body {
   right: 6px;
   display: flex;
   gap: 2px;
-  opacity: 0;
+  opacity: 0.3; /* Always visible but subtle */
   transition: opacity 0.2s;
   z-index: 10;
+}
+.msg-bubble:hover .msg-actions {
+  opacity: 1; /* Full opacity on hover */
 }
 .msg-action-btn {
   background: rgba(255, 255, 255, 0.9);

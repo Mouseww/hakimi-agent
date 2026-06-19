@@ -253,6 +253,8 @@ function renderMessage(msg) {
   const copyBtn = div.querySelector('[data-action="copy"]');
   const deleteBtn = div.querySelector('[data-action="delete"]');
   
+  console.log('[DEBUG] renderMessage - copyBtn:', copyBtn, 'deleteBtn:', deleteBtn, 'msg.id:', msg.id);
+  
   if (copyBtn) {
     copyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -263,6 +265,7 @@ function renderMessage(msg) {
   if (deleteBtn) {
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      console.log('[DEBUG] Delete button clicked, msg.id:', msg.id, 'msg.content:', msg.content);
       deleteMessage(msg.id, msg.content);
     });
   }
@@ -413,6 +416,8 @@ function displayAssistantText(text) {
     if (deleteBtn) {
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        // Read msgId dynamically at click time (not at bind time)
+        // because streaming messages update dataset.msgId after completion
         const msgId = lastMsg.dataset.msgId;
         const body = lastMsg.querySelector('.msg-body');
         deleteMessage(msgId, body ? body.textContent : '');
@@ -612,38 +617,50 @@ function fallbackCopy(text) {
 
 // ── Delete message ──
 async function deleteMessage(messageId, content) {
+  console.log('[DEBUG] deleteMessage called, messageId:', messageId, 'type:', typeof messageId);
+  
   if (!messageId) {
+    console.log('[DEBUG] messageId is falsy');
     showToast('❌ 无效的消息 ID', 2000);
     return;
   }
   
   if (messageId === 'streaming') {
+    console.log('[DEBUG] messageId is streaming');
     showToast('❌ 无法删除正在生成的消息', 2000);
     return;
   }
   
   if (!S.session) {
+    console.log('[DEBUG] no session');
     showToast('❌ 未选择会话', 2000);
     return;
   }
   
   if (S.busy) {
+    console.log('[DEBUG] system busy');
     showToast('❌ 系统忙，请稍后再试', 2000);
     return;
   }
   
   const preview = content.length > 30 ? content.substring(0, 30) + '...' : content;
   const ok = confirm(`删除消息「${preview}」？此操作不可恢复。`);
-  if (!ok) return;
+  if (!ok) {
+    console.log('[DEBUG] user cancelled');
+    return;
+  }
   
+  console.log('[DEBUG] sending DELETE request');
   try {
     await api('DELETE', `/api/sessions/${encodeURIComponent(S.session.id)}/messages/${encodeURIComponent(messageId)}`);
     
+    console.log('[DEBUG] delete successful');
     // Remove from local state
     S.messages = S.messages.filter(m => m.id !== messageId);
     renderMessages();
     showToast('✓ 消息已删除');
   } catch (e) {
+    console.error('[DEBUG] delete failed:', e);
     showToast('❌ 删除失败: ' + e.message, 3000);
   }
 }
