@@ -697,6 +697,7 @@ function openControlCenter(panel) {
   else if (activePanel === 'skills') renderSkillsPanel();
   else if (activePanel === 'memory') renderMemoryPanel();
   else if (activePanel === 'cron') renderCronPanel();
+  else if (activePanel === 'gateway') renderGatewayPanel();
 }
 
 function closeControlCenter() {
@@ -1023,6 +1024,117 @@ async function runCronJob(id) {
     await renderCronPanel();
   } catch (e) {
     alert('立即运行定时任务失败: ' + e.message);
+  }
+}
+
+// ── CC Rendering: Gateway ──
+async function renderGatewayPanel() {
+  const cc = $('cc-content');
+  cc.innerHTML = '<div class="cc-empty">加载中…</div>';
+
+  try {
+    const status = await api('GET', '/api/gateway/status');
+    const config = await api('GET', '/api/gateway/config');
+
+    const platformsHtml = status.running && status.platforms && status.platforms.length > 0
+      ? status.platforms.map(p => `
+          <div class="cc-row" style="align-items:center;padding:8px 12px;background:rgba(120,200,120,0.05);border-radius:6px;margin-bottom:8px;">
+            <span style="font-size:20px;margin-right:8px;">✅</span>
+            <div style="flex:1;">
+              <div style="font-weight:600;">${esc(p.name || 'Unknown')}</div>
+              <div style="font-size:0.85em;color:var(--text-dim);">Bot 数量: ${p.bot_count || 0}</div>
+            </div>
+            <span class="cc-skill-cat" style="background:rgba(120,200,120,0.15);color:#60d060;">已连接</span>
+          </div>
+        `).join('')
+      : '<div style="padding:12px;color:var(--text-dim);text-align:center;">暂无已连接平台</div>';
+
+    cc.innerHTML = `
+      <div class="cc-section-title">网关状态</div>
+      <div class="cc-row" style="margin-bottom:16px;">
+        <div style="flex:1;">
+          <div style="font-size:0.9em;color:var(--text-dim);margin-bottom:4px;">运行状态</div>
+          <div style="font-weight:600;font-size:1.1em;color:${status.running ? 'var(--success)' : 'var(--error)'};">
+            ${status.running ? '🟢 运行中' : '🔴 已停止'}
+          </div>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:0.9em;color:var(--text-dim);margin-bottom:4px;">配置已加载</div>
+          <div style="font-weight:600;font-size:1.1em;">
+            ${status.config_loaded ? '✅ 是' : '❌ 否'}
+          </div>
+        </div>
+      </div>
+
+      <div class="cc-section-title">已连接平台</div>
+      <div style="margin-bottom:24px;">
+        ${platformsHtml}
+      </div>
+
+      <div class="cc-section-title">网关配置</div>
+      <div class="cc-row" style="margin-bottom:12px;">
+        <label for="gw-busy-mode" style="flex:1;font-weight:500;">忙碌模式</label>
+        <select id="gw-busy-mode" class="cc-input" style="flex:1;" onchange="updateGatewayConfig()">
+          <option value="queue" ${config.busy_input_mode === 'queue' ? 'selected' : ''}>队列 (queue)</option>
+          <option value="interrupt" ${config.busy_input_mode === 'interrupt' ? 'selected' : ''}>中断 (interrupt)</option>
+        </select>
+      </div>
+
+      <div class="cc-row" style="margin-bottom:12px;">
+        <label style="flex:1;font-weight:500;">允许所有用户</label>
+        <div style="flex:1;color:var(--text-dim);">${config.allow_all ? '✅ 是' : '❌ 否'}</div>
+      </div>
+
+      <div class="cc-row" style="margin-bottom:12px;">
+        <label style="flex:1;font-weight:500;">过滤旁白</label>
+        <div style="flex:1;color:var(--text-dim);">${config.filter_silence_narration ? '✅ 是' : '❌ 否'}</div>
+      </div>
+
+      <div class="cc-section-title" style="margin-top:24px;">操作</div>
+      <div class="cc-row">
+        <button class="cc-btn danger" onclick="restartGateway()" style="flex:1;">
+          🔄 重启网关
+        </button>
+      </div>
+      <div style="margin-top:8px;font-size:0.85em;color:var(--text-dim);text-align:center;">
+        ⚠️ 重启网关将重新启动整个 Hakimi 服务，WebUI 会自动重连。
+      </div>
+    `;
+  } catch (e) {
+    cc.innerHTML = `<div class="cc-msg error">加载网关状态失败: ${esc(e.message)}</div>`;
+  }
+}
+
+async function updateGatewayConfig() {
+  const mode = $('gw-busy-mode').value;
+  try {
+    await api('PATCH', '/api/gateway/config', { busy_input_mode: mode });
+    // Show success message briefly
+    const msg = document.createElement('div');
+    msg.className = 'cc-msg success';
+    msg.textContent = '配置已更新';
+    msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 2000);
+  } catch (e) {
+    alert('更新配置失败: ' + e.message);
+  }
+}
+
+async function restartGateway() {
+  if (!confirm('确定要重启网关吗？这将重启整个 Hakimi 服务。')) return;
+  try {
+    await api('POST', '/api/gateway/restart');
+    // Show success message
+    const msg = document.createElement('div');
+    msg.className = 'cc-msg success';
+    msg.textContent = '正在重启…';
+    msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;';
+    document.body.appendChild(msg);
+    // Reload after 3 seconds
+    setTimeout(() => location.reload(), 3000);
+  } catch (e) {
+    alert('重启失败: ' + e.message);
   }
 }
 

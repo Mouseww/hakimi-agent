@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.3.274-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.276-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.274-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.276-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,20 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.276 — WebUI Gateway 控制面板完整实现 (Gateway Control Panel Complete):**
+- 🎨 **完整前端界面**：WebUI 新增"网关"标签页，提供完整的 Gateway 可视化管理
+- 📊 **实时状态监控**：显示网关运行状态、已连接平台（Telegram、ClawBot）和连接详情
+- ⚙️ **配置实时修改**：可在 WebUI 中直接修改网关配置（忙碌模式 queue/interrupt）
+- 🔄 **一键重启**：提供安全的网关重启功能（通过 systemd），自动重连
+- ✅ **功能验证完成**：Gateway 面板已完整实现，可在浏览器中管理所有网关功能
+
+**v0.3.275 — 消息处理逻辑统一重构 (Message Processing Unification):**
+- 🔄 **代码重构**：提取 `process_gateway_messages_loop()` 函数（1229 行），消除重复代码
+- 🎯 **统一逻辑**：分离模式和统一模式共享相同的消息处理逻辑
+- 📉 **代码简化**：entry.rs 从 10580 行减少到 10510 行，消除 1200+ 行重复代码
+- ✅ **功能完整**：所有命令、Agent 调用、流式响应、工具调用状态更新全部保留
+- 🛡️ **可维护性提升**：未来修复和功能添加只需修改一处代码
 
 **v0.3.274 — 统一模式成为默认行为 (Unified Mode by Default):**
 - 🚀 **默认统一模式**：`hakimi` 命令现在默认启动统一模式（WebUI + Gateway），无需额外参数
