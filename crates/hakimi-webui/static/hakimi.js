@@ -388,11 +388,36 @@ function displayAssistantText(text) {
           <span class="msg-time">${fmtTime(Date.now())}</span>
         </div>
         <div class="msg-bubble">
+          <div class="msg-actions">
+            <button class="msg-action-btn" data-action="copy" title="复制">📋</button>
+            <button class="msg-action-btn" data-action="delete" title="删除">🗑️</button>
+          </div>
           <div class="msg-body"></div>
         </div>
       </div>`;
     container.appendChild(div);
     lastMsg = div;
+    
+    // Bind event listeners for action buttons
+    const copyBtn = lastMsg.querySelector('[data-action="copy"]');
+    const deleteBtn = lastMsg.querySelector('[data-action="delete"]');
+    
+    if (copyBtn) {
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const body = lastMsg.querySelector('.msg-body');
+        copyMessageContent(body ? body.textContent : '');
+      });
+    }
+    
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const msgId = lastMsg.dataset.msgId;
+        const body = lastMsg.querySelector('.msg-body');
+        deleteMessage(msgId, body ? body.textContent : '');
+      });
+    }
   }
 
   const body = lastMsg.querySelector('.msg-body');
@@ -587,7 +612,25 @@ function fallbackCopy(text) {
 
 // ── Delete message ──
 async function deleteMessage(messageId, content) {
-  if (!messageId || !S.session || S.busy) return;
+  if (!messageId) {
+    showToast('❌ 无效的消息 ID', 2000);
+    return;
+  }
+  
+  if (messageId === 'streaming') {
+    showToast('❌ 无法删除正在生成的消息', 2000);
+    return;
+  }
+  
+  if (!S.session) {
+    showToast('❌ 未选择会话', 2000);
+    return;
+  }
+  
+  if (S.busy) {
+    showToast('❌ 系统忙，请稍后再试', 2000);
+    return;
+  }
   
   const preview = content.length > 30 ? content.substring(0, 30) + '...' : content;
   const ok = confirm(`删除消息「${preview}」？此操作不可恢复。`);
@@ -601,7 +644,7 @@ async function deleteMessage(messageId, content) {
     renderMessages();
     showToast('✓ 消息已删除');
   } catch (e) {
-    alert('删除消息失败: ' + e.message);
+    showToast('❌ 删除失败: ' + e.message, 3000);
   }
 }
 
