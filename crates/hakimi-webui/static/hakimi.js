@@ -213,6 +213,7 @@ function renderMessage(msg) {
   const div = document.createElement('div');
   div.className = 'msg';
   div.dataset.msgId = msg.id || '';
+  div.dataset.role = msg.role; // Add data-role for CSS styling
 
   div.innerHTML = `
     <div class="msg-header">
@@ -220,13 +221,21 @@ function renderMessage(msg) {
       <span class="msg-name">${isUser ? '你' : 'Hakimi'}</span>
       ${msg.tool_call_count > 0 ? `<span class="tool-badge">🛠 ${msg.tool_call_count}</span>` : ''}
       <span class="msg-time">${fmtDate(msg.timestamp || msg.created_at)}</span>
+      <div class="msg-actions">
+        <button class="msg-action-btn" data-action="copy" title="复制消息">📋</button>
+        <button class="msg-action-btn" data-action="delete" title="删除消息">🗑️</button>
+      </div>
     </div>
-    <div class="msg-body">${renderMd(msg.content)}</div>`;
+    <div class="msg-bubble">
+      <div class="msg-body">${renderMd(msg.content)}</div>
+    </div>`;
+
+  const bubble = div.querySelector('.msg-bubble');
 
   // Render tool calls if present (rich data from streaming)
   if (msg.tool_calls && msg.tool_calls.length > 0) {
     msg.tool_calls.forEach(tc => {
-      div.appendChild(renderToolCard(tc));
+      bubble.appendChild(renderToolCard(tc));
     });
   }
 
@@ -235,7 +244,25 @@ function renderMessage(msg) {
     const badge = document.createElement('div');
     badge.className = 'tool-name-badge';
     badge.textContent = '🔧 ' + msg.name;
-    div.appendChild(badge);
+    bubble.appendChild(badge);
+  }
+
+  // Add event listeners for message actions
+  const copyBtn = div.querySelector('[data-action="copy"]');
+  const deleteBtn = div.querySelector('[data-action="delete"]');
+  
+  if (copyBtn) {
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyMessageContent(msg.content);
+    });
+  }
+  
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteMessage(msg.id, msg.content);
+    });
   }
 
   return div;
@@ -342,7 +369,6 @@ function appendStreamChunk(text) {
   // Reconstruct buffer with incomplete line
   streamingBuffer = incompleteLine;
 }
-
 function displayAssistantText(text) {
   const container = $('messages');
   let lastMsg = container.lastElementChild;
@@ -351,13 +377,16 @@ function displayAssistantText(text) {
     const div = document.createElement('div');
     div.className = 'msg';
     div.dataset.msgId = 'streaming';
+    div.dataset.role = 'assistant'; // Add data-role for CSS styling
     div.innerHTML = `
       <div class="msg-header">
         <div class="msg-avatar assistant">H</div>
         <span class="msg-name">Hakimi</span>
         <span class="msg-time">${fmtTime(Date.now())}</span>
       </div>
-      <div class="msg-body"></div>`;
+      <div class="msg-bubble">
+        <div class="msg-body"></div>
+      </div>`;
     container.appendChild(div);
     lastMsg = div;
   }
@@ -515,6 +544,82 @@ async function deleteSession(sessionId, title) {
   } catch (e) {
     alert('删除会话失败: ' + e.message);
   }
+}
+
+// ── Copy message content ──
+function copyMessageContent(content) {
+  if (!content) return;
+  
+  // Use Clipboard API if available
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(content)
+      .then(() => {
+        showToast('✓ 已复制到剪贴板');
+      })
+      .catch(() => {
+        // Fallback to textarea method
+        fallbackCopy(content);
+      });
+  } else {
+    fallbackCopy(content);
+  }
+}
+
+function fallbackCopy(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    showToast('✓ 已复制到剪贴板');
+  } catch (e) {
+    showToast('✗ 复制失败');
+  }
+  document.body.removeChild(textarea);
+}
+
+// ── Delete message ──
+async function deleteMessage(messageId, content) {
+  if (!messageId || !S.session || S.busy) return;
+  
+  const preview = content.length > 30 ? content.substring(0, 30) + '...' : content;
+  const ok = confirm(`删除消息「${preview}」？此操作不可恢复。`);
+  if (!ok) return;
+  
+  try {
+    await api('DELETE', `/api/sessions/${encodeURIComponent(S.session.id)}/messages/${encodeURIComponent(messageId)}`);
+    
+    // Remove from local state
+    S.messages = S.messages.filter(m => m.id !== messageId);
+    renderMessages();
+    showToast('✓ 消息已删除');
+  } catch (e) {
+    alert('删除消息失败: ' + e.message);
+  }
+}
+
+// ── Show toast notification ──
+function showToast(message, duration = 2000) {
+  // Remove existing toast
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  // Trigger animation
+  setTimeout(() => toast.classList.add('show'), 10);
+  
+  // Auto remove
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
 }
 
 // ── Load a session ──

@@ -1913,6 +1913,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sessions/{id}", delete(delete_session))
         .route("/sessions/{id}/messages", get(get_session_messages))
         .route("/sessions/{id}/messages", delete(clear_session_messages))
+        .route("/sessions/{id}/messages/{message_id}", delete(delete_session_message))
         .route("/sessions/{id}/fork", post(fork_session))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
@@ -4138,6 +4139,44 @@ async fn clear_session_messages(
         "object": "hakimi.session.messages.clear",
         "id": id,
         "cleared": true
+    })))
+}
+
+/// DELETE /sessions/:id/messages/:message_id — delete a single message from a session.
+async fn delete_session_message(
+    State(state): State<AppState>,
+    Path((session_id, message_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::MessageOps;
+
+    let session_id = session_id.trim().to_string();
+    let message_id = message_id.trim().to_string();
+    validate_api_session_id(&session_id)?;
+    
+    let deleted = state
+        .session_db
+        .lock()
+        .await
+        .delete_message(&session_id, &message_id)
+        .map_err(|e| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to delete message: {e}"),
+            )
+        })?;
+    
+    if !deleted {
+        return Err(api_error(
+            StatusCode::NOT_FOUND,
+            format!("Message not found: {message_id}"),
+        ));
+    }
+
+    Ok(Json(json!({
+        "object": "hakimi.session.message.delete",
+        "session_id": session_id,
+        "message_id": message_id,
+        "deleted": true
     })))
 }
 

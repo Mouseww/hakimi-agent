@@ -29,6 +29,7 @@ pub trait MessageOps {
         max_messages: Option<usize>,
     ) -> Result<Vec<Message>>;
     fn search_messages(&self, query: &str, limit: i64) -> Result<Vec<SearchResult>>;
+    fn delete_message(&self, session_id: &str, message_id: &str) -> Result<bool>;
 }
 
 impl MessageOps for SessionDB {
@@ -170,6 +171,42 @@ impl MessageOps for SessionDB {
             results.push(row?);
         }
         Ok(results)
+    }
+
+    /// Delete a single message by ID within a session.
+    /// Returns true if the message was deleted, false if not found.
+    fn delete_message(&self, session_id: &str, message_id: &str) -> Result<bool> {
+        let conn = self.conn().lock().unwrap();
+        
+        // Ensure the message exists and belongs to the specified session
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE session_id = ?1 AND id = ?2",
+                params![session_id, message_id],
+                |row| row.get(0),
+            )
+            .context("Failed to check message existence")?;
+
+        if count == 0 {
+            return Ok(false);
+        }
+
+        // Delete the message
+        conn.execute(
+            "DELETE FROM messages WHERE session_id = ?1 AND id = ?2",
+            params![session_id, message_id],
+        )
+        .context("Failed to delete message")?;
+
+        // Decrement message_count on the parent session
+        conn.execute(
+            "UPDATE sessions SET message_count = message_count - 1 WHERE id = ?1",
+            params![session_id],
+        )
+        .context("Failed to decrement message_count")?;
+
+        debug!("Deleted message {message_id} from session {session_id}");
+        Ok(true)
     }
 }
 
