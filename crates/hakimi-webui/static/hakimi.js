@@ -198,6 +198,8 @@ function renderMd(text) {
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
   // Paragraphs and line breaks (LAST)
+  // Collapse multiple newlines (3+ → 2) to avoid excessive spacing
+  html = html.replace(/\n{3,}/g, '\n\n');
   html = html.replace(/\n\n/g, '</p><p>');
   html = html.replace(/\n/g, '<br>');
 
@@ -363,8 +365,7 @@ function displayAssistantText(text) {
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
     // During streaming: render Markdown in real-time for better UX
-    // Remove the pre-wrap style since we're using HTML now
-    body.removeAttribute('style');
+    // v0.3.277-realtime-md
     body.innerHTML = renderMd(text);
     container.scrollTop = container.scrollHeight;
   }

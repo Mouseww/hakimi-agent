@@ -373,7 +373,7 @@ html, body {
   font-size: 14px;
   word-wrap: break-word;
 }
-.msg-body p { margin-bottom: 8px; }
+.msg-body p { margin-bottom: 6px; }
 .msg-body p:last-child { margin-bottom: 0; }
 
 /* Markdown */
