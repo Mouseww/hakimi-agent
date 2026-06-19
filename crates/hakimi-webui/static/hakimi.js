@@ -262,22 +262,45 @@ function renderMessages() {
 }
 
 // ── Append streaming chunk to last assistant message ──
-let streamingToolStatus = ''; // Track tool calls separately
-let streamingAssistantText = ''; // Track assistant reply separately
+let streamingBuffer = ''; // Accumulate all chunks
 
 function appendStreamChunk(text) {
-  // Detect tool status lines (e.g., "⚙️ terminal (command: xxx)")
-  const isToolStatus = /^[⚙️🔧🛠️]/.test(text) || /^hakimi_tool:/.test(text);
+  streamingBuffer += text;
   
-  if (isToolStatus) {
-    // Accumulate tool status
-    streamingToolStatus += text;
-    updateToolStatusDisplay(streamingToolStatus);
-    return;
+  // Split buffer into lines to detect tool status
+  const lines = streamingBuffer.split('\n');
+  
+  // Keep the last incomplete line in buffer
+  const incompleteLine = lines.pop() || '';
+  
+  let assistantLines = [];
+  let toolLines = [];
+  
+  for (const line of lines) {
+    // Detect tool status lines
+    if (/^[⚙️🔧🛠️💾]/.test(line) || /^hakimi_tool:/.test(line) || /^hakimi_review:/.test(line)) {
+      toolLines.push(line);
+    } else if (line.trim()) {
+      assistantLines.push(line);
+    }
   }
+  
+  // Update tool status display if we have tool lines
+  if (toolLines.length > 0) {
+    updateToolStatusDisplay(toolLines.join('\n'));
+  }
+  
+  // Reconstruct buffer with incomplete line
+  streamingBuffer = incompleteLine;
+  
+  // Display assistant text
+  if (assistantLines.length > 0) {
+    const assistantText = assistantLines.join('\n');
+    displayAssistantChunk(assistantText);
+  }
+}
 
-  // Regular assistant text
-  streamingAssistantText += text;
+function displayAssistantChunk(text) {
   const container = $('messages');
   let lastMsg = container.lastElementChild;
 
@@ -298,7 +321,10 @@ function appendStreamChunk(text) {
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    body.innerHTML = renderMd(streamingAssistantText);
+    const currentText = body.getAttribute('data-raw-text') || '';
+    const newText = currentText + (currentText ? '\n' : '') + text;
+    body.setAttribute('data-raw-text', newText);
+    body.innerHTML = renderMd(newText);
     container.scrollTop = container.scrollHeight;
   }
 }
@@ -330,9 +356,10 @@ function updateToolStatusDisplay(statusText) {
     document.body.appendChild(statusBar);
   }
   
-  // Clean up hakimi_tool: prefix and show last few lines
+  // Clean up prefixes and show last few lines
   const cleanText = statusText
-    .replace(/hakimi_tool:/g, '')
+    .replace(/hakimi_tool:/g, '🔧')
+    .replace(/hakimi_review:/g, '💭')
     .trim()
     .split('\n')
     .slice(-3)  // Only show last 3 tool calls
@@ -347,8 +374,7 @@ function clearToolStatusDisplay() {
   if (statusBar) {
     statusBar.remove();
   }
-  streamingToolStatus = '';
-  streamingAssistantText = '';
+  streamingBuffer = '';
 }
 
 // ── Finalize streaming message ──
@@ -356,19 +382,25 @@ function finalizeStream(fullText, msgId) {
   // Clear tool status display
   clearToolStatusDisplay();
   
-  // Use accumulated assistant text instead of fullText (which may contain tool status)
-  const cleanText = streamingAssistantText || fullText;
-  
   const container = $('messages');
   const streamingMsg = container.querySelector('[data-msg-id="streaming"]');
+  
   if (streamingMsg) {
     streamingMsg.dataset.msgId = msgId || '';
     const body = streamingMsg.querySelector('.msg-body');
-    if (body) body.innerHTML = renderMd(cleanText);
+    if (body) {
+      // Use accumulated clean text from data-raw-text attribute
+      const cleanText = body.getAttribute('data-raw-text') || fullText;
+      body.innerHTML = renderMd(cleanText);
+      body.removeAttribute('data-raw-text');
+    }
   }
 
   const existing = S.messages.find(m => m && m.id === msgId);
   if (!existing) {
+    const body = streamingMsg?.querySelector('.msg-body');
+    const cleanText = body?.getAttribute('data-raw-text') || fullText;
+    
     S.messages.push({
       role: 'assistant',
       content: cleanText || '',
@@ -378,8 +410,7 @@ function finalizeStream(fullText, msgId) {
   }
   
   // Reset streaming state
-  streamingToolStatus = '';
-  streamingAssistantText = '';
+  streamingBuffer = '';
 }
 
 // ── Render sessions list ──
@@ -527,8 +558,7 @@ async function sendMessage() {
   $('sendBtn').disabled = true;
 
   // Clear previous streaming state
-  streamingToolStatus = '';
-  streamingAssistantText = '';
+  streamingBuffer = '';
   clearToolStatusDisplay();
 
   // ── SSE Streaming ──
