@@ -355,16 +355,17 @@ function displayAssistantText(text) {
         <span class="msg-name">Hakimi</span>
         <span class="msg-time">${fmtTime(Date.now())}</span>
       </div>
-      <div class="msg-body" style="white-space: pre-wrap;"></div>`;
+      <div class="msg-body"></div>`;
     container.appendChild(div);
     lastMsg = div;
   }
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    // During streaming: show plain text with preserved line breaks
-    // Use innerText (preserves \n) instead of textContent (may collapse whitespace)
-    body.innerText = text;
+    // During streaming: render Markdown in real-time for better UX
+    // Remove the pre-wrap style since we're using HTML now
+    body.removeAttribute('style');
+    body.innerHTML = renderMd(text);
     container.scrollTop = container.scrollHeight;
   }
 }
@@ -434,8 +435,7 @@ function finalizeStream(fullText, msgId) {
     streamingMsg.dataset.msgId = msgId || '';
     const body = streamingMsg.querySelector('.msg-body');
     if (body) {
-      // Finalize: render Markdown and remove pre-wrap style
-      body.removeAttribute('style');
+      // Finalize: ensure final Markdown rendering with clean text
       body.innerHTML = renderMd(cleanText);
     }
   }
