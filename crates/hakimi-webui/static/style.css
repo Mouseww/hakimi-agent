@@ -337,7 +337,7 @@ html, body {
 .msg {
   display: flex;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 16px; /* More space between messages */
   animation: msgIn 0.2s ease-out;
 }
 @keyframes msgIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -352,7 +352,7 @@ html, body {
 .msg[data-role="user"] .msg-bubble {
   background: var(--accent-bg);
   color: var(--accent);
-  border-radius: 18px 18px 4px 18px;
+  border-radius: 18px 18px 4px 18px; /* Tail on bottom-right */
 }
 
 /* Assistant messages: left-aligned with avatar */
@@ -362,20 +362,20 @@ html, body {
 .msg[data-role="assistant"] .msg-bubble {
   background: var(--surface);
   color: var(--text);
-  border-radius: 18px 18px 18px 4px;
+  border-radius: 18px 18px 18px 4px; /* Tail on bottom-left */
 }
 
 .msg-avatar {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   flex-shrink: 0;
-  margin-top: 4px; /* Align with bubble top */
+  margin-top: 0; /* Align with bubble top */
 }
 .msg-avatar.assistant { 
   background: linear-gradient(135deg, #7C5CBF, #5C3CAF); 
@@ -385,16 +385,16 @@ html, body {
 .msg-content {
   display: flex;
   flex-direction: column;
-  max-width: 70%;
-  min-width: 120px;
+  max-width: 65%; /* Slightly narrower for better readability */
+  min-width: 100px;
 }
 
 .msg-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
-  font-size: 12px;
+  margin-bottom: 2px; /* Tighter spacing */
+  font-size: 11px;
   padding-left: 2px;
 }
 .msg[data-role="user"] .msg-header {
@@ -403,53 +403,52 @@ html, body {
 
 .msg-name {
   font-weight: 600;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.msg-time {
   font-size: 11px;
   color: var(--text-dim);
 }
 
+.msg-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
 .msg-bubble {
-  padding: 10px 14px;
-  padding-top: 32px; /* Extra space for action buttons */
+  padding: 8px 12px; /* Tighter padding like Telegram */
   position: relative;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  word-break: break-word; /* Prevent long words from breaking layout */
 }
 .msg-bubble:hover .msg-actions {
-  opacity: 1;
+  opacity: 1; /* Full opacity on hover */
 }
 
 /* Message actions inside bubble */
 .msg-actions {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   display: flex;
   gap: 2px;
-  opacity: 0.3; /* Always visible but subtle */
-  transition: opacity 0.2s;
+  opacity: 0; /* Hidden by default, visible on hover */
+  transition: opacity 0.15s;
   z-index: 10;
 }
-.msg-bubble:hover .msg-actions {
-  opacity: 1; /* Full opacity on hover */
-}
 .msg-action-btn {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
   border: none;
-  padding: 3px 5px;
+  padding: 4px 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 4px;
-  transition: all 0.2s;
+  transition: all 0.15s;
   line-height: 1;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 .msg-action-btn:hover {
   background: #fff;
-  transform: scale(1.05);
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
 }
 .msg-action-btn:active {
   transform: scale(0.95);

@@ -249,27 +249,8 @@ function renderMessage(msg) {
     bubble.appendChild(badge);
   }
 
-  // Add event listeners for message actions
-  const copyBtn = div.querySelector('[data-action="copy"]');
-  const deleteBtn = div.querySelector('[data-action="delete"]');
+  // Event listeners are now handled by global delegation (see DOMContentLoaded)
   
-  console.log('[DEBUG] renderMessage - copyBtn:', copyBtn, 'deleteBtn:', deleteBtn, 'msg.id:', msg.id);
-  
-  if (copyBtn) {
-    copyBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      copyMessageContent(msg.content);
-    });
-  }
-  
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      console.log('[DEBUG] Delete button clicked, msg.id:', msg.id, 'msg.content:', msg.content);
-      deleteMessage(msg.id, msg.content);
-    });
-  }
-
   return div;
 }
 
@@ -401,28 +382,7 @@ function displayAssistantText(text) {
     container.appendChild(div);
     lastMsg = div;
     
-    // Bind event listeners for action buttons
-    const copyBtn = lastMsg.querySelector('[data-action="copy"]');
-    const deleteBtn = lastMsg.querySelector('[data-action="delete"]');
-    
-    if (copyBtn) {
-      copyBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const body = lastMsg.querySelector('.msg-body');
-        copyMessageContent(body ? body.textContent : '');
-      });
-    }
-    
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // Read msgId dynamically at click time (not at bind time)
-        // because streaming messages update dataset.msgId after completion
-        const msgId = lastMsg.dataset.msgId;
-        const body = lastMsg.querySelector('.msg-body');
-        deleteMessage(msgId, body ? body.textContent : '');
-      });
-    }
+    // Event listeners are now handled by global delegation (see DOMContentLoaded)
   }
 
   const body = lastMsg.querySelector('.msg-body');
@@ -1519,6 +1479,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('sendBtn').addEventListener('click', sendMessage);
   
   setupSlashCommands($('msg-input'));
+
+  // Global event delegation for message action buttons
+  document.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!target.classList.contains('msg-action-btn')) return;
+    
+    e.stopPropagation();
+    const action = target.dataset.action;
+    const msgDiv = target.closest('.msg');
+    if (!msgDiv) return;
+    
+    const msgId = msgDiv.dataset.msgId;
+    const body = msgDiv.querySelector('.msg-body');
+    const content = body ? body.textContent : '';
+    
+    console.log('[DEBUG] Action button clicked:', action, 'msgId:', msgId);
+    
+    if (action === 'copy') {
+      copyMessageContent(content);
+    } else if (action === 'delete') {
+      deleteMessage(msgId, content);
+    }
+  });
 
   $('msg-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
