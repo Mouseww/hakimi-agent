@@ -513,6 +513,10 @@ html, body {
   padding: 12px 14px;
   margin: 8px 0;
   overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre; /* Preserve spaces and newlines */
 }
 .msg-body pre code {
   background: none;

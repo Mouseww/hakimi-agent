@@ -144,6 +144,24 @@ function renderMd(text) {
     return `<pre><code${langClass}>${highlighted}</code></pre>`;
   });
 
+  // Auto-detect unformatted code blocks (tree structures, indented code)
+  // Match 3+ consecutive lines with: tree chars (├─└│), pipe+dash (|——), leading spaces (4+), or comment (#)
+  html = html.replace(/(?:^|\n)((?:[ ]{4,}.*|[├─└│|].*|#[^\n]*)\n){3,}/gm, (match) => {
+    // Extract the block content (trim leading/trailing newlines)
+    const content = match.trim();
+    // Check if it's really code-like (not just a list or normal text)
+    const hasTreeChars = /[├─└│]/.test(content);
+    const hasPipeDash = /\|[─—]+/.test(content);
+    const hasIndentation = /^[ ]{4,}/m.test(content);
+    const hasComments = /^#[^\n]/m.test(content);
+    
+    if (hasTreeChars || hasPipeDash || (hasIndentation && hasComments)) {
+      // Wrap in <pre> to preserve formatting
+      return `\n<pre class="auto-detected">${content}</pre>\n`;
+    }
+    return match; // Not code, keep as-is
+  });
+
   // Tables
   html = html.replace(/(\|[^\n]+\|\n)+/g, (match) => {
     const lines = match.trim().split('\n');
