@@ -463,7 +463,9 @@ async function loadSession(sessionId) {
 async function loadSessions() {
   try {
     const resp = await api('GET', '/api/sessions?limit=50');
-    S.sessions = Array.isArray(resp) ? resp : (resp.data || []);
+    const sessions = Array.isArray(resp) ? resp : (resp.data || []);
+    // Reverse order: newest sessions at the bottom (chat-style)
+    S.sessions = sessions.reverse();
     renderSessions();
   } catch (e) {
     console.error('loadSessions error:', e);
