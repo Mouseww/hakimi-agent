@@ -262,7 +262,22 @@ function renderMessages() {
 }
 
 // ── Append streaming chunk to last assistant message ──
+let streamingToolStatus = ''; // Track tool calls separately
+let streamingAssistantText = ''; // Track assistant reply separately
+
 function appendStreamChunk(text) {
+  // Detect tool status lines (e.g., "⚙️ terminal (command: xxx)")
+  const isToolStatus = /^[⚙️🔧🛠️]/.test(text) || /^hakimi_tool:/.test(text);
+  
+  if (isToolStatus) {
+    // Accumulate tool status
+    streamingToolStatus += text;
+    updateToolStatusDisplay(streamingToolStatus);
+    return;
+  }
+
+  // Regular assistant text
+  streamingAssistantText += text;
   const container = $('messages');
   let lastMsg = container.lastElementChild;
 
@@ -283,31 +298,88 @@ function appendStreamChunk(text) {
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    const current = body.textContent;
-    body.innerHTML = renderMd(current + text);
+    body.innerHTML = renderMd(streamingAssistantText);
     container.scrollTop = container.scrollHeight;
   }
 }
 
+// ── Display tool status in a subtle status bar ──
+function updateToolStatusDisplay(statusText) {
+  let statusBar = $('tool-status-bar');
+  if (!statusBar) {
+    statusBar = document.createElement('div');
+    statusBar.id = 'tool-status-bar';
+    statusBar.style.cssText = `
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 600px;
+      padding: 8px 16px;
+      background: rgba(128, 128, 128, 0.15);
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: 'SF Mono', 'Consolas', monospace;
+      white-space: pre-wrap;
+      max-height: 100px;
+      overflow-y: auto;
+      z-index: 1000;
+      opacity: 0.8;
+    `;
+    document.body.appendChild(statusBar);
+  }
+  
+  // Clean up hakimi_tool: prefix and show last few lines
+  const cleanText = statusText
+    .replace(/hakimi_tool:/g, '')
+    .trim()
+    .split('\n')
+    .slice(-3)  // Only show last 3 tool calls
+    .join('\n');
+  
+  statusBar.textContent = cleanText;
+}
+
+// ── Clear tool status display ──
+function clearToolStatusDisplay() {
+  const statusBar = $('tool-status-bar');
+  if (statusBar) {
+    statusBar.remove();
+  }
+  streamingToolStatus = '';
+  streamingAssistantText = '';
+}
+
 // ── Finalize streaming message ──
 function finalizeStream(fullText, msgId) {
+  // Clear tool status display
+  clearToolStatusDisplay();
+  
+  // Use accumulated assistant text instead of fullText (which may contain tool status)
+  const cleanText = streamingAssistantText || fullText;
+  
   const container = $('messages');
   const streamingMsg = container.querySelector('[data-msg-id="streaming"]');
   if (streamingMsg) {
     streamingMsg.dataset.msgId = msgId || '';
     const body = streamingMsg.querySelector('.msg-body');
-    if (body) body.innerHTML = renderMd(fullText);
+    if (body) body.innerHTML = renderMd(cleanText);
   }
 
   const existing = S.messages.find(m => m && m.id === msgId);
   if (!existing) {
     S.messages.push({
       role: 'assistant',
-      content: fullText || '',
+      content: cleanText || '',
       id: msgId || 'resp-' + Date.now(),
       timestamp: new Date().toISOString(),
     });
   }
+  
+  // Reset streaming state
+  streamingToolStatus = '';
+  streamingAssistantText = '';
 }
 
 // ── Render sessions list ──
@@ -451,6 +523,11 @@ async function sendMessage() {
 
   S.busy = true;
   $('sendBtn').disabled = true;
+
+  // Clear previous streaming state
+  streamingToolStatus = '';
+  streamingAssistantText = '';
+  clearToolStatusDisplay();
 
   // ── SSE Streaming ──
   const base = document.baseURI || location.href;
