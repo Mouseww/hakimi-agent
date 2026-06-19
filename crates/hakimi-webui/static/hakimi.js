@@ -144,10 +144,36 @@ function renderMd(text) {
     return `<pre><code${langClass}>${highlighted}</code></pre>`;
   });
 
+  // Tables (before inline code)
+  html = html.replace(/(\|[^\n]+\|\n)+/g, (match) => {
+    const lines = match.trim().split('\n');
+    if (lines.length < 2) return match;
+    
+    // Check if second line is a separator (|---|---|)
+    if (!/^\|[\s:|-]+\|$/.test(lines[1])) return match;
+    
+    const headers = lines[0].split('|').slice(1, -1).map(h => h.trim());
+    const rows = lines.slice(2).map(row => 
+      row.split('|').slice(1, -1).map(cell => cell.trim())
+    );
+    
+    let table = '<table><thead><tr>';
+    headers.forEach(h => table += `<th>${h}</th>`);
+    table += '</tr></thead><tbody>';
+    rows.forEach(row => {
+      table += '<tr>';
+      row.forEach(cell => table += `<td>${cell}</td>`);
+      table += '</tr>';
+    });
+    table += '</tbody></table>';
+    return table;
+  });
+
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-  // Headers
+  // Headers (h4 before h3, h3 before h2, etc. to avoid conflicts)
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');

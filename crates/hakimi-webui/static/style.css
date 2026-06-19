@@ -387,8 +387,27 @@ html, body {
 .msg-body h3 { font-size: 15px; }
 .msg-body h4 { font-size: 14px; }
 
-.msg-body ul, .msg-body ol { padding-left: 20px; margin-bottom: 8px; }
+.msg-body ul, .msg-body ol { padding-left: 28px; margin-bottom: 8px; }
 .msg-body li { margin-bottom: 4px; }
+
+.msg-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.msg-body table th, .msg-body table td {
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+}
+.msg-body table th {
+  background: var(--surface);
+  font-weight: 600;
+}
+.msg-body table tr:nth-child(even) {
+  background: var(--surface);
+}
 
 .msg-body code {
   font-family: var(--font-mono);
