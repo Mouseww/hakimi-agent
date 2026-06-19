@@ -263,44 +263,52 @@ function renderMessages() {
 
 // ── Append streaming chunk to last assistant message ──
 let streamingBuffer = ''; // Accumulate all chunks
+let allAssistantText = ''; // Track all assistant text for final save
 
 function appendStreamChunk(text) {
   streamingBuffer += text;
   
-  // Split buffer into lines to detect tool status
+  // Split buffer into lines
   const lines = streamingBuffer.split('\n');
   
   // Keep the last incomplete line in buffer
   const incompleteLine = lines.pop() || '';
   
-  let assistantLines = [];
   let toolLines = [];
+  let regularLines = [];
   
+  // Process complete lines
   for (const line of lines) {
-    // Detect tool status lines
     if (/^[⚙️🔧🛠️💾]/.test(line) || /^hakimi_tool:/.test(line) || /^hakimi_review:/.test(line)) {
       toolLines.push(line);
-    } else if (line.trim()) {
-      assistantLines.push(line);
+    } else {
+      regularLines.push(line);
     }
   }
   
-  // Update tool status display if we have tool lines
+  // Update tool status display
   if (toolLines.length > 0) {
     updateToolStatusDisplay(toolLines.join('\n'));
   }
   
+  // Add complete lines to assistant text
+  if (regularLines.length > 0) {
+    for (const line of regularLines) {
+      allAssistantText += line + '\n';
+    }
+  }
+  
+  // Display everything including incomplete line (for real-time streaming)
+  const displayText = allAssistantText + incompleteLine;
+  if (displayText.trim()) {
+    displayAssistantText(displayText);
+  }
+  
   // Reconstruct buffer with incomplete line
   streamingBuffer = incompleteLine;
-  
-  // Display assistant text
-  if (assistantLines.length > 0) {
-    const assistantText = assistantLines.join('\n');
-    displayAssistantChunk(assistantText);
-  }
 }
 
-function displayAssistantChunk(text) {
+function displayAssistantText(text) {
   const container = $('messages');
   let lastMsg = container.lastElementChild;
 
@@ -321,10 +329,7 @@ function displayAssistantChunk(text) {
 
   const body = lastMsg.querySelector('.msg-body');
   if (body) {
-    const currentText = body.getAttribute('data-raw-text') || '';
-    const newText = currentText + (currentText ? '\n' : '') + text;
-    body.setAttribute('data-raw-text', newText);
-    body.innerHTML = renderMd(newText);
+    body.innerHTML = renderMd(text);
     container.scrollTop = container.scrollHeight;
   }
 }
@@ -375,6 +380,7 @@ function clearToolStatusDisplay() {
     statusBar.remove();
   }
   streamingBuffer = '';
+  allAssistantText = '';
 }
 
 // ── Finalize streaming message ──
@@ -385,22 +391,19 @@ function finalizeStream(fullText, msgId) {
   const container = $('messages');
   const streamingMsg = container.querySelector('[data-msg-id="streaming"]');
   
+  // Use accumulated assistant text (without tool calls)
+  const cleanText = allAssistantText.trim() || fullText;
+  
   if (streamingMsg) {
     streamingMsg.dataset.msgId = msgId || '';
     const body = streamingMsg.querySelector('.msg-body');
     if (body) {
-      // Use accumulated clean text from data-raw-text attribute
-      const cleanText = body.getAttribute('data-raw-text') || fullText;
       body.innerHTML = renderMd(cleanText);
-      body.removeAttribute('data-raw-text');
     }
   }
 
   const existing = S.messages.find(m => m && m.id === msgId);
   if (!existing) {
-    const body = streamingMsg?.querySelector('.msg-body');
-    const cleanText = body?.getAttribute('data-raw-text') || fullText;
-    
     S.messages.push({
       role: 'assistant',
       content: cleanText || '',
@@ -411,6 +414,10 @@ function finalizeStream(fullText, msgId) {
   
   // Reset streaming state
   streamingBuffer = '';
+  allAssistantText = '';
+  
+  // Clear "replying..." status
+  clearReplyingStatus();
 }
 
 // ── Render sessions list ──
@@ -561,7 +568,11 @@ async function sendMessage() {
 
   // Clear previous streaming state
   streamingBuffer = '';
+  allAssistantText = '';
   clearToolStatusDisplay();
+  
+  // Set "replying..." status
+  setReplyingStatus();
 
   // ── SSE Streaming ──
   const base = document.baseURI || location.href;
@@ -667,6 +678,7 @@ async function sendMessage() {
     }
   } finally {
     unlockComposer();
+    clearReplyingStatus();
     input.focus();
     loadSessions();
   }
@@ -776,6 +788,29 @@ function currentSessionTitle() {
 }
 
 function updateTopbar() {
+  const title = $('topbar-title');
+  if (title) {
+    const baseTitle = currentSessionTitle();
+    const replyingStatus = $('replying-status');
+    if (replyingStatus) {
+      // Replying is active, keep existing status
+      title.innerHTML = `${esc(baseTitle)} <span id="replying-status" style="font-size:11px;color:var(--text-dim);font-weight:normal;">正在回复...</span>`;
+    } else {
+      title.textContent = baseTitle;
+    }
+    title.title = '点击切换会话列表';
+  }
+}
+
+function setReplyingStatus() {
+  const title = $('topbar-title');
+  if (title) {
+    const baseTitle = currentSessionTitle();
+    title.innerHTML = `${esc(baseTitle)} <span id="replying-status" style="font-size:11px;color:var(--text-dim);font-weight:normal;">正在回复...</span>`;
+  }
+}
+
+function clearReplyingStatus() {
   const title = $('topbar-title');
   if (title) {
     title.textContent = currentSessionTitle();
