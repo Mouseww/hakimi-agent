@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.3.277-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.282-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.3.277-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.282-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,18 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.3.282 — 智能上下文压缩优化 (Smart Context Compression Tuning):**
+- 🗜️ **更早触发压缩**：压缩阈值从 70% 降低到 60%，避免接近 token 限制时才压缩
+- 📉 **更激进的压缩策略**：
+  - Tier 1 (Drop Tool Results): 保留 50% 最近消息（原 60%）
+  - Tier 2 (Summarize Old Turns): 保留 30% 最近消息（原 40%）
+  - Tier 3 (Sliding Window): 保留最近 10 条消息（不变）
+- 🎯 **优化压缩梯度**：
+  - Tier 1 触发: 60-75% 占用（原 70-85%）
+  - Tier 2 触发: 75-90% 占用（原 85-95%）
+  - Tier 3 触发: >90% 占用（原 >95%）
+- ✅ **效果**：显著降低 context overflow 概率，为长对话腾出更多空间
 
 **v0.3.277 — WebUI 流式输出优化 + 工具调用显示完善 (Streaming & Tool Display Polish):**
 - 🚀 **真正的实时流式输出**：流式阶段使用纯文本显示（`textContent`），消除 Markdown 重复渲染导致的闪烁

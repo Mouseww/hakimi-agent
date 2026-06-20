@@ -283,13 +283,19 @@ impl SmartContextEngine {
     }
 
     /// Determine the compression tier to apply based on how far over budget we are.
+    /// 
+    /// Thresholds:
+    /// - ≤60%: No compression
+    /// - 60-75%: Tier 1 - Drop old tool results  
+    /// - 75-90%: Tier 2 - Summarize old turns
+    /// - >90%: Tier 3 - Sliding window
     fn choose_tier(estimated_tokens: usize, context_length: usize) -> CompressionTier {
         let ratio = estimated_tokens as f64 / context_length as f64;
-        if ratio <= 0.70 {
+        if ratio <= 0.60 {
             CompressionTier::None
-        } else if ratio <= 0.85 {
+        } else if ratio <= 0.75 {
             CompressionTier::DropToolResults
-        } else if ratio <= 0.95 {
+        } else if ratio <= 0.90 {
             CompressionTier::SummarizeOldTurns
         } else {
             CompressionTier::SlidingWindow
@@ -313,7 +319,7 @@ impl ContextEngine for SmartContextEngine {
     }
 
     fn should_compress(&self) -> bool {
-        let threshold = (self.context_length as f64 * 0.70) as usize;
+        let threshold = (self.context_length as f64 * 0.60) as usize;
         self.estimated_tokens > threshold
     }
 
@@ -334,14 +340,15 @@ impl ContextEngine for SmartContextEngine {
             }
             CompressionTier::DropToolResults => {
                 info!("Applying Tier 1: drop old tool results");
-                // Keep the last 60% of messages with full tool results.
-                let keep_recent = (messages.len() as f64 * 0.60).ceil() as usize;
+                // Keep the last 50% of messages with full tool results (was 60%).
+                let keep_recent = (messages.len() as f64 * 0.50).ceil() as usize;
                 let keep_recent = keep_recent.max(4);
                 Self::tier1_drop_tool_results(messages, keep_recent);
             }
             CompressionTier::SummarizeOldTurns => {
                 info!("Applying Tier 2: summarize old turns");
-                let keep_recent = (messages.len() as f64 * 0.40).ceil() as usize;
+                // Keep the last 30% of messages (was 40%).
+                let keep_recent = (messages.len() as f64 * 0.30).ceil() as usize;
                 let keep_recent = keep_recent.max(4);
                 Self::tier2_summarize_old_turns(messages, keep_recent);
             }
