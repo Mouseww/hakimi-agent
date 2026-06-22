@@ -7358,6 +7358,7 @@ async fn start_unified_server(
         std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default()
     };
 
+    let persona_registry = hakimi_core::PersonaRegistry::load(hakimi_dir.join("agents"))?;
     let app_state = hakimi_server::server::AppState {
         agent: agent_arc,
         config: config_arc,
@@ -7367,6 +7368,7 @@ async fn start_unified_server(
         knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
         webui_password: Arc::new(Mutex::new(initial_webui_password)),
         gateway: Some(gateway.clone()),
+        persona_registry: Arc::new(tokio::sync::RwLock::new(persona_registry)),
     };
 
     let app = hakimi_server::api::build_router(app_state);

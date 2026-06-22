@@ -4889,6 +4889,12 @@ mod tests {
                 )),
             ))),
             gateway: None,
+            persona_registry: Arc::new(tokio::sync::RwLock::new(
+                hakimi_core::PersonaRegistry::load(
+                    std::env::temp_dir().join(format!("hakimi-test-agents-{}", std::process::id())),
+                )
+                .unwrap(),
+            )),
         }
     }
 
