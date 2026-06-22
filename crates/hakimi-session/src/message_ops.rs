@@ -177,7 +177,7 @@ impl MessageOps for SessionDB {
     /// Returns true if the message was deleted, false if not found.
     fn delete_message(&self, session_id: &str, message_id: &str) -> Result<bool> {
         let conn = self.conn().lock().unwrap();
-        
+
         // Ensure the message exists and belongs to the specified session
         let count: i64 = conn
             .query_row(

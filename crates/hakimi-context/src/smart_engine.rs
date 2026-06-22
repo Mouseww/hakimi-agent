@@ -283,7 +283,7 @@ impl SmartContextEngine {
     }
 
     /// Determine the compression tier to apply based on how far over budget we are.
-    /// 
+    ///
     /// Thresholds:
     /// - ≤60%: No compression
     /// - 60-75%: Tier 1 - Drop old tool results  

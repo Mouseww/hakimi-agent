@@ -1913,7 +1913,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sessions/{id}", delete(delete_session))
         .route("/sessions/{id}/messages", get(get_session_messages))
         .route("/sessions/{id}/messages", delete(clear_session_messages))
-        .route("/sessions/{id}/messages/{message_id}", delete(delete_session_message))
+        .route(
+            "/sessions/{id}/messages/{message_id}",
+            delete(delete_session_message),
+        )
         .route("/sessions/{id}/fork", post(fork_session))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
@@ -4152,7 +4155,7 @@ async fn delete_session_message(
     let session_id = session_id.trim().to_string();
     let message_id = message_id.trim().to_string();
     validate_api_session_id(&session_id)?;
-    
+
     let deleted = state
         .session_db
         .lock()
@@ -4164,7 +4167,7 @@ async fn delete_session_message(
                 format!("Failed to delete message: {e}"),
             )
         })?;
-    
+
     if !deleted {
         return Err(api_error(
             StatusCode::NOT_FOUND,
