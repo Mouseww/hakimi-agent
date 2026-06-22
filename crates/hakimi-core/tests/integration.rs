@@ -988,3 +988,58 @@ async fn test_set_system_prompt() {
     let result = agent.chat("hello").await.unwrap();
     assert_eq!(result, "ok");
 }
+
+#[tokio::test]
+async fn test_agent_exposes_shared_runtime() {
+    let transport = Arc::new(MockTransport::text_response("ok"));
+    let agent = AIAgent::builder()
+        .model("test-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .session_id("test-shared-runtime")
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    // 4 个共享资源现在统一挂在 agent.shared 上。
+    assert_eq!(agent.shared.transport.provider_name(), "mock");
+    assert!(agent.shared.knowledge_searcher.is_none());
+    assert!(agent.shared.embedding_provider.is_none());
+    // getter 兼容层仍然可用(外部 crate 依赖它)。
+    assert_eq!(agent.provider_name(), "mock");
+}
+
+#[tokio::test]
+async fn test_persona_agent_isolates_state_but_shares_runtime() {
+    use hakimi_core::persona::PersonaConfig;
+    use hakimi_core::persona_runtime::build_persona_agent;
+
+    let transport = Arc::new(MockTransport::text_response("ok"));
+    let template = AIAgent::builder()
+        .model("template-model")
+        .transport(transport)
+        .context_engine(make_context_engine())
+        .workdir("/tmp")
+        .build()
+        .unwrap();
+
+    let mut cfg = PersonaConfig::new("coder");
+    cfg.model = "persona-model".to_string();
+    cfg.system_prompt = "You are coder.".to_string();
+
+    let agent = build_persona_agent(
+        &template,
+        &cfg,
+        std::path::Path::new("/nonexistent-persona-skills"),
+        128_000,
+    );
+
+    // Per-persona model is applied.
+    assert_eq!(agent.model(), "persona-model");
+    // The heavy runtime is SHARED (same Arc), not duplicated.
+    assert!(std::sync::Arc::ptr_eq(&agent.shared, &template.shared));
+    // Provider still resolves through the shared transport.
+    assert_eq!(agent.provider_name(), "mock");
+    // The template is left untouched.
+    assert_eq!(template.model(), "template-model");
+}

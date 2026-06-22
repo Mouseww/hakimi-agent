@@ -84,6 +84,21 @@ impl RuntimeHome {
     pub fn trajectories_dir(&self) -> PathBuf {
         self.home.join("trajectories")
     }
+
+    /// Root directory for this instance's persona registry (`agents/`).
+    pub fn agents_dir(&self) -> PathBuf {
+        self.home.join("agents")
+    }
+
+    /// Directory holding a single persona's isolated data (`agents/<id>/`).
+    pub fn persona_dir(&self, id: &str) -> PathBuf {
+        self.agents_dir().join(id)
+    }
+
+    /// Path to the persona registry index (`agents/registry.yaml`).
+    pub fn agents_registry_path(&self) -> PathBuf {
+        self.agents_dir().join("registry.yaml")
+    }
 }
 
 pub fn default_hakimi_home() -> PathBuf {

@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::conversation::ConversationResult;
 use crate::loop_impl;
+use crate::shared::SharedRuntime;
 use crate::trajectory::TrajectoryConfig;
 
 /// The central AI agent that orchestrates LLM interactions, tool dispatch,
@@ -20,8 +21,7 @@ use crate::trajectory::TrajectoryConfig;
 pub struct AIAgent {
     pub(crate) model: String,
     pub(crate) max_iterations: usize,
-    pub(crate) transport: Arc<dyn ProviderTransport>,
-    pub(crate) tool_registry: ToolRegistry,
+    pub shared: Arc<SharedRuntime>,
     pub(crate) context_engine: Arc<RwLock<dyn ContextEngine>>,
     pub(crate) session_id: String,
     pub(crate) platform: Option<String>,
@@ -33,8 +33,6 @@ pub struct AIAgent {
     pub(crate) system_prompt: Option<String>,
     pub(crate) streaming: bool,
     pub(crate) streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
-    pub(crate) knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
-    pub(crate) embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
     pub(crate) tts_provider: Option<String>,
     pub(crate) tts_model: Option<String>,
@@ -56,8 +54,7 @@ impl Clone for AIAgent {
         Self {
             model: self.model.clone(),
             max_iterations: self.max_iterations,
-            transport: self.transport.clone(),
-            tool_registry: self.tool_registry.clone(),
+            shared: self.shared.clone(),
             context_engine: self.context_engine.clone(),
             session_id: self.session_id.clone(),
             platform: self.platform.clone(),
@@ -69,8 +66,6 @@ impl Clone for AIAgent {
             system_prompt: self.system_prompt.clone(),
             streaming: self.streaming,
             streaming_callback: self.streaming_callback.clone(),
-            knowledge_searcher: self.knowledge_searcher.clone(),
-            embedding_provider: self.embedding_provider.clone(),
             skill_store: self.skill_store.clone(),
             tts_provider: self.tts_provider.clone(),
             tts_model: self.tts_model.clone(),
@@ -136,18 +131,18 @@ impl AIAgent {
         self
     }
 
-    /// Set or replace the embedding provider.
+    /// Set or replace the embedding provider (stored in the shared runtime).
     pub fn with_embedding_provider(mut self, provider: Option<Arc<dyn EmbeddingProvider>>) -> Self {
-        self.embedding_provider = provider;
+        Arc::make_mut(&mut self.shared).embedding_provider = provider;
         self
     }
 
-    /// Set or replace the knowledge searcher.
+    /// Set or replace the knowledge searcher (stored in the shared runtime).
     pub fn with_knowledge_searcher(
         mut self,
         searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
     ) -> Self {
-        self.knowledge_searcher = searcher;
+        Arc::make_mut(&mut self.shared).knowledge_searcher = searcher;
         self
     }
 
@@ -403,6 +398,13 @@ impl AIAgentBuilder {
             .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
         let workdir = self.workdir.unwrap_or_else(|| ".".to_string());
 
+        let shared = Arc::new(SharedRuntime {
+            transport,
+            tool_registry,
+            knowledge_searcher: self.knowledge_searcher,
+            embedding_provider: self.embedding_provider,
+        });
+
         info!(
             session_id = %session_id,
             model = %model,
@@ -413,8 +415,7 @@ impl AIAgentBuilder {
         Ok(AIAgent {
             model,
             max_iterations,
-            transport,
-            tool_registry,
+            shared,
             context_engine,
             session_id,
             platform: self.platform,
@@ -426,8 +427,6 @@ impl AIAgentBuilder {
             system_prompt: self.system_prompt,
             streaming: self.streaming.unwrap_or(false),
             streaming_callback: self.streaming_callback,
-            knowledge_searcher: self.knowledge_searcher,
-            embedding_provider: self.embedding_provider,
             skill_store: Some(
                 self.skill_store
                     .unwrap_or_else(hakimi_skills::SkillStore::empty),
@@ -626,10 +625,10 @@ impl AIAgent {
     pub fn build_tool_context(&self) -> ToolContext {
         let delegate_executor: Option<Arc<dyn hakimi_common::DelegateExecutor>> =
             Some(Arc::new(crate::CoreDelegateExecutor::new(
-                self.transport.clone(),
+                self.shared.transport.clone(),
                 self.context_engine.clone(),
                 self.model.clone(),
-                self.tool_registry.clone(),
+                self.shared.tool_registry.clone(),
                 self.workdir.clone(),
                 self.skill_store.clone(),
                 self.streaming_callback.clone(),
@@ -642,7 +641,7 @@ impl AIAgent {
             workdir: self.workdir.clone(),
             model: Some(self.model.clone()),
             delegate_executor,
-            knowledge_searcher: self.knowledge_searcher.clone(),
+            knowledge_searcher: self.shared.knowledge_searcher.clone(),
             progress_callback: self.streaming_callback.clone(),
             tts_provider: self.tts_provider.clone(),
             tts_model: self.tts_model.clone(),
@@ -683,12 +682,12 @@ impl AIAgent {
 
     /// Get the provider name for the active transport.
     pub fn provider_name(&self) -> &str {
-        self.transport.provider_name()
+        self.shared.transport.provider_name()
     }
 
     /// Get the latest provider rate-limit snapshot, if available.
     pub fn rate_limits(&self) -> Option<hakimi_transports::RateLimitState> {
-        self.transport.rate_limits()
+        self.shared.transport.rate_limits()
     }
 
     /// Get the platform name, if set.
@@ -708,7 +707,7 @@ impl AIAgent {
 
     /// Get a reference to the tool registry.
     pub fn tool_registry(&self) -> &ToolRegistry {
-        &self.tool_registry
+        &self.shared.tool_registry
     }
 
     /// Clear the conversation message history.

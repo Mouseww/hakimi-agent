@@ -29,6 +29,9 @@ pub struct AppState {
     pub webui_password: Arc<Mutex<String>>,
     /// Gateway handle for unified mode (None in WebUI-only mode).
     pub gateway: Option<Arc<hakimi_gateway::Gateway>>,
+    /// Persona registry for multi-agent isolation. Existing endpoints operate on
+    /// the default persona via [`AppState::agent`]; agent-scoped endpoints use this.
+    pub persona_registry: Arc<tokio::sync::RwLock<hakimi_core::PersonaRegistry>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +65,7 @@ impl Server {
         } else {
             std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default()
         };
+        let persona_registry = hakimi_core::PersonaRegistry::load(hakimi_dir.join("agents"))?;
         let state = AppState {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(config)),
@@ -71,6 +75,7 @@ impl Server {
             knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
             webui_password: Arc::new(Mutex::new(initial_webui_password)),
             gateway: None, // WebUI-only mode
+            persona_registry: Arc::new(tokio::sync::RwLock::new(persona_registry)),
         };
         Ok(Self { state })
     }

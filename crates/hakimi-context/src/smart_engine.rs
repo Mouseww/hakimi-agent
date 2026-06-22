@@ -283,7 +283,7 @@ impl SmartContextEngine {
     }
 
     /// Determine the compression tier to apply based on how far over budget we are.
-    /// 
+    ///
     /// Thresholds:
     /// - ≤60%: No compression
     /// - 60-75%: Tier 1 - Drop old tool results  
@@ -580,23 +580,23 @@ mod tests {
         assert_eq!(messages[5].content.as_deref(), Some("reply 6"));
     }
 
-    // ── Compression triggers at 70% threshold ──────────────────────────
+    // ── Compression triggers at 60% threshold ──────────────────────────
 
     #[test]
-    fn test_should_compress_at_70_percent() {
+    fn test_should_compress_at_60_percent() {
         let mut engine = make_engine(1000);
 
-        engine.estimated_tokens = 699;
-        assert!(!engine.should_compress(), "69.9% should not trigger");
+        engine.estimated_tokens = 599;
+        assert!(!engine.should_compress(), "59.9% should not trigger");
 
-        engine.estimated_tokens = 700;
+        engine.estimated_tokens = 600;
         assert!(
             !engine.should_compress(),
-            "70.0% should not trigger (not > 70%)"
+            "60.0% should not trigger (not > 60%)"
         );
 
-        engine.estimated_tokens = 701;
-        assert!(engine.should_compress(), "70.1% should trigger");
+        engine.estimated_tokens = 601;
+        assert!(engine.should_compress(), "60.1% should trigger");
     }
 
     #[test]
@@ -607,7 +607,7 @@ mod tests {
         );
         assert_eq!(
             SmartContextEngine::choose_tier(700, 1000),
-            CompressionTier::None
+            CompressionTier::DropToolResults
         );
         assert_eq!(
             SmartContextEngine::choose_tier(750, 1000),
@@ -885,31 +885,27 @@ mod tests {
     #[test]
     fn test_choose_tier_exact_boundaries() {
         assert_eq!(
-            SmartContextEngine::choose_tier(699, 1000),
+            SmartContextEngine::choose_tier(600, 1000),
             CompressionTier::None
         );
         assert_eq!(
-            SmartContextEngine::choose_tier(700, 1000),
-            CompressionTier::None
-        );
-        assert_eq!(
-            SmartContextEngine::choose_tier(701, 1000),
+            SmartContextEngine::choose_tier(601, 1000),
             CompressionTier::DropToolResults
         );
         assert_eq!(
-            SmartContextEngine::choose_tier(850, 1000),
+            SmartContextEngine::choose_tier(750, 1000),
             CompressionTier::DropToolResults
         );
         assert_eq!(
-            SmartContextEngine::choose_tier(851, 1000),
+            SmartContextEngine::choose_tier(751, 1000),
             CompressionTier::SummarizeOldTurns
         );
         assert_eq!(
-            SmartContextEngine::choose_tier(950, 1000),
+            SmartContextEngine::choose_tier(900, 1000),
             CompressionTier::SummarizeOldTurns
         );
         assert_eq!(
-            SmartContextEngine::choose_tier(951, 1000),
+            SmartContextEngine::choose_tier(901, 1000),
             CompressionTier::SlidingWindow
         );
         assert_eq!(

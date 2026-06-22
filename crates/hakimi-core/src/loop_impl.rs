@@ -115,13 +115,14 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
 
     let tool_ctx = agent.build_tool_context();
     agent
+        .shared
         .tool_registry
         .configure_tool_search(
             agent.tool_search_config.clone(),
             agent.tool_search_context_length,
         )
         .await;
-    let tool_assembly = agent.tool_registry.get_model_definitions().await;
+    let tool_assembly = agent.shared.tool_registry.get_model_definitions().await;
     let tool_defs = tool_assembly.tool_defs;
     let params = RequestParams::default();
 
@@ -177,7 +178,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
 
         // Fetch a response (streaming or non-streaming).
         let mut response = match fetch_response(
-            agent.transport.as_ref(),
+            agent.shared.transport.as_ref(),
             &agent.model,
             streaming,
             &send_messages,
@@ -673,7 +674,7 @@ async fn process_tool_calls(
             GuardrailDecision::Allow => {}
         }
 
-        let registry = agent.tool_registry.clone();
+        let registry = agent.shared.tool_registry.clone();
         futures.push(async move { dispatch_tool(&registry, tool_ctx, tc).await });
     }
 
