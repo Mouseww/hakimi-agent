@@ -8,10 +8,12 @@ pub mod file_safety;
 pub mod guardrails;
 pub mod loop_impl;
 pub mod retry;
+pub mod shared;
 pub mod trajectory;
 pub mod turn_retry_state;
 
 pub use agent::{AIAgent, AIAgentBuilder};
+pub use shared::SharedRuntime;
 pub use budget::IterationBudget;
 pub use conversation::ConversationResult;
 pub use credential_pool::{Credential, CredentialPool, CredentialStatus, RotationStrategy};
