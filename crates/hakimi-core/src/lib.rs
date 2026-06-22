@@ -9,6 +9,7 @@ pub mod guardrails;
 pub mod loop_impl;
 pub mod persona;
 pub mod persona_registry;
+pub mod persona_runtime;
 pub mod retry;
 pub mod shared;
 pub mod trajectory;
@@ -24,6 +25,7 @@ pub use guardrails::{GuardrailDecision, IdempotencyTracker, ToolCallObservation,
 pub use hakimi_common::SecretRedactor;
 pub use persona::{PersonaConfig, RegistryIndex};
 pub use persona_registry::{DEFAULT_PERSONA_ID, PersonaRegistry};
+pub use persona_runtime::{PersonaRuntime, build_persona_agent};
 pub use shared::SharedRuntime;
 pub use trajectory::{TrajectoryConfig, convert_to_trajectory_format, save_trajectory};
 pub use turn_retry_state::TurnRetryState;
