@@ -13,10 +13,12 @@
 - **P2a 人格模型+存储**(`71a6e31`):`crates/hakimi-core/src/persona.rs`(`PersonaConfig`/`RegistryIndex`/load/save)+ `RuntimeHome::agents_dir/persona_dir/agents_registry_path`。
 - **P2b 路由 registry + 活体 Agent**(`4dce0c5`、`63ee77b`):`persona_registry.rs`(`PersonaRegistry`:load/get/`resolve_for_channel`/create/update/delete/persist + `DEFAULT_PERSONA_ID`)、`persona_runtime.rs`(`build_persona_agent`:clone 模板共享 SharedRuntime + 覆盖 model/prompt/独立 context_engine/skills)。CI 绿。
 - **P2c AppState 接入 registry**(`ab7c1f4`):`server.rs` 加 `persona_registry: Arc<tokio::sync::RwLock<PersonaRegistry>>`,3 处构造点加载(server.rs / entry.rs / api.rs test)。**CI 绿**(run 27963649709)。现有端点行为不变(仍走 `state.agent` = 默认人格);registry 已就位待 P3/P4 使用。
+- **P3 Gateway 路由**(`eba0e75`):gateway 消息循环改用 `registry.resolve_for_channel(platform, bot_id)` 取人格并派发到该人格 agent;per-chat histories 改用 `persona_id:chat_id` key 下沉到人格(读/写/`/clear`/`/undo` 一致)。计划:`docs/superpowers/plans/2026-06-22-p3-gateway-persona-routing.md`。新增 `gateway_history_key` + `build_gateway_persona_agents`;`process_gateway_messages_loop` 增 `persona_registry`/`persona_agents` 两参;`start_gateway` + `start_unified_server` 双入口接线(统一模式与 AppState 共享同一 registry Arc)。默认人格(id=`default`)保持 legacy 行为(复用 `agent_arc` + `config.roles[default]` prompt + root memory);命名人格独立 model/prompt/context/skills(`agents/<id>/skills`)/memory(`agents/<id>/memory`),无预构建 agent 时按 legacy 兜底。**本地 Docker 验证通过**(fmt + clippy `-Dwarnings` + test);**CI 待推送确认**(本机 push 需交互式 GCM,由用户推送)。
 
 ## 剩余工作(按序)
-- **P3 Gateway 路由**:gateway 消息循环改用 `registry.resolve_for_channel(platform, bot_id)` 取人格并派发到该人格 agent;per-chat histories 下沉到人格。入口:`crates/hakimi-cli/src/entry.rs` 的 gateway 消息处理(原单 `agent_arc` 处;`task_key = platform:bot_id:chat_id`)。
+- ~~**P3 Gateway 路由**~~ — 已完成(见上,`eba0e75`)。
 - **P4 Agent 维度 API**:`/api/agents`(GET/POST)、`/api/agents/{id}`(GET/PATCH/DELETE)、`/api/agents/{id}/chat`、`/api/bindings`,用 `state.persona_registry`。位置:`crates/hakimi-server/src/api.rs`(`build_router` ~1903 + handlers)。契约见 spec §3.6。现有端点保持指向默认人格(向后兼容)。
+  - **P3 留给 P4 的钩子**:gateway 的 `persona_agents`(预构建 base agents `HashMap`)在 `start_gateway`/`start_unified_server` 启动时构建一次,binding 解析读的是共享 `Arc<RwLock<PersonaRegistry>>`(改绑定即时生效),但**新建人格的 agent 实例需要在 CRUD 后重建/插入该 map** 才能在 gateway 侧免重启热生效(P3 对未在 map 中的命名人格按 legacy 兜底)。考虑把 `persona_agents` 也升级为 `Arc<RwLock<…>>` 并在 create/delete 时同步。
 - **P5 WebUI**:Layout A(左侧人格栏)+ 人格配置表单 + 实例设置/绑定总览。前端 `hakimi-webui/`(React19 + Vite + Tailwind4)。3 个已确认 mockup 概念见 spec §4。
 - **前向兼容钩子**(spec §5.2):`agent:<id>` 寻址(多 Agent 互聊)留作后续单独 spec,本期只在 `send_message` target 解析预留;无 channel 的人格在 WebUI 内已天然可用。
 
