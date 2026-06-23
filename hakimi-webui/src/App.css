@@ -256,7 +256,38 @@ h3 {
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: minmax(260px, 320px) minmax(420px, 1fr) minmax(340px, 470px);
+  /* Narrower side columns so the chat (center) gets the bulk of the width.
+     The two side columns are collapsible (see toggles in the chat header). */
+  --col-sessions: minmax(204px, 248px);
+  --col-panel: minmax(288px, 340px);
+  grid-template-columns: var(--col-sessions) minmax(420px, 1fr) var(--col-panel);
+}
+
+.workspace-grid.sessions-collapsed {
+  --col-sessions: 0px;
+}
+
+.workspace-grid.panel-collapsed {
+  --col-panel: 0px;
+}
+
+/* Pin each pane to its track so a hidden (display:none) side rail never makes
+   the chat column auto-place into a collapsed 0px track. */
+.workspace-grid > .left-rail {
+  grid-column: 1;
+}
+
+.workspace-grid > .chat-column {
+  grid-column: 2;
+}
+
+.workspace-grid > .right-rail {
+  grid-column: 3;
+}
+
+.workspace-grid.sessions-collapsed .left-rail,
+.workspace-grid.panel-collapsed .right-rail {
+  display: none;
 }
 
 .left-rail,
@@ -1059,6 +1090,20 @@ h3 {
   color: var(--green-strong);
 }
 
+/* Chat header collapse toggles */
+
+.chat-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-button.is-active {
+  border-color: var(--green);
+  background: rgba(36, 115, 92, 0.1);
+  color: var(--green-strong);
+}
+
 /* Persona config form */
 
 .persona-form {
@@ -1207,7 +1252,8 @@ h3 {
 
 @media (max-width: 1280px) {
   .workspace-grid {
-    grid-template-columns: minmax(240px, 290px) minmax(360px, 1fr) minmax(300px, 390px);
+    --col-sessions: minmax(180px, 220px);
+    --col-panel: minmax(248px, 296px);
   }
 
   .panel-tabs button span {

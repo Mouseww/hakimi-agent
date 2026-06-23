@@ -11,6 +11,8 @@ import {
   Layers3,
   Loader2,
   MessageSquare,
+  PanelLeft,
+  PanelRight,
   RefreshCcw,
   Search,
   Send,
@@ -165,6 +167,8 @@ function App() {
   const [activePersonaId, setActivePersonaId] = useState<string | null>(null);
   const [view, setView] = useState<'chat' | 'config' | 'instance'>('chat');
   const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
+  const [showSessions, setShowSessions] = useState(true);
+  const [showPanel, setShowPanel] = useState(true);
 
   const activePersona = useMemo(
     () => agents.find((a) => a.id === activePersonaId) ?? null,
@@ -515,7 +519,9 @@ function App() {
               onCancel={() => setView('chat')}
             />
           ) : (
-            <div className="workspace-grid">
+            <div
+              className={`workspace-grid ${showSessions ? '' : 'sessions-collapsed'} ${showPanel ? '' : 'panel-collapsed'}`}
+            >
         <aside className="left-rail">
           <section className="rail-section rail-section-metrics" aria-label="Runtime summary">
             <div className="metric-strip">
@@ -581,15 +587,35 @@ function App() {
               <p className="eyebrow">Live Agent</p>
               <h2>{activePersona ? activePersona.name || activePersona.id : 'Chat'}</h2>
             </div>
-            <div className="chat-badges">
-              <span>
-                <Brain size={14} aria-hidden="true" />
-                {data.status?.runtime.mode ?? 'server_agent'}
-              </span>
-              <span>
-                <SquareTerminal size={14} aria-hidden="true" />
-                {data.status?.runtime.tool_execution ?? 'server'}
-              </span>
+            <div className="chat-header-tools">
+              <button
+                className={`icon-button ${showSessions ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setShowSessions((value) => !value)}
+                title={showSessions ? 'Hide sessions' : 'Show sessions'}
+                aria-pressed={showSessions}
+              >
+                <PanelLeft size={16} aria-hidden="true" />
+              </button>
+              <button
+                className={`icon-button ${showPanel ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setShowPanel((value) => !value)}
+                title={showPanel ? 'Hide panel' : 'Show panel'}
+                aria-pressed={showPanel}
+              >
+                <PanelRight size={16} aria-hidden="true" />
+              </button>
+              <div className="chat-badges">
+                <span>
+                  <Brain size={14} aria-hidden="true" />
+                  {data.status?.runtime.mode ?? 'server_agent'}
+                </span>
+                <span>
+                  <SquareTerminal size={14} aria-hidden="true" />
+                  {data.status?.runtime.tool_execution ?? 'server'}
+                </span>
+              </div>
             </div>
           </section>
 
