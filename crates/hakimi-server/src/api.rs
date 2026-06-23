@@ -5530,9 +5530,17 @@ mod tests {
             ))),
             gateway: None,
             persona_registry: Arc::new(tokio::sync::RwLock::new(
-                hakimi_core::PersonaRegistry::load(
-                    std::env::temp_dir().join(format!("hakimi-test-agents-{}", std::process::id())),
-                )
+                hakimi_core::PersonaRegistry::load({
+                    // Unique per `test_state()` call so parallel tests that create
+                    // the same persona id don't collide on a shared on-disk registry.
+                    use std::sync::atomic::{AtomicU64, Ordering};
+                    static SEQ: AtomicU64 = AtomicU64::new(0);
+                    std::env::temp_dir().join(format!(
+                        "hakimi-test-agents-{}-{}",
+                        std::process::id(),
+                        SEQ.fetch_add(1, Ordering::Relaxed)
+                    ))
+                })
                 .unwrap(),
             )),
             persona_agents: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
