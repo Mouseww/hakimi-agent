@@ -2027,8 +2027,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/agents/{id}", patch(update_agent))
         .route("/agents/{id}", delete(delete_agent))
         .route("/agents/{id}/chat", post(agent_chat))
+        .route("/agents/{id}/chat/stream", post(agent_chat_stream))
         .route("/agents/{id}/skills", get(agent_skills))
         .route("/agents/{id}/memory", get(agent_memory))
+        .route("/agents/{id}/sessions", get(agent_sessions))
         .route("/bindings", get(list_bindings));
 
     api_routes = api_routes.route_layer(middleware::from_fn_with_state(
@@ -3687,6 +3689,229 @@ async fn agent_memory(
     }))
 }
 
+/// Build an SSE `Response` from an mpsc receiver carrying `__DONE__`/`__ERROR__`/
+/// token-prefixed messages.
+fn sse_response_from_rx(rx: tokio::sync::mpsc::Receiver<String>) -> Response {
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        rx.recv().await.map(|msg| {
+            if let Some(payload) = msg.strip_prefix("__DONE__") {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("done").data(payload)),
+                    rx,
+                )
+            } else if let Some(payload) = msg.strip_prefix("__ERROR__") {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("error").data(payload)),
+                    rx,
+                )
+            } else {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("token").data(msg)),
+                    rx,
+                )
+            }
+        })
+    });
+    Sse::new(stream).into_response()
+}
+
+/// Resolve a persona's session database. The default persona uses the instance
+/// DB; named personas open + cache `agents/<id>/sessions.db` on first access.
+async fn resolve_persona_session_db(
+    state: &AppState,
+    id: &str,
+) -> Result<
+    std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    if id == hakimi_core::DEFAULT_PERSONA_ID {
+        return Ok(state.session_db.clone());
+    }
+    if let Some(db) = state.persona_session_dbs.read().await.get(id) {
+        return Ok(db.clone());
+    }
+    let path = {
+        let reg = state.persona_registry.read().await;
+        reg.agents_dir().join(id).join("sessions.db")
+    };
+    let db = tokio::task::spawn_blocking(move || {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let db = hakimi_session::SessionDB::new(&path)?;
+        db.initialize()?;
+        Ok::<_, anyhow::Error>(db)
+    })
+    .await
+    .map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("join error: {e}"),
+        )
+    })?
+    .map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("open session db: {e}"),
+        )
+    })?;
+    let arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
+    state
+        .persona_session_dbs
+        .write()
+        .await
+        .insert(id.to_string(), arc.clone());
+    Ok(arc)
+}
+
+/// GET /api/agents/{id}/sessions — recent sessions from the persona's database.
+async fn agent_sessions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<SessionInfo>>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+    {
+        let reg = state.persona_registry.read().await;
+        if reg.get(&id).is_none() {
+            return Err(api_error(
+                StatusCode::NOT_FOUND,
+                format!("persona '{id}' not found"),
+            ));
+        }
+    }
+    let db_arc = resolve_persona_session_db(&state, &id).await?;
+    let db = db_arc.lock().await;
+    match db.get_recent_sessions(None, 50) {
+        Ok(metas) => Ok(Json(metas.into_iter().map(SessionInfo::from).collect())),
+        Err(e) => Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list sessions: {e}"),
+        )),
+    }
+}
+
+/// POST /api/agents/{id}/chat/stream — streaming persona chat (SSE). Persists to
+/// the persona's session DB when a `session_id` is supplied. The default persona
+/// reuses the shared template agent + instance DB; named personas get their own.
+async fn agent_chat_stream(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<ChatRequest>,
+) -> Response {
+    let (cfg, skills_dir, is_default) = {
+        let reg = state.persona_registry.read().await;
+        match reg.get(&id) {
+            Some(c) => (
+                c.clone(),
+                reg.agents_dir().join(&id).join("skills"),
+                id == hakimi_core::DEFAULT_PERSONA_ID,
+            ),
+            None => {
+                return api_error(StatusCode::NOT_FOUND, format!("persona '{id}' not found"))
+                    .into_response();
+            }
+        }
+    };
+
+    let (tx_for_handler, rx) = tokio::sync::mpsc::channel::<String>(512);
+    let user_message = req.message.clone();
+    let requested_session_id = req
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let session_db = match resolve_persona_session_db(&state, &id).await {
+        Ok(db) => db,
+        Err((_, Json(err))) => {
+            let _ = tx_for_handler.send(format!("__ERROR__{}", err.error)).await;
+            drop(tx_for_handler);
+            return sse_response_from_rx(rx);
+        }
+    };
+
+    let mut cloned_agent = if is_default {
+        state.agent.lock().await.clone()
+    } else {
+        build_persona_agent_for(&state, &cfg, &skills_dir).await
+    };
+
+    if let Some(session_id) = requested_session_id.as_deref() {
+        let restored = {
+            let db = session_db.lock().await;
+            match db.get_session(session_id) {
+                Ok(Some(_)) => db.restore_session(session_id, None),
+                Ok(None) => Err(anyhow::anyhow!("session not found: {session_id}")),
+                Err(e) => Err(e),
+            }
+        };
+        match restored {
+            Ok(messages) => {
+                cloned_agent.set_session_id(session_id.to_string());
+                cloned_agent.clear_messages();
+                for message in messages {
+                    cloned_agent.add_message(message);
+                }
+            }
+            Err(e) => {
+                let _ = tx_for_handler.send(format!("__ERROR__{e}")).await;
+                drop(tx_for_handler);
+                return sse_response_from_rx(rx);
+            }
+        }
+    }
+
+    cloned_agent.set_streaming(true);
+    cloned_agent.set_streaming_callback(Some(Arc::new({
+        let tx = tx_for_handler.clone();
+        move |token: String| {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let _ = tx.send(token).await;
+            });
+        }
+    })));
+
+    let session_id = cloned_agent.session_id().to_string();
+    let should_persist = requested_session_id.is_some();
+    let tx = tx_for_handler.clone();
+
+    tokio::spawn(async move {
+        use hakimi_session::MessageOps;
+        match cloned_agent.chat(&user_message).await {
+            Ok(response) => {
+                if should_persist {
+                    let persist_result = {
+                        let db = session_db.lock().await;
+                        db.save_message(&session_id, &CoreMessage::user(user_message.clone()))
+                            .and_then(|_| {
+                                db.save_message(
+                                    &session_id,
+                                    &CoreMessage::assistant(response.clone()),
+                                )
+                            })
+                    };
+                    if let Err(e) = persist_result {
+                        let _ = tx.send(format!("__ERROR__{e}")).await;
+                        return;
+                    }
+                }
+                let done = serde_json::json!({
+                    "response": response,
+                    "session_id": session_id,
+                });
+                let _ = tx.send(format!("__DONE__{done}")).await;
+            }
+            Err(e) => {
+                let _ = tx.send(format!("__ERROR__{}", e)).await;
+            }
+        }
+    });
+    drop(tx_for_handler);
+    sse_response_from_rx(rx)
+}
+
 /// POST /chat/stream — send a message, stream the response via SSE.
 ///
 /// Events:
@@ -5311,6 +5536,9 @@ mod tests {
                 .unwrap(),
             )),
             persona_agents: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            persona_session_dbs: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 
@@ -5643,6 +5871,66 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_agent_sessions_ok_and_unknown_404() {
+        let app = build_router(test_state());
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/default/sessions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert!(json.is_array());
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/ghost/sessions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_agent_chat_stream_default_emits_sse() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(json_post(
+                "/api/agents/default/chat/stream",
+                json!({"message": "hello"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let content_type = resp
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(
+            content_type.starts_with("text/event-stream"),
+            "content-type: {content_type}"
+        );
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(
+            body.contains("done"),
+            "SSE body should end with a done event: {body}"
+        );
     }
 
     #[tokio::test]

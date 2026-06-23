@@ -7494,6 +7494,7 @@ async fn start_unified_server(
         gateway: Some(gateway.clone()),
         persona_registry,
         persona_agents,
+        persona_session_dbs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     };
 
     let app = hakimi_server::api::build_router(app_state);

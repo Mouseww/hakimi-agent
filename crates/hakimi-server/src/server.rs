@@ -26,6 +26,13 @@ use crate::api;
 pub type GatewayPersonaAgents =
     Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<hakimi_core::AIAgent>>>>>;
 
+/// Lazily-opened per-persona session databases (`persona_id -> sessions.db`).
+/// The default persona is never present (it uses the instance [`AppState::session_db`]).
+/// Named personas open `agents/<id>/sessions.db` on first access and cache it here.
+pub type PersonaSessionDbs = Arc<
+    tokio::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<hakimi_session::SessionDB>>>>,
+>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub agent: Arc<Mutex<hakimi_core::AIAgent>>,
@@ -43,6 +50,8 @@ pub struct AppState {
     /// Pre-built per-persona gateway agents, kept in sync by the agent CRUD
     /// handlers. Shared with the gateway message loop in unified mode.
     pub persona_agents: GatewayPersonaAgents,
+    /// Lazily-opened per-persona session databases (named personas only).
+    pub persona_session_dbs: PersonaSessionDbs,
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +97,9 @@ impl Server {
             gateway: None, // WebUI-only mode
             persona_registry: Arc::new(tokio::sync::RwLock::new(persona_registry)),
             persona_agents: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            persona_session_dbs: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         };
         Ok(Self { state })
     }
