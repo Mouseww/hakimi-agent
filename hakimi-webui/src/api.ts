@@ -256,6 +256,41 @@ export interface ConfigUpdate {
   embedding_normalize?: boolean;
 }
 
+export interface Agent {
+  id: string;
+  name: string;
+  avatar: string;
+  description: string;
+  model: string;
+  reasoning_effort?: string | null;
+  system_prompt: string;
+  enabled_skills: string[];
+  bindings: string[];
+  is_default: boolean;
+}
+
+export interface AgentsListResponse {
+  agents: Agent[];
+  default: string;
+}
+
+export interface AgentUpdate {
+  name?: string;
+  avatar?: string;
+  description?: string;
+  model?: string;
+  reasoning_effort?: string;
+  system_prompt?: string;
+  enabled_skills?: string[];
+  bindings?: string[];
+  is_default?: boolean;
+}
+
+export interface BindingsResponse {
+  bindings: Record<string, string>;
+  default: string;
+}
+
 export function getAuthToken(): string {
   return window.localStorage.getItem(AUTH_TOKEN_KEY) ?? '';
 }
@@ -363,4 +398,26 @@ export const api = {
     request<{ success: boolean; message: string }>('/api/gateway/restart', {
       method: 'POST',
     }),
+  agents: () => request<AgentsListResponse>('/api/agents'),
+  agent: (id: string) => request<Agent>(`/api/agents/${encodeURIComponent(id)}`),
+  createAgent: (payload: Partial<Agent> & { id: string }) =>
+    request<Agent>('/api/agents', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAgent: (id: string, payload: AgentUpdate) =>
+    request<Agent>(`/api/agents/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteAgent: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/api/agents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  agentChat: (id: string, message: string) =>
+    request<ChatResponse>(`/api/agents/${encodeURIComponent(id)}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message } satisfies ChatRequest),
+    }),
+  bindings: () => request<BindingsResponse>('/api/bindings'),
 };

@@ -15,7 +15,6 @@ import {
   Search,
   Send,
   Server,
-  Settings,
   ShieldCheck,
   SquareTerminal,
   Workflow,
@@ -23,12 +22,14 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
-import GatewayPanel from './GatewayPanel';
-import SettingsPanel from './SettingsPanel';
+import PersonaRail from './PersonaRail';
+import PersonaConfigForm from './PersonaConfigForm';
+import InstanceSettings from './InstanceSettings';
 import {
   api,
   getAuthToken,
   setAuthToken,
+  type Agent,
   type CapabilitiesResponse,
   type CredentialPoolResponse,
   type DashboardStatus,
@@ -42,7 +43,7 @@ import {
   type WebhookResponse,
 } from './api';
 
-type RightPanel = 'runtime' | 'tools' | 'skills' | 'control' | 'gateway';
+type RightPanel = 'runtime' | 'tools' | 'skills';
 
 type UiMessage = {
   id: string;
@@ -159,6 +160,26 @@ function App() {
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionQuery, setSessionQuery] = useState('');
   const [toolQuery, setToolQuery] = useState('');
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [activePersonaId, setActivePersonaId] = useState<string | null>(null);
+  const [view, setView] = useState<'chat' | 'config' | 'instance'>('chat');
+  const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
+
+  const activePersona = useMemo(
+    () => agents.find((a) => a.id === activePersonaId) ?? null,
+    [agents, activePersonaId],
+  );
+  const availableSkillNames = useMemo(() => data.skills.map((s) => s.name), [data.skills]);
+
+  async function loadAgents() {
+    try {
+      const res = await api.agents();
+      setAgents(res.agents);
+      setActivePersonaId((current) => current ?? res.default);
+    } catch {
+      // agents endpoint is optional; keep chat working against the default persona
+    }
+  }
 
   const selectedSession = useMemo(
     () => data.sessions.find((session) => session.id === selectedSessionId) ?? null,
@@ -300,7 +321,9 @@ function App() {
     setError(null);
 
     try {
-      const response = await api.chat(content);
+      const response = activePersonaId
+        ? await api.agentChat(activePersonaId, content)
+        : await api.chat(content);
       const assistantMessage: UiMessage = {
         id: nowId('assistant'),
         role: 'assistant',
@@ -326,12 +349,46 @@ function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void refreshAll();
+      void loadAgents();
     }, 0);
 
     return () => {
       window.clearTimeout(timer);
     };
   }, []);
+
+  function handleSelectPersona(id: string) {
+    setActivePersonaId(id);
+    setView('chat');
+  }
+  function handleEditPersona(id: string) {
+    setEditingPersona(agents.find((a) => a.id === id) ?? null);
+    setView('config');
+  }
+  function handleCreatePersona() {
+    setEditingPersona(null);
+    setView('config');
+  }
+  function handlePersonaSaved(saved: Agent) {
+    setAgents((current) => {
+      const exists = current.some((a) => a.id === saved.id);
+      const next = exists
+        ? current.map((a) => (a.id === saved.id ? saved : a))
+        : [...current, saved];
+      return saved.is_default
+        ? next.map((a) => (a.id === saved.id ? a : { ...a, is_default: false }))
+        : next;
+    });
+    setActivePersonaId(saved.id);
+    setView('chat');
+    void loadAgents();
+  }
+  function handlePersonaDeleted(id: string) {
+    setAgents((current) => current.filter((a) => a.id !== id));
+    setActivePersonaId((current) => (current === id ? null : current));
+    setView('chat');
+    void loadAgents();
+  }
 
   const topFeatures = pickTopFeatures(data.capabilities);
   const sampledSessions = data.status?.resources.sessions_sampled ?? data.sessions.length;
@@ -384,7 +441,29 @@ function App() {
         </div>
       </header>
 
-      <div className="workspace-grid">
+      <div className="console-body">
+        <PersonaRail
+          agents={agents}
+          activeId={activePersonaId}
+          view={view}
+          onSelect={handleSelectPersona}
+          onEdit={handleEditPersona}
+          onCreate={handleCreatePersona}
+          onInstance={() => setView('instance')}
+        />
+        <div className="console-main">
+          {view === 'instance' ? (
+            <InstanceSettings />
+          ) : view === 'config' ? (
+            <PersonaConfigForm
+              agent={editingPersona}
+              availableSkills={availableSkillNames}
+              onSaved={handlePersonaSaved}
+              onDeleted={handlePersonaDeleted}
+              onCancel={() => setView('chat')}
+            />
+          ) : (
+            <div className="workspace-grid">
         <aside className="left-rail">
           <section className="rail-section rail-section-metrics" aria-label="Runtime summary">
             <div className="metric-strip">
@@ -448,7 +527,7 @@ function App() {
           <section className="chat-header" aria-label="Chat context">
             <div>
               <p className="eyebrow">Live Agent</p>
-              <h2>Chat</h2>
+              <h2>{activePersona ? activePersona.name || activePersona.id : 'Chat'}</h2>
             </div>
             <div className="chat-badges">
               <span>
@@ -558,24 +637,6 @@ function App() {
             >
               <Layers3 size={17} aria-hidden="true" />
               <span>Skills</span>
-            </button>
-            <button
-              className={rightPanel === 'control' ? 'is-active' : ''}
-              type="button"
-              onClick={() => setRightPanel('control')}
-              title="Control"
-            >
-              <Settings size={17} aria-hidden="true" />
-              <span>Control</span>
-            </button>
-            <button
-              className={rightPanel === 'gateway' ? 'is-active' : ''}
-              type="button"
-              onClick={() => setRightPanel('gateway')}
-              title="Gateway"
-            >
-              <Activity size={17} aria-hidden="true" />
-              <span>Gateway</span>
             </button>
           </nav>
 
@@ -763,10 +824,11 @@ function App() {
               </div>
             )}
 
-            {rightPanel === 'control' && <SettingsPanel />}
-            {rightPanel === 'gateway' && <GatewayPanel />}
           </div>
         </aside>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
