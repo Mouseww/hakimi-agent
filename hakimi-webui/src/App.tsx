@@ -172,6 +172,25 @@ function App() {
   );
   const availableSkillNames = useMemo(() => data.skills.map((s) => s.name), [data.skills]);
 
+  // What the center transcript renders: the live exchange when present, otherwise
+  // the selected session's stored conversation (so clicking a session shows it).
+  const transcriptMessages = useMemo<UiMessage[]>(() => {
+    if (messages.length > 0) {
+      return messages;
+    }
+    return sessionMessages
+      .filter(
+        (m) => (m.role === 'user' || m.role === 'assistant') && (m.content ?? '').trim().length > 0,
+      )
+      .map((m, index) => ({
+        id: `session-${selectedSessionId ?? 'none'}-${index}`,
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content ?? '',
+        sessionId: selectedSessionId ?? undefined,
+        createdAt: m.timestamp ? new Date(m.timestamp) : new Date(),
+      }));
+  }, [messages, sessionMessages, selectedSessionId]);
+
   async function loadAgents() {
     try {
       const res = await api.agents();
@@ -291,6 +310,9 @@ function App() {
   async function loadSessionMessages(sessionId: string) {
     setSelectedSessionId(sessionId);
     setSessionLoading(true);
+    // Clear the live transcript so the selected session's conversation is what
+    // the center renders (see `transcriptMessages`).
+    setMessages([]);
 
     try {
       const response = await api.sessionMessages(sessionId);
@@ -385,6 +407,11 @@ function App() {
   function handleSelectPersona(id: string) {
     setActivePersonaId(id);
     setView('chat');
+    // Start fresh in the new persona's context so a previous persona's session
+    // transcript doesn't linger in the center.
+    setMessages([]);
+    setSessionMessages([]);
+    setSelectedSessionId(null);
   }
   function handleEditPersona(id: string) {
     setEditingPersona(agents.find((a) => a.id === id) ?? null);
@@ -573,19 +600,19 @@ function App() {
           )}
 
           <section className="transcript" aria-label="Live transcript">
-            {loading ? (
+            {loading || sessionLoading ? (
               <div className="panel-empty">
                 <Loader2 className="spin" size={18} aria-hidden="true" />
-                Loading runtime
+                {sessionLoading ? 'Loading session' : 'Loading runtime'}
               </div>
-            ) : messages.length === 0 ? (
+            ) : transcriptMessages.length === 0 ? (
               <div className="empty-transcript">
                 <Bot size={34} aria-hidden="true" />
                 <h3>Ready</h3>
                 <p>{data.status?.model ?? 'Hakimi Agent'}</p>
               </div>
             ) : (
-              messages.map((message) => (
+              transcriptMessages.map((message) => (
                 <article className={`message-row message-${message.role}`} key={message.id}>
                   <div className="message-avatar" aria-hidden="true">
                     {message.role === 'assistant' ? <Bot size={17} /> : <MessageSquare size={17} />}
