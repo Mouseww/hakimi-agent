@@ -3319,6 +3319,50 @@ async fn chat(
 // Agent-dimension (persona) endpoints
 // ---------------------------------------------------------------------------
 
+/// Build an isolated agent for a named persona from the shared template
+/// (`AppState::agent`), reading its skills from `skills_dir`. Used by the chat
+/// endpoint and by the CRUD handlers to keep `AppState::persona_agents` in sync.
+async fn build_persona_agent_for(
+    state: &AppState,
+    cfg: &hakimi_core::PersonaConfig,
+    skills_dir: &std::path::Path,
+) -> hakimi_core::AIAgent {
+    let template = state.agent.lock().await.clone();
+    let context_length = {
+        let config = state.config.lock().await;
+        let model = if cfg.model.trim().is_empty() {
+            template.model()
+        } else {
+            cfg.model.as_str()
+        };
+        hakimi_common::resolve_model_context_length(
+            model,
+            Some(config.model.context_length).filter(|length| *length > 0),
+            config.compression.context_length,
+        )
+        .context_length
+    };
+    hakimi_core::build_persona_agent(&template, cfg, skills_dir, context_length)
+}
+
+/// Insert/replace a named persona's gateway agent so routing reflects CRUD
+/// without a restart. The default persona is never stored (it uses the legacy
+/// shared agent).
+async fn sync_gateway_persona_agent(
+    state: &AppState,
+    cfg: &hakimi_core::PersonaConfig,
+    skills_dir: &std::path::Path,
+) {
+    if cfg.id == hakimi_core::DEFAULT_PERSONA_ID {
+        return;
+    }
+    let agent = build_persona_agent_for(state, cfg, skills_dir).await;
+    state.persona_agents.write().await.insert(
+        cfg.id.clone(),
+        std::sync::Arc::new(tokio::sync::Mutex::new(agent)),
+    );
+}
+
 /// GET /api/agents — list personas with the default persona id.
 async fn list_agents(State(state): State<AppState>) -> Json<AgentsListResponse> {
     let reg = state.persona_registry.read().await;
@@ -3335,16 +3379,21 @@ async fn create_agent(
     Json(cfg): Json<hakimi_core::PersonaConfig>,
 ) -> Result<Json<hakimi_core::PersonaConfig>, (StatusCode, Json<ErrorResponse>)> {
     let id = cfg.id.clone();
-    let mut reg = state.persona_registry.write().await;
-    reg.create(cfg).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
-    let created = reg.get(&id).cloned().expect("persona present after create");
+    let (created, skills_dir) = {
+        let mut reg = state.persona_registry.write().await;
+        reg.create(cfg).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+        let created = reg.get(&id).cloned().expect("persona present after create");
+        let skills_dir = reg.agents_dir().join(&id).join("skills");
+        (created, skills_dir)
+    };
+    sync_gateway_persona_agent(&state, &created, &skills_dir).await;
     Ok(Json(created))
 }
 
@@ -3371,60 +3420,67 @@ async fn update_agent(
     Path(id): Path<String>,
     Json(req): Json<AgentUpdateRequest>,
 ) -> Result<Json<hakimi_core::PersonaConfig>, (StatusCode, Json<ErrorResponse>)> {
-    let mut reg = state.persona_registry.write().await;
-    let mut cfg = match reg.get(&id) {
-        Some(cfg) => cfg.clone(),
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("persona '{id}' not found"),
-                }),
-            ));
-        }
-    };
-
-    if let Some(name) = req.name {
-        cfg.name = name;
-    }
-    if let Some(avatar) = req.avatar {
-        cfg.avatar = avatar;
-    }
-    if let Some(description) = req.description {
-        cfg.description = description;
-    }
-    if let Some(model) = req.model {
-        cfg.model = model;
-    }
-    if let Some(effort) = req.reasoning_effort {
-        cfg.reasoning_effort = if effort.trim().is_empty() {
-            None
-        } else {
-            Some(effort)
+    let (updated, skills_dir) = {
+        let mut reg = state.persona_registry.write().await;
+        let mut cfg = match reg.get(&id) {
+            Some(cfg) => cfg.clone(),
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: format!("persona '{id}' not found"),
+                    }),
+                ));
+            }
         };
-    }
-    if let Some(system_prompt) = req.system_prompt {
-        cfg.system_prompt = system_prompt;
-    }
-    if let Some(enabled_skills) = req.enabled_skills {
-        cfg.enabled_skills = enabled_skills;
-    }
-    if let Some(bindings) = req.bindings {
-        cfg.bindings = bindings;
-    }
-    if let Some(is_default) = req.is_default {
-        cfg.is_default = is_default;
-    }
 
-    reg.update(cfg).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
-    let updated = reg.get(&id).cloned().expect("persona present after update");
+        if let Some(name) = req.name {
+            cfg.name = name;
+        }
+        if let Some(avatar) = req.avatar {
+            cfg.avatar = avatar;
+        }
+        if let Some(description) = req.description {
+            cfg.description = description;
+        }
+        if let Some(model) = req.model {
+            cfg.model = model;
+        }
+        if let Some(effort) = req.reasoning_effort {
+            cfg.reasoning_effort = if effort.trim().is_empty() {
+                None
+            } else {
+                Some(effort)
+            };
+        }
+        if let Some(system_prompt) = req.system_prompt {
+            cfg.system_prompt = system_prompt;
+        }
+        if let Some(enabled_skills) = req.enabled_skills {
+            cfg.enabled_skills = enabled_skills;
+        }
+        if let Some(bindings) = req.bindings {
+            cfg.bindings = bindings;
+        }
+        if let Some(is_default) = req.is_default {
+            cfg.is_default = is_default;
+        }
+
+        reg.update(cfg).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+        let updated = reg.get(&id).cloned().expect("persona present after update");
+        let skills_dir = reg.agents_dir().join(&id).join("skills");
+        (updated, skills_dir)
+    };
+    // Rebuild the persona's gateway agent so model/prompt/skills changes take
+    // effect without a restart (in unified mode the loop shares this map).
+    sync_gateway_persona_agent(&state, &updated, &skills_dir).await;
     Ok(Json(updated))
 }
 
@@ -3433,15 +3489,18 @@ async fn delete_agent(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<AgentDeleteResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let mut reg = state.persona_registry.write().await;
-    reg.delete(&id).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    {
+        let mut reg = state.persona_registry.write().await;
+        reg.delete(&id).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+    }
+    state.persona_agents.write().await.remove(&id);
     Ok(Json(AgentDeleteResponse { id, deleted: true }))
 }
 
@@ -3473,23 +3532,8 @@ async fn agent_chat(
     let mut persona_agent = if id == hakimi_core::DEFAULT_PERSONA_ID {
         state.agent.lock().await.clone()
     } else {
-        let template = state.agent.lock().await.clone();
-        let context_length = {
-            let config = state.config.lock().await;
-            let model = if cfg.model.trim().is_empty() {
-                template.model()
-            } else {
-                cfg.model.as_str()
-            };
-            hakimi_common::resolve_model_context_length(
-                model,
-                Some(config.model.context_length).filter(|length| *length > 0),
-                config.compression.context_length,
-            )
-            .context_length
-        };
         let skills_dir = agents_dir.join(&id).join("skills");
-        hakimi_core::build_persona_agent(&template, &cfg, &skills_dir, context_length)
+        build_persona_agent_for(&state, &cfg, &skills_dir).await
     };
 
     let session_id = persona_agent.session_id().to_string();
@@ -5146,6 +5190,7 @@ mod tests {
                 )
                 .unwrap(),
             )),
+            persona_agents: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -5387,6 +5432,39 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_create_delete_agent_syncs_gateway_map() {
+        let state = test_state();
+        let agents = state.persona_agents.clone();
+        let app = build_router(state);
+
+        // Creating a named persona registers its gateway agent.
+        let resp = app
+            .clone()
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "coder", "name": "Coder"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert!(agents.read().await.contains_key("coder"));
+
+        // Deleting it drops the gateway agent.
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/agents/coder")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert!(!agents.read().await.contains_key("coder"));
     }
 
     #[tokio::test]

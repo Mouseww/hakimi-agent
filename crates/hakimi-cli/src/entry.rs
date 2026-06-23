@@ -5614,9 +5614,7 @@ async fn process_gateway_messages_loop(
     _gateway_bot_ids: std::collections::HashMap<String, String>,
     agent_arc: std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
     persona_registry: std::sync::Arc<tokio::sync::RwLock<hakimi_core::PersonaRegistry>>,
-    persona_agents: std::sync::Arc<
-        std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>>,
-    >,
+    persona_agents: hakimi_server::server::GatewayPersonaAgents,
     histories_clone: std::sync::Arc<
         tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>,
     >,
@@ -5805,10 +5803,11 @@ async fn process_gateway_messages_loop(
             // reuses the shared legacy agent; a named persona uses its own. A named
             // persona without a pre-built agent (e.g. added at runtime before a
             // restart) falls back to legacy behavior for this turn.
+            let resolved_agent = persona_agents.read().await.get(&persona_id).cloned();
             let (base_agent, use_persona_config) = if is_default_persona {
                 (agent_clone.clone(), false)
-            } else if let Some(agent) = persona_agents.get(&persona_id) {
-                (agent.clone(), true)
+            } else if let Some(agent) = resolved_agent {
+                (agent, true)
             } else {
                 (agent_clone.clone(), false)
             };
@@ -6965,12 +6964,12 @@ async fn start_gateway(
             config.compression.context_length,
         );
         let reg = persona_registry.read().await;
-        Arc::new(build_gateway_persona_agents(
+        Arc::new(tokio::sync::RwLock::new(build_gateway_persona_agents(
             &template,
             &reg,
             &runtime_home,
             resolved_context.context_length,
-        ))
+        )))
     };
 
     // 3. Connect all platforms.
@@ -7252,12 +7251,12 @@ async fn start_unified_server(
             config.compression.context_length,
         );
         let reg = persona_registry.read().await;
-        Arc::new(build_gateway_persona_agents(
+        Arc::new(tokio::sync::RwLock::new(build_gateway_persona_agents(
             &template,
             &reg,
             &runtime_home_arc,
             resolved_context.context_length,
-        ))
+        )))
     };
 
     // Connect all platforms
@@ -7494,6 +7493,7 @@ async fn start_unified_server(
         webui_password: Arc::new(Mutex::new(initial_webui_password)),
         gateway: Some(gateway.clone()),
         persona_registry,
+        persona_agents,
     };
 
     let app = hakimi_server::api::build_router(app_state);
