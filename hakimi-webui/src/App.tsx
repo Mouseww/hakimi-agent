@@ -4,6 +4,7 @@ import {
   Bot,
   Boxes,
   Brain,
+  Copy,
   Database,
   FileSearch,
   Gauge,
@@ -14,16 +15,19 @@ import {
   PanelLeft,
   PanelRight,
   RefreshCcw,
+  RotateCcw,
   Search,
   Send,
   Server,
   ShieldCheck,
   SquareTerminal,
+  Trash2,
   Workflow,
   Wrench,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
+import MessageContent from './MessageContent';
 import PersonaRail from './PersonaRail';
 import PersonaConfigForm from './PersonaConfigForm';
 import InstanceSettings from './InstanceSettings';
@@ -329,21 +333,19 @@ function App() {
     }
   }
 
-  async function sendMessage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const content = composer.trim();
-    if (!content || sending) {
+  async function runTurn(content: string) {
+    const text = content.trim();
+    if (!text || sending) {
       return;
     }
 
     const userMessage: UiMessage = {
       id: nowId('user'),
       role: 'user',
-      content,
+      content: text,
       createdAt: new Date(),
     };
     setMessages((current) => [...current, userMessage]);
-    setComposer('');
     setSending(true);
     setError(null);
 
@@ -352,10 +354,10 @@ function App() {
       ...current,
       { id: assistantId, role: 'assistant', content: '', createdAt: new Date() },
     ]);
-    const applyContent = (text: string) =>
+    const applyContent = (value: string) =>
       setMessages((current) =>
         current.map((message) =>
-          message.id === assistantId ? { ...message, content: text } : message,
+          message.id === assistantId ? { ...message, content: value } : message,
         ),
       );
 
@@ -366,14 +368,14 @@ function App() {
         // turn is a fresh exchange (WebUI per-persona session selection is a
         // follow-up); the backend persists when a valid session_id is supplied.
         let accumulated = '';
-        response = await api.agentChatStream(activePersonaId, content, {
+        response = await api.agentChatStream(activePersonaId, text, {
           onToken: (token) => {
             accumulated += token;
             applyContent(accumulated);
           },
         });
       } else {
-        response = await api.chat(content);
+        response = await api.chat(text);
       }
       setMessages((current) =>
         current.map((message) =>
@@ -389,6 +391,58 @@ function App() {
       setError(sendError instanceof Error ? sendError.message : String(sendError));
     } finally {
       setSending(false);
+    }
+  }
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const content = composer.trim();
+    if (!content || sending) {
+      return;
+    }
+    setComposer('');
+    await runTurn(content);
+  }
+
+  function copyMessage(content: string) {
+    void navigator.clipboard?.writeText(content);
+  }
+
+  function retryMessage(message: UiMessage) {
+    if (sending) {
+      return;
+    }
+    let userText = message.content;
+    if (message.role === 'assistant') {
+      const index = transcriptMessages.findIndex((m) => m.id === message.id);
+      for (let i = index - 1; i >= 0; i -= 1) {
+        if (transcriptMessages[i].role === 'user') {
+          userText = transcriptMessages[i].content;
+          break;
+        }
+      }
+    }
+    void runTurn(userText);
+  }
+
+  function deleteMessage(id: string) {
+    setMessages((current) => current.filter((message) => message.id !== id));
+  }
+
+  async function handleDeleteSession(sessionId: string) {
+    if (!window.confirm('Delete this session? This cannot be undone.')) {
+      return;
+    }
+    try {
+      await api.deleteSession(sessionId);
+      setSelectedSessionId((current) => (current === sessionId ? null : current));
+      if (selectedSessionId === sessionId) {
+        setSessionMessages([]);
+        setMessages([]);
+      }
+      void refreshAll({ quiet: true });
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
     }
   }
 
@@ -558,21 +612,30 @@ function App() {
             </div>
             <div className="session-list">
               {visibleSessions.map((session) => (
-                <button
-                  className={`session-row ${selectedSessionId === session.id ? 'is-active' : ''}`}
-                  type="button"
-                  key={session.id}
-                  onClick={() => void loadSessionMessages(session.id)}
-                >
-                  <span className="session-title">{sessionLabel(session)}</span>
-                  <span className="session-meta">
-                    {session.message_count} msg / {session.tool_call_count} tools
-                  </span>
-                  <span className="session-foot">
-                    <span>{session.model ?? 'model unknown'}</span>
-                    <span>{formatDate(session.started_at)}</span>
-                  </span>
-                </button>
+                <div className="session-row-wrap" key={session.id}>
+                  <button
+                    className={`session-row ${selectedSessionId === session.id ? 'is-active' : ''}`}
+                    type="button"
+                    onClick={() => void loadSessionMessages(session.id)}
+                  >
+                    <span className="session-title">{sessionLabel(session)}</span>
+                    <span className="session-meta">
+                      {session.message_count} msg / {session.tool_call_count} tools
+                    </span>
+                    <span className="session-foot">
+                      <span>{session.model ?? 'model unknown'}</span>
+                      <span>{formatDate(session.started_at)}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="session-delete"
+                    title="Delete session"
+                    onClick={() => void handleDeleteSession(session.id)}
+                  >
+                    <Trash2 size={13} aria-hidden="true" />
+                  </button>
+                </div>
               ))}
               {!loading && visibleSessions.length === 0 && (
                 <div className="panel-empty">No sessions</div>
@@ -648,22 +711,51 @@ function App() {
                       <span>{message.role}</span>
                       <time>{message.createdAt.toLocaleTimeString()}</time>
                     </header>
-                    <p>{message.content}</p>
+                    {message.content ? (
+                      <MessageContent content={message.content} />
+                    ) : sending ? (
+                      <span className="message-pending">
+                        <Loader2 className="spin" size={16} aria-hidden="true" />
+                        Running turn
+                      </span>
+                    ) : null}
+                    {message.content && (
+                      <div className="message-actions">
+                        <button
+                          type="button"
+                          className="message-action"
+                          title="Copy"
+                          onClick={() => copyMessage(message.content)}
+                        >
+                          <Copy size={13} aria-hidden="true" />
+                        </button>
+                        {!message.id.startsWith('session-') && (
+                          <>
+                            <button
+                              type="button"
+                              className="message-action"
+                              title="Retry"
+                              disabled={sending}
+                              onClick={() => retryMessage(message)}
+                            >
+                              <RotateCcw size={13} aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              className="message-action"
+                              title="Delete"
+                              onClick={() => deleteMessage(message.id)}
+                            >
+                              <Trash2 size={13} aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                     {message.sessionId && <footer>session {message.sessionId}</footer>}
                   </div>
                 </article>
               ))
-            )}
-            {sending && (
-              <article className="message-row message-assistant">
-                <div className="message-avatar" aria-hidden="true">
-                  <Bot size={17} />
-                </div>
-                <div className="message-body message-pending">
-                  <Loader2 className="spin" size={16} aria-hidden="true" />
-                  Running turn
-                </div>
-              </article>
             )}
           </section>
 

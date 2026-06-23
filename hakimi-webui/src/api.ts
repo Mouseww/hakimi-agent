@@ -385,6 +385,11 @@ export const api = {
       body: JSON.stringify({ message } satisfies ChatRequest),
     }),
   sessions: () => request<SessionInfo[]>('/api/sessions'),
+  deleteSession: (sessionId: string) =>
+    request<{ success?: boolean; deleted?: boolean }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { method: 'DELETE' },
+    ),
   sessionMessages: (sessionId: string, limit = 80) =>
     request<SessionMessagesResponse>(
       `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}`,

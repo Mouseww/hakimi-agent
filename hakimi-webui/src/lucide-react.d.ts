@@ -11,6 +11,7 @@ declare module 'lucide-react' {
   export const Bot: FC<LucideProps>;
   export const Boxes: FC<LucideProps>;
   export const Brain: FC<LucideProps>;
+  export const Copy: FC<LucideProps>;
   export const Database: FC<LucideProps>;
   export const FileSearch: FC<LucideProps>;
   export const Gauge: FC<LucideProps>;
@@ -22,6 +23,7 @@ declare module 'lucide-react' {
   export const PanelRight: FC<LucideProps>;
   export const Plus: FC<LucideProps>;
   export const RefreshCcw: FC<LucideProps>;
+  export const RotateCcw: FC<LucideProps>;
   export const Save: FC<LucideProps>;
   export const Search: FC<LucideProps>;
   export const Send: FC<LucideProps>;
