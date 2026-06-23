@@ -2042,12 +2042,14 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+// The WebUI is the React app in `hakimi-webui/`, built (via `npm run build`) into
+// `crates/hakimi-webui/static/` with stable filenames (see vite.config.ts). The
+// build output is committed so the server embeds it with no node step in CI.
 const WEBUI_INDEX_HTML: &str = include_str!("../../hakimi-webui/static/index.html");
-const WEBUI_HAKIMI_JS: &str = include_str!("../../hakimi-webui/static/hakimi.js");
-const WEBUI_COMPOSER_JS: &str = include_str!("../../hakimi-webui/static/composer.js");
-const WEBUI_WORKSPACE_JS: &str = include_str!("../../hakimi-webui/static/workspace.js");
-const WEBUI_STYLE_CSS: &str = include_str!("../../hakimi-webui/static/style.css");
+const WEBUI_APP_JS: &str = include_str!("../../hakimi-webui/static/app.js");
+const WEBUI_APP_CSS: &str = include_str!("../../hakimi-webui/static/app.css");
 const WEBUI_FAVICON_SVG: &str = include_str!("../../hakimi-webui/static/favicon.svg");
+const WEBUI_ICONS_SVG: &str = include_str!("../../hakimi-webui/static/icons.svg");
 
 fn static_webui_response(content_type: &'static str, body: &'static str) -> Response {
     ([(header::CONTENT_TYPE, content_type)], body).into_response()
@@ -2063,13 +2065,10 @@ async fn webui_favicon() -> Response {
 
 async fn webui_static_asset(Path(path): Path<String>) -> Response {
     match path.as_str() {
-        "hakimi.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_HAKIMI_JS),
-        "composer.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_COMPOSER_JS),
-        "workspace.js" => {
-            static_webui_response("text/javascript; charset=utf-8", WEBUI_WORKSPACE_JS)
-        }
-        "style.css" => static_webui_response("text/css; charset=utf-8", WEBUI_STYLE_CSS),
+        "app.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_APP_JS),
+        "app.css" => static_webui_response("text/css; charset=utf-8", WEBUI_APP_CSS),
         "favicon.svg" => static_webui_response("image/svg+xml; charset=utf-8", WEBUI_FAVICON_SVG),
+        "icons.svg" => static_webui_response("image/svg+xml; charset=utf-8", WEBUI_ICONS_SVG),
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -5396,13 +5395,12 @@ mod tests {
         let app = build_router(state);
 
         for (uri, expected_type, expected_body) in [
-            ("/", "text/html", "Hakimi"),
-            ("/index.html", "text/html", "workspace.js"),
-            ("/static/hakimi.js", "text/javascript", "Hakimi"),
-            ("/static/composer.js", "text/javascript", "SLASH_COMMANDS"),
-            ("/static/workspace.js", "text/javascript", "workspace"),
-            ("/static/style.css", "text/css", "workspace"),
+            ("/", "text/html", "/static/app.js"),
+            ("/index.html", "text/html", "id=\"root\""),
+            ("/static/app.js", "text/javascript", "persona"),
+            ("/static/app.css", "text/css", "persona-rail"),
             ("/static/favicon.svg", "image/svg+xml", "<svg"),
+            ("/static/icons.svg", "image/svg+xml", "<svg"),
             ("/favicon.svg", "image/svg+xml", "<svg"),
         ] {
             let req = Request::builder().uri(uri).body(Body::empty()).unwrap();

@@ -28,7 +28,12 @@ npm run lint
 npm run build
 ```
 
-Production output is written to `dist/`. The Rust server fallback serves `../hakimi-webui/dist`.
+`npm run build` emits the production bundle into `../crates/hakimi-webui/static/`
+(`app.js`, `app.css`, `index.html` + copied `public/` assets) with stable filenames
+and a `/static/` base. The Rust server embeds those files via `include_str!`
+(`crates/hakimi-server/src/api.rs`), so the build output is committed and ships with
+the binary — no node step is required in CI. Re-run `npm run build` and commit after
+changing any frontend source.
 
 ## Remaining parity
 
