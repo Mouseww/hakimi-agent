@@ -281,6 +281,30 @@ struct BindingsResponse {
     default: String,
 }
 
+/// One entry of GET /api/agents/{id}/skills.
+#[derive(Debug, Serialize)]
+struct AgentSkillInfo {
+    name: String,
+    description: String,
+    tags: Vec<String>,
+    enabled: bool,
+}
+
+/// Response body for GET /api/agents/{id}/skills.
+#[derive(Debug, Serialize)]
+struct AgentSkillsResponse {
+    available: Vec<AgentSkillInfo>,
+    enabled: Vec<String>,
+}
+
+/// Response body for GET /api/agents/{id}/memory.
+#[derive(Debug, Serialize)]
+struct AgentMemoryResponse {
+    dir: String,
+    files: Vec<String>,
+    memory_md: Option<String>,
+}
+
 /// Response body for GET /health.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
@@ -2003,6 +2027,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/agents/{id}", patch(update_agent))
         .route("/agents/{id}", delete(delete_agent))
         .route("/agents/{id}/chat", post(agent_chat))
+        .route("/agents/{id}/skills", get(agent_skills))
+        .route("/agents/{id}/memory", get(agent_memory))
         .route("/bindings", get(list_bindings));
 
     api_routes = api_routes.route_layer(middleware::from_fn_with_state(
@@ -3565,6 +3591,100 @@ async fn list_bindings(State(state): State<AppState>) -> Json<BindingsResponse> 
         bindings,
         default: reg.default_id().to_string(),
     })
+}
+
+/// GET /api/agents/{id}/skills — skills available to a persona plus its enabled set.
+/// The default persona reads the instance skill store; named personas read
+/// `agents/{id}/skills`.
+async fn agent_skills(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentSkillsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let (cfg, skills_dir) = {
+        let reg = state.persona_registry.read().await;
+        match reg.get(&id) {
+            Some(cfg) => (cfg.clone(), reg.agents_dir().join(&id).join("skills")),
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: format!("persona '{id}' not found"),
+                    }),
+                ));
+            }
+        }
+    };
+
+    let enabled: std::collections::HashSet<&str> =
+        cfg.enabled_skills.iter().map(String::as_str).collect();
+    let to_info = |skill: &hakimi_skills::Skill| AgentSkillInfo {
+        name: skill.name.clone(),
+        description: skill.description.clone(),
+        tags: skill.tags.clone(),
+        enabled: enabled.contains(skill.name.as_str()),
+    };
+
+    let available = if id == hakimi_core::DEFAULT_PERSONA_ID {
+        let agent = state.agent.lock().await;
+        agent
+            .skill_store()
+            .map(|store| store.skills().iter().map(to_info).collect())
+            .unwrap_or_default()
+    } else {
+        let store = hakimi_skills::SkillStore::load(&skills_dir)
+            .unwrap_or_else(|_| hakimi_skills::SkillStore::empty());
+        store.skills().iter().map(to_info).collect()
+    };
+
+    Ok(Json(AgentSkillsResponse {
+        available,
+        enabled: cfg.enabled_skills.clone(),
+    }))
+}
+
+/// GET /api/agents/{id}/memory — list the persona's memory dir and `MEMORY.md`.
+/// The default persona reads the instance memory dir (`<home>/memory`); named
+/// personas read `agents/{id}/memory`.
+async fn agent_memory(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentMemoryResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let memory_dir = {
+        let reg = state.persona_registry.read().await;
+        if reg.get(&id).is_none() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: format!("persona '{id}' not found"),
+                }),
+            ));
+        }
+        if id == hakimi_core::DEFAULT_PERSONA_ID {
+            reg.agents_dir()
+                .parent()
+                .map(|root| root.join("memory"))
+                .unwrap_or_else(|| reg.agents_dir().join("memory"))
+        } else {
+            reg.agents_dir().join(&id).join("memory")
+        }
+    };
+
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&memory_dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                files.push(name.to_string());
+            }
+        }
+    }
+    files.sort();
+    let memory_md = std::fs::read_to_string(memory_dir.join("MEMORY.md")).ok();
+
+    Ok(Json(AgentMemoryResponse {
+        dir: memory_dir.to_string_lossy().into_owned(),
+        files,
+        memory_md,
+    }))
 }
 
 /// POST /chat/stream — send a message, stream the response via SSE.
@@ -5465,6 +5585,64 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), http::StatusCode::OK);
         assert!(!agents.read().await.contains_key("coder"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_skills_reflects_enabled() {
+        let app = build_router(test_state());
+        // Create a persona with an enabled skill.
+        let resp = app
+            .clone()
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "coder", "enabled_skills": ["tdd"]}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/coder/skills")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["enabled"][0], "tdd");
+    }
+
+    #[tokio::test]
+    async fn test_agent_memory_ok_and_unknown_404() {
+        let app = build_router(test_state());
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/default/memory")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert!(json["dir"].as_str().is_some());
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/ghost/memory")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

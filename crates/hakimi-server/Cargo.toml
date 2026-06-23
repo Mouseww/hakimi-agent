@@ -18,6 +18,7 @@ browser = ["hakimi-tools/browser"]
 hakimi-core = { path = "../hakimi-core" }
 hakimi-config = { path = "../hakimi-config" }
 hakimi-session = { path = "../hakimi-session" }
+hakimi-skills = { path = "../hakimi-skills" }
 hakimi-tools = { path = "../hakimi-tools" }
 hakimi-common = { path = "../hakimi-common" }
 hakimi-context = { path = "../hakimi-context" }
@@ -44,6 +45,5 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
-hakimi-skills = { path = "../hakimi-skills" }
 reqwest = { workspace = true }
 tempfile = "3"
