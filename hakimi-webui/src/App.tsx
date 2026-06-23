@@ -11,6 +11,8 @@ import {
   Layers3,
   Loader2,
   MessageSquare,
+  PanelLeft,
+  PanelRight,
   RefreshCcw,
   Search,
   Send,
@@ -165,12 +167,33 @@ function App() {
   const [activePersonaId, setActivePersonaId] = useState<string | null>(null);
   const [view, setView] = useState<'chat' | 'config' | 'instance'>('chat');
   const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
+  const [showSessions, setShowSessions] = useState(true);
+  const [showPanel, setShowPanel] = useState(true);
 
   const activePersona = useMemo(
     () => agents.find((a) => a.id === activePersonaId) ?? null,
     [agents, activePersonaId],
   );
   const availableSkillNames = useMemo(() => data.skills.map((s) => s.name), [data.skills]);
+
+  // What the center transcript renders: the live exchange when present, otherwise
+  // the selected session's stored conversation (so clicking a session shows it).
+  const transcriptMessages = useMemo<UiMessage[]>(() => {
+    if (messages.length > 0) {
+      return messages;
+    }
+    return sessionMessages
+      .filter(
+        (m) => (m.role === 'user' || m.role === 'assistant') && (m.content ?? '').trim().length > 0,
+      )
+      .map((m, index) => ({
+        id: `session-${selectedSessionId ?? 'none'}-${index}`,
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content ?? '',
+        sessionId: selectedSessionId ?? undefined,
+        createdAt: m.timestamp ? new Date(m.timestamp) : new Date(),
+      }));
+  }, [messages, sessionMessages, selectedSessionId]);
 
   async function loadAgents() {
     try {
@@ -291,6 +314,9 @@ function App() {
   async function loadSessionMessages(sessionId: string) {
     setSelectedSessionId(sessionId);
     setSessionLoading(true);
+    // Clear the live transcript so the selected session's conversation is what
+    // the center renders (see `transcriptMessages`).
+    setMessages([]);
 
     try {
       const response = await api.sessionMessages(sessionId);
@@ -385,6 +411,11 @@ function App() {
   function handleSelectPersona(id: string) {
     setActivePersonaId(id);
     setView('chat');
+    // Start fresh in the new persona's context so a previous persona's session
+    // transcript doesn't linger in the center.
+    setMessages([]);
+    setSessionMessages([]);
+    setSelectedSessionId(null);
   }
   function handleEditPersona(id: string) {
     setEditingPersona(agents.find((a) => a.id === id) ?? null);
@@ -488,7 +519,9 @@ function App() {
               onCancel={() => setView('chat')}
             />
           ) : (
-            <div className="workspace-grid">
+            <div
+              className={`workspace-grid ${showSessions ? '' : 'sessions-collapsed'} ${showPanel ? '' : 'panel-collapsed'}`}
+            >
         <aside className="left-rail">
           <section className="rail-section rail-section-metrics" aria-label="Runtime summary">
             <div className="metric-strip">
@@ -554,15 +587,35 @@ function App() {
               <p className="eyebrow">Live Agent</p>
               <h2>{activePersona ? activePersona.name || activePersona.id : 'Chat'}</h2>
             </div>
-            <div className="chat-badges">
-              <span>
-                <Brain size={14} aria-hidden="true" />
-                {data.status?.runtime.mode ?? 'server_agent'}
-              </span>
-              <span>
-                <SquareTerminal size={14} aria-hidden="true" />
-                {data.status?.runtime.tool_execution ?? 'server'}
-              </span>
+            <div className="chat-header-tools">
+              <button
+                className={`icon-button ${showSessions ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setShowSessions((value) => !value)}
+                title={showSessions ? 'Hide sessions' : 'Show sessions'}
+                aria-pressed={showSessions}
+              >
+                <PanelLeft size={16} aria-hidden="true" />
+              </button>
+              <button
+                className={`icon-button ${showPanel ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setShowPanel((value) => !value)}
+                title={showPanel ? 'Hide panel' : 'Show panel'}
+                aria-pressed={showPanel}
+              >
+                <PanelRight size={16} aria-hidden="true" />
+              </button>
+              <div className="chat-badges">
+                <span>
+                  <Brain size={14} aria-hidden="true" />
+                  {data.status?.runtime.mode ?? 'server_agent'}
+                </span>
+                <span>
+                  <SquareTerminal size={14} aria-hidden="true" />
+                  {data.status?.runtime.tool_execution ?? 'server'}
+                </span>
+              </div>
             </div>
           </section>
 
@@ -573,19 +626,19 @@ function App() {
           )}
 
           <section className="transcript" aria-label="Live transcript">
-            {loading ? (
+            {loading || sessionLoading ? (
               <div className="panel-empty">
                 <Loader2 className="spin" size={18} aria-hidden="true" />
-                Loading runtime
+                {sessionLoading ? 'Loading session' : 'Loading runtime'}
               </div>
-            ) : messages.length === 0 ? (
+            ) : transcriptMessages.length === 0 ? (
               <div className="empty-transcript">
                 <Bot size={34} aria-hidden="true" />
                 <h3>Ready</h3>
                 <p>{data.status?.model ?? 'Hakimi Agent'}</p>
               </div>
             ) : (
-              messages.map((message) => (
+              transcriptMessages.map((message) => (
                 <article className={`message-row message-${message.role}`} key={message.id}>
                   <div className="message-avatar" aria-hidden="true">
                     {message.role === 'assistant' ? <Bot size={17} /> : <MessageSquare size={17} />}

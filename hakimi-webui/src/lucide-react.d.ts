@@ -18,6 +18,8 @@ declare module 'lucide-react' {
   export const Layers3: FC<LucideProps>;
   export const Loader2: FC<LucideProps>;
   export const MessageSquare: FC<LucideProps>;
+  export const PanelLeft: FC<LucideProps>;
+  export const PanelRight: FC<LucideProps>;
   export const Plus: FC<LucideProps>;
   export const RefreshCcw: FC<LucideProps>;
   export const Save: FC<LucideProps>;
