@@ -35,6 +35,13 @@ fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
     format!("{platform}:{bot_id}:{chat_id}")
 }
 
+/// Per-persona history bucket key. Scopes the in-memory per-chat history map so
+/// two personas never share a chat's conversation, even if a `chat_id` collides
+/// across channels. The default persona uses a plain `default:` prefix.
+fn gateway_history_key(persona_id: &str, chat_id: &str) -> String {
+    format!("{persona_id}:{chat_id}")
+}
+
 const VOICE_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice mode: respond in a concise, natural spoken style for a spoken interface. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
 const VOICE_TTS_USER_MESSAGE_PREFIX: &str = "[Hakimi gateway voice+TTS mode: respond in a concise, natural spoken style suitable for text-to-speech playback. Avoid Markdown-heavy layouts unless the user explicitly asks.]\n\n";
 const GATEWAY_UPDATE_NOTIFICATION_FILE: &str = "pending-gateway-update-notification.json";
@@ -5571,6 +5578,33 @@ async fn start_server(
     Ok(())
 }
 
+/// Build the per-persona base agents for gateway routing.
+///
+/// The default persona (`DEFAULT_PERSONA_ID`) is intentionally omitted: it reuses
+/// the shared legacy `agent_arc`, so existing single-agent behavior is preserved
+/// byte-for-byte. Each named persona gets an isolated agent (own model / prompt /
+/// context engine / skills), loading its skills from `<persona_dir>/skills`.
+fn build_gateway_persona_agents(
+    template: &hakimi_core::AIAgent,
+    registry: &hakimi_core::PersonaRegistry,
+    runtime_home: &hakimi_common::RuntimeHome,
+    context_length: usize,
+) -> std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>> {
+    let mut map = std::collections::HashMap::new();
+    for cfg in registry.list() {
+        if cfg.id == hakimi_core::DEFAULT_PERSONA_ID {
+            continue;
+        }
+        let skills_dir = runtime_home.persona_dir(&cfg.id).join("skills");
+        let agent = hakimi_core::build_persona_agent(template, cfg, &skills_dir, context_length);
+        map.insert(
+            cfg.id.clone(),
+            std::sync::Arc::new(tokio::sync::Mutex::new(agent)),
+        );
+    }
+    map
+}
+
 /// Start gateway mode.
 /// Process gateway messages loop - shared by separated and unified modes
 #[allow(clippy::too_many_arguments)]
@@ -5579,6 +5613,8 @@ async fn process_gateway_messages_loop(
     gateway: std::sync::Arc<hakimi_gateway::Gateway>,
     _gateway_bot_ids: std::collections::HashMap<String, String>,
     agent_arc: std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
+    persona_registry: std::sync::Arc<tokio::sync::RwLock<hakimi_core::PersonaRegistry>>,
+    persona_agents: hakimi_server::server::GatewayPersonaAgents,
     histories_clone: std::sync::Arc<
         tokio::sync::Mutex<std::collections::HashMap<String, Vec<hakimi_common::Message>>>,
     >,
@@ -5613,6 +5649,18 @@ async fn process_gateway_messages_loop(
         let platform = msg.platform.clone();
         let text = msg.text.clone();
         let media_id = msg.media.clone();
+
+        // Resolve the persona that owns this channel (falls back to the default
+        // persona). Histories are scoped to the persona so chats never bleed
+        // across personas. Resolving here keeps `history_key` available for the
+        // outer `/undo` branch as well as the per-turn task.
+        let persona_cfg = {
+            let reg = persona_registry.read().await;
+            reg.resolve_for_channel(&platform, &bot_id).clone()
+        };
+        let persona_id = persona_cfg.id.clone();
+        let is_default_persona = persona_id == hakimi_core::DEFAULT_PERSONA_ID;
+        let history_key = gateway_history_key(&persona_id, &chat_id);
 
         if platform == "__hakimi_system__" {
             let mut routed = msg.clone();
@@ -5705,7 +5753,7 @@ async fn process_gateway_messages_loop(
                             Ok(turns) => {
                                 let result = {
                                     let mut histories = histories_clone.lock().await;
-                                    let history = histories.entry(chat_id.clone()).or_default();
+                                    let history = histories.entry(history_key.clone()).or_default();
                                     rewind_gateway_history(history, turns)
                                 };
                                 result.map(render_gateway_undo_response).unwrap_or_else(|| {
@@ -5734,6 +5782,10 @@ async fn process_gateway_messages_loop(
         let onboarding_state = onboarding_state.clone();
         let onboarding_config_path = onboarding_config_path.clone();
         let runtime_home = runtime_home.clone();
+        let persona_agents = persona_agents.clone();
+        let persona_cfg = persona_cfg.clone();
+        let persona_id = persona_id.clone();
+        let history_key = history_key.clone();
 
         let config_clone = config.clone();
         tokio::spawn(async move {
@@ -5746,6 +5798,19 @@ async fn process_gateway_messages_loop(
             let task_key = gateway_task_key(&platform, &bot_id, &chat_id);
             let task_id = uuid::Uuid::new_v4();
             let cancellation = CancellationToken::new();
+
+            // Resolve which agent + config this persona uses. The default persona
+            // reuses the shared legacy agent; a named persona uses its own. A named
+            // persona without a pre-built agent (e.g. added at runtime before a
+            // restart) falls back to legacy behavior for this turn.
+            let resolved_agent = persona_agents.read().await.get(&persona_id).cloned();
+            let (base_agent, use_persona_config) = if is_default_persona {
+                (agent_clone.clone(), false)
+            } else if let Some(agent) = resolved_agent {
+                (agent, true)
+            } else {
+                (agent_clone.clone(), false)
+            };
 
             // Check busy input mode configuration
             let busy_mode = config.gateways.busy_input_mode.as_str();
@@ -5904,7 +5969,7 @@ Just send a message to chat with me!"
                         // Clear conversation history and usage for this chat only
                         let had_history = {
                             let mut histories = histories_clone.lock().await;
-                            histories.remove(&chat_id).is_some()
+                            histories.remove(&history_key).is_some()
                         };
                         {
                             let mut usage = last_usage.lock().await;
@@ -5920,7 +5985,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Model(new_model)) => {
-                        let mut a = agent_clone.lock().await;
+                        let mut a = base_agent.lock().await;
                         if let Some(m) = new_model {
                             a.set_model(&m);
                             format!("🤖 Model changed to `{m}`.")
@@ -5929,7 +5994,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Tools(_)) => {
-                        let a = agent_clone.lock().await;
+                        let a = base_agent.lock().await;
                         let tools = a.tool_registry();
                         let mut msg = "🛠️ Available Tools:\n".to_string();
                         for tool in tools.get_definitions().await {
@@ -5962,7 +6027,7 @@ Just send a message to chat with me!"
                         }
                     }
                     Some(Command::Status) => {
-                        let a = agent_clone.lock().await;
+                        let a = base_agent.lock().await;
                         format!(
                             "✅ Hakimi Agent is online.\n\n\
                              - Version: v{}\n\n\
@@ -6207,7 +6272,7 @@ Just send a message to chat with me!"
                 let concurrent = tracker.start_turn();
                 drop(trackers);
 
-                let mut a = agent_clone.lock().await.clone();
+                let mut a = base_agent.lock().await.clone();
 
                 // Enable streaming
                 // We can't clone the MutexGuard, but we can set the field natively if we fix its visibility
@@ -6219,7 +6284,9 @@ Just send a message to chat with me!"
                 // 2. Load context from the active runtime memory home via MemoryProvider
                 let mut memory_text = String::new();
                 if config.memory.enabled {
-                    let memory_dir = if config.memory.path.is_empty() {
+                    let memory_dir = if use_persona_config {
+                        runtime_home.persona_dir(&persona_id).join("memory")
+                    } else if config.memory.path.is_empty() {
                         runtime_home.memory_dir()
                     } else {
                         std::path::PathBuf::from(&config.memory.path)
@@ -6239,12 +6306,20 @@ Just send a message to chat with me!"
 
                 // Remove persistent memory hardcoding. SmartContextEngine handles this via tools and system prompts now.
                 // Reset to default role identity if configured, else default prompt
-                let base_prompt = config
-                    .roles
-                    .get("default")
-                    .map(|r| r.identity.clone())
-                    .filter(|id| !id.is_empty())
-                    .unwrap_or_else(|| hakimi_core::DEFAULT_SYSTEM_PROMPT.to_string());
+                let base_prompt = if use_persona_config {
+                    if persona_cfg.system_prompt.trim().is_empty() {
+                        hakimi_core::DEFAULT_SYSTEM_PROMPT.to_string()
+                    } else {
+                        persona_cfg.system_prompt.clone()
+                    }
+                } else {
+                    config
+                        .roles
+                        .get("default")
+                        .map(|r| r.identity.clone())
+                        .filter(|id| !id.is_empty())
+                        .unwrap_or_else(|| hakimi_core::DEFAULT_SYSTEM_PROMPT.to_string())
+                };
 
                 if !memory_text.is_empty() {
                     a.set_system_prompt(format!(
@@ -6256,7 +6331,7 @@ Just send a message to chat with me!"
 
                 let base_history_len = {
                     let histories = histories_clone.lock().await;
-                    let chat_msgs = histories.get(&chat_id).cloned().unwrap_or_default();
+                    let chat_msgs = histories.get(&history_key).cloned().unwrap_or_default();
                     let len = chat_msgs.len();
                     a.clear_messages();
                     for m in chat_msgs {
@@ -6687,7 +6762,7 @@ Just send a message to chat with me!"
                         restore_voice_history_text(&mut new_msgs);
                         {
                             let mut histories = histories_clone.lock().await;
-                            let chat_history = histories.entry(chat_id.clone()).or_default();
+                            let chat_history = histories.entry(history_key.clone()).or_default();
                             chat_history.extend(new_msgs);
                         }
                         {
@@ -6877,6 +6952,26 @@ async fn start_gateway(
     let onboarding_config_path = Arc::new(hakimi_config_path(&runtime_home));
     let runtime_home = Arc::new(runtime_home);
 
+    // Persona registry + per-persona base agents for gateway routing.
+    let persona_registry = Arc::new(tokio::sync::RwLock::new(
+        hakimi_core::PersonaRegistry::load(runtime_home.agents_dir())?,
+    ));
+    let persona_agents = {
+        let template = agent_arc.lock().await.clone();
+        let resolved_context = hakimi_common::resolve_model_context_length(
+            template.model(),
+            Some(config.model.context_length).filter(|length| *length > 0),
+            config.compression.context_length,
+        );
+        let reg = persona_registry.read().await;
+        Arc::new(tokio::sync::RwLock::new(build_gateway_persona_agents(
+            &template,
+            &reg,
+            &runtime_home,
+            resolved_context.context_length,
+        )))
+    };
+
     // 3. Connect all platforms.
     gateway.connect_all().await?;
     let receivers = gateway.take_all_receivers();
@@ -7045,6 +7140,8 @@ async fn start_gateway(
         gateway,
         gateway_bot_ids,
         agent_arc,
+        persona_registry,
+        persona_agents,
         histories_clone,
         turn_trackers,
         active_tasks,
@@ -7140,6 +7237,28 @@ async fn start_unified_server(
     let onboarding_config_path = Arc::new(hakimi_config_path(&runtime_home));
     let runtime_home_arc = Arc::new(runtime_home);
 
+    // Persona registry + per-persona base agents for gateway routing. The same
+    // registry Arc is shared with the WebUI AppState below so P4 binding edits
+    // affect routing live.
+    let persona_registry = Arc::new(tokio::sync::RwLock::new(
+        hakimi_core::PersonaRegistry::load(runtime_home_arc.agents_dir())?,
+    ));
+    let persona_agents = {
+        let template = agent_arc.lock().await.clone();
+        let resolved_context = hakimi_common::resolve_model_context_length(
+            template.model(),
+            Some(config.model.context_length).filter(|length| *length > 0),
+            config.compression.context_length,
+        );
+        let reg = persona_registry.read().await;
+        Arc::new(tokio::sync::RwLock::new(build_gateway_persona_agents(
+            &template,
+            &reg,
+            &runtime_home_arc,
+            resolved_context.context_length,
+        )))
+    };
+
     // Connect all platforms
     gateway.connect_all().await?;
     let receivers = gateway.take_all_receivers();
@@ -7158,6 +7277,8 @@ async fn start_unified_server(
     let gateway_for_msg = gateway.clone();
     let gateway_bot_ids_for_msg = gateway_bot_ids.clone();
     let agent_arc_for_msg = agent_arc.clone();
+    let persona_registry_for_msg = persona_registry.clone();
+    let persona_agents_for_msg = persona_agents.clone();
     let histories_for_msg = histories_clone.clone();
     let turn_trackers_for_msg = turn_trackers.clone();
     let active_tasks_for_msg = active_tasks.clone();
@@ -7177,6 +7298,8 @@ async fn start_unified_server(
             gateway_for_msg,
             gateway_bot_ids_for_msg,
             agent_arc_for_msg,
+            persona_registry_for_msg,
+            persona_agents_for_msg,
             histories_for_msg,
             turn_trackers_for_msg,
             active_tasks_for_msg,
@@ -7358,7 +7481,8 @@ async fn start_unified_server(
         std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default()
     };
 
-    let persona_registry = hakimi_core::PersonaRegistry::load(hakimi_dir.join("agents"))?;
+    // Reuse the same registry Arc the gateway loop routes against (built above),
+    // so WebUI persona/binding edits and gateway routing share one source of truth.
     let app_state = hakimi_server::server::AppState {
         agent: agent_arc,
         config: config_arc,
@@ -7368,7 +7492,9 @@ async fn start_unified_server(
         knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
         webui_password: Arc::new(Mutex::new(initial_webui_password)),
         gateway: Some(gateway.clone()),
-        persona_registry: Arc::new(tokio::sync::RwLock::new(persona_registry)),
+        persona_registry,
+        persona_agents,
+        persona_session_dbs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     };
 
     let app = hakimi_server::api::build_router(app_state);
@@ -8155,7 +8281,7 @@ mod tests {
         cron_success_output_should_deliver, effective_gateway_streaming_policy,
         format_gateway_update_notification, gateway_bot_id_for_platform,
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
+        gateway_history_key, gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
         gateway_usage_response, gateway_voice_response, is_gateway_flood_error,
         is_top_level_cron_tick, parse_gateway_undo_turns, plan_gateway_final_delivery,
         queue_cron_delivery, release_feature_items, render_gateway_undo_response,
@@ -8172,6 +8298,17 @@ mod tests {
 
     fn drain_gateway_message_queue() {
         while hakimi_tools::builtin_send_message::pop_message().is_some() {}
+    }
+
+    #[test]
+    fn gateway_history_key_scopes_chat_by_persona() {
+        assert_eq!(gateway_history_key("default", "chat-1"), "default:chat-1");
+        assert_eq!(gateway_history_key("coder", "chat-1"), "coder:chat-1");
+        // Same chat id under different personas does not collide.
+        assert_ne!(
+            gateway_history_key("coder", "chat-1"),
+            gateway_history_key("writer", "chat-1")
+        );
     }
 
     static CHANNEL_DIRECTORY_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

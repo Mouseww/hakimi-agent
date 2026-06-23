@@ -101,6 +101,11 @@ impl PersonaRegistry {
             .expect("default persona must exist")
     }
 
+    /// Root directory backing this registry (`<home>/agents`).
+    pub fn agents_dir(&self) -> &std::path::Path {
+        &self.agents_dir
+    }
+
     /// Resolve an inbound channel to the owning persona, falling back to the
     /// default persona when no binding matches.
     pub fn resolve_for_channel(&self, platform: &str, bot_id: &str) -> &PersonaConfig {
@@ -236,6 +241,13 @@ mod tests {
         let mut cfg = PersonaConfig::new(id);
         cfg.bindings = bindings.iter().map(|b| b.to_string()).collect();
         cfg
+    }
+
+    #[test]
+    fn agents_dir_exposes_backing_path() {
+        let dir = temp_dir();
+        let reg = PersonaRegistry::load(dir.clone()).unwrap();
+        assert_eq!(reg.agents_dir(), dir.as_path());
     }
 
     #[test]

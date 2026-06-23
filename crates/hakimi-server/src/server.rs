@@ -18,6 +18,21 @@ use crate::api;
 /// The agent is behind a `tokio::sync::Mutex` because `AIAgent::chat()` takes
 /// App state shared across all HTTP handlers. Each resource has a
 /// separate mutex so POST /config can update fields concurrently.
+/// Shared, mutable map of pre-built per-persona gateway agents
+/// (`persona_id -> agent`). The default persona is never present (it uses the
+/// legacy [`AppState::agent`]). In unified mode the gateway loop and the API CRUD
+/// handlers share this Arc, so creating/updating/deleting a persona takes effect
+/// on gateway routing without a restart. Empty in WebUI-only mode.
+pub type GatewayPersonaAgents =
+    Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<hakimi_core::AIAgent>>>>>;
+
+/// Lazily-opened per-persona session databases (`persona_id -> sessions.db`).
+/// The default persona is never present (it uses the instance [`AppState::session_db`]).
+/// Named personas open `agents/<id>/sessions.db` on first access and cache it here.
+pub type PersonaSessionDbs = Arc<
+    tokio::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<hakimi_session::SessionDB>>>>,
+>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub agent: Arc<Mutex<hakimi_core::AIAgent>>,
@@ -32,6 +47,11 @@ pub struct AppState {
     /// Persona registry for multi-agent isolation. Existing endpoints operate on
     /// the default persona via [`AppState::agent`]; agent-scoped endpoints use this.
     pub persona_registry: Arc<tokio::sync::RwLock<hakimi_core::PersonaRegistry>>,
+    /// Pre-built per-persona gateway agents, kept in sync by the agent CRUD
+    /// handlers. Shared with the gateway message loop in unified mode.
+    pub persona_agents: GatewayPersonaAgents,
+    /// Lazily-opened per-persona session databases (named personas only).
+    pub persona_session_dbs: PersonaSessionDbs,
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +96,10 @@ impl Server {
             webui_password: Arc::new(Mutex::new(initial_webui_password)),
             gateway: None, // WebUI-only mode
             persona_registry: Arc::new(tokio::sync::RwLock::new(persona_registry)),
+            persona_agents: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            persona_session_dbs: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         };
         Ok(Self { state })
     }

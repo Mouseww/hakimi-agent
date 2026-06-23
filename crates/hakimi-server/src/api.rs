@@ -245,6 +245,66 @@ pub struct ChatResponse {
     pub session_id: String,
 }
 
+/// Response body for GET /api/agents.
+#[derive(Debug, Serialize)]
+struct AgentsListResponse {
+    agents: Vec<hakimi_core::PersonaConfig>,
+    default: String,
+}
+
+/// Request body for PATCH /api/agents/{id}. Every field is optional; only
+/// provided fields are applied. An empty-string `reasoning_effort` clears it.
+#[derive(Debug, Default, Deserialize)]
+struct AgentUpdateRequest {
+    name: Option<String>,
+    avatar: Option<String>,
+    description: Option<String>,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
+    system_prompt: Option<String>,
+    enabled_skills: Option<Vec<String>>,
+    bindings: Option<Vec<String>>,
+    is_default: Option<bool>,
+}
+
+/// Response body for DELETE /api/agents/{id}.
+#[derive(Debug, Serialize)]
+struct AgentDeleteResponse {
+    id: String,
+    deleted: bool,
+}
+
+/// Response body for GET /api/bindings (`platform:bot_id` -> persona id).
+#[derive(Debug, Serialize)]
+struct BindingsResponse {
+    bindings: std::collections::BTreeMap<String, String>,
+    default: String,
+}
+
+/// One entry of GET /api/agents/{id}/skills.
+#[derive(Debug, Serialize)]
+struct AgentSkillInfo {
+    name: String,
+    description: String,
+    tags: Vec<String>,
+    enabled: bool,
+}
+
+/// Response body for GET /api/agents/{id}/skills.
+#[derive(Debug, Serialize)]
+struct AgentSkillsResponse {
+    available: Vec<AgentSkillInfo>,
+    enabled: Vec<String>,
+}
+
+/// Response body for GET /api/agents/{id}/memory.
+#[derive(Debug, Serialize)]
+struct AgentMemoryResponse {
+    dir: String,
+    files: Vec<String>,
+    memory_md: Option<String>,
+}
+
 /// Response body for GET /health.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
@@ -1959,7 +2019,19 @@ pub fn build_router(state: AppState) -> Router {
         .route("/gateway/status", get(gateway_status))
         .route("/gateway/config", get(gateway_config))
         .route("/gateway/config", patch(gateway_update_config))
-        .route("/gateway/restart", post(gateway_restart));
+        .route("/gateway/restart", post(gateway_restart))
+        // Agent-dimension (persona) endpoints
+        .route("/agents", get(list_agents))
+        .route("/agents", post(create_agent))
+        .route("/agents/{id}", get(get_agent))
+        .route("/agents/{id}", patch(update_agent))
+        .route("/agents/{id}", delete(delete_agent))
+        .route("/agents/{id}/chat", post(agent_chat))
+        .route("/agents/{id}/chat/stream", post(agent_chat_stream))
+        .route("/agents/{id}/skills", get(agent_skills))
+        .route("/agents/{id}/memory", get(agent_memory))
+        .route("/agents/{id}/sessions", get(agent_sessions))
+        .route("/bindings", get(list_bindings));
 
     api_routes = api_routes.route_layer(middleware::from_fn_with_state(
         state.clone(),
@@ -1998,12 +2070,14 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+// The WebUI is the React app in `hakimi-webui/`, built (via `npm run build`) into
+// `crates/hakimi-webui/static/` with stable filenames (see vite.config.ts). The
+// build output is committed so the server embeds it with no node step in CI.
 const WEBUI_INDEX_HTML: &str = include_str!("../../hakimi-webui/static/index.html");
-const WEBUI_HAKIMI_JS: &str = include_str!("../../hakimi-webui/static/hakimi.js");
-const WEBUI_COMPOSER_JS: &str = include_str!("../../hakimi-webui/static/composer.js");
-const WEBUI_WORKSPACE_JS: &str = include_str!("../../hakimi-webui/static/workspace.js");
-const WEBUI_STYLE_CSS: &str = include_str!("../../hakimi-webui/static/style.css");
+const WEBUI_APP_JS: &str = include_str!("../../hakimi-webui/static/app.js");
+const WEBUI_APP_CSS: &str = include_str!("../../hakimi-webui/static/app.css");
 const WEBUI_FAVICON_SVG: &str = include_str!("../../hakimi-webui/static/favicon.svg");
+const WEBUI_ICONS_SVG: &str = include_str!("../../hakimi-webui/static/icons.svg");
 
 fn static_webui_response(content_type: &'static str, body: &'static str) -> Response {
     ([(header::CONTENT_TYPE, content_type)], body).into_response()
@@ -2019,13 +2093,10 @@ async fn webui_favicon() -> Response {
 
 async fn webui_static_asset(Path(path): Path<String>) -> Response {
     match path.as_str() {
-        "hakimi.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_HAKIMI_JS),
-        "composer.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_COMPOSER_JS),
-        "workspace.js" => {
-            static_webui_response("text/javascript; charset=utf-8", WEBUI_WORKSPACE_JS)
-        }
-        "style.css" => static_webui_response("text/css; charset=utf-8", WEBUI_STYLE_CSS),
+        "app.js" => static_webui_response("text/javascript; charset=utf-8", WEBUI_APP_JS),
+        "app.css" => static_webui_response("text/css; charset=utf-8", WEBUI_APP_CSS),
         "favicon.svg" => static_webui_response("image/svg+xml; charset=utf-8", WEBUI_FAVICON_SVG),
+        "icons.svg" => static_webui_response("image/svg+xml; charset=utf-8", WEBUI_ICONS_SVG),
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -3270,6 +3341,575 @@ async fn chat(
             ))
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Agent-dimension (persona) endpoints
+// ---------------------------------------------------------------------------
+
+/// Build an isolated agent for a named persona from the shared template
+/// (`AppState::agent`), reading its skills from `skills_dir`. Used by the chat
+/// endpoint and by the CRUD handlers to keep `AppState::persona_agents` in sync.
+async fn build_persona_agent_for(
+    state: &AppState,
+    cfg: &hakimi_core::PersonaConfig,
+    skills_dir: &std::path::Path,
+) -> hakimi_core::AIAgent {
+    let template = state.agent.lock().await.clone();
+    let context_length = {
+        let config = state.config.lock().await;
+        let model = if cfg.model.trim().is_empty() {
+            template.model()
+        } else {
+            cfg.model.as_str()
+        };
+        hakimi_common::resolve_model_context_length(
+            model,
+            Some(config.model.context_length).filter(|length| *length > 0),
+            config.compression.context_length,
+        )
+        .context_length
+    };
+    hakimi_core::build_persona_agent(&template, cfg, skills_dir, context_length)
+}
+
+/// Insert/replace a named persona's gateway agent so routing reflects CRUD
+/// without a restart. The default persona is never stored (it uses the legacy
+/// shared agent).
+async fn sync_gateway_persona_agent(
+    state: &AppState,
+    cfg: &hakimi_core::PersonaConfig,
+    skills_dir: &std::path::Path,
+) {
+    if cfg.id == hakimi_core::DEFAULT_PERSONA_ID {
+        return;
+    }
+    let agent = build_persona_agent_for(state, cfg, skills_dir).await;
+    state.persona_agents.write().await.insert(
+        cfg.id.clone(),
+        std::sync::Arc::new(tokio::sync::Mutex::new(agent)),
+    );
+}
+
+/// GET /api/agents — list personas with the default persona id.
+async fn list_agents(State(state): State<AppState>) -> Json<AgentsListResponse> {
+    let reg = state.persona_registry.read().await;
+    let agents = reg.list().into_iter().cloned().collect();
+    Json(AgentsListResponse {
+        agents,
+        default: reg.default_id().to_string(),
+    })
+}
+
+/// POST /api/agents — create a persona from the posted config.
+async fn create_agent(
+    State(state): State<AppState>,
+    Json(cfg): Json<hakimi_core::PersonaConfig>,
+) -> Result<Json<hakimi_core::PersonaConfig>, (StatusCode, Json<ErrorResponse>)> {
+    let id = cfg.id.clone();
+    let (created, skills_dir) = {
+        let mut reg = state.persona_registry.write().await;
+        reg.create(cfg).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+        let created = reg.get(&id).cloned().expect("persona present after create");
+        let skills_dir = reg.agents_dir().join(&id).join("skills");
+        (created, skills_dir)
+    };
+    sync_gateway_persona_agent(&state, &created, &skills_dir).await;
+    Ok(Json(created))
+}
+
+/// GET /api/agents/{id} — fetch a persona config.
+async fn get_agent(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<hakimi_core::PersonaConfig>, (StatusCode, Json<ErrorResponse>)> {
+    let reg = state.persona_registry.read().await;
+    match reg.get(&id) {
+        Some(cfg) => Ok(Json(cfg.clone())),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!("persona '{id}' not found"),
+            }),
+        )),
+    }
+}
+
+/// PATCH /api/agents/{id} — merge provided fields and persist.
+async fn update_agent(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<AgentUpdateRequest>,
+) -> Result<Json<hakimi_core::PersonaConfig>, (StatusCode, Json<ErrorResponse>)> {
+    let (updated, skills_dir) = {
+        let mut reg = state.persona_registry.write().await;
+        let mut cfg = match reg.get(&id) {
+            Some(cfg) => cfg.clone(),
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: format!("persona '{id}' not found"),
+                    }),
+                ));
+            }
+        };
+
+        if let Some(name) = req.name {
+            cfg.name = name;
+        }
+        if let Some(avatar) = req.avatar {
+            cfg.avatar = avatar;
+        }
+        if let Some(description) = req.description {
+            cfg.description = description;
+        }
+        if let Some(model) = req.model {
+            cfg.model = model;
+        }
+        if let Some(effort) = req.reasoning_effort {
+            cfg.reasoning_effort = if effort.trim().is_empty() {
+                None
+            } else {
+                Some(effort)
+            };
+        }
+        if let Some(system_prompt) = req.system_prompt {
+            cfg.system_prompt = system_prompt;
+        }
+        if let Some(enabled_skills) = req.enabled_skills {
+            cfg.enabled_skills = enabled_skills;
+        }
+        if let Some(bindings) = req.bindings {
+            cfg.bindings = bindings;
+        }
+        if let Some(is_default) = req.is_default {
+            cfg.is_default = is_default;
+        }
+
+        reg.update(cfg).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+        let updated = reg.get(&id).cloned().expect("persona present after update");
+        let skills_dir = reg.agents_dir().join(&id).join("skills");
+        (updated, skills_dir)
+    };
+    // Rebuild the persona's gateway agent so model/prompt/skills changes take
+    // effect without a restart (in unified mode the loop shares this map).
+    sync_gateway_persona_agent(&state, &updated, &skills_dir).await;
+    Ok(Json(updated))
+}
+
+/// DELETE /api/agents/{id} — remove a persona (default persona cannot be removed).
+async fn delete_agent(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentDeleteResponse>, (StatusCode, Json<ErrorResponse>)> {
+    {
+        let mut reg = state.persona_registry.write().await;
+        reg.delete(&id).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+    }
+    state.persona_agents.write().await.remove(&id);
+    Ok(Json(AgentDeleteResponse { id, deleted: true }))
+}
+
+/// POST /api/agents/{id}/chat — chat with a specific persona (non-streaming).
+async fn agent_chat(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<ChatRequest>,
+) -> Result<Json<ChatResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Fetch the persona config + the registry's backing dir under a read lock.
+    let (cfg, agents_dir) = {
+        let reg = state.persona_registry.read().await;
+        match reg.get(&id) {
+            Some(cfg) => (cfg.clone(), reg.agents_dir().to_path_buf()),
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: format!("persona '{id}' not found"),
+                    }),
+                ));
+            }
+        }
+    };
+
+    // Build the agent for this persona. The default persona reuses the shared
+    // template directly (full default behavior); named personas get an isolated
+    // agent (own model/prompt/context/skills), mirroring the gateway split.
+    let mut persona_agent = if id == hakimi_core::DEFAULT_PERSONA_ID {
+        state.agent.lock().await.clone()
+    } else {
+        let skills_dir = agents_dir.join(&id).join("skills");
+        build_persona_agent_for(&state, &cfg, &skills_dir).await
+    };
+
+    let session_id = persona_agent.session_id().to_string();
+    match persona_agent.chat(&req.message).await {
+        Ok(response) => Ok(Json(ChatResponse {
+            response,
+            session_id,
+        })),
+        Err(e) => {
+            let msg = format!("Agent error: {e}");
+            tracing::error!("{msg}");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: msg }),
+            ))
+        }
+    }
+}
+
+/// GET /api/bindings — channel-binding overview plus the default persona.
+async fn list_bindings(State(state): State<AppState>) -> Json<BindingsResponse> {
+    let reg = state.persona_registry.read().await;
+    let bindings = reg
+        .bindings()
+        .iter()
+        .map(|(channel, persona)| (channel.clone(), persona.clone()))
+        .collect();
+    Json(BindingsResponse {
+        bindings,
+        default: reg.default_id().to_string(),
+    })
+}
+
+/// GET /api/agents/{id}/skills — skills available to a persona plus its enabled set.
+/// The default persona reads the instance skill store; named personas read
+/// `agents/{id}/skills`.
+async fn agent_skills(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentSkillsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let (cfg, skills_dir) = {
+        let reg = state.persona_registry.read().await;
+        match reg.get(&id) {
+            Some(cfg) => (cfg.clone(), reg.agents_dir().join(&id).join("skills")),
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: format!("persona '{id}' not found"),
+                    }),
+                ));
+            }
+        }
+    };
+
+    let enabled: std::collections::HashSet<&str> =
+        cfg.enabled_skills.iter().map(String::as_str).collect();
+    let to_info = |skill: &hakimi_skills::Skill| AgentSkillInfo {
+        name: skill.name.clone(),
+        description: skill.description.clone(),
+        tags: skill.tags.clone(),
+        enabled: enabled.contains(skill.name.as_str()),
+    };
+
+    let available = if id == hakimi_core::DEFAULT_PERSONA_ID {
+        let agent = state.agent.lock().await;
+        agent
+            .skill_store()
+            .map(|store| store.skills().iter().map(to_info).collect())
+            .unwrap_or_default()
+    } else {
+        let store = hakimi_skills::SkillStore::load(&skills_dir)
+            .unwrap_or_else(|_| hakimi_skills::SkillStore::empty());
+        store.skills().iter().map(to_info).collect()
+    };
+
+    Ok(Json(AgentSkillsResponse {
+        available,
+        enabled: cfg.enabled_skills.clone(),
+    }))
+}
+
+/// GET /api/agents/{id}/memory — list the persona's memory dir and `MEMORY.md`.
+/// The default persona reads the instance memory dir (`<home>/memory`); named
+/// personas read `agents/{id}/memory`.
+async fn agent_memory(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<AgentMemoryResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let memory_dir = {
+        let reg = state.persona_registry.read().await;
+        if reg.get(&id).is_none() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: format!("persona '{id}' not found"),
+                }),
+            ));
+        }
+        if id == hakimi_core::DEFAULT_PERSONA_ID {
+            reg.agents_dir()
+                .parent()
+                .map(|root| root.join("memory"))
+                .unwrap_or_else(|| reg.agents_dir().join("memory"))
+        } else {
+            reg.agents_dir().join(&id).join("memory")
+        }
+    };
+
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&memory_dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                files.push(name.to_string());
+            }
+        }
+    }
+    files.sort();
+    let memory_md = std::fs::read_to_string(memory_dir.join("MEMORY.md")).ok();
+
+    Ok(Json(AgentMemoryResponse {
+        dir: memory_dir.to_string_lossy().into_owned(),
+        files,
+        memory_md,
+    }))
+}
+
+/// Build an SSE `Response` from an mpsc receiver carrying `__DONE__`/`__ERROR__`/
+/// token-prefixed messages.
+fn sse_response_from_rx(rx: tokio::sync::mpsc::Receiver<String>) -> Response {
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        rx.recv().await.map(|msg| {
+            if let Some(payload) = msg.strip_prefix("__DONE__") {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("done").data(payload)),
+                    rx,
+                )
+            } else if let Some(payload) = msg.strip_prefix("__ERROR__") {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("error").data(payload)),
+                    rx,
+                )
+            } else {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("token").data(msg)),
+                    rx,
+                )
+            }
+        })
+    });
+    Sse::new(stream).into_response()
+}
+
+/// Resolve a persona's session database. The default persona uses the instance
+/// DB; named personas open + cache `agents/<id>/sessions.db` on first access.
+async fn resolve_persona_session_db(
+    state: &AppState,
+    id: &str,
+) -> Result<
+    std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    if id == hakimi_core::DEFAULT_PERSONA_ID {
+        return Ok(state.session_db.clone());
+    }
+    if let Some(db) = state.persona_session_dbs.read().await.get(id) {
+        return Ok(db.clone());
+    }
+    let path = {
+        let reg = state.persona_registry.read().await;
+        reg.agents_dir().join(id).join("sessions.db")
+    };
+    let db = tokio::task::spawn_blocking(move || {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let db = hakimi_session::SessionDB::new(&path)?;
+        db.initialize()?;
+        Ok::<_, anyhow::Error>(db)
+    })
+    .await
+    .map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("join error: {e}"),
+        )
+    })?
+    .map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("open session db: {e}"),
+        )
+    })?;
+    let arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
+    state
+        .persona_session_dbs
+        .write()
+        .await
+        .insert(id.to_string(), arc.clone());
+    Ok(arc)
+}
+
+/// GET /api/agents/{id}/sessions — recent sessions from the persona's database.
+async fn agent_sessions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<SessionInfo>>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+    {
+        let reg = state.persona_registry.read().await;
+        if reg.get(&id).is_none() {
+            return Err(api_error(
+                StatusCode::NOT_FOUND,
+                format!("persona '{id}' not found"),
+            ));
+        }
+    }
+    let db_arc = resolve_persona_session_db(&state, &id).await?;
+    let db = db_arc.lock().await;
+    match db.get_recent_sessions(None, 50) {
+        Ok(metas) => Ok(Json(metas.into_iter().map(SessionInfo::from).collect())),
+        Err(e) => Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to list sessions: {e}"),
+        )),
+    }
+}
+
+/// POST /api/agents/{id}/chat/stream — streaming persona chat (SSE). Persists to
+/// the persona's session DB when a `session_id` is supplied. The default persona
+/// reuses the shared template agent + instance DB; named personas get their own.
+async fn agent_chat_stream(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<ChatRequest>,
+) -> Response {
+    let (cfg, skills_dir, is_default) = {
+        let reg = state.persona_registry.read().await;
+        match reg.get(&id) {
+            Some(c) => (
+                c.clone(),
+                reg.agents_dir().join(&id).join("skills"),
+                id == hakimi_core::DEFAULT_PERSONA_ID,
+            ),
+            None => {
+                return api_error(StatusCode::NOT_FOUND, format!("persona '{id}' not found"))
+                    .into_response();
+            }
+        }
+    };
+
+    let (tx_for_handler, rx) = tokio::sync::mpsc::channel::<String>(512);
+    let user_message = req.message.clone();
+    let requested_session_id = req
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let session_db = match resolve_persona_session_db(&state, &id).await {
+        Ok(db) => db,
+        Err((_, Json(err))) => {
+            let _ = tx_for_handler.send(format!("__ERROR__{}", err.error)).await;
+            drop(tx_for_handler);
+            return sse_response_from_rx(rx);
+        }
+    };
+
+    let mut cloned_agent = if is_default {
+        state.agent.lock().await.clone()
+    } else {
+        build_persona_agent_for(&state, &cfg, &skills_dir).await
+    };
+
+    if let Some(session_id) = requested_session_id.as_deref() {
+        let restored = {
+            let db = session_db.lock().await;
+            match db.get_session(session_id) {
+                Ok(Some(_)) => db.restore_session(session_id, None),
+                Ok(None) => Err(anyhow::anyhow!("session not found: {session_id}")),
+                Err(e) => Err(e),
+            }
+        };
+        match restored {
+            Ok(messages) => {
+                cloned_agent.set_session_id(session_id.to_string());
+                cloned_agent.clear_messages();
+                for message in messages {
+                    cloned_agent.add_message(message);
+                }
+            }
+            Err(e) => {
+                let _ = tx_for_handler.send(format!("__ERROR__{e}")).await;
+                drop(tx_for_handler);
+                return sse_response_from_rx(rx);
+            }
+        }
+    }
+
+    cloned_agent.set_streaming(true);
+    cloned_agent.set_streaming_callback(Some(Arc::new({
+        let tx = tx_for_handler.clone();
+        move |token: String| {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let _ = tx.send(token).await;
+            });
+        }
+    })));
+
+    let session_id = cloned_agent.session_id().to_string();
+    let should_persist = requested_session_id.is_some();
+    let tx = tx_for_handler.clone();
+
+    tokio::spawn(async move {
+        use hakimi_session::MessageOps;
+        match cloned_agent.chat(&user_message).await {
+            Ok(response) => {
+                if should_persist {
+                    let persist_result = {
+                        let db = session_db.lock().await;
+                        db.save_message(&session_id, &CoreMessage::user(user_message.clone()))
+                            .and_then(|_| {
+                                db.save_message(
+                                    &session_id,
+                                    &CoreMessage::assistant(response.clone()),
+                                )
+                            })
+                    };
+                    if let Err(e) = persist_result {
+                        let _ = tx.send(format!("__ERROR__{e}")).await;
+                        return;
+                    }
+                }
+                let done = serde_json::json!({
+                    "response": response,
+                    "session_id": session_id,
+                });
+                let _ = tx.send(format!("__DONE__{done}")).await;
+            }
+            Err(e) => {
+                let _ = tx.send(format!("__ERROR__{}", e)).await;
+            }
+        }
+    });
+    drop(tx_for_handler);
+    sse_response_from_rx(rx)
 }
 
 /// POST /chat/stream — send a message, stream the response via SSE.
@@ -4895,6 +5535,10 @@ mod tests {
                 )
                 .unwrap(),
             )),
+            persona_agents: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            persona_session_dbs: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 
@@ -4968,19 +5612,339 @@ mod tests {
         assert_eq!(json.status, "ok");
     }
 
+    async fn read_json(resp: axum::response::Response) -> serde_json::Value {
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    fn json_post(uri: &str, body: serde_json::Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    }
+
+    fn json_patch(uri: &str, body: serde_json::Value) -> Request<Body> {
+        Request::builder()
+            .method("PATCH")
+            .uri(uri)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_agents_list_includes_default() {
+        let app = build_router(test_state());
+        let req = Request::builder()
+            .uri("/api/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["default"], "default");
+        let ids: Vec<&str> = json["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["id"].as_str().unwrap())
+            .collect();
+        assert!(ids.contains(&"default"));
+    }
+
+    #[tokio::test]
+    async fn test_agents_create_get_update_delete() {
+        let app = build_router(test_state());
+
+        // Create
+        let resp = app
+            .clone()
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "coder", "name": "Coder"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["id"], "coder");
+        assert_eq!(json["name"], "Coder");
+
+        // Duplicate create rejected
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/agents", json!({"id": "coder"})))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+
+        // Get
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/coder")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        // Update
+        let resp = app
+            .clone()
+            .oneshot(json_patch(
+                "/api/agents/coder",
+                json!({"model": "claude-opus-4-8", "bindings": ["telegram:devbot"]}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["model"], "claude-opus-4-8");
+
+        // Bindings overview reflects the update
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/bindings")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let json = read_json(resp).await;
+        assert_eq!(json["bindings"]["telegram:devbot"], "coder");
+
+        // Delete
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/agents/coder")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        // Default persona cannot be deleted
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/agents/default")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_default_agent_chat_uses_stub_transport() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(json_post(
+                "/api/agents/default/chat",
+                json!({"message": "hello"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert!(
+            json["response"].as_str().unwrap().contains("hello"),
+            "stub transport echoes the prompt: {json:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_agent_chat_unknown_persona_is_404() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(json_post(
+                "/api/agents/ghost/chat",
+                json!({"message": "hi"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_create_delete_agent_syncs_gateway_map() {
+        let state = test_state();
+        let agents = state.persona_agents.clone();
+        let app = build_router(state);
+
+        // Creating a named persona registers its gateway agent.
+        let resp = app
+            .clone()
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "coder", "name": "Coder"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert!(agents.read().await.contains_key("coder"));
+
+        // Deleting it drops the gateway agent.
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/agents/coder")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert!(!agents.read().await.contains_key("coder"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_skills_reflects_enabled() {
+        let app = build_router(test_state());
+        // Create a persona with an enabled skill.
+        let resp = app
+            .clone()
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "coder", "enabled_skills": ["tdd"]}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/coder/skills")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["enabled"][0], "tdd");
+    }
+
+    #[tokio::test]
+    async fn test_agent_memory_ok_and_unknown_404() {
+        let app = build_router(test_state());
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/default/memory")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert!(json["dir"].as_str().is_some());
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/ghost/memory")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_agent_sessions_ok_and_unknown_404() {
+        let app = build_router(test_state());
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/default/sessions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert!(json.is_array());
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/ghost/sessions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_agent_chat_stream_default_emits_sse() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(json_post(
+                "/api/agents/default/chat/stream",
+                json!({"message": "hello"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let content_type = resp
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(
+            content_type.starts_with("text/event-stream"),
+            "content-type: {content_type}"
+        );
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(
+            body.contains("done"),
+            "SSE body should end with a done event: {body}"
+        );
+    }
+
     #[tokio::test]
     async fn test_embedded_webui_assets_are_served_without_filesystem_cwd() {
         let state = test_state();
         let app = build_router(state);
 
         for (uri, expected_type, expected_body) in [
-            ("/", "text/html", "Hakimi"),
-            ("/index.html", "text/html", "workspace.js"),
-            ("/static/hakimi.js", "text/javascript", "Hakimi"),
-            ("/static/composer.js", "text/javascript", "SLASH_COMMANDS"),
-            ("/static/workspace.js", "text/javascript", "workspace"),
-            ("/static/style.css", "text/css", "workspace"),
+            ("/", "text/html", "/static/app.js"),
+            ("/index.html", "text/html", "id=\"root\""),
+            ("/static/app.js", "text/javascript", "persona"),
+            ("/static/app.css", "text/css", "persona-rail"),
             ("/static/favicon.svg", "image/svg+xml", "<svg"),
+            ("/static/icons.svg", "image/svg+xml", "<svg"),
             ("/favicon.svg", "image/svg+xml", "<svg"),
         ] {
             let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
