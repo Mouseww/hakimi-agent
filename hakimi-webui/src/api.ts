@@ -291,6 +291,24 @@ export interface BindingsResponse {
   default: string;
 }
 
+export interface AgentSkillInfo {
+  name: string;
+  description: string;
+  tags: string[];
+  enabled: boolean;
+}
+
+export interface AgentSkillsResponse {
+  available: AgentSkillInfo[];
+  enabled: string[];
+}
+
+export interface AgentMemoryResponse {
+  dir: string;
+  files: string[];
+  memory_md: string | null;
+}
+
 export function getAuthToken(): string {
   return window.localStorage.getItem(AUTH_TOKEN_KEY) ?? '';
 }
@@ -419,5 +437,95 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ message } satisfies ChatRequest),
     }),
+  agentSkills: (id: string) =>
+    request<AgentSkillsResponse>(`/api/agents/${encodeURIComponent(id)}/skills`),
+  agentMemory: (id: string) =>
+    request<AgentMemoryResponse>(`/api/agents/${encodeURIComponent(id)}/memory`),
+  agentSessions: (id: string) =>
+    request<SessionInfo[]>(`/api/agents/${encodeURIComponent(id)}/sessions`),
+  agentChatStream: (
+    id: string,
+    message: string,
+    opts: { sessionId?: string; onToken?: (token: string) => void } = {},
+  ) => streamAgentChat(id, message, opts),
   bindings: () => request<BindingsResponse>('/api/bindings'),
 };
+
+/// Stream a persona chat over SSE, invoking `onToken` for each chunk and
+/// resolving with the final `{response, session_id}` from the `done` event.
+async function streamAgentChat(
+  id: string,
+  message: string,
+  opts: { sessionId?: string; onToken?: (token: string) => void },
+): Promise<ChatResponse> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message, session_id: opts.sessionId }),
+  });
+
+  if (!response.ok || !response.body) {
+    let errorMessage = `${response.status} ${response.statusText}`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      errorMessage = payload.error ?? errorMessage;
+    } catch {
+      // No JSON body on the error response.
+    }
+    throw new Error(errorMessage);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let final: ChatResponse | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      const rawEvent = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf('\n\n');
+
+      let eventType = 'message';
+      const dataLines: string[] = [];
+      for (const line of rawEvent.split('\n')) {
+        if (line.startsWith('event:')) {
+          eventType = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).replace(/^ /, ''));
+        }
+      }
+      const data = dataLines.join('\n');
+
+      if (eventType === 'token') {
+        opts.onToken?.(data);
+      } else if (eventType === 'done') {
+        try {
+          final = JSON.parse(data) as ChatResponse;
+        } catch {
+          // Ignore malformed done payloads; loop will throw below if no final.
+        }
+      } else if (eventType === 'error') {
+        throw new Error(data);
+      }
+    }
+  }
+
+  if (!final) {
+    throw new Error('stream ended without a done event');
+  }
+  return final;
+}

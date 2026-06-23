@@ -1,5 +1,5 @@
 import { Loader2, Save, Trash2, X } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, type Agent } from './api';
 
 interface PersonaConfigFormProps {
@@ -32,8 +32,37 @@ export default function PersonaConfigForm({
   const [isDefault, setIsDefault] = useState(agent?.is_default ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fetchedSkills, setFetchedSkills] = useState<string[] | null>(null);
 
   const idValid = useMemo(() => ID_PATTERN.test(id.trim()), [id]);
+
+  // In edit mode, load the persona's actual skills (from its skills dir) so the
+  // chips reflect what is available to this persona, not just the instance set.
+  useEffect(() => {
+    if (!agent) {
+      return;
+    }
+    const personaId = agent.id;
+    const timer = window.setTimeout(() => {
+      void api
+        .agentSkills(personaId)
+        .then((res) => setFetchedSkills(res.available.map((skill) => skill.name)))
+        .catch(() => {
+          // Keep the instance-wide fallback on failure.
+        });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [agent]);
+
+  // Skills to show as chips: the persona's available skills (edit mode) or the
+  // instance set (create mode), always including currently-enabled skills.
+  const skillOptions = useMemo(() => {
+    const base = new Set(fetchedSkills ?? availableSkills);
+    for (const skill of skills) {
+      base.add(skill);
+    }
+    return Array.from(base).sort();
+  }, [fetchedSkills, availableSkills, skills]);
 
   function toggleSkill(skill: string) {
     setSkills((current) =>
@@ -197,10 +226,10 @@ export default function PersonaConfigForm({
         <fieldset className="settings-group settings-group-wide">
           <legend>Skills</legend>
           <div className="persona-skill-chips">
-            {availableSkills.length === 0 && (
+            {skillOptions.length === 0 && (
               <span className="panel-empty">No skills available</span>
             )}
-            {availableSkills.map((skill) => (
+            {skillOptions.map((skill) => (
               <button
                 type="button"
                 key={skill}

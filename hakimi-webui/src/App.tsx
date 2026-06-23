@@ -31,6 +31,7 @@ import {
   setAuthToken,
   type Agent,
   type CapabilitiesResponse,
+  type ChatResponse,
   type CredentialPoolResponse,
   type DashboardStatus,
   type HealthResponse,
@@ -320,21 +321,45 @@ function App() {
     setSending(true);
     setError(null);
 
+    const assistantId = nowId('assistant');
+    setMessages((current) => [
+      ...current,
+      { id: assistantId, role: 'assistant', content: '', createdAt: new Date() },
+    ]);
+    const applyContent = (text: string) =>
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId ? { ...message, content: text } : message,
+        ),
+      );
+
     try {
-      const response = activePersonaId
-        ? await api.agentChat(activePersonaId, content)
-        : await api.chat(content);
-      const assistantMessage: UiMessage = {
-        id: nowId('assistant'),
-        role: 'assistant',
-        content: response.response,
-        sessionId: response.session_id,
-        createdAt: new Date(),
-      };
-      setMessages((current) => [...current, assistantMessage]);
+      let response: ChatResponse;
+      if (activePersonaId) {
+        // Stream tokens live for persona chat. No session_id is sent, so each
+        // turn is a fresh exchange (WebUI per-persona session selection is a
+        // follow-up); the backend persists when a valid session_id is supplied.
+        let accumulated = '';
+        response = await api.agentChatStream(activePersonaId, content, {
+          onToken: (token) => {
+            accumulated += token;
+            applyContent(accumulated);
+          },
+        });
+      } else {
+        response = await api.chat(content);
+      }
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId
+            ? { ...message, content: response.response, sessionId: response.session_id }
+            : message,
+        ),
+      );
       setSelectedSessionId(response.session_id);
       void refreshAll({ quiet: true });
     } catch (sendError) {
+      setMessages((current) => current.filter((message) => message.id !== assistantId));
       setError(sendError instanceof Error ? sendError.message : String(sendError));
     } finally {
       setSending(false);
