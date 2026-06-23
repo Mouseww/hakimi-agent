@@ -22,8 +22,19 @@
 - ~~**P4 Agent 维度 API**~~ — 已完成(见上,`74aefe6` + `415398e`)。
   - **遗留给后续的钩子**:gateway 的 `persona_agents`(预构建 base agents `HashMap`)在 `start_gateway`/`start_unified_server` 启动时构建一次,binding 解析读的是共享 registry(改绑定即时生效),但**新建人格的 agent 实例需在 CRUD 后重建/插入该 map** 才能在 gateway 侧免重启热生效(对未在 map 中的命名人格按 legacy 兜底)。WebUI 的 `/api/agents/{id}/chat` 按需构建,不受此限。考虑把 `persona_agents` 升级为 `Arc<RwLock<…>>` 放进 `AppState`,在 create/delete 时同步。另:P4 `/chat` 非流式且不落 session DB;`/api/agents/{id}/sessions|memory|skills` 与 `/chat/stream`、人格级 sessions.db/cron.db 隔离均为后续。
 - ~~**P5 WebUI**~~ — 已完成(见上,`79103bd`)。
-  - **遗留给后续**:把 React `dist/` 接入二进制嵌入(改 `api.rs` 的 `include_str!` 指向 `dist/` 或加 build.rs/构建步骤),否则重设计不 ship;人格作用域 sessions/memory/skills 子资源 UI、流式人格 chat、客户端路由(`/agents/:id`)、§4.3 协作(`agent:<id>`)占位开关均未做。
 - **前向兼容钩子**(spec §5.2):`agent:<id>` 寻址(多 Agent 互聊)留作后续单独 spec,本期只在 `send_message` target 解析预留;无 channel 的人格在 WebUI 内已天然可用。
+
+## P6 后续项(已完成,计划 `docs/superpowers/plans/2026-06-23-p6-followups.md`)
+
+填掉 P4/P5 遗留的三处缺口(用户指定按 1→2→3 顺序):
+
+- ~~**Item 1 React 接入二进制**~~(`c19066d`):vite 构建到 `crates/hakimi-webui/static/`(固定文件名 `app.js`/`app.css`,`base=/static/`),产物提交入库,`api.rs` `include_str!` 嵌入。**运行的二进制现服务 React Layout A**,vanilla UI 移除。CI 无需 node。**注意**:vanilla 独有的 `workspace.js` 文件浏览器未移植到 React(待办)。改前端后需 `npm run build` 重新生成并提交 `static/`。
+- ~~**Item 2 gateway 人格热生效**~~(`ff93aa6`):`persona_agents` 升级为 `AppState` 里的共享 `Arc<RwLock<HashMap>>`(`GatewayPersonaAgents` 别名);CRUD handler 在 create/update 重建插入、delete 移除(默认人格不入 map),统一模式 gateway 与 API 共享同一 Arc → 新建/改人格免重启即时路由。
+- ~~**Item 3 人格作用域子资源 + 流式**~~(`395f1d0` skills/memory + `cda60f2` sessions/stream + `5fad286` webui):`GET /api/agents/{id}/skills|memory|sessions`、`POST /api/agents/{id}/chat/stream`(SSE,带 session_id 时持久化到 per-persona `agents/{id}/sessions.db`,经 `PersonaSessionDbs` 缓存懒打开)。WebUI:流式人格 chat(token 实时)+ 配置表单按 `/skills` 显示该人格技能。
+  - **Item 3 遗留**:WebUI 未做"人格作用域会话选择"——流式 chat 未传 `session_id`(每轮全新,不持久化;后端在传入合法 per-persona session_id 时持久化,已测);缺 per-persona `/sessions/{sid}/messages` 端点,故会话列表点击加载消息对命名人格不通。`agentSessions`/`agentMemory` 已在 `api.ts` 备好待接 UI。gateway 入站消息仍用内存 per-chat histories(P3),未写 sessions.db。
+
+## 待用户操作
+- **`git push` 让 CI 全量确认**(本机 push 需交互式 GCM;前端 CI 不覆盖)。P3→P6 累计未推送提交约 14 个,均在 `feat/shared-runtime`。
 
 ## 环境 gotchas(关键,务必照做)
 - **本机无 Rust 工具链**,所有 cargo 经 Docker:`& "D:\projects\hakimi-agent\.superpowers\cargo.ps1" <args>`(镜像 `hakimi-rust:nightly` = `rustlang/rust:nightly` + clippy/rustfmt;target/registry 用命名卷;已设 `RUSTFLAGS=-Dwarnings`)。`.superpowers/` 已 gitignore(内含 cargo.ps1 / Dockerfile / pr-body.md)。
