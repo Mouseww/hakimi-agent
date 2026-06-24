@@ -309,6 +309,23 @@ export interface AgentMemoryResponse {
   memory_md: string | null;
 }
 
+export interface WorkspaceEntry {
+  name: string;
+  entry_type: string;
+  size: number;
+  is_dir: boolean;
+  is_git_tracked: boolean;
+  git_status: string | null;
+}
+
+export interface WorkspaceListResponse {
+  entries: WorkspaceEntry[];
+}
+
+export interface WorkspaceReadResponse {
+  content: string;
+}
+
 export function getAuthToken(): string {
   return window.localStorage.getItem(AUTH_TOKEN_KEY) ?? '';
 }
@@ -385,6 +402,11 @@ export const api = {
       body: JSON.stringify({ message } satisfies ChatRequest),
     }),
   sessions: () => request<SessionInfo[]>('/api/sessions'),
+  deleteSession: (sessionId: string) =>
+    request<{ success?: boolean; deleted?: boolean }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { method: 'DELETE' },
+    ),
   sessionMessages: (sessionId: string, limit = 80) =>
     request<SessionMessagesResponse>(
       `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=${limit}`,
@@ -449,6 +471,10 @@ export const api = {
     opts: { sessionId?: string; onToken?: (token: string) => void } = {},
   ) => streamAgentChat(id, message, opts),
   bindings: () => request<BindingsResponse>('/api/bindings'),
+  workspaceList: (path = '') =>
+    request<WorkspaceListResponse>(`/api/workspace/list?path=${encodeURIComponent(path)}`),
+  workspaceRead: (path: string) =>
+    request<WorkspaceReadResponse>(`/api/workspace/read?path=${encodeURIComponent(path)}`),
 };
 
 /// Stream a persona chat over SSE, invoking `onToken` for each chunk and

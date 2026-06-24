@@ -1,14 +1,15 @@
-import { Bot, Plus, Settings } from 'lucide-react';
+import { Bot, FolderTree, Plus, Settings } from 'lucide-react';
 import type { Agent } from './api';
 
 interface PersonaRailProps {
   agents: Agent[];
   activeId: string | null;
-  view: 'chat' | 'config' | 'instance';
+  view: 'chat' | 'config' | 'instance' | 'workspace';
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onCreate: () => void;
   onInstance: () => void;
+  onWorkspace: () => void;
 }
 
 function avatarText(agent: Agent): string {
@@ -27,12 +28,13 @@ export default function PersonaRail({
   onEdit,
   onCreate,
   onInstance,
+  onWorkspace,
 }: PersonaRailProps) {
   return (
     <nav className="persona-rail" aria-label="Personas">
       <div className="persona-rail-list">
         {agents.map((agent) => {
-          const active = agent.id === activeId && view !== 'instance';
+          const active = agent.id === activeId && view === 'chat';
           return (
             <div className={`persona-rail-item ${active ? 'is-active' : ''}`} key={agent.id}>
               <button
@@ -65,6 +67,14 @@ export default function PersonaRail({
       <div className="persona-rail-foot">
         <button type="button" className="persona-add" title="New persona" onClick={onCreate}>
           <Plus size={18} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`persona-instance ${view === 'workspace' ? 'is-active' : ''}`}
+          title="Workspace files"
+          onClick={onWorkspace}
+        >
+          <FolderTree size={18} aria-hidden="true" />
         </button>
         <button
           type="button"
