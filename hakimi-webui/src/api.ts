@@ -9,6 +9,12 @@ export interface ChatResponse {
   session_id: string;
 }
 
+/** Result of a streamed chat. `incomplete` means the connection dropped or
+ *  stalled mid-stream and `response` holds the partial output received so far. */
+export interface StreamChatResult extends ChatResponse {
+  incomplete?: boolean;
+}
+
 export interface HealthResponse {
   status: string;
   version: string;
@@ -477,81 +483,138 @@ export const api = {
     request<WorkspaceReadResponse>(`/api/workspace/read?path=${encodeURIComponent(path)}`),
 };
 
-/// Stream a persona chat over SSE, invoking `onToken` for each chunk and
-/// resolving with the final `{response, session_id}` from the `done` event.
+const STREAM_CONNECT_ATTEMPTS = 3;
+const STREAM_STALL_MS = 60_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Stream a persona chat over SSE, invoking `onToken` per chunk and resolving with
+ * the final `{response, session_id}` from the `done` event.
+ *
+ * Resilience:
+ * - Retries the *connection* (network error or 502/503/504) a few times with
+ *   backoff. Safe because no tokens have flowed yet, so it can't duplicate output.
+ * - A stall watchdog aborts if no chunk arrives for `STREAM_STALL_MS`.
+ * - If the connection drops or stalls mid-stream, the partial output received so
+ *   far is preserved and returned with `incomplete: true` (never silently lost).
+ *
+ * Note: true resume after a drop would need server-side event ids (Last-Event-ID);
+ * that is a backend follow-up.
+ */
 async function streamAgentChat(
   id: string,
   message: string,
   opts: { sessionId?: string; onToken?: (token: string) => void },
-): Promise<ChatResponse> {
+): Promise<StreamChatResult> {
   const token = getAuthToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
+  const url = `/api/agents/${encodeURIComponent(id)}/chat/stream`;
+  const body = JSON.stringify({ message, session_id: opts.sessionId });
 
-  const response = await fetch(`/api/agents/${encodeURIComponent(id)}/chat/stream`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ message, session_id: opts.sessionId }),
-  });
+  let accumulated = '';
 
-  if (!response.ok || !response.body) {
-    let errorMessage = `${response.status} ${response.statusText}`;
+  for (let attempt = 1; ; attempt += 1) {
+    const controller = new AbortController();
+    let response: Response;
     try {
-      const payload = (await response.json()) as { error?: string };
-      errorMessage = payload.error ?? errorMessage;
-    } catch {
-      // No JSON body on the error response.
+      response = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
+    } catch (networkError) {
+      // Never reached the server (connection failed): safe to retry.
+      if (attempt < STREAM_CONNECT_ATTEMPTS) {
+        await delay(attempt * 600);
+        continue;
+      }
+      throw networkError instanceof Error ? networkError : new Error(String(networkError));
     }
-    throw new Error(errorMessage);
-  }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let final: ChatResponse | null = null;
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+    if (!response.ok || !response.body) {
+      // Gateway-level failure (proxy/unavailable): the agent likely never ran, retry.
+      if (attempt < STREAM_CONNECT_ATTEMPTS && [502, 503, 504].includes(response.status)) {
+        await delay(attempt * 600);
+        continue;
+      }
+      let errorMessage = `${response.status} ${response.statusText}`;
+      try {
+        const payload = (await response.json()) as { error?: string };
+        errorMessage = payload.error ?? errorMessage;
+      } catch {
+        // No JSON body on the error response.
+      }
+      throw new Error(errorMessage);
     }
-    buffer += decoder.decode(value, { stream: true });
 
-    let boundary = buffer.indexOf('\n\n');
-    while (boundary !== -1) {
-      const rawEvent = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      boundary = buffer.indexOf('\n\n');
+    // Connected: consume the stream. From here we do not re-issue the request
+    // (the agent is already generating), but we preserve any partial output.
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let final: ChatResponse | null = null;
+    let stallTimer = setTimeout(() => controller.abort(), STREAM_STALL_MS);
 
-      let eventType = 'message';
-      const dataLines: string[] = [];
-      for (const line of rawEvent.split('\n')) {
-        if (line.startsWith('event:')) {
-          eventType = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).replace(/^ /, ''));
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => controller.abort(), STREAM_STALL_MS);
+        buffer += decoder.decode(value, { stream: true });
+
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const rawEvent = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf('\n\n');
+
+          let eventType = 'message';
+          const dataLines: string[] = [];
+          for (const line of rawEvent.split('\n')) {
+            if (line.startsWith('event:')) {
+              eventType = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+              dataLines.push(line.slice(5).replace(/^ /, ''));
+            }
+          }
+          const data = dataLines.join('\n');
+
+          if (eventType === 'token') {
+            accumulated += data;
+            opts.onToken?.(data);
+          } else if (eventType === 'done') {
+            try {
+              final = JSON.parse(data) as ChatResponse;
+            } catch {
+              // Ignore malformed done payloads.
+            }
+          } else if (eventType === 'error') {
+            throw new Error(data);
+          }
         }
       }
-      const data = dataLines.join('\n');
-
-      if (eventType === 'token') {
-        opts.onToken?.(data);
-      } else if (eventType === 'done') {
-        try {
-          final = JSON.parse(data) as ChatResponse;
-        } catch {
-          // Ignore malformed done payloads; loop will throw below if no final.
-        }
-      } else if (eventType === 'error') {
-        throw new Error(data);
+    } catch (streamError) {
+      // Mid-stream drop/stall/abort: keep whatever already arrived.
+      if (accumulated) {
+        return { response: accumulated, session_id: opts.sessionId ?? '', incomplete: true };
       }
+      throw streamError instanceof Error ? streamError : new Error(String(streamError));
+    } finally {
+      clearTimeout(stallTimer);
     }
-  }
 
-  if (!final) {
+    if (final) {
+      return final;
+    }
+    if (accumulated) {
+      // Stream ended without a `done` event: treat received text as partial.
+      return { response: accumulated, session_id: opts.sessionId ?? '', incomplete: true };
+    }
     throw new Error('stream ended without a done event');
   }
-  return final;
 }

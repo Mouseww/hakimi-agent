@@ -38,7 +38,7 @@ import {
   setAuthToken,
   type Agent,
   type CapabilitiesResponse,
-  type ChatResponse,
+  type StreamChatResult,
   type CredentialPoolResponse,
   type DashboardStatus,
   type HealthResponse,
@@ -363,7 +363,7 @@ function App() {
       );
 
     try {
-      let response: ChatResponse;
+      let response: StreamChatResult;
       if (activePersonaId) {
         // Stream tokens live for persona chat. No session_id is sent, so each
         // turn is a fresh exchange (WebUI per-persona session selection is a
@@ -381,11 +381,17 @@ function App() {
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantId
-            ? { ...message, content: response.response, sessionId: response.session_id }
+            ? { ...message, content: response.response, sessionId: response.session_id || undefined }
             : message,
         ),
       );
-      setSelectedSessionId(response.session_id);
+      if (response.session_id) {
+        setSelectedSessionId(response.session_id);
+      }
+      if (response.incomplete) {
+        // Connection dropped/stalled mid-stream; the partial reply is kept.
+        setError('连接中断,已保留收到的部分回复。可点该消息的重试按钮继续。');
+      }
       void refreshAll({ quiet: true });
     } catch (sendError) {
       setMessages((current) => current.filter((message) => message.id !== assistantId));
