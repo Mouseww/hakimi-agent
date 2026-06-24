@@ -365,11 +365,11 @@ function App() {
     try {
       let response: ChatResponse;
       if (activePersonaId) {
-        // Stream tokens live for persona chat. No session_id is sent, so each
-        // turn is a fresh exchange (WebUI per-persona session selection is a
-        // follow-up); the backend persists when a valid session_id is supplied.
+        // Stream tokens live for persona chat. Pass selectedSessionId to continue
+        // the same conversation across turns; the backend creates a new session if null.
         let accumulated = '';
         response = await api.agentChatStream(activePersonaId, text, {
+          sessionId: selectedSessionId ?? undefined,
           onToken: (token) => {
             accumulated += token;
             applyContent(accumulated);

@@ -8,3 +8,14 @@
 *.log
 .codex_tmp_test/
 .superpowers/
+
+# Backup files
+*.bak
+*.tmp
+
+# OS specific
+Thumbs.db
+
+# Test artifacts
+*.profraw
+*.profdata
