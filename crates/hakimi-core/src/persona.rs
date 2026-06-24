@@ -48,6 +48,14 @@ pub struct PersonaConfig {
     /// Whether this persona is the fallback for unbound gateway messages.
     #[serde(default)]
     pub is_default: bool,
+    /// Whether other personas may consult this one as a teammate (`team` tool).
+    /// Defaults to `true` so teams work out of the box; toggle off to opt out.
+    #[serde(default = "default_true")]
+    pub addressable: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl PersonaConfig {
@@ -66,6 +74,7 @@ impl PersonaConfig {
             enabled_skills: Vec::new(),
             bindings: Vec::new(),
             is_default: false,
+            addressable: true,
         }
     }
 }
@@ -194,6 +203,27 @@ mod tests {
         };
         save_registry_index(&agents, &index).unwrap();
         assert_eq!(load_registry_index(&agents).unwrap(), index);
+    }
+
+    #[test]
+    fn addressable_defaults_true_when_absent() {
+        // A persona.yaml written before the field existed must load as addressable.
+        let dir = temp_dir();
+        let persona_dir = dir.join("legacy");
+        std::fs::create_dir_all(&persona_dir).unwrap();
+        std::fs::write(
+            persona_dir.join("persona.yaml"),
+            "id: legacy\nname: Legacy\n",
+        )
+        .unwrap();
+
+        let loaded = load_persona(&persona_dir).unwrap();
+        assert!(loaded.addressable, "missing addressable must default to true");
+    }
+
+    #[test]
+    fn new_persona_is_addressable_by_default() {
+        assert!(PersonaConfig::new("coder").addressable);
     }
 
     #[test]
