@@ -748,6 +748,152 @@ h3 {
   color: var(--red);
 }
 
+/* highlight.js theme fits the paper surface (token colors from github.css,
+   transparent background so the surrounding pre shows through). */
+.markdown-body pre code.hljs,
+.workspace-code .hljs {
+  padding: 0;
+  background: transparent;
+}
+
+/* Workspace file browser + code viewer */
+
+.workspace-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.workspace-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: 12px 16px;
+}
+
+.workspace-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.workspace-breadcrumb span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-soft);
+}
+
+.workspace-breadcrumb button {
+  border: 0;
+  background: transparent;
+  color: var(--green-strong);
+  font-weight: 700;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.workspace-breadcrumb button:hover {
+  background: var(--surface-strong);
+}
+
+.workspace-body {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
+.workspace-tree {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  background: rgba(248, 245, 236, 0.5);
+  padding: 8px;
+}
+
+.workspace-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.workspace-entry:hover {
+  background: var(--surface-strong);
+}
+
+.workspace-entry.is-active {
+  background: rgba(36, 115, 92, 0.12);
+  color: var(--green-strong);
+}
+
+.workspace-entry-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-git {
+  color: var(--amber);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.workspace-viewer {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-file-head {
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: 8px 14px;
+  color: var(--ink-soft);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-code {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  background: var(--surface);
+  padding: 14px;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.workspace-code code {
+  white-space: pre;
+}
+
 .composer {
   border-top: 1px solid var(--line);
   background: var(--surface);
