@@ -6249,6 +6249,20 @@ Just send a message to chat with me!"
 
                 typing_handle.abort();
 
+                // Slash commands return here without running an agent turn, so the
+                // agent-turn cleanup below (which removes this chat's active-task
+                // entry) is never reached. Release the slot we reserved above; if we
+                // skip this, the chat stays "busy" forever and every later message is
+                // queued (notably after `/update`, whose restart can fail to clear it).
+                {
+                    let mut active = active_tasks.lock().await;
+                    if let Some(control) = active.get(&task_key)
+                        && control.id == task_id
+                    {
+                        active.remove(&task_key);
+                    }
+                }
+
                 let _ = gateway_clone
                     .route_message(&hakimi_gateway::GatewayMessage {
                         platform: platform.clone(),
