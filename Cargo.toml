@@ -18,10 +18,12 @@ members = [
     "crates/hakimi-plugin",
     "crates/hakimi-tui",
     "crates/hakimi-skills",
+    "crates/hakimi-batch",
+    "crates/hakimi-i18n",
 ]
 
 [workspace.package]
-version = "0.4.2"
+version = "0.4.4"
 edition = "2024"
 
 [workspace.dependencies]
