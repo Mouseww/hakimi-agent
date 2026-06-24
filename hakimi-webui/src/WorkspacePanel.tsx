@@ -2,6 +2,7 @@ import { ChevronRight, FileText, Folder, Loader2, RefreshCcw } from 'lucide-reac
 import { useEffect, useMemo, useState } from 'react';
 import { api, type WorkspaceEntry } from './api';
 import hljs from './highlighter';
+import { useI18n } from './i18n';
 
 const EXT_LANG: Record<string, string> = {
   ts: 'typescript',
@@ -61,6 +62,7 @@ function joinPath(dir: string, name: string): string {
  * renders content with highlight.js syntax highlighting.
  */
 export default function WorkspacePanel() {
+  const { t } = useI18n();
   const [path, setPath] = useState('');
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,7 +132,7 @@ export default function WorkspacePanel() {
       <div className="workspace-bar">
         <nav className="workspace-breadcrumb" aria-label="Path">
           <button type="button" onClick={() => void loadDir('')}>
-            workspace
+            {t('ws.root')}
           </button>
           {segments.map((segment, index) => (
             <span key={`${segment}-${index}`}>
@@ -147,7 +149,7 @@ export default function WorkspacePanel() {
         <button
           className="icon-button"
           type="button"
-          title="Refresh"
+          title={t('common.refresh')}
           onClick={() => void loadDir(path)}
         >
           {loading ? <Loader2 className="spin" size={15} /> : <RefreshCcw size={15} />}
@@ -158,7 +160,9 @@ export default function WorkspacePanel() {
 
       <div className="workspace-body">
         <div className="workspace-tree">
-          {!loading && entries.length === 0 && <div className="panel-empty">Empty directory</div>}
+          {!loading && entries.length === 0 && (
+            <div className="panel-empty">{t('ws.empty')}</div>
+          )}
           {entries.map((entry) => {
             const active = !entry.is_dir && selectedFile === joinPath(path, entry.name);
             return (
@@ -190,7 +194,7 @@ export default function WorkspacePanel() {
           {selectedFile ? (
             fileLoading ? (
               <div className="panel-empty">
-                <Loader2 className="spin" size={18} aria-hidden="true" /> Loading file
+                <Loader2 className="spin" size={18} aria-hidden="true" /> {t('ws.loadingFile')}
               </div>
             ) : (
               <>
@@ -207,8 +211,8 @@ export default function WorkspacePanel() {
           ) : (
             <div className="empty-transcript">
               <FileText size={30} aria-hidden="true" />
-              <h3>Workspace</h3>
-              <p>Select a file to view</p>
+              <h3>{t('ws.title')}</h3>
+              <p>{t('ws.selectFile')}</p>
             </div>
           )}
         </div>

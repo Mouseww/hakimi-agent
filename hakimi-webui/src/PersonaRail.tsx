@@ -1,5 +1,6 @@
 import { Bot, FolderTree, Plus, Settings } from 'lucide-react';
 import type { Agent } from './api';
+import { useI18n } from './i18n';
 
 interface PersonaRailProps {
   agents: Agent[];
@@ -30,6 +31,7 @@ export default function PersonaRail({
   onInstance,
   onWorkspace,
 }: PersonaRailProps) {
+  const { t } = useI18n();
   return (
     <nav className="persona-rail" aria-label="Personas">
       <div className="persona-rail-list">
@@ -49,7 +51,7 @@ export default function PersonaRail({
               <button
                 type="button"
                 className="persona-gear"
-                title={`Configure ${agent.name || agent.id}`}
+                title={`${t('rail.configure')} ${agent.name || agent.id}`}
                 onClick={() => onEdit(agent.id)}
               >
                 <Settings size={13} aria-hidden="true" />
@@ -65,13 +67,13 @@ export default function PersonaRail({
       </div>
 
       <div className="persona-rail-foot">
-        <button type="button" className="persona-add" title="New persona" onClick={onCreate}>
+        <button type="button" className="persona-add" title={t('rail.newPersona')} onClick={onCreate}>
           <Plus size={18} aria-hidden="true" />
         </button>
         <button
           type="button"
           className={`persona-instance ${view === 'workspace' ? 'is-active' : ''}`}
-          title="Workspace files"
+          title={t('rail.workspace')}
           onClick={onWorkspace}
         >
           <FolderTree size={18} aria-hidden="true" />
@@ -79,7 +81,7 @@ export default function PersonaRail({
         <button
           type="button"
           className={`persona-instance ${view === 'instance' ? 'is-active' : ''}`}
-          title="Instance settings"
+          title={t('rail.instance')}
           onClick={onInstance}
         >
           <Settings size={18} aria-hidden="true" />

@@ -1439,6 +1439,11 @@ h3 {
   color: var(--green-strong);
 }
 
+.lang-toggle {
+  font-size: 12px;
+  font-weight: 800;
+}
+
 /* Persona config form */
 
 .persona-form {

@@ -32,6 +32,7 @@ import PersonaRail from './PersonaRail';
 import PersonaConfigForm from './PersonaConfigForm';
 import InstanceSettings from './InstanceSettings';
 import WorkspacePanel from './WorkspacePanel';
+import { useI18n } from './i18n';
 import {
   api,
   getAuthToken,
@@ -154,6 +155,7 @@ function pickTopFeatures(capabilities: CapabilitiesResponse | null): Array<[stri
 }
 
 function App() {
+  const { t, lang, setLang } = useI18n();
   const [data, setData] = useState<LoadState>(emptyState);
   const [rightPanel, setRightPanel] = useState<RightPanel>('runtime');
   const [loading, setLoading] = useState(true);
@@ -390,7 +392,7 @@ function App() {
       }
       if (response.incomplete) {
         // Connection dropped/stalled mid-stream; the partial reply is kept.
-        setError('连接中断,已保留收到的部分回复。可点该消息的重试按钮继续。');
+        setError(t('chat.interrupted'));
       }
       void refreshAll({ quiet: true });
     } catch (sendError) {
@@ -437,7 +439,7 @@ function App() {
   }
 
   async function handleDeleteSession(sessionId: string) {
-    if (!window.confirm('Delete this session? This cannot be undone.')) {
+    if (!window.confirm(t('sessions.deleteConfirm'))) {
       return;
     }
     try {
@@ -522,28 +524,36 @@ function App() {
             H
           </div>
           <div>
-            <p className="eyebrow">Hakimi Agent</p>
-            <h1>Operator Console</h1>
+            <p className="eyebrow">{t('top.subtitle')}</p>
+            <h1>{t('top.title')}</h1>
           </div>
         </div>
 
         <div className="topbar-status">
           <span className={`live-dot ${data.health?.status === 'ok' ? 'is-live' : ''}`} />
-          <span>{data.health?.status === 'ok' ? `v${data.health.version}` : 'offline'}</span>
+          <span>{data.health?.status === 'ok' ? `v${data.health.version}` : t('top.offline')}</span>
           <span className="topbar-divider" />
-          <span>{data.status?.model ?? 'model pending'}</span>
+          <span>{data.status?.model ?? t('top.modelPending')}</span>
         </div>
 
         <div className="auth-cluster">
+          <button
+            className="icon-button lang-toggle"
+            type="button"
+            onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+            title={t('lang.toggleTitle')}
+          >
+            {t('lang.toggle')}
+          </button>
           <KeyRound size={16} aria-hidden="true" />
           <input
-            aria-label="Bearer token"
+            aria-label={t('top.token')}
             type="password"
             value={authDraft}
             onChange={(event) => setAuthDraft(event.target.value)}
-            placeholder="Bearer token"
+            placeholder={t('top.token')}
           />
-          <button className="icon-button" type="button" onClick={saveAuthToken} title="Save token">
+          <button className="icon-button" type="button" onClick={saveAuthToken} title={t('top.saveToken')}>
             <ShieldCheck size={16} aria-hidden="true" />
           </button>
           <button
@@ -551,7 +561,7 @@ function App() {
             type="button"
             onClick={() => void refreshAll({ quiet: true })}
             disabled={refreshing}
-            title="Refresh"
+            title={t('common.refresh')}
           >
             {refreshing ? <Loader2 className="spin" size={16} aria-hidden="true" /> : <RefreshCcw size={16} aria-hidden="true" />}
           </button>
@@ -591,15 +601,15 @@ function App() {
             <div className="metric-strip">
               <div>
                 <span>{sampledSessions}</span>
-                <small>sessions</small>
+                <small>{t('metric.sessions')}</small>
               </div>
               <div>
                 <span>{data.tools.length}</span>
-                <small>tools</small>
+                <small>{t('metric.tools')}</small>
               </div>
               <div>
                 <span>{compactNumber(totalTokens)}</span>
-                <small>tokens</small>
+                <small>{t('metric.tokens')}</small>
               </div>
             </div>
           </section>
@@ -607,8 +617,8 @@ function App() {
           <section className="rail-section">
             <div className="rail-heading">
               <div>
-                <p className="eyebrow">Sessions</p>
-                <h2>Recent Work</h2>
+                <p className="eyebrow">{t('sessions.eyebrow')}</p>
+                <h2>{t('sessions.heading')}</h2>
               </div>
               <Database size={18} aria-hidden="true" />
             </div>
@@ -617,7 +627,7 @@ function App() {
               <input
                 value={sessionQuery}
                 onChange={(event) => setSessionQuery(event.target.value)}
-                placeholder="Filter sessions"
+                placeholder={t('sessions.filter')}
               />
             </div>
             <div className="session-list">
@@ -630,17 +640,18 @@ function App() {
                   >
                     <span className="session-title">{sessionLabel(session)}</span>
                     <span className="session-meta">
-                      {session.message_count} msg / {session.tool_call_count} tools
+                      {session.message_count} {t('sessions.msg')} / {session.tool_call_count}{' '}
+                      {t('sessions.toolsShort')}
                     </span>
                     <span className="session-foot">
-                      <span>{session.model ?? 'model unknown'}</span>
+                      <span>{session.model ?? t('sessions.modelUnknown')}</span>
                       <span>{formatDate(session.started_at)}</span>
                     </span>
                   </button>
                   <button
                     type="button"
                     className="session-delete"
-                    title="Delete session"
+                    title={t('sessions.delete')}
                     onClick={() => void handleDeleteSession(session.id)}
                   >
                     <Trash2 size={13} aria-hidden="true" />
@@ -648,7 +659,7 @@ function App() {
                 </div>
               ))}
               {!loading && visibleSessions.length === 0 && (
-                <div className="panel-empty">No sessions</div>
+                <div className="panel-empty">{t('sessions.empty')}</div>
               )}
             </div>
           </section>
@@ -657,15 +668,15 @@ function App() {
         <main className="chat-column">
           <section className="chat-header" aria-label="Chat context">
             <div>
-              <p className="eyebrow">Live Agent</p>
-              <h2>{activePersona ? activePersona.name || activePersona.id : 'Chat'}</h2>
+              <p className="eyebrow">{t('chat.live')}</p>
+              <h2>{activePersona ? activePersona.name || activePersona.id : t('chat.default')}</h2>
             </div>
             <div className="chat-header-tools">
               <button
                 className={`icon-button ${showSessions ? 'is-active' : ''}`}
                 type="button"
                 onClick={() => setShowSessions((value) => !value)}
-                title={showSessions ? 'Hide sessions' : 'Show sessions'}
+                title={showSessions ? t('chat.hideSessions') : t('chat.showSessions')}
                 aria-pressed={showSessions}
               >
                 <PanelLeft size={16} aria-hidden="true" />
@@ -674,7 +685,7 @@ function App() {
                 className={`icon-button ${showPanel ? 'is-active' : ''}`}
                 type="button"
                 onClick={() => setShowPanel((value) => !value)}
-                title={showPanel ? 'Hide panel' : 'Show panel'}
+                title={showPanel ? t('chat.hidePanel') : t('chat.showPanel')}
                 aria-pressed={showPanel}
               >
                 <PanelRight size={16} aria-hidden="true" />
@@ -702,12 +713,12 @@ function App() {
             {loading || sessionLoading ? (
               <div className="panel-empty">
                 <Loader2 className="spin" size={18} aria-hidden="true" />
-                {sessionLoading ? 'Loading session' : 'Loading runtime'}
+                {sessionLoading ? t('chat.loadingSession') : t('chat.loadingRuntime')}
               </div>
             ) : transcriptMessages.length === 0 ? (
               <div className="empty-transcript">
                 <Bot size={34} aria-hidden="true" />
-                <h3>Ready</h3>
+                <h3>{t('chat.ready')}</h3>
                 <p>{data.status?.model ?? 'Hakimi Agent'}</p>
               </div>
             ) : (
@@ -718,7 +729,9 @@ function App() {
                   </div>
                   <div className="message-body">
                     <header>
-                      <span>{message.role}</span>
+                      <span>
+                        {message.role === 'assistant' ? t('chat.roleAssistant') : t('chat.roleUser')}
+                      </span>
                       <time>{message.createdAt.toLocaleTimeString()}</time>
                     </header>
                     {message.content ? (
@@ -726,7 +739,7 @@ function App() {
                     ) : sending ? (
                       <span className="message-pending">
                         <Loader2 className="spin" size={16} aria-hidden="true" />
-                        Running turn
+                        {t('chat.running')}
                       </span>
                     ) : null}
                     {message.content && (
@@ -734,7 +747,7 @@ function App() {
                         <button
                           type="button"
                           className="message-action"
-                          title="Copy"
+                          title={t('chat.copy')}
                           onClick={() => copyMessage(message.content)}
                         >
                           <Copy size={13} aria-hidden="true" />
@@ -744,7 +757,7 @@ function App() {
                             <button
                               type="button"
                               className="message-action"
-                              title="Retry"
+                              title={t('chat.retry')}
                               disabled={sending}
                               onClick={() => retryMessage(message)}
                             >
@@ -753,7 +766,7 @@ function App() {
                             <button
                               type="button"
                               className="message-action"
-                              title="Delete"
+                              title={t('chat.delete')}
                               onClick={() => deleteMessage(message.id)}
                             >
                               <Trash2 size={13} aria-hidden="true" />
@@ -762,7 +775,11 @@ function App() {
                         )}
                       </div>
                     )}
-                    {message.sessionId && <footer>session {message.sessionId}</footer>}
+                    {message.sessionId && (
+                      <footer>
+                        {t('chat.session')} {message.sessionId}
+                      </footer>
+                    )}
                   </div>
                 </article>
               ))
@@ -773,17 +790,17 @@ function App() {
             <textarea
               value={composer}
               onChange={(event) => setComposer(event.target.value)}
-              placeholder="Send a task to Hakimi"
+              placeholder={t('chat.placeholder')}
               rows={3}
             />
             <div className="composer-footer">
               <span>
                 <Activity size={14} aria-hidden="true" />
-                {data.capabilities?.features.chat ? 'chat enabled' : 'chat pending'}
+                {data.capabilities?.features.chat ? t('chat.chatEnabled') : t('chat.chatPending')}
               </span>
               <button className="button button-primary" type="submit" disabled={sending || !composer.trim()}>
                 <Send size={16} aria-hidden="true" />
-                <span>Send</span>
+                <span>{t('chat.send')}</span>
               </button>
             </div>
           </form>
@@ -795,28 +812,28 @@ function App() {
               className={rightPanel === 'runtime' ? 'is-active' : ''}
               type="button"
               onClick={() => setRightPanel('runtime')}
-              title="Runtime"
+              title={t('panel.runtime')}
             >
               <Gauge size={17} aria-hidden="true" />
-              <span>Runtime</span>
+              <span>{t('panel.runtime')}</span>
             </button>
             <button
               className={rightPanel === 'tools' ? 'is-active' : ''}
               type="button"
               onClick={() => setRightPanel('tools')}
-              title="Tools"
+              title={t('panel.tools')}
             >
               <Wrench size={17} aria-hidden="true" />
-              <span>Tools</span>
+              <span>{t('panel.tools')}</span>
             </button>
             <button
               className={rightPanel === 'skills' ? 'is-active' : ''}
               type="button"
               onClick={() => setRightPanel('skills')}
-              title="Skills"
+              title={t('panel.skills')}
             >
               <Layers3 size={17} aria-hidden="true" />
-              <span>Skills</span>
+              <span>{t('panel.skills')}</span>
             </button>
           </nav>
 
@@ -826,23 +843,23 @@ function App() {
                 <section className="runtime-card">
                   <header>
                     <Server size={18} aria-hidden="true" />
-                    <h3>Server</h3>
+                    <h3>{t('panel.server')}</h3>
                   </header>
                   <dl className="kv-grid">
                     <div>
-                      <dt>Status</dt>
+                      <dt>{t('panel.status')}</dt>
                       <dd>{data.status?.status ?? data.health?.status ?? 'unknown'}</dd>
                     </div>
                     <div>
-                      <dt>Model</dt>
+                      <dt>{t('panel.model')}</dt>
                       <dd>{data.status?.model ?? 'unknown'}</dd>
                     </div>
                     <div>
-                      <dt>Auth</dt>
+                      <dt>{t('panel.auth')}</dt>
                       <dd>{data.status?.auth.required ? 'required' : 'open'}</dd>
                     </div>
                     <div>
-                      <dt>Persistence</dt>
+                      <dt>{t('panel.persistence')}</dt>
                       <dd>{data.status?.dashboard_admin.persistence ?? 'runtime'}</dd>
                     </div>
                   </dl>
@@ -851,12 +868,12 @@ function App() {
                 <section className="runtime-card">
                   <header>
                     <Boxes size={18} aria-hidden="true" />
-                    <h3>Resources</h3>
+                    <h3>{t('panel.resources')}</h3>
                   </header>
                   <div className="resource-grid">
                     <span>
                       <strong>{data.status?.resources.tools ?? data.tools.length}</strong>
-                      tools
+                      {t('metric.tools')}
                     </span>
                     <span>
                       <strong>{data.mcp?.count ?? data.status?.resources.mcp_servers ?? 0}</strong>
@@ -864,7 +881,7 @@ function App() {
                     </span>
                     <span>
                       <strong>{data.credentials?.count ?? data.status?.resources.credential_providers ?? 0}</strong>
-                      credentials
+                      {t('panel.credentials')}
                     </span>
                     <span>
                       <strong>{data.webhooks?.enabled ? 'on' : 'off'}</strong>
@@ -876,7 +893,7 @@ function App() {
                 <section className="runtime-card">
                   <header>
                     <BadgeCheck size={18} aria-hidden="true" />
-                    <h3>Capabilities</h3>
+                    <h3>{t('panel.capabilities')}</h3>
                   </header>
                   <div className="feature-list">
                     {topFeatures.map(([name, value]) => (
@@ -892,7 +909,7 @@ function App() {
                 <section className="runtime-card">
                   <header>
                     <FileSearch size={18} aria-hidden="true" />
-                    <h3>Session Inspector</h3>
+                    <h3>{t('panel.sessionInspector')}</h3>
                   </header>
                   {selectedSession ? (
                     <>
@@ -902,7 +919,7 @@ function App() {
                       </div>
                       <div className="message-preview-list">
                         {sessionLoading ? (
-                          <div className="panel-empty">Loading messages</div>
+                          <div className="panel-empty">{t('panel.loadingMessages')}</div>
                         ) : (
                           sessionMessages.slice(-8).map((message, index) => (
                             <article className="message-preview" key={`${message.timestamp ?? index}-${message.role}`}>
@@ -917,7 +934,7 @@ function App() {
                       </div>
                     </>
                   ) : (
-                    <div className="panel-empty">No session selected</div>
+                    <div className="panel-empty">{t('panel.noSession')}</div>
                   )}
                 </section>
               </div>
@@ -928,14 +945,14 @@ function App() {
                 <section className="runtime-card">
                   <header>
                     <Wrench size={18} aria-hidden="true" />
-                    <h3>Tool Registry</h3>
+                    <h3>{t('panel.toolRegistry')}</h3>
                   </header>
                   <div className="search-field">
                     <Search size={15} aria-hidden="true" />
                     <input
                       value={toolQuery}
                       onChange={(event) => setToolQuery(event.target.value)}
-                      placeholder="Filter tools"
+                      placeholder={t('panel.filterTools')}
                     />
                   </div>
                   <div className="tool-list">
@@ -950,7 +967,7 @@ function App() {
                 <section className="runtime-card">
                   <header>
                     <Workflow size={18} aria-hidden="true" />
-                    <h3>Toolsets</h3>
+                    <h3>{t('panel.toolsets')}</h3>
                   </header>
                   <div className="toolset-list">
                     {data.toolsets.map((toolset) => (
@@ -969,20 +986,20 @@ function App() {
                 <section className="runtime-card">
                   <header>
                     <Layers3 size={18} aria-hidden="true" />
-                    <h3>Active Skills</h3>
+                    <h3>{t('panel.activeSkills')}</h3>
                   </header>
                   <div className="skill-strip">
                     {activeSkills.length ? (
                       activeSkills.map((skill) => <span key={skill.name}>{skill.name}</span>)
                     ) : (
-                      <span>none</span>
+                      <span>{t('panel.none')}</span>
                     )}
                   </div>
                 </section>
                 <section className="runtime-card">
                   <header>
                     <Brain size={18} aria-hidden="true" />
-                    <h3>Skill Catalog</h3>
+                    <h3>{t('panel.skillCatalog')}</h3>
                   </header>
                   <div className="skill-list">
                     {data.skills.map((skill) => (

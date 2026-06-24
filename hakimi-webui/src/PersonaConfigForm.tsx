@@ -1,6 +1,7 @@
 import { Loader2, Save, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, type Agent } from './api';
+import { useI18n } from './i18n';
 
 interface PersonaConfigFormProps {
   agent: Agent | null;
@@ -19,6 +20,7 @@ export default function PersonaConfigForm({
   onDeleted,
   onCancel,
 }: PersonaConfigFormProps) {
+  const { t } = useI18n();
   const isEdit = agent !== null;
   const [id, setId] = useState(agent?.id ?? '');
   const [name, setName] = useState(agent?.name ?? '');
@@ -101,7 +103,7 @@ export default function PersonaConfigForm({
         onSaved(saved);
       } else {
         if (!idValid) {
-          setError('Persona id must match [a-z0-9][a-z0-9_-]{0,63}');
+          setError(t('form.idError'));
           setBusy(false);
           return;
         }
@@ -145,10 +147,10 @@ export default function PersonaConfigForm({
     <form className="persona-form settings-surface" onSubmit={handleSubmit}>
       <div className="settings-header">
         <div>
-          <p className="eyebrow">{isEdit ? 'Edit persona' : 'New persona'}</p>
-          <h2>{isEdit ? agent?.name || agent?.id : 'Create a persona'}</h2>
+          <p className="eyebrow">{isEdit ? t('form.editPersona') : t('form.newPersona')}</p>
+          <h2>{isEdit ? agent?.name || agent?.id : t('form.createTitle')}</h2>
         </div>
-        <button type="button" className="icon-button" onClick={onCancel} title="Cancel">
+        <button type="button" className="icon-button" onClick={onCancel} title={t('form.cancel')}>
           <X size={16} aria-hidden="true" />
         </button>
       </div>
@@ -157,52 +159,52 @@ export default function PersonaConfigForm({
 
       <div className="settings-grid">
         <fieldset className="settings-group">
-          <legend>Identity</legend>
+          <legend>{t('form.identity')}</legend>
           {!isEdit && (
             <label>
-              id
+              {t('form.id')}
               <input value={id} onChange={(e) => setId(e.target.value)} placeholder="coder" />
             </label>
           )}
           <label>
-            name
+            {t('form.name')}
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Coder" />
           </label>
           <label>
-            avatar (emoji)
+            {t('form.avatar')}
             <input value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="🤖" />
           </label>
           <label>
-            description
+            {t('form.description')}
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Short role summary"
+              placeholder={t('form.descriptionPlaceholder')}
             />
           </label>
         </fieldset>
 
         <fieldset className="settings-group">
-          <legend>Model</legend>
+          <legend>{t('form.modelGroup')}</legend>
           <label>
-            model
+            {t('form.model')}
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="(inherit default)"
+              placeholder={t('form.modelInherit')}
             />
           </label>
           <label>
-            reasoning effort
+            {t('form.reasoning')}
             <select value={reasoning ?? ''} onChange={(e) => setReasoning(e.target.value)}>
-              <option value="">(default)</option>
+              <option value="">{t('form.default')}</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>
             </select>
           </label>
           <label className="switch-row">
-            <span>Default persona (gateway fallback)</span>
+            <span>{t('form.isDefault')}</span>
             <input
               type="checkbox"
               checked={isDefault}
@@ -212,9 +214,9 @@ export default function PersonaConfigForm({
         </fieldset>
 
         <fieldset className="settings-group settings-group-wide">
-          <legend>System prompt</legend>
+          <legend>{t('form.systemPrompt')}</legend>
           <label>
-            identity prompt
+            {t('form.identityPrompt')}
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
@@ -224,10 +226,10 @@ export default function PersonaConfigForm({
         </fieldset>
 
         <fieldset className="settings-group settings-group-wide">
-          <legend>Skills</legend>
+          <legend>{t('form.skills')}</legend>
           <div className="persona-skill-chips">
             {skillOptions.length === 0 && (
-              <span className="panel-empty">No skills available</span>
+              <span className="panel-empty">{t('form.noSkills')}</span>
             )}
             {skillOptions.map((skill) => (
               <button
@@ -243,9 +245,9 @@ export default function PersonaConfigForm({
         </fieldset>
 
         <fieldset className="settings-group settings-group-wide">
-          <legend>Channel bindings</legend>
+          <legend>{t('form.bindings')}</legend>
           <label>
-            one platform:bot_id per line (empty = WebUI only)
+            {t('form.bindingsHint')}
             <textarea
               className="persona-bindings"
               value={bindingsText}
@@ -259,7 +261,7 @@ export default function PersonaConfigForm({
       <div className="persona-form-actions">
         <button className="button button-primary" type="submit" disabled={busy}>
           {busy ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-          <span>Save</span>
+          <span>{t('form.save')}</span>
         </button>
         {isEdit && !agent?.is_default && (
           <button
@@ -269,11 +271,11 @@ export default function PersonaConfigForm({
             disabled={busy}
           >
             <Trash2 size={16} aria-hidden="true" />
-            <span>Delete</span>
+            <span>{t('form.delete')}</span>
           </button>
         )}
         <button className="button" type="button" onClick={onCancel} disabled={busy}>
-          <span>Cancel</span>
+          <span>{t('form.cancel')}</span>
         </button>
       </div>
     </form>
