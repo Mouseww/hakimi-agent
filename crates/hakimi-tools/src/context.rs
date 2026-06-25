@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hakimi_common::{DelegateExecutor, KnowledgeSearcher, ToolContext, ToolProgressCallback};
+use hakimi_common::{DelegateExecutor, KnowledgeSearcher, TeamExecutor, ToolContext, ToolProgressCallback};
 
 /// Builder for constructing a [`ToolContext`].
 #[derive(Clone, Default)]
@@ -11,6 +11,7 @@ pub struct ToolContextBuilder {
     workdir: Option<String>,
     model: Option<String>,
     delegate_executor: Option<Arc<dyn DelegateExecutor>>,
+    team_executor: Option<Arc<dyn TeamExecutor>>,
     tts_provider: Option<String>,
     tts_model: Option<String>,
     tts_base_url: Option<String>,
@@ -34,6 +35,7 @@ impl std::fmt::Debug for ToolContextBuilder {
             .field("workdir", &self.workdir)
             .field("model", &self.model)
             .field("delegate_executor", &self.delegate_executor.is_some())
+            .field("team_executor", &self.team_executor.is_some())
             .field("knowledge_searcher", &self.knowledge_searcher.is_some())
             .field("progress_callback", &self.progress_callback.is_some())
             .finish()
@@ -79,6 +81,12 @@ impl ToolContextBuilder {
     /// Set the delegate executor for child agent spawning.
     pub fn delegate_executor(mut self, executor: Arc<dyn DelegateExecutor>) -> Self {
         self.delegate_executor = Some(executor);
+        self
+    }
+
+    /// Set the team executor for named teammate persona consultations.
+    pub fn team_executor(mut self, executor: Arc<dyn TeamExecutor>) -> Self {
+        self.team_executor = Some(executor);
         self
     }
 
@@ -168,7 +176,7 @@ impl ToolContextBuilder {
             workdir: self.workdir.expect("workdir is required for ToolContext"),
             model: self.model,
             delegate_executor: self.delegate_executor,
-            team_executor: None,
+            team_executor: self.team_executor,
             knowledge_searcher: self.knowledge_searcher,
             progress_callback: self.progress_callback,
             tts_provider: self.tts_provider,
@@ -200,7 +208,7 @@ impl ToolContextBuilder {
             workdir,
             model: self.model,
             delegate_executor: self.delegate_executor,
-            team_executor: None,
+            team_executor: self.team_executor,
             knowledge_searcher: self.knowledge_searcher,
             progress_callback: self.progress_callback,
             tts_provider: self.tts_provider,

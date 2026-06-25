@@ -295,6 +295,17 @@ pub struct TeamCallContext {
     pub progress: Option<ToolProgressCallback>,
 }
 
+impl std::fmt::Debug for TeamCallContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TeamCallContext")
+            .field("teammate_id", &self.teammate_id)
+            .field("task", &self.task)
+            .field("context", &self.context)
+            .field("progress", &self.progress.is_some())
+            .finish()
+    }
+}
+
 /// Executes a sub-task on a named teammate persona and returns its answer.
 ///
 /// Implemented by `hakimi-core`'s `PersonaTeamExecutor`. Tools reach it through
