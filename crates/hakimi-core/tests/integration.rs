@@ -1055,6 +1055,7 @@ async fn team_executor_consults_addressable_teammate() {
     let mut reg = hakimi_core::PersonaRegistry::load(&agents_dir).unwrap();
     let mut writer = hakimi_core::PersonaConfig::new("writer");
     writer.system_prompt = "You are the writer.".to_string();
+    writer.addressable = true;
     reg.create(writer).unwrap();
     let registry = Arc::new(RwLock::new(reg));
 

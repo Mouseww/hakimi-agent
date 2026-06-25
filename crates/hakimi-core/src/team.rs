@@ -91,6 +91,11 @@ pub struct PersonaTeamExecutor {
 
 impl PersonaTeamExecutor {
     /// Create a base executor (depth 0, empty lineage). Use [`Self::for_lead`] per request.
+    ///
+    /// The concurrency semaphore created here is Arc-cloned into every executor
+    /// derived via [`Self::for_lead`] and [`Self::descend`], so
+    /// `MAX_CONCURRENT_CONSULTS` is an instance-wide cap shared across all
+    /// concurrently-running lead personas -- not a per-lead limit.
     pub fn new(
         registry: Arc<RwLock<PersonaRegistry>>,
         template: Arc<AIAgent>,
@@ -144,11 +149,12 @@ fn emit_team_progress(
     progress: &Option<ToolProgressCallback>,
     task_id: &str,
     title: &str,
-    line: &str,
+    line: impl AsRef<str>,
 ) {
     if let Some(cb) = progress {
         cb(format!(
-            "\u{001e}hakimi_delegate:{task_id}|{title}|{line}|{}",
+            "\u{001e}hakimi_delegate:{task_id}|{title}|{}|{}",
+            line.as_ref(),
             now_progress_timestamp()
         ));
     }
@@ -203,7 +209,7 @@ impl TeamExecutor for PersonaTeamExecutor {
             // Nested consults allowed up to the depth cap, with this teammate in the lineage.
             teammate.set_team_executor(Some(Arc::new(self.descend(&cfg.id))));
 
-            // Forward the teammate's tool/progress markers as team bubbles.
+            // Forward the teammate's tool/review progress markers as team bubbles.
             if let Some(parent) = call.progress.clone() {
                 let (tid, ttitle) = (task_id.clone(), title.clone());
                 teammate.set_streaming_callback(Some(Arc::new(move |token: String| {
@@ -213,6 +219,13 @@ impl TeamExecutor for PersonaTeamExecutor {
                             &tid,
                             &ttitle,
                             notice.trim(),
+                        );
+                    } else if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:") {
+                        emit_team_progress(
+                            &Some(parent.clone()),
+                            &tid,
+                            &ttitle,
+                            review_notice.trim(),
                         );
                     }
                 })));
@@ -233,7 +246,7 @@ impl TeamExecutor for PersonaTeamExecutor {
                         &call.progress,
                         &task_id,
                         &title,
-                        &format!("\u{5931}\u{8d25}: {e}"),
+                        format!("\u{5931}\u{8d25}: {e}"),
                     );
                     return Err(HakimiError::Tool(format!(
                         "teammate '{}' failed after {MAX_CONSULT_ATTEMPTS} attempts: {e}",
@@ -245,7 +258,7 @@ impl TeamExecutor for PersonaTeamExecutor {
                         &call.progress,
                         &task_id,
                         &title,
-                        &format!(
+                        format!(
                             "\u{7b2c} {attempt} \u{6b21}\u{5931}\u{8d25}，\u{91cd}\u{8bd5}"
                         ),
                     );
@@ -256,6 +269,11 @@ impl TeamExecutor for PersonaTeamExecutor {
         }
     }
 
+    /// Run multiple teammate consultations concurrently on a single task.
+    ///
+    /// The consults run cooperatively via `futures::future::join_all` -- they are
+    /// interleaved on the calling async task, not spawned onto separate OS threads.
+    /// Concurrency is bounded by the shared semaphore (`MAX_CONCURRENT_CONSULTS`).
     async fn consult_many(&self, calls: Vec<TeamCallContext>) -> Result<Vec<String>> {
         // Concurrent (not spawned): each future awaits its own semaphore permit.
         let futures = calls.into_iter().map(|call| {
