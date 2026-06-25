@@ -47,6 +47,7 @@ pub struct AIAgent {
     pub(crate) tool_search_config: ToolSearchConfig,
     pub(crate) tool_search_context_length: usize,
     pub(crate) trajectory_config: Option<TrajectoryConfig>,
+    pub(crate) team_executor: Option<Arc<dyn hakimi_common::TeamExecutor>>,
 }
 
 impl Clone for AIAgent {
@@ -80,6 +81,7 @@ impl Clone for AIAgent {
             tool_search_config: self.tool_search_config.clone(),
             tool_search_context_length: self.tool_search_context_length,
             trajectory_config: self.trajectory_config.clone(),
+            team_executor: self.team_executor.clone(),
         }
     }
 }
@@ -444,6 +446,7 @@ impl AIAgentBuilder {
             tool_search_config: self.tool_search_config.unwrap_or_default().normalized(),
             tool_search_context_length: self.tool_search_context_length.unwrap_or(128_000),
             trajectory_config: self.trajectory_config,
+            team_executor: None,
         })
     }
 }
@@ -641,6 +644,7 @@ impl AIAgent {
             workdir: self.workdir.clone(),
             model: Some(self.model.clone()),
             delegate_executor,
+            team_executor: self.team_executor.clone(),
             knowledge_searcher: self.shared.knowledge_searcher.clone(),
             progress_callback: self.streaming_callback.clone(),
             tts_provider: self.tts_provider.clone(),
@@ -723,6 +727,15 @@ impl AIAgent {
     /// Change the model identifier at runtime.
     pub fn set_model(&mut self, model: impl Into<String>) {
         self.model = model.into();
+    }
+
+    /// Attach (or clear) the team executor used by the `team` tool. Set by the
+    /// dispatch layer, which holds the persona registry.
+    pub fn set_team_executor(
+        &mut self,
+        executor: Option<Arc<dyn hakimi_common::TeamExecutor>>,
+    ) {
+        self.team_executor = executor;
     }
 
     /// Set the interrupt flag to stop the agent loop.
