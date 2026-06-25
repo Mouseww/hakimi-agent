@@ -12,6 +12,7 @@ pub mod persona_registry;
 pub mod persona_runtime;
 pub mod retry;
 pub mod shared;
+pub mod team;
 pub mod trajectory;
 pub mod turn_retry_state;
 
@@ -26,6 +27,7 @@ pub use hakimi_common::SecretRedactor;
 pub use persona::{PersonaConfig, RegistryIndex};
 pub use persona_registry::{DEFAULT_PERSONA_ID, PersonaRegistry};
 pub use persona_runtime::{PersonaRuntime, build_persona_agent};
+pub use team::PersonaTeamExecutor;
 pub use shared::SharedRuntime;
 pub use trajectory::{TrajectoryConfig, convert_to_trajectory_format, save_trajectory};
 pub use turn_retry_state::TurnRetryState;

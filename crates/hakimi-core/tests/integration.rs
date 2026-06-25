@@ -1043,3 +1043,43 @@ async fn test_persona_agent_isolates_state_but_shares_runtime() {
     // The template is left untouched.
     assert_eq!(template.model(), "template-model");
 }
+
+#[tokio::test]
+async fn team_executor_consults_addressable_teammate() {
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    let agents_dir = std::env::temp_dir()
+        .join(format!("hakimi-team-it-{}", uuid::Uuid::new_v4()))
+        .join("agents");
+    let mut reg = hakimi_core::PersonaRegistry::load(&agents_dir).unwrap();
+    let mut writer = hakimi_core::PersonaConfig::new("writer");
+    writer.system_prompt = "You are the writer.".to_string();
+    reg.create(writer).unwrap();
+    let registry = Arc::new(RwLock::new(reg));
+
+    let transport = Arc::new(MockTransport::text_response(
+        "Status: success\nSummary: drafted",
+    ));
+    let template = Arc::new(hakimi_core::AIAgent::new(
+        "test-model",
+        transport,
+        hakimi_tools::ToolRegistry::new(),
+        None,
+    ));
+
+    let exec = hakimi_core::PersonaTeamExecutor::new(registry, template, 128_000).for_lead("lead");
+    let answer = hakimi_common::TeamExecutor::consult(
+        &exec,
+        hakimi_common::TeamCallContext {
+            teammate_id: "writer".to_string(),
+            task: "draft a title".to_string(),
+            context: String::new(),
+            progress: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(answer.contains("drafted"));
+}
