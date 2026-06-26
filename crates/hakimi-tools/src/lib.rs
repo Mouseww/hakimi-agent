@@ -59,7 +59,7 @@ pub use builtin_process::*;
 pub use builtin_read_file::*;
 pub use builtin_search_files::*;
 pub use builtin_send_message::*;
-pub use builtin_team::TeamTool;
+pub use builtin_team::*;
 pub use builtin_session_search::*;
 pub use builtin_skill_manage::*;
 pub use builtin_terminal::*;

@@ -18,7 +18,7 @@ impl Tool for TeamTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate a focused sub-task to a named teammate persona (each has its own model, skills, and memory) and get their answer back. Use action='list' first to see available teammates. Use this when a teammate is better suited to part of the task."
+        "Delegate a focused sub-task to a named teammate persona (each has its own model, skills, and memory). Use action='list' first to discover available teammates, then action='consult' to delegate. Use this when a teammate is better suited to part of the task."
     }
 
     fn emoji(&self) -> &str {
@@ -30,10 +30,10 @@ impl Tool for TeamTool {
             "type": "object",
             "properties": {
                 "action": { "type": "string", "enum": ["consult", "list"],
-                    "description": "consult = delegate to teammate(s); list = show available teammates. Default consult." },
+                    "description": "'list' = show available teammates; 'consult' = delegate to teammate(s). Omit to default to 'consult'." },
                 "teammate": { "type": "string", "description": "Target teammate persona id (single consult)." },
                 "teammates": { "type": "array", "items": {"type": "string"},
-                    "description": "Multiple teammate ids for a parallel consult. Use instead of 'teammate'." },
+                    "description": "Multiple teammate persona ids for a parallel consult. Use instead of 'teammate'; if both are provided, 'teammates' takes precedence." },
                 "task": { "type": "string", "description": "The sub-task or question for the teammate(s)." },
                 "context": { "type": "string", "description": "Optional shared context and constraints." }
             },
@@ -96,6 +96,13 @@ impl Tool for TeamTool {
                 })
                 .collect();
             let answers = executor.consult_many(calls).await?;
+            if answers.len() != ids.len() {
+                return Err(HakimiError::Tool(format!(
+                    "team consult_many returned {} answers for {} requests",
+                    answers.len(),
+                    ids.len()
+                )));
+            }
             let sections: Vec<String> = ids
                 .iter()
                 .zip(answers.iter())
@@ -128,6 +135,44 @@ impl Tool for TeamTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use hakimi_common::{TeamExecutor, TeammateInfo};
+
+    /// Configurable stub for TeamExecutor.
+    struct StubExec {
+        /// Entries returned by `roster()`. Empty means no teammates.
+        roster_entries: Vec<TeammateInfo>,
+        /// If set, `consult()` returns this string. Otherwise returns "ok".
+        consult_reply: Option<String>,
+        /// If set, `consult_many()` echoes per-call answers using this prefix.
+        /// Each answer is `"{prefix} {teammate_id}"`.
+        consult_many_prefix: Option<String>,
+    }
+
+    impl StubExec {
+        fn empty() -> Self {
+            Self { roster_entries: vec![], consult_reply: None, consult_many_prefix: None }
+        }
+    }
+
+    #[async_trait]
+    impl TeamExecutor for StubExec {
+        async fn roster(&self) -> Vec<TeammateInfo> {
+            self.roster_entries.clone()
+        }
+
+        async fn consult(&self, _c: TeamCallContext) -> Result<String> {
+            Ok(self.consult_reply.clone().unwrap_or_else(|| "ok".to_string()))
+        }
+
+        async fn consult_many(&self, calls: Vec<TeamCallContext>) -> Result<Vec<String>> {
+            if let Some(prefix) = &self.consult_many_prefix {
+                Ok(calls.iter().map(|c| format!("{} {}", prefix, c.teammate_id)).collect())
+            } else {
+                Ok(vec![])
+            }
+        }
+    }
 
     #[test]
     fn tool_metadata() {
@@ -149,24 +194,81 @@ mod tests {
     async fn consult_requires_task() {
         // team_executor None still returns the "not enabled" message before task checks,
         // so this asserts the missing-task path with a stub executor.
-        use std::sync::Arc;
-        use async_trait::async_trait;
-        use hakimi_common::{TeamExecutor, TeammateInfo};
-
-        struct StubExec;
-        #[async_trait]
-        impl TeamExecutor for StubExec {
-            async fn roster(&self) -> Vec<TeammateInfo> { Vec::new() }
-            async fn consult(&self, _c: TeamCallContext) -> Result<String> { Ok("ok".into()) }
-            async fn consult_many(&self, _c: Vec<TeamCallContext>) -> Result<Vec<String>> { Ok(vec![]) }
-        }
-
         let mut ctx = ToolContext::default();
-        ctx.team_executor = Some(Arc::new(StubExec));
+        ctx.team_executor = Some(Arc::new(StubExec::empty()));
         let err = TeamTool
             .execute(&json!({"action": "consult", "teammate": "writer"}), &ctx)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("task"));
+    }
+
+    #[tokio::test]
+    async fn list_action_renders_roster() {
+        let stub = StubExec {
+            roster_entries: vec![
+                TeammateInfo {
+                    id: "coder".to_string(),
+                    name: "Code Expert".to_string(),
+                    description: "writes code".to_string(),
+                },
+                TeammateInfo {
+                    id: "writer".to_string(),
+                    name: "Tech Writer".to_string(),
+                    description: "writes docs".to_string(),
+                },
+            ],
+            consult_reply: None,
+            consult_many_prefix: None,
+        };
+        let mut ctx = ToolContext::default();
+        ctx.team_executor = Some(Arc::new(stub));
+        let output = TeamTool
+            .execute(&json!({"action": "list"}), &ctx)
+            .await
+            .unwrap();
+        assert!(output.contains("- coder (Code Expert): writes code"), "output: {output}");
+        assert!(output.contains("- writer (Tech Writer): writes docs"), "output: {output}");
+    }
+
+    #[tokio::test]
+    async fn fan_out_produces_sections_for_each_teammate() {
+        let stub = StubExec {
+            roster_entries: vec![],
+            consult_reply: None,
+            consult_many_prefix: Some("answer for".to_string()),
+        };
+        let mut ctx = ToolContext::default();
+        ctx.team_executor = Some(Arc::new(stub));
+        let output = TeamTool
+            .execute(
+                &json!({"action": "consult", "teammates": ["coder", "writer"], "task": "x"}),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert!(output.contains("## coder"), "output: {output}");
+        assert!(output.contains("## writer"), "output: {output}");
+        assert!(output.contains("answer for coder"), "output: {output}");
+        assert!(output.contains("answer for writer"), "output: {output}");
+    }
+
+    #[tokio::test]
+    async fn single_consult_returns_stub_reply() {
+        let stub = StubExec {
+            roster_entries: vec![],
+            consult_reply: Some("Here is my expert answer.".to_string()),
+            consult_many_prefix: None,
+        };
+        let mut ctx = ToolContext::default();
+        ctx.team_executor = Some(Arc::new(stub));
+        let output = TeamTool
+            .execute(
+                &json!({"action": "consult", "teammate": "writer", "task": "x"}),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert!(output.contains("Here is my expert answer."), "output: {output}");
     }
 }
