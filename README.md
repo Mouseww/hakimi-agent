@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.4.2-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.4.5-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.4.2-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.4.5-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,16 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.4.5 — Persona Team 协作系统 (Persona Team Collaboration):**
+- 🤝 **具名人格协作**：主导人格可通过 `team` 工具将子任务委派给其他具名队友人格
+- 🎯 **专业化分工**：每个队友使用自己的模型、技能、记忆和系统提示词独立作答
+- 📋 **队友名册管理**：`team(action="list")` 枚举所有可寻址队友及其能力描述
+- 🔒 **安全护栏**：内置深度上限、回环检测、并发信号量、超时预算机制
+- ⚙️ **可配置开关**：`PersonaConfig.addressable` 控制人格是否可被当作队友（默认开启）
+- 🔄 **同步无状态**：队友按子任务起干净回合，只读长期记忆，不写回自身会话/记忆
+- 📊 **进度可视化**：复用现有 `hakimi_delegate:` 气泡机制，实时展示协作进度
+- ✅ **WebUI 集成**：人格配置表单中的 `addressable` 开关已完整实现
 
 **v0.3.282 — 智能上下文压缩优化 (Smart Context Compression Tuning):**
 - 🗜️ **更早触发压缩**：压缩阈值从 70% 降低到 60%，避免接近 token 限制时才压缩
