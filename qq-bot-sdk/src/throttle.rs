@@ -303,6 +303,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_policy() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
         let policy = RetryPolicy {
             max_retries: 3,
             initial_delay: Duration::from_millis(10),
@@ -311,12 +314,14 @@ mod tests {
             jitter: false,
         };
 
-        let mut attempt = 0;
+        let attempt = Arc::new(AtomicUsize::new(0));
+        let attempt_clone = attempt.clone();
         let result = policy
             .execute(|| async {
-                attempt += 1;
-                if attempt < 3 {
-                    Err(Error::Other("temporary error".to_string()))
+                let current = attempt_clone.fetch_add(1, Ordering::SeqCst) + 1;
+                if current < 4 {
+                    // 前 3 次失败，第 4 次成功（初始尝试 + 3 次重试）
+                    Err(Error::ConnectionClosed) // 使用可重试的错误类型
                 } else {
                     Ok(42)
                 }
@@ -325,6 +330,6 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 42);
-        assert_eq!(attempt, 3);
+        assert_eq!(attempt.load(Ordering::SeqCst), 4); // 1 次初始 + 3 次重试
     }
 }
