@@ -2032,6 +2032,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/agents/{id}/skills", get(agent_skills))
         .route("/agents/{id}/memory", get(agent_memory))
         .route("/agents/{id}/sessions", get(agent_sessions))
+        .route("/activity/snapshot", get(activity_snapshot))
+        .route("/activity/stream", get(activity_stream))
         .route("/bindings", get(list_bindings));
 
     api_routes = api_routes.route_layer(middleware::from_fn_with_state(
@@ -2935,6 +2937,49 @@ fn webhook_summary(webhook: &hakimi_config::WebhookGatewayConfig) -> serde_json:
         "write_operations": true,
         "persistence": "runtime"
     })
+}
+
+/// Response body for GET /api/activity/snapshot.
+#[derive(Debug, Serialize)]
+struct ActivitySnapshotResponse {
+    personas: Vec<hakimi_common::PersonaActivity>,
+}
+
+/// GET /api/activity/snapshot — current activity row per registered persona
+/// (registry identity joined with the live activity overlay).
+async fn activity_snapshot(State(state): State<AppState>) -> Json<ActivitySnapshotResponse> {
+    let states = hakimi_common::all_live_states();
+    let reg = state.persona_registry.read().await;
+    let personas = reg
+        .list()
+        .into_iter()
+        .map(|cfg| {
+            hakimi_common::PersonaActivity::from_parts(&cfg.id, &cfg.name, &cfg.avatar, states.get(&cfg.id))
+        })
+        .collect();
+    Json(ActivitySnapshotResponse { personas })
+}
+
+/// GET /api/activity/stream — SSE of live ActivityEvents.
+async fn activity_stream() -> Response {
+    use tokio::sync::broadcast::error::RecvError;
+    let rx = hakimi_common::subscribe();
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
+                    return Some((
+                        Ok::<Event, Infallible>(Event::default().event("activity").data(data)),
+                        rx,
+                    ));
+                }
+                Err(RecvError::Lagged(_)) => continue, // slow consumer dropped events; resync on reconnect
+                Err(RecvError::Closed) => return None,
+            }
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
 }
 
 /// GET /status — dashboard runtime status without secrets.
@@ -8107,5 +8152,25 @@ mod tests {
             Some("Hermes dashboard session search")
         );
         assert_eq!(search.data[0].source.as_deref(), Some("api-test"));
+    }
+
+    #[tokio::test]
+    async fn test_activity_snapshot_includes_personas_as_idle() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/activity/snapshot")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        let arr = json["personas"].as_array().unwrap();
+        // default persona present, idle by default
+        let def = arr.iter().find(|p| p["id"] == "default").unwrap();
+        assert_eq!(def["state"], "idle");
     }
 }
