@@ -27,6 +27,7 @@ impl GatewayTaskControl {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct QueuedMessage {
     text: Option<String>,
     media_id: Option<String>,
@@ -5792,7 +5793,7 @@ async fn process_gateway_messages_loop(
         let histories_clone = histories_clone.clone();
         let turn_trackers = turn_trackers.clone();
         let active_tasks = active_tasks.clone();
-        let message_queues = message_queues.clone();
+        let _message_queues = message_queues.clone();
         let voice_states = voice_states.clone();
         let last_usage = last_usage.clone();
         let onboarding_state = onboarding_state.clone();
