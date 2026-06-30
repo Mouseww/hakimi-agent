@@ -3468,6 +3468,11 @@ async fn create_agent(
         (created, skills_dir)
     };
     sync_gateway_persona_agent(&state, &created, &skills_dir).await;
+    hakimi_common::publish(hakimi_common::ActivityEvent::PersonaCreated {
+        id: created.id.clone(),
+        name: created.name.clone(),
+        avatar: created.avatar.clone(),
+    });
     Ok(Json(created))
 }
 
@@ -3558,6 +3563,11 @@ async fn update_agent(
     // Rebuild the persona's gateway agent so model/prompt/skills changes take
     // effect without a restart (in unified mode the loop shares this map).
     sync_gateway_persona_agent(&state, &updated, &skills_dir).await;
+    hakimi_common::publish(hakimi_common::ActivityEvent::PersonaUpdated {
+        id: updated.id.clone(),
+        name: updated.name.clone(),
+        avatar: updated.avatar.clone(),
+    });
     Ok(Json(updated))
 }
 
@@ -3578,6 +3588,7 @@ async fn delete_agent(
         })?;
     }
     state.persona_agents.write().await.remove(&id);
+    hakimi_common::publish(hakimi_common::ActivityEvent::PersonaDeleted { id: id.clone() });
     Ok(Json(AgentDeleteResponse { id, deleted: true }))
 }
 
@@ -8172,5 +8183,29 @@ mod tests {
         // default persona present, idle by default
         let def = arr.iter().find(|p| p["id"] == "default").unwrap();
         assert_eq!(def["state"], "idle");
+    }
+
+    #[tokio::test]
+    async fn test_create_agent_publishes_activity_event() {
+        let mut rx = hakimi_common::subscribe();
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(json_post("/api/agents", json!({"id": "evt_coder", "name": "Coder"})))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        // drain until we see our PersonaCreated (other tests may share the global bus)
+        let mut found = false;
+        for _ in 0..50 {
+            match rx.try_recv() {
+                Ok(hakimi_common::ActivityEvent::PersonaCreated { id, .. }) if id == "evt_coder" => {
+                    found = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(_) => break,
+            }
+        }
+        assert!(found, "expected PersonaCreated for evt_coder");
     }
 }
