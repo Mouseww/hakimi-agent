@@ -1,0 +1,30 @@
+.office-view { position: relative; width: 100%; height: 100%; overflow: auto; padding: 8px; }
+.office-floor { position: relative; }
+.office-hint { font-size: 12px; color: var(--muted, #8a7a5f); margin: 4px 8px; }
+
+.persona-desk { position: absolute; width: 132px; height: 112px; cursor: pointer; }
+.persona-desk .desk-name { font-size: 12px; font-weight: 600; text-align: center; }
+.persona-desk.is-dimmed { opacity: 0.45; }
+
+.screen-lit { fill: #8be0ff; animation: deskGlow 1.6s ease-in-out infinite; }
+@keyframes deskGlow { 0%,100% { fill: #7fd6f5; } 50% { fill: #caf2ff; } }
+.screen-game { fill: #26304a; }
+.game-block { animation: deskHop 1s steps(2) infinite; }
+.game-block.b2 { animation-duration: 1.3s; }
+.typing-hand { animation: deskTap .35s ease-in-out infinite alternate; }
+.typing-hand.h2 { animation-delay: .17s; }
+@keyframes deskTap { from { transform: translateY(0); } to { transform: translateY(3px); } }
+@keyframes deskHop { 0%,100% { transform: translateY(0); } 50% { transform: translateY(7px); } }
+
+.office-runner { position: absolute; transition: transform 1.4s ease-in-out; will-change: transform; pointer-events: none; }
+.office-team-ring { position: absolute; border: 2.5px solid var(--accent, #c98a2b); background: rgba(251,244,230,.5); border-radius: 16px; pointer-events: none; }
+.office-team-label { position: absolute; font-size: 12px; font-weight: 700; color: var(--accent, #9a6a16); }
+
+.office-card { position: absolute; z-index: 5; background: var(--card, #fffaf0); border: 1px solid var(--accent, #c98a2b);
+  border-radius: 9px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); pointer-events: none; }
+.office-card strong { display: block; font-size: 13px; }
+.office-card .muted { color: var(--muted, #6b5b45); }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-lit, .game-block, .typing-hand, .office-runner { animation: none; transition: none; }
+}
