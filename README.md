@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.4.6-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.4.7-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.4.6-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.4.7-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,12 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.4.7 — 上下文管理优化 (Context Management Enhancement):**
+- 🔄 **队列消息注入修复**：修复运行中上下文的排队消息注入逻辑，确保多消息场景下的正确处理
+- 🗜️ **压缩标志重置**：上下文压缩后正确重置 `compressed_this_turn` 标志，避免重复压缩
+- 🧹 **代码质量提升**：消除 entry.rs 中未使用变量和死代码警告，应用 rustfmt 格式化
+- 🎯 **Agent 循环增强**：优化 loop_impl.rs 中的消息处理流程，提升稳定性
 
 **v0.4.6 — 人格办公室仪表板 (Persona Office Dashboard):**
 - 🏢 **办公室可视化**：把每个人格当作"员工"，实时展示所有人格的工作状态
