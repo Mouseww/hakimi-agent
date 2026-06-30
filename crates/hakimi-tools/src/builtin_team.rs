@@ -46,7 +46,10 @@ impl Tool for TeamTool {
             return Ok("Team collaboration is not enabled in this environment.".to_string());
         };
 
-        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("consult");
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("consult");
 
         if action == "list" {
             let roster = executor.roster().await;
@@ -72,7 +75,11 @@ impl Tool for TeamTool {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| HakimiError::Tool("missing required parameter: task".into()))?;
-        let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let context = args
+            .get("context")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let progress = ctx.progress_callback.clone();
 
         // Multiple teammates -> parallel fan-out.
@@ -84,7 +91,9 @@ impl Tool for TeamTool {
                 .filter(|s| !s.is_empty())
                 .collect();
             if ids.is_empty() {
-                return Err(HakimiError::Tool("'teammates' must contain at least one id".into()));
+                return Err(HakimiError::Tool(
+                    "'teammates' must contain at least one id".into(),
+                ));
             }
             let calls: Vec<TeamCallContext> = ids
                 .iter()
@@ -135,8 +144,8 @@ impl Tool for TeamTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use hakimi_common::{TeamExecutor, TeammateInfo};
+    use std::sync::Arc;
 
     /// Configurable stub for TeamExecutor.
     struct StubExec {
@@ -151,7 +160,11 @@ mod tests {
 
     impl StubExec {
         fn empty() -> Self {
-            Self { roster_entries: vec![], consult_reply: None, consult_many_prefix: None }
+            Self {
+                roster_entries: vec![],
+                consult_reply: None,
+                consult_many_prefix: None,
+            }
         }
     }
 
@@ -162,12 +175,18 @@ mod tests {
         }
 
         async fn consult(&self, _c: TeamCallContext) -> Result<String> {
-            Ok(self.consult_reply.clone().unwrap_or_else(|| "ok".to_string()))
+            Ok(self
+                .consult_reply
+                .clone()
+                .unwrap_or_else(|| "ok".to_string()))
         }
 
         async fn consult_many(&self, calls: Vec<TeamCallContext>) -> Result<Vec<String>> {
             if let Some(prefix) = &self.consult_many_prefix {
-                Ok(calls.iter().map(|c| format!("{} {}", prefix, c.teammate_id)).collect())
+                Ok(calls
+                    .iter()
+                    .map(|c| format!("{} {}", prefix, c.teammate_id))
+                    .collect())
             } else {
                 Ok(vec![])
             }
@@ -186,7 +205,9 @@ mod tests {
 
     #[tokio::test]
     async fn execute_without_executor_degrades_gracefully() {
-        let result = TeamTool.execute(&json!({"action": "list"}), &ToolContext::default()).await;
+        let result = TeamTool
+            .execute(&json!({"action": "list"}), &ToolContext::default())
+            .await;
         assert!(result.unwrap().contains("not enabled"));
     }
 
@@ -227,8 +248,14 @@ mod tests {
             .execute(&json!({"action": "list"}), &ctx)
             .await
             .unwrap();
-        assert!(output.contains("- coder (Code Expert): writes code"), "output: {output}");
-        assert!(output.contains("- writer (Tech Writer): writes docs"), "output: {output}");
+        assert!(
+            output.contains("- coder (Code Expert): writes code"),
+            "output: {output}"
+        );
+        assert!(
+            output.contains("- writer (Tech Writer): writes docs"),
+            "output: {output}"
+        );
     }
 
     #[tokio::test]
@@ -269,6 +296,9 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(output.contains("Here is my expert answer."), "output: {output}");
+        assert!(
+            output.contains("Here is my expert answer."),
+            "output: {output}"
+        );
     }
 }

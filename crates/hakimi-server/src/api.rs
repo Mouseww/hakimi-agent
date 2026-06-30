@@ -5691,7 +5691,10 @@ mod tests {
         // New personas are addressable by default (auto-exposed in the response).
         let resp = app
             .clone()
-            .oneshot(json_post("/api/agents", json!({"id": "coder", "name": "Coder"})))
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "coder", "name": "Coder"}),
+            ))
             .await
             .unwrap();
         assert_eq!(resp.status(), http::StatusCode::OK);
@@ -5701,7 +5704,10 @@ mod tests {
         // PATCH can turn it off.
         let resp = app
             .clone()
-            .oneshot(json_patch("/api/agents/coder", json!({"addressable": false})))
+            .oneshot(json_patch(
+                "/api/agents/coder",
+                json!({"addressable": false}),
+            ))
             .await
             .unwrap();
         assert_eq!(resp.status(), http::StatusCode::OK);

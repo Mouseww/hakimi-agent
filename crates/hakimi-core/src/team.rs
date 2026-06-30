@@ -51,9 +51,9 @@ pub(crate) fn validate_consult(
             "cycle detected: '{teammate_id}' is already in the collaboration chain"
         )));
     }
-    let cfg = reg.get(teammate_id).ok_or_else(|| {
-        HakimiError::Tool(format!("teammate persona '{teammate_id}' not found"))
-    })?;
+    let cfg = reg
+        .get(teammate_id)
+        .ok_or_else(|| HakimiError::Tool(format!("teammate persona '{teammate_id}' not found")))?;
     if !cfg.addressable {
         return Err(HakimiError::Tool(format!(
             "teammate persona '{teammate_id}' is not addressable (its addressable switch is off)"
@@ -133,14 +133,23 @@ fn now_progress_timestamp() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() % 86_400)
         .unwrap_or(0);
-    format!("{:02}:{:02}:{:02}", secs / 3_600, (secs % 3_600) / 60, secs % 60)
+    format!(
+        "{:02}:{:02}:{:02}",
+        secs / 3_600,
+        (secs % 3_600) / 60,
+        secs % 60
+    )
 }
 
 fn truncate_for_title(value: &str, max: usize) -> String {
     let normalized = value.replace('\n', " ");
     let mut chars = normalized.chars();
     let head: String = chars.by_ref().take(max).collect();
-    if chars.next().is_some() { format!("{head}...") } else { head }
+    if chars.next().is_some() {
+        format!("{head}...")
+    } else {
+        head
+    }
 }
 
 /// Emit a progress bubble in the existing `hakimi_delegate:` protocol so gateway +
@@ -179,11 +188,24 @@ impl TeamExecutor for PersonaTeamExecutor {
         let task_id = format!("team_{}", uuid::Uuid::new_v4().simple());
         let title = format!(
             "{} {} \u{00b7} {}",
-            if cfg.avatar.is_empty() { "\u{1f91d}" } else { cfg.avatar.as_str() },
-            if cfg.name.is_empty() { cfg.id.as_str() } else { cfg.name.as_str() },
+            if cfg.avatar.is_empty() {
+                "\u{1f91d}"
+            } else {
+                cfg.avatar.as_str()
+            },
+            if cfg.name.is_empty() {
+                cfg.id.as_str()
+            } else {
+                cfg.name.as_str()
+            },
             truncate_for_title(&call.task, 32)
         );
-        emit_team_progress(&call.progress, &task_id, &title, "\u{5df2}\u{52a0}\u{5165}\u{534f}\u{4f5c}");
+        emit_team_progress(
+            &call.progress,
+            &task_id,
+            &title,
+            "\u{5df2}\u{52a0}\u{5165}\u{534f}\u{4f5c}",
+        );
 
         let seed = if call.context.trim().is_empty() {
             format!("{TEAM_RESULT_CONTRACT}\n\nTask: {}", call.task)
@@ -214,13 +236,9 @@ impl TeamExecutor for PersonaTeamExecutor {
                 let (tid, ttitle) = (task_id.clone(), title.clone());
                 teammate.set_streaming_callback(Some(Arc::new(move |token: String| {
                     if let Some(notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
-                        emit_team_progress(
-                            &Some(parent.clone()),
-                            &tid,
-                            &ttitle,
-                            notice.trim(),
-                        );
-                    } else if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:") {
+                        emit_team_progress(&Some(parent.clone()), &tid, &ttitle, notice.trim());
+                    } else if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:")
+                    {
                         emit_team_progress(
                             &Some(parent.clone()),
                             &tid,
@@ -258,9 +276,7 @@ impl TeamExecutor for PersonaTeamExecutor {
                         &call.progress,
                         &task_id,
                         &title,
-                        format!(
-                            "\u{7b2c} {attempt} \u{6b21}\u{5931}\u{8d25}，\u{91cd}\u{8bd5}"
-                        ),
+                        format!("\u{7b2c} {attempt} \u{6b21}\u{5931}\u{8d25}，\u{91cd}\u{8bd5}"),
                     );
                     tracing::warn!(error = %e, attempt, teammate = %cfg.id, "team consult retry");
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;

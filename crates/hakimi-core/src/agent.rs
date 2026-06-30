@@ -731,10 +731,7 @@ impl AIAgent {
 
     /// Attach (or clear) the team executor used by the `team` tool. Set by the
     /// dispatch layer, which holds the persona registry.
-    pub fn set_team_executor(
-        &mut self,
-        executor: Option<Arc<dyn hakimi_common::TeamExecutor>>,
-    ) {
+    pub fn set_team_executor(&mut self, executor: Option<Arc<dyn hakimi_common::TeamExecutor>>) {
         self.team_executor = executor;
     }
 

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use hakimi_common::{DelegateExecutor, KnowledgeSearcher, TeamExecutor, ToolContext, ToolProgressCallback};
+use hakimi_common::{
+    DelegateExecutor, KnowledgeSearcher, TeamExecutor, ToolContext, ToolProgressCallback,
+};
 
 /// Builder for constructing a [`ToolContext`].
 #[derive(Clone, Default)]

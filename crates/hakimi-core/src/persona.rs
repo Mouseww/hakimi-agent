@@ -218,7 +218,10 @@ mod tests {
         .unwrap();
 
         let loaded = load_persona(&persona_dir).unwrap();
-        assert!(loaded.addressable, "missing addressable must default to true");
+        assert!(
+            loaded.addressable,
+            "missing addressable must default to true"
+        );
     }
 
     #[test]
