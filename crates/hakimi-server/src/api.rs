@@ -265,6 +265,7 @@ struct AgentUpdateRequest {
     enabled_skills: Option<Vec<String>>,
     bindings: Option<Vec<String>>,
     is_default: Option<bool>,
+    addressable: Option<bool>,
 }
 
 /// Response body for DELETE /api/agents/{id}.
@@ -3493,6 +3494,9 @@ async fn update_agent(
         if let Some(is_default) = req.is_default {
             cfg.is_default = is_default;
         }
+        if let Some(addressable) = req.addressable {
+            cfg.addressable = addressable;
+        }
 
         reg.update(cfg).map_err(|e| {
             (
@@ -5678,6 +5682,31 @@ mod tests {
             .map(|a| a["id"].as_str().unwrap())
             .collect();
         assert!(ids.contains(&"default"));
+    }
+
+    #[tokio::test]
+    async fn test_update_agent_toggles_addressable() {
+        let app = build_router(test_state());
+
+        // New personas are addressable by default (auto-exposed in the response).
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/agents", json!({"id": "coder", "name": "Coder"})))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["addressable"], true);
+
+        // PATCH can turn it off.
+        let resp = app
+            .clone()
+            .oneshot(json_patch("/api/agents/coder", json!({"addressable": false})))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["addressable"], false);
     }
 
     #[tokio::test]
