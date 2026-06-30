@@ -47,14 +47,12 @@ pub struct Gateway {
     event_tx: EventSender,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 struct SessionState {
     session_id: Option<String>,
     seq: u64,
     should_resume: bool,
 }
-
 
 impl Gateway {
     pub fn new(token_manager: Arc<TokenManager>, intents: Intents) -> (Self, EventReceiver) {

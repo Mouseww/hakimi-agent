@@ -446,7 +446,11 @@ impl MessageTarget {
             Some(Self::Channel(channel_id.clone()))
         } else if let Some(group_openid) = &msg.group_openid {
             Some(Self::Group(group_openid.clone()))
-        } else { msg.author.as_ref().map(|author| Self::C2C(author.id.clone())) }
+        } else {
+            msg.author
+                .as_ref()
+                .map(|author| Self::C2C(author.id.clone()))
+        }
     }
 
     fn to_media_type(&self) -> MediaMessageType {
