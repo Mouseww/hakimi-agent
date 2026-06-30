@@ -9,6 +9,7 @@ declare module 'lucide-react' {
   export const Activity: FC<LucideProps>;
   export const BadgeCheck: FC<LucideProps>;
   export const Bot: FC<LucideProps>;
+  export const Building2: FC<LucideProps>;
   export const Boxes: FC<LucideProps>;
   export const Brain: FC<LucideProps>;
   export const ChevronRight: FC<LucideProps>;

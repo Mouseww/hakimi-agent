@@ -32,6 +32,7 @@ import PersonaRail from './PersonaRail';
 import PersonaConfigForm from './PersonaConfigForm';
 import InstanceSettings from './InstanceSettings';
 import WorkspacePanel from './WorkspacePanel';
+import OfficeView from './OfficeView';
 import {
   api,
   getAuthToken,
@@ -170,7 +171,7 @@ function App() {
   const [toolQuery, setToolQuery] = useState('');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activePersonaId, setActivePersonaId] = useState<string | null>(null);
-  const [view, setView] = useState<'chat' | 'config' | 'instance' | 'workspace'>('chat');
+  const [view, setView] = useState<'chat' | 'config' | 'instance' | 'workspace' | 'office'>('chat');
   const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
   const [showSessions, setShowSessions] = useState(true);
   const [showPanel, setShowPanel] = useState(true);
@@ -562,9 +563,12 @@ function App() {
           onCreate={handleCreatePersona}
           onInstance={() => setView('instance')}
           onWorkspace={() => setView('workspace')}
+          onOffice={() => setView('office')}
         />
         <div className="console-main">
-          {view === 'instance' ? (
+          {view === 'office' ? (
+            <OfficeView onOpenPersona={handleSelectPersona} />
+          ) : view === 'instance' ? (
             <InstanceSettings />
           ) : view === 'workspace' ? (
             <WorkspacePanel />

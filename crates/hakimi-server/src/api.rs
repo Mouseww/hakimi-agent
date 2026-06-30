@@ -2032,6 +2032,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/agents/{id}/skills", get(agent_skills))
         .route("/agents/{id}/memory", get(agent_memory))
         .route("/agents/{id}/sessions", get(agent_sessions))
+        .route("/activity/snapshot", get(activity_snapshot))
+        .route("/activity/stream", get(activity_stream))
         .route("/bindings", get(list_bindings));
 
     api_routes = api_routes.route_layer(middleware::from_fn_with_state(
@@ -2937,6 +2939,56 @@ fn webhook_summary(webhook: &hakimi_config::WebhookGatewayConfig) -> serde_json:
     })
 }
 
+/// Response body for GET /api/activity/snapshot.
+#[derive(Debug, Serialize)]
+struct ActivitySnapshotResponse {
+    personas: Vec<hakimi_common::PersonaActivity>,
+}
+
+/// GET /api/activity/snapshot — current activity row per registered persona
+/// (registry identity joined with the live activity overlay).
+async fn activity_snapshot(State(state): State<AppState>) -> Json<ActivitySnapshotResponse> {
+    let states = hakimi_common::all_live_states();
+    let reg = state.persona_registry.read().await;
+    let personas = reg
+        .list()
+        .into_iter()
+        .map(|cfg| {
+            hakimi_common::PersonaActivity::from_parts(
+                &cfg.id,
+                &cfg.name,
+                &cfg.avatar,
+                states.get(&cfg.id),
+            )
+        })
+        .collect();
+    Json(ActivitySnapshotResponse { personas })
+}
+
+/// GET /api/activity/stream — SSE of live ActivityEvents.
+async fn activity_stream() -> Response {
+    use tokio::sync::broadcast::error::RecvError;
+    let rx = hakimi_common::subscribe();
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
+                    return Some((
+                        Ok::<Event, Infallible>(Event::default().event("activity").data(data)),
+                        rx,
+                    ));
+                }
+                Err(RecvError::Lagged(_)) => continue, // slow consumer dropped events; resync on reconnect
+                Err(RecvError::Closed) => return None,
+            }
+        }
+    });
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
+}
+
 /// GET /status — dashboard runtime status without secrets.
 async fn dashboard_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let agent = state.agent.lock().await;
@@ -3423,6 +3475,11 @@ async fn create_agent(
         (created, skills_dir)
     };
     sync_gateway_persona_agent(&state, &created, &skills_dir).await;
+    hakimi_common::publish(hakimi_common::ActivityEvent::PersonaCreated {
+        id: created.id.clone(),
+        name: created.name.clone(),
+        avatar: created.avatar.clone(),
+    });
     Ok(Json(created))
 }
 
@@ -3513,6 +3570,11 @@ async fn update_agent(
     // Rebuild the persona's gateway agent so model/prompt/skills changes take
     // effect without a restart (in unified mode the loop shares this map).
     sync_gateway_persona_agent(&state, &updated, &skills_dir).await;
+    hakimi_common::publish(hakimi_common::ActivityEvent::PersonaUpdated {
+        id: updated.id.clone(),
+        name: updated.name.clone(),
+        avatar: updated.avatar.clone(),
+    });
     Ok(Json(updated))
 }
 
@@ -3533,6 +3595,7 @@ async fn delete_agent(
         })?;
     }
     state.persona_agents.write().await.remove(&id);
+    hakimi_common::publish(hakimi_common::ActivityEvent::PersonaDeleted { id: id.clone() });
     Ok(Json(AgentDeleteResponse { id, deleted: true }))
 }
 
@@ -3895,9 +3958,15 @@ async fn agent_chat_stream(
     let session_id = cloned_agent.session_id().to_string();
     let should_persist = requested_session_id.is_some();
     let tx = tx_for_handler.clone();
+    let id = id.clone();
 
     tokio::spawn(async move {
         use hakimi_session::MessageOps;
+        hakimi_common::publish(hakimi_common::ActivityEvent::TurnStarted {
+            persona_id: id.clone(),
+            task_hint: None,
+            model: Some(cloned_agent.model().to_string()),
+        });
         match cloned_agent.chat(&user_message).await {
             Ok(response) => {
                 if should_persist {
@@ -3912,6 +3981,9 @@ async fn agent_chat_stream(
                             })
                     };
                     if let Err(e) = persist_result {
+                        hakimi_common::publish(hakimi_common::ActivityEvent::TurnEnded {
+                            persona_id: id.clone(),
+                        });
                         let _ = tx.send(format!("__ERROR__{e}")).await;
                         return;
                     }
@@ -3920,9 +3992,15 @@ async fn agent_chat_stream(
                     "response": response,
                     "session_id": session_id,
                 });
+                hakimi_common::publish(hakimi_common::ActivityEvent::TurnEnded {
+                    persona_id: id.clone(),
+                });
                 let _ = tx.send(format!("__DONE__{done}")).await;
             }
             Err(e) => {
+                hakimi_common::publish(hakimi_common::ActivityEvent::TurnEnded {
+                    persona_id: id.clone(),
+                });
                 let _ = tx.send(format!("__ERROR__{}", e)).await;
             }
         }
@@ -8107,5 +8185,54 @@ mod tests {
             Some("Hermes dashboard session search")
         );
         assert_eq!(search.data[0].source.as_deref(), Some("api-test"));
+    }
+
+    #[tokio::test]
+    async fn test_activity_snapshot_includes_personas_as_idle() {
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/activity/snapshot")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        let arr = json["personas"].as_array().unwrap();
+        // default persona present, idle by default
+        let def = arr.iter().find(|p| p["id"] == "default").unwrap();
+        assert_eq!(def["state"], "idle");
+    }
+
+    #[tokio::test]
+    async fn test_create_agent_publishes_activity_event() {
+        let mut rx = hakimi_common::subscribe();
+        let app = build_router(test_state());
+        let resp = app
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "evt_coder", "name": "Coder"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        // drain until we see our PersonaCreated (other tests may share the global bus)
+        let mut found = false;
+        for _ in 0..50 {
+            match rx.try_recv() {
+                Ok(hakimi_common::ActivityEvent::PersonaCreated { id, .. })
+                    if id == "evt_coder" =>
+                {
+                    found = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(_) => break,
+            }
+        }
+        assert!(found, "expected PersonaCreated for evt_coder");
     }
 }

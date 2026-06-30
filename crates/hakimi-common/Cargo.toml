@@ -13,4 +13,5 @@ thiserror = { workspace = true }
 async-trait = { workspace = true }
 regex = { workspace = true }
 anyhow = { workspace = true }
+tokio = { workspace = true }
 dirs = { workspace = true }

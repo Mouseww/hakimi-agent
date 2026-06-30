@@ -1084,3 +1084,62 @@ async fn team_executor_consults_addressable_teammate() {
 
     assert!(answer.contains("drafted"));
 }
+
+#[tokio::test]
+async fn team_consult_publishes_activity_events() {
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    let mut rx = hakimi_common::subscribe();
+
+    let agents_dir = std::env::temp_dir()
+        .join(format!("hakimi-team-act-{}", uuid::Uuid::new_v4()))
+        .join("agents");
+    let mut reg = hakimi_core::PersonaRegistry::load(&agents_dir).unwrap();
+    let mut writer = hakimi_core::PersonaConfig::new("writer");
+    writer.addressable = true;
+    reg.create(writer).unwrap();
+    let registry = Arc::new(RwLock::new(reg));
+
+    let transport = Arc::new(MockTransport::text_response("Status: success"));
+    let template = Arc::new(hakimi_core::AIAgent::new(
+        "test-model",
+        transport,
+        hakimi_tools::ToolRegistry::new(),
+        None,
+    ));
+    let exec = hakimi_core::PersonaTeamExecutor::new(registry, template, 128_000).for_lead("lead");
+    let _ = hakimi_common::TeamExecutor::consult(
+        &exec,
+        hakimi_common::TeamCallContext {
+            teammate_id: "writer".to_string(),
+            task: "draft".to_string(),
+            context: String::new(),
+            progress: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let mut saw_started = false;
+    let mut saw_ended = false;
+    for _ in 0..200 {
+        match rx.try_recv() {
+            Ok(hakimi_common::ActivityEvent::ConsultStarted { from_id, to_id, .. })
+                if from_id == "lead" && to_id == "writer" =>
+            {
+                saw_started = true;
+            }
+            Ok(hakimi_common::ActivityEvent::ConsultEnded { from_id, to_id })
+                if from_id == "lead" && to_id == "writer" =>
+            {
+                saw_ended = true;
+            }
+            Ok(_) => continue,
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+            Err(_) => break,
+        }
+    }
+    assert!(saw_started, "expected ConsultStarted");
+    assert!(saw_ended, "expected ConsultEnded");
+}
