@@ -1,8 +1,8 @@
 # Hakimi Agent
 
-[![Version](https://img.shields.io/badge/version-0.4.5-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.4.6-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.4.5-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.4.6-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -47,6 +47,16 @@ hakimi setup      # guided configuration wizard
 hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
+
+**v0.4.6 — 人格办公室仪表板 (Persona Office Dashboard):**
+- 🏢 **办公室可视化**：把每个人格当作"员工"，实时展示所有人格的工作状态
+- 🖥️ **个性化工位**：每个人格独立工位，执行任务时电脑屏幕亮起 + 键盘动作，空闲时看电视/打游戏
+- 🤝 **协作动画**：A 找 B 干活时显示跑到 B 处交付需求的动画，多人组队时聚坐协作
+- 📡 **实时事件流**：后端 ActivityHub + SSE 全栈实时推送（PersonaCreated/TurnStarted/TeamConsult/Idle 等）
+- 🎨 **扁平矢量风格**：SVG + CSS 动画，微俯视角，可随主题换色，与现有 UI 风格统一
+- 🔄 **自动布局**：按行自动排列工位，支持几个到 ~20 个人格，超出自动滚动
+- 🖱️ **可交互导航**：点击工位进入该人格对话/配置，悬停显示状态详情卡
+- 👔 **入职动画**：新人格创建时显示"新员工入职，安排新座位"动画
 
 **v0.4.5 — Persona Team 协作系统 (Persona Team Collaboration):**
 - 🤝 **具名人格协作**：主导人格可通过 `team` 工具将子任务委派给其他具名队友人格
