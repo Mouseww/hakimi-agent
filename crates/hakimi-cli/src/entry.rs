@@ -6757,6 +6757,11 @@ Just send a message to chat with me!"
                     msg = msg.with_images(images);
                 }
 
+                hakimi_common::publish(hakimi_common::ActivityEvent::TurnStarted {
+                    persona_id: persona_id.clone(),
+                    task_hint: None,
+                    model: Some(turn_agent.model().to_string()),
+                });
                 let result = tokio::select! {
                     _ = cancellation.cancelled() => Err(hakimi_common::HakimiError::Other("cancelled by /stop".to_string())),
                     result = async {
@@ -6769,6 +6774,9 @@ Just send a message to chat with me!"
                         }
                     } => result,
                 };
+                hakimi_common::publish(hakimi_common::ActivityEvent::TurnEnded {
+                    persona_id: persona_id.clone(),
+                });
 
                 turn_agent.set_streaming_callback(None);
                 let stream_snapshot = match updater_handle.await {
