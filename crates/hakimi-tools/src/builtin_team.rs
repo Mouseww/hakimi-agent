@@ -215,8 +215,10 @@ mod tests {
     async fn consult_requires_task() {
         // team_executor None still returns the "not enabled" message before task checks,
         // so this asserts the missing-task path with a stub executor.
-        let mut ctx = ToolContext::default();
-        ctx.team_executor = Some(Arc::new(StubExec::empty()));
+        let ctx = ToolContext {
+            team_executor: Some(Arc::new(StubExec::empty())),
+            ..Default::default()
+        };
         let err = TeamTool
             .execute(&json!({"action": "consult", "teammate": "writer"}), &ctx)
             .await
@@ -242,8 +244,10 @@ mod tests {
             consult_reply: None,
             consult_many_prefix: None,
         };
-        let mut ctx = ToolContext::default();
-        ctx.team_executor = Some(Arc::new(stub));
+        let ctx = ToolContext {
+            team_executor: Some(Arc::new(stub)),
+            ..Default::default()
+        };
         let output = TeamTool
             .execute(&json!({"action": "list"}), &ctx)
             .await
@@ -265,8 +269,10 @@ mod tests {
             consult_reply: None,
             consult_many_prefix: Some("answer for".to_string()),
         };
-        let mut ctx = ToolContext::default();
-        ctx.team_executor = Some(Arc::new(stub));
+        let ctx = ToolContext {
+            team_executor: Some(Arc::new(stub)),
+            ..Default::default()
+        };
         let output = TeamTool
             .execute(
                 &json!({"action": "consult", "teammates": ["coder", "writer"], "task": "x"}),
@@ -287,8 +293,10 @@ mod tests {
             consult_reply: Some("Here is my expert answer.".to_string()),
             consult_many_prefix: None,
         };
-        let mut ctx = ToolContext::default();
-        ctx.team_executor = Some(Arc::new(stub));
+        let ctx = ToolContext {
+            team_executor: Some(Arc::new(stub)),
+            ..Default::default()
+        };
         let output = TeamTool
             .execute(
                 &json!({"action": "consult", "teammate": "writer", "task": "x"}),

@@ -1007,6 +1007,9 @@ pub fn write_pcm16_wav_with_threshold(
 }
 
 /// Read and summarize a PCM16 mono WAV recording created by a capture backend.
+// `as_chunks` (the lint's suggested replacement) is not stable on the pinned
+// toolchain; chunks_exact(2) is correct and clear for PCM16 byte pairs.
+#[allow(clippy::chunks_exact_to_as_chunks)]
 pub fn summarize_pcm16_wav_file(
     path: impl AsRef<Path>,
     silence_threshold: u32,
