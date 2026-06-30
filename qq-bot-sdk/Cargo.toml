@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.40", features = ["full"] }
-tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
-reqwest = { version = "0.12", features = ["json", "multipart"] }
+tokio-tungstenite = { version = "0.23", features = ["rustls-tls-native-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 futures-util = "0.3"
