@@ -1,15 +1,16 @@
-import { Bot, FolderTree, Plus, Settings } from 'lucide-react';
+import { Bot, Building2, FolderTree, Plus, Settings } from 'lucide-react';
 import type { Agent } from './api';
 
 interface PersonaRailProps {
   agents: Agent[];
   activeId: string | null;
-  view: 'chat' | 'config' | 'instance' | 'workspace';
+  view: 'chat' | 'config' | 'instance' | 'workspace' | 'office';
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onCreate: () => void;
   onInstance: () => void;
   onWorkspace: () => void;
+  onOffice: () => void;
 }
 
 function avatarText(agent: Agent): string {
@@ -29,6 +30,7 @@ export default function PersonaRail({
   onCreate,
   onInstance,
   onWorkspace,
+  onOffice,
 }: PersonaRailProps) {
   return (
     <nav className="persona-rail" aria-label="Personas">
@@ -67,6 +69,14 @@ export default function PersonaRail({
       <div className="persona-rail-foot">
         <button type="button" className="persona-add" title="New persona" onClick={onCreate}>
           <Plus size={18} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`persona-instance ${view === 'office' ? 'is-active' : ''}`}
+          title="Office"
+          onClick={onOffice}
+        >
+          <Building2 size={18} aria-hidden="true" />
         </button>
         <button
           type="button"
