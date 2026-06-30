@@ -472,7 +472,7 @@ export const api = {
   agentChatStream: (
     id: string,
     message: string,
-    opts: { sessionId?: string; onToken?: (token: string) => void } = {},
+    opts: { sessionId?: string; onToken?: (token: string) => void; onSessionCreated?: (sessionId: string) => void } = {},
   ) => streamAgentChat(id, message, opts),
   bindings: () => request<BindingsResponse>('/api/bindings'),
   workspaceList: (path = '') =>
@@ -538,7 +538,7 @@ export async function streamActivity(opts: {
 async function streamAgentChat(
   id: string,
   message: string,
-  opts: { sessionId?: string; onToken?: (token: string) => void },
+  opts: { sessionId?: string; onToken?: (token: string) => void; onSessionCreated?: (sessionId: string) => void },
 ): Promise<ChatResponse> {
   const token = getAuthToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -594,6 +594,8 @@ async function streamAgentChat(
 
       if (eventType === 'token') {
         opts.onToken?.(data);
+      } else if (eventType === 'session') {
+        opts.onSessionCreated?.(data);
       } else if (eventType === 'done') {
         try {
           final = JSON.parse(data) as ChatResponse;

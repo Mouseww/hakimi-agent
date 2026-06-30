@@ -3771,6 +3771,11 @@ fn sse_response_from_rx(rx: tokio::sync::mpsc::Receiver<String>) -> Response {
                     Ok::<Event, Infallible>(Event::default().event("error").data(payload)),
                     rx,
                 )
+            } else if let Some(payload) = msg.strip_prefix("__SESSION__") {
+                (
+                    Ok::<Event, Infallible>(Event::default().event("session").data(payload)),
+                    rx,
+                )
             } else {
                 (
                     Ok::<Event, Infallible>(Event::default().event("token").data(msg)),
@@ -3956,9 +3961,30 @@ async fn agent_chat_stream(
     })));
 
     let session_id = cloned_agent.session_id().to_string();
-    let should_persist = requested_session_id.is_some();
     let tx = tx_for_handler.clone();
     let id = id.clone();
+
+    if requested_session_id.is_none() {
+        use hakimi_session::SessionOps;
+        let db = session_db.lock().await;
+        if let Err(e) = db.create_session_with_id(
+            &session_id,
+            "webui",
+            None,
+            Some(cloned_agent.model()),
+            None,
+            None,
+        ) {
+            let _ = tx_for_handler
+                .send(format!("__ERROR__Failed to create session: {e}"))
+                .await;
+            drop(tx_for_handler);
+            return sse_response_from_rx(rx);
+        }
+        let _ = tx_for_handler
+            .send(format!("__SESSION__{session_id}"))
+            .await;
+    }
 
     tokio::spawn(async move {
         use hakimi_session::MessageOps;
@@ -3969,7 +3995,7 @@ async fn agent_chat_stream(
         });
         match cloned_agent.chat(&user_message).await {
             Ok(response) => {
-                if should_persist {
+                {
                     let persist_result = {
                         let db = session_db.lock().await;
                         db.save_message(&session_id, &CoreMessage::user(user_message.clone()))

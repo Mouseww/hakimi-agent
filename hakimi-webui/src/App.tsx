@@ -62,6 +62,13 @@ type UiMessage = {
   createdAt: Date;
 };
 
+type DelegateStatus = {
+  taskId: string;
+  title: string;
+  status: string;
+  timestamp: string;
+};
+
 type LoadState = {
   health: HealthResponse | null;
   status: DashboardStatus | null;
@@ -177,6 +184,7 @@ function App() {
   const [showPanel, setShowPanel] = useState(true);
   const [agentSessionList, setAgentSessionList] = useState<SessionInfo[]>([]);
   const [personaSessionMap, setPersonaSessionMap] = useState<Record<string, string | null>>({});
+  const [delegateStatuses, setDelegateStatuses] = useState<DelegateStatus[]>([]);
 
   const activePersona = useMemo(
     () => agents.find((a) => a.id === activePersonaId) ?? null,
@@ -388,7 +396,31 @@ function App() {
         let accumulated = '';
         response = await api.agentChatStream(activePersonaId, text, {
           sessionId: selectedSessionId ?? undefined,
+          onSessionCreated: (sid) => {
+            setSelectedSessionId(sid);
+            if (activePersonaId) {
+              void loadAgentSessions(activePersonaId);
+            }
+          },
           onToken: (token) => {
+            if (token.startsWith('')) {
+              const raw = token.slice(1);
+              if (raw.startsWith('hakimi_delegate:')) {
+                const body = raw.slice('hakimi_delegate:'.length);
+                const parts = body.split('|');
+                const taskId = parts[0] ?? '';
+                setDelegateStatuses((prev) => {
+                  const filtered = prev.filter((d) => d.taskId !== taskId);
+                  return [...filtered, { taskId, title: parts[1] ?? '', status: parts[2] ?? '', timestamp: parts[3] ?? '' }];
+                });
+              } else if (raw.startsWith('hakimi_tool:')) {
+                setDelegateStatuses((prev) => {
+                  const filtered = prev.filter((d) => d.taskId !== '__main__');
+                  return [...filtered, { taskId: '__main__', title: '', status: raw.slice('hakimi_tool:'.length), timestamp: '' }];
+                });
+              }
+              return;
+            }
             accumulated += token;
             applyContent(accumulated);
           },
@@ -404,12 +436,16 @@ function App() {
         ),
       );
       setSelectedSessionId(response.session_id);
+      if (activePersonaId) {
+        void loadAgentSessions(activePersonaId);
+      }
       void refreshAll({ quiet: true });
     } catch (sendError) {
       setMessages((current) => current.filter((message) => message.id !== assistantId));
       setError(sendError instanceof Error ? sendError.message : String(sendError));
     } finally {
       setSending(false);
+      setDelegateStatuses([]);
     }
   }
 
@@ -750,7 +786,7 @@ function App() {
                 <p>{data.status?.model ?? 'Hakimi Agent'}</p>
               </div>
             ) : (
-              transcriptMessages.map((message) => (
+              transcriptMessages.map((message, index) => (
                 <article className={`message-row message-${message.role}`} key={message.id}>
                   <div className="message-avatar" aria-hidden="true">
                     {message.role === 'assistant' ? <Bot size={17} /> : <MessageSquare size={17} />}
@@ -768,6 +804,21 @@ function App() {
                         Running turn
                       </span>
                     ) : null}
+                    {sending && index === transcriptMessages.length - 1 && message.role === 'assistant' && delegateStatuses.length > 0 && (
+                      <div className="delegate-progress">
+                        <div className="delegate-progress-header">
+                          <Loader2 className="spin" size={12} aria-hidden="true" />
+                          <span>Working</span>
+                        </div>
+                        {delegateStatuses.map((d) => (
+                          <div key={d.taskId} className="delegate-progress-item">
+                            {d.title && <span className="delegate-title">{d.title}</span>}
+                            <span className="delegate-status">{d.status}</span>
+                            {d.timestamp && <span className="delegate-time">{d.timestamp}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {message.content && (
                       <div className="message-actions">
                         <button
