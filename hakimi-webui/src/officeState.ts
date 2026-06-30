@@ -79,7 +79,8 @@ export function reduceActivity(state: OfficeState, event: ActivityEvent): Office
       }
       break;
     case 'team_disbanded':
-      for (const [id, d] of map) {
+      // Snapshot entries before writing so we never mutate the map mid-iteration.
+      for (const [id, d] of Array.from(map)) {
         if (d.teamId === event.team_id) {
           map.set(id, { ...d, teamId: undefined });
         }
