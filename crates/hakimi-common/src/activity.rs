@@ -29,18 +29,48 @@ pub enum PersonaState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ActivityEvent {
-    PersonaCreated { id: String, name: String, avatar: String },
-    PersonaUpdated { id: String, name: String, avatar: String },
-    PersonaDeleted { id: String },
-    TurnStarted { persona_id: String, task_hint: Option<String>, model: Option<String> },
-    TurnEnded { persona_id: String },
-    ConsultStarted { from_id: String, to_id: String, task_hint: Option<String> },
+    PersonaCreated {
+        id: String,
+        name: String,
+        avatar: String,
+    },
+    PersonaUpdated {
+        id: String,
+        name: String,
+        avatar: String,
+    },
+    PersonaDeleted {
+        id: String,
+    },
+    TurnStarted {
+        persona_id: String,
+        task_hint: Option<String>,
+        model: Option<String>,
+    },
+    TurnEnded {
+        persona_id: String,
+    },
+    ConsultStarted {
+        from_id: String,
+        to_id: String,
+        task_hint: Option<String>,
+    },
     /// `to_id` is carried for client-side correlation with the matching
     /// `ConsultStarted`; the consulting overlay is keyed only on `from_id`, so
     /// `apply` intentionally does not read `to_id`.
-    ConsultEnded { from_id: String, to_id: String },
-    TeamFormed { team_id: String, lead_id: String, member_ids: Vec<String>, task_hint: Option<String> },
-    TeamDisbanded { team_id: String },
+    ConsultEnded {
+        from_id: String,
+        to_id: String,
+    },
+    TeamFormed {
+        team_id: String,
+        lead_id: String,
+        member_ids: Vec<String>,
+        task_hint: Option<String>,
+    },
+    TeamDisbanded {
+        team_id: String,
+    },
 }
 
 /// Internal per-persona tracking: base (working) + overlays (consulting/team).
@@ -118,7 +148,11 @@ pub(crate) fn apply(map: &mut HashMap<String, HubEntry>, event: &ActivityEvent) 
         ActivityEvent::PersonaDeleted { id } => {
             map.remove(id);
         }
-        ActivityEvent::TurnStarted { persona_id, task_hint, model } => {
+        ActivityEvent::TurnStarted {
+            persona_id,
+            task_hint,
+            model,
+        } => {
             let e = map.entry(persona_id.clone()).or_default();
             e.working = true;
             e.task_hint = task_hint.clone();
@@ -136,7 +170,12 @@ pub(crate) fn apply(map: &mut HashMap<String, HubEntry>, event: &ActivityEvent) 
         ActivityEvent::ConsultEnded { from_id, .. } => {
             map.entry(from_id.clone()).or_default().consulting_to = None;
         }
-        ActivityEvent::TeamFormed { team_id, lead_id, member_ids, .. } => {
+        ActivityEvent::TeamFormed {
+            team_id,
+            lead_id,
+            member_ids,
+            ..
+        } => {
             for id in std::iter::once(lead_id).chain(member_ids.iter()) {
                 map.entry(id.clone()).or_default().team_id = Some(team_id.clone());
             }
@@ -158,7 +197,10 @@ struct ActivityHub {
 
 static HUB: LazyLock<ActivityHub> = LazyLock::new(|| {
     let (sender, _rx) = broadcast::channel(ACTIVITY_CHANNEL_CAPACITY);
-    ActivityHub { sender, state: Mutex::new(HashMap::new()) }
+    ActivityHub {
+        sender,
+        state: Mutex::new(HashMap::new()),
+    }
 });
 
 /// Publish an event: update the snapshot, then broadcast to subscribers.
@@ -198,7 +240,11 @@ mod tests {
     use super::*;
 
     fn ev_turn_start(id: &str) -> ActivityEvent {
-        ActivityEvent::TurnStarted { persona_id: id.into(), task_hint: Some("fix bug".into()), model: Some("opus".into()) }
+        ActivityEvent::TurnStarted {
+            persona_id: id.into(),
+            task_hint: Some("fix bug".into()),
+            model: Some("opus".into()),
+        }
     }
 
     #[test]
@@ -207,7 +253,12 @@ mod tests {
         apply(&mut m, &ev_turn_start("coder"));
         assert_eq!(displayed_state(&m["coder"]), PersonaState::Working);
         assert_eq!(m["coder"].task_hint.as_deref(), Some("fix bug"));
-        apply(&mut m, &ActivityEvent::TurnEnded { persona_id: "coder".into() });
+        apply(
+            &mut m,
+            &ActivityEvent::TurnEnded {
+                persona_id: "coder".into(),
+            },
+        );
         assert_eq!(displayed_state(&m["coder"]), PersonaState::Idle);
         assert!(m["coder"].task_hint.is_none());
     }
@@ -216,9 +267,22 @@ mod tests {
     fn consult_overlays_working_then_restores() {
         let mut m = HashMap::new();
         apply(&mut m, &ev_turn_start("coder")); // working
-        apply(&mut m, &ActivityEvent::ConsultStarted { from_id: "coder".into(), to_id: "writer".into(), task_hint: None });
+        apply(
+            &mut m,
+            &ActivityEvent::ConsultStarted {
+                from_id: "coder".into(),
+                to_id: "writer".into(),
+                task_hint: None,
+            },
+        );
         assert_eq!(displayed_state(&m["coder"]), PersonaState::Consulting);
-        apply(&mut m, &ActivityEvent::ConsultEnded { from_id: "coder".into(), to_id: "writer".into() });
+        apply(
+            &mut m,
+            &ActivityEvent::ConsultEnded {
+                from_id: "coder".into(),
+                to_id: "writer".into(),
+            },
+        );
         // base turn still active -> back to working, NOT idle
         assert_eq!(displayed_state(&m["coder"]), PersonaState::Working);
     }
@@ -227,14 +291,24 @@ mod tests {
     fn team_masks_other_states_until_disbanded() {
         let mut m = HashMap::new();
         apply(&mut m, &ev_turn_start("coder"));
-        apply(&mut m, &ActivityEvent::TeamFormed {
-            team_id: "t1".into(), lead_id: "coder".into(),
-            member_ids: vec!["writer".into(), "reviewer".into()], task_hint: None,
-        });
+        apply(
+            &mut m,
+            &ActivityEvent::TeamFormed {
+                team_id: "t1".into(),
+                lead_id: "coder".into(),
+                member_ids: vec!["writer".into(), "reviewer".into()],
+                task_hint: None,
+            },
+        );
         assert_eq!(displayed_state(&m["coder"]), PersonaState::InTeam);
         assert_eq!(displayed_state(&m["writer"]), PersonaState::InTeam);
         assert_eq!(displayed_state(&m["reviewer"]), PersonaState::InTeam);
-        apply(&mut m, &ActivityEvent::TeamDisbanded { team_id: "t1".into() });
+        apply(
+            &mut m,
+            &ActivityEvent::TeamDisbanded {
+                team_id: "t1".into(),
+            },
+        );
         assert_eq!(displayed_state(&m["coder"]), PersonaState::Working); // base restored
         assert_eq!(displayed_state(&m["writer"]), PersonaState::Idle);
     }
@@ -242,7 +316,14 @@ mod tests {
     #[test]
     fn delete_removes_entry() {
         let mut m = HashMap::new();
-        apply(&mut m, &ActivityEvent::PersonaCreated { id: "x".into(), name: "X".into(), avatar: "🙂".into() });
+        apply(
+            &mut m,
+            &ActivityEvent::PersonaCreated {
+                id: "x".into(),
+                name: "X".into(),
+                avatar: "🙂".into(),
+            },
+        );
         assert!(m.contains_key("x"));
         apply(&mut m, &ActivityEvent::PersonaDeleted { id: "x".into() });
         assert!(!m.contains_key("x"));
@@ -251,13 +332,29 @@ mod tests {
     #[tokio::test]
     async fn publish_reaches_subscriber_and_updates_snapshot() {
         let mut rx = subscribe();
-        publish(ActivityEvent::TurnStarted { persona_id: "globaltest_p".into(), task_hint: None, model: None });
+        publish(ActivityEvent::TurnStarted {
+            persona_id: "globaltest_p".into(),
+            task_hint: None,
+            model: None,
+        });
         let got = rx.recv().await.unwrap();
-        assert_eq!(got, ActivityEvent::TurnStarted { persona_id: "globaltest_p".into(), task_hint: None, model: None });
+        assert_eq!(
+            got,
+            ActivityEvent::TurnStarted {
+                persona_id: "globaltest_p".into(),
+                task_hint: None,
+                model: None
+            }
+        );
         let states = all_live_states();
-        assert_eq!(states.get("globaltest_p").map(|l| l.state), Some(PersonaState::Working));
+        assert_eq!(
+            states.get("globaltest_p").map(|l| l.state),
+            Some(PersonaState::Working)
+        );
         // cleanup global state for other tests
-        publish(ActivityEvent::PersonaDeleted { id: "globaltest_p".into() });
+        publish(ActivityEvent::PersonaDeleted {
+            id: "globaltest_p".into(),
+        });
     }
 
     #[test]

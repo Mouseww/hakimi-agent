@@ -2954,7 +2954,12 @@ async fn activity_snapshot(State(state): State<AppState>) -> Json<ActivitySnapsh
         .list()
         .into_iter()
         .map(|cfg| {
-            hakimi_common::PersonaActivity::from_parts(&cfg.id, &cfg.name, &cfg.avatar, states.get(&cfg.id))
+            hakimi_common::PersonaActivity::from_parts(
+                &cfg.id,
+                &cfg.name,
+                &cfg.avatar,
+                states.get(&cfg.id),
+            )
         })
         .collect();
     Json(ActivitySnapshotResponse { personas })
@@ -2979,7 +2984,9 @@ async fn activity_stream() -> Response {
             }
         }
     });
-    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 /// GET /status — dashboard runtime status without secrets.
@@ -8205,7 +8212,10 @@ mod tests {
         let mut rx = hakimi_common::subscribe();
         let app = build_router(test_state());
         let resp = app
-            .oneshot(json_post("/api/agents", json!({"id": "evt_coder", "name": "Coder"})))
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "evt_coder", "name": "Coder"}),
+            ))
             .await
             .unwrap();
         assert_eq!(resp.status(), http::StatusCode::OK);
@@ -8213,7 +8223,9 @@ mod tests {
         let mut found = false;
         for _ in 0..50 {
             match rx.try_recv() {
-                Ok(hakimi_common::ActivityEvent::PersonaCreated { id, .. }) if id == "evt_coder" => {
+                Ok(hakimi_common::ActivityEvent::PersonaCreated { id, .. })
+                    if id == "evt_coder" =>
+                {
                     found = true;
                     break;
                 }
