@@ -3837,6 +3837,21 @@ async fn agent_chat_stream(
         build_persona_agent_for(&state, &cfg, &skills_dir).await
     };
 
+    {
+        let template = std::sync::Arc::new(state.agent.lock().await.clone());
+        let team_base = hakimi_core::PersonaTeamExecutor::new(
+            state.persona_registry.clone(),
+            template,
+            128_000,
+        );
+        let lead_id = if is_default {
+            hakimi_core::DEFAULT_PERSONA_ID.to_string()
+        } else {
+            cfg.id.clone()
+        };
+        cloned_agent.set_team_executor(Some(Arc::new(team_base.for_lead(&lead_id))));
+    }
+
     if let Some(session_id) = requested_session_id.as_deref() {
         let restored = {
             let db = session_db.lock().await;
