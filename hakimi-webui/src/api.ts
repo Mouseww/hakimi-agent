@@ -1,3 +1,5 @@
+import type { ActivityEvent, ActivitySnapshotResponse } from './activityTypes';
+
 const AUTH_TOKEN_KEY = 'hakimi-webui-token';
 
 export interface ChatRequest {
@@ -477,7 +479,59 @@ export const api = {
     request<WorkspaceListResponse>(`/api/workspace/list?path=${encodeURIComponent(path)}`),
   workspaceRead: (path: string) =>
     request<WorkspaceReadResponse>(`/api/workspace/read?path=${encodeURIComponent(path)}`),
+  activitySnapshot: () => request<ActivitySnapshotResponse>('/api/activity/snapshot'),
 };
+
+/**
+ * Consume the persona-activity SSE stream, calling `onEvent` for each event.
+ * Resolves when the stream ends or `signal` aborts. Mirrors streamAgentChat's
+ * fetch-based SSE parsing so the Bearer token is sent (EventSource can't).
+ */
+export async function streamActivity(opts: {
+  onEvent: (event: ActivityEvent) => void;
+  signal: AbortSignal;
+}): Promise<void> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch('/api/activity/stream', { headers, signal: opts.signal });
+  if (!response.ok || !response.body) {
+    throw new Error(`activity stream ${response.status} ${response.statusText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    // SSE frames are separated by a blank line.
+    let sep = buffer.indexOf('\n\n');
+    while (sep !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const dataLine = frame
+        .split('\n')
+        .find((line) => line.startsWith('data:'));
+      if (dataLine) {
+        const json = dataLine.slice(5).trim();
+        try {
+          opts.onEvent(JSON.parse(json) as ActivityEvent);
+        } catch {
+          // ignore malformed frame
+        }
+      }
+      sep = buffer.indexOf('\n\n');
+    }
+  }
+}
 
 /// Stream a persona chat over SSE, invoking `onToken` for each chunk and
 /// resolving with the final `{response, session_id}` from the `done` event.
