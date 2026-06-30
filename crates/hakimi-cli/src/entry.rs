@@ -6902,10 +6902,7 @@ Just send a message to chat with me!"
 
             // If any guidance messages arrived after the last LLM call but
             // before the task finished, notify the user so they can resend.
-            let has_leftover = guidance_arc
-                .lock()
-                .ok()
-                .is_some_and(|g| !g.is_empty());
+            let has_leftover = guidance_arc.lock().ok().is_some_and(|g| !g.is_empty());
             if has_leftover {
                 debug!(platform = %platform, chat_id = %chat_id, "leftover guidance after task completion");
                 send_gateway_text(
