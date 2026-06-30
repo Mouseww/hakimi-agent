@@ -35,6 +35,9 @@ pub enum ActivityEvent {
     TurnStarted { persona_id: String, task_hint: Option<String>, model: Option<String> },
     TurnEnded { persona_id: String },
     ConsultStarted { from_id: String, to_id: String, task_hint: Option<String> },
+    /// `to_id` is carried for client-side correlation with the matching
+    /// `ConsultStarted`; the consulting overlay is keyed only on `from_id`, so
+    /// `apply` intentionally does not read `to_id`.
     ConsultEnded { from_id: String, to_id: String },
     TeamFormed { team_id: String, lead_id: String, member_ids: Vec<String>, task_hint: Option<String> },
     TeamDisbanded { team_id: String },
@@ -108,6 +111,8 @@ pub(crate) fn displayed_state(entry: &HubEntry) -> PersonaState {
 pub(crate) fn apply(map: &mut HashMap<String, HubEntry>, event: &ActivityEvent) {
     match event {
         ActivityEvent::PersonaCreated { id, .. } | ActivityEvent::PersonaUpdated { id, .. } => {
+            // Identity (name/avatar) lives in the registry; the hub only needs the
+            // entry to exist so its live state can be tracked.
             map.entry(id.clone()).or_default();
         }
         ActivityEvent::PersonaDeleted { id } => {
