@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 hakimi-common = { path = "../hakimi-common" }
-qq-bot-sdk = { path = "../../../qq-bot-sdk" }
+qq-bot-sdk = { path = "../../qq-bot-sdk" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
