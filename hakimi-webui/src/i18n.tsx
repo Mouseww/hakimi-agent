@@ -3,7 +3,6 @@ import { createContext, useContext, type ReactNode } from 'react';
 type Entry = { en: string; zh: string };
 
 const messages = {
-  'office.nav': { en: 'Office', zh: '办公室' },
   'office.live': { en: 'Live', zh: '实时' },
   'office.offline': { en: 'Offline (reconnecting)', zh: '离线(重连中)' },
   'office.clickHint': { en: 'Click a desk to open chat', zh: '点击工位进入对话' },

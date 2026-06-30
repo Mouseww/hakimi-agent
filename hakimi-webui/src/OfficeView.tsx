@@ -17,24 +17,22 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
   const { office, connected } = useActivityStream(true);
   const [hoverId, setHoverId] = useState<string | null>(null);
 
-  // stable seat assignment: recompute only when the sorted id list changes, carrying
-  // forward the previous seat map so freed desks are reused for new arrivals.
+  // Stable seat assignment: recompute only when the sorted id list changes, carrying
+  // forward the previous seat map so existing desks stay put and freed slots are reused.
   const ids = useMemo(() => Array.from(office.keys()).sort(), [office]);
-  const [layoutState, setLayoutState] = useState<{ ids: string[]; layout: OfficeLayout }>(() => ({
-    ids,
+  const idKey = ids.join(',');
+  const [layoutState, setLayoutState] = useState<{ idKey: string; layout: OfficeLayout }>(() => ({
+    idKey,
     layout: assignSeats(ids, undefined, COLS),
   }));
-  // Synchronise during render when ids change (safe: derived state pattern).
-  const layout =
-    layoutState.ids === ids || layoutState.ids.join(',') === ids.join(',')
-      ? layoutState.layout
-      : (() => {
-          const next = assignSeats(ids, layoutState.layout.seats, COLS);
-          // Schedule the state update after render so we don't mutate during render.
-          // We return `next` immediately so this render uses the fresh layout.
-          setTimeout(() => setLayoutState({ ids, layout: next }), 0);
-          return next;
-        })();
+  // React's documented "adjust state during render" pattern: on a persona-set change,
+  // recompute seats and store them; React re-renders immediately with the new state
+  // (single commit, no setTimeout). `next` is also used for this pass.
+  let layout = layoutState.layout;
+  if (layoutState.idKey !== idKey) {
+    layout = assignSeats(ids, layoutState.layout.seats, COLS);
+    setLayoutState({ idKey, layout });
+  }
 
   const desks = Array.from(office.values());
   const width = COLS * CELL_W + 48;
