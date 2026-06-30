@@ -29,6 +29,7 @@ pub struct AIAgent {
     pub(crate) chat_id: Option<String>,
     pub(crate) messages: Vec<Message>,
     pub(crate) interrupt: Arc<AtomicBool>,
+    pub(crate) pending_guidance: Arc<std::sync::Mutex<Vec<String>>>,
     pub(crate) workdir: String,
     pub(crate) system_prompt: Option<String>,
     pub(crate) streaming: bool,
@@ -63,6 +64,7 @@ impl Clone for AIAgent {
             chat_id: self.chat_id.clone(),
             messages: self.messages.clone(),
             interrupt: Arc::new(AtomicBool::new(false)),
+            pending_guidance: Arc::new(std::sync::Mutex::new(Vec::new())),
             workdir: self.workdir.clone(),
             system_prompt: self.system_prompt.clone(),
             streaming: self.streaming,
@@ -425,6 +427,7 @@ impl AIAgentBuilder {
             chat_id: self.chat_id,
             messages: Vec::new(),
             interrupt,
+            pending_guidance: Arc::new(std::sync::Mutex::new(Vec::new())),
             workdir,
             system_prompt: self.system_prompt,
             streaming: self.streaming.unwrap_or(false),
@@ -668,6 +671,12 @@ impl AIAgent {
     /// Append a message to the conversation history.
     pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
+    }
+
+    /// Replace the pending guidance queue with a shared handle so external
+    /// code can inject user messages while the agent loop is running.
+    pub fn set_pending_guidance(&mut self, g: Arc<std::sync::Mutex<Vec<String>>>) {
+        self.pending_guidance = g;
     }
 
     /// Get the session ID.

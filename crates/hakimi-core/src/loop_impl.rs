@@ -154,6 +154,24 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             break;
         }
 
+        // Drain any pending guidance messages injected by the user during
+        // this turn and append them to the conversation history so the LLM
+        // sees them on the next request.
+        {
+            let drained: Vec<String> = agent
+                .pending_guidance
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .drain(..)
+                .collect();
+            for text in drained {
+                info!(len = text.len(), "Injecting pending guidance into context");
+                agent.messages.push(Message::user(format!(
+                    "<user-guidance>\n{text}\n</user-guidance>"
+                )));
+            }
+        }
+
         // Build the messages array to send: system prompt + conversation history.
         let send_messages = build_send_messages(agent);
 
@@ -166,7 +184,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                 if let Some(ref cb) = agent.streaming_callback {
                     cb("\u{001e}hakimi_tool:🗜️ 上下文接近限制，正在自动压缩...".to_string());
                 }
-                let engine = agent.context_engine.write().await;
+                let mut engine = agent.context_engine.write().await;
                 engine.compress(&mut agent.messages).await?;
                 info!("Context compression applied");
                 // Notify user after compression
@@ -207,7 +225,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                     if let Some(ref cb) = agent.streaming_callback {
                         cb("\u{001e}hakimi_tool:⚠️ 上下文溢出，正在压缩并重试...".to_string());
                     }
-                    let engine = agent.context_engine.write().await;
+                    let mut engine = agent.context_engine.write().await;
                     engine.compress(&mut agent.messages).await?;
                     // Notify user after compression
                     if let Some(ref cb) = agent.streaming_callback {

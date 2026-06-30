@@ -120,7 +120,7 @@ impl ContextEngine for ContextCompressor {
         self.needs_compression
     }
 
-    async fn compress(&self, messages: &mut Vec<Message>) -> Result<()> {
+    async fn compress(&mut self, messages: &mut Vec<Message>) -> Result<()> {
         let total = messages.len();
 
         if total <= PROTECT_FIRST + PROTECT_LAST + 1 {
@@ -128,6 +128,7 @@ impl ContextEngine for ContextCompressor {
                 message_count = total,
                 "Not enough messages to compress; skipping"
             );
+            self.needs_compression = false;
             return Ok(());
         }
 
@@ -194,6 +195,7 @@ impl ContextEngine for ContextCompressor {
             "Context compression complete"
         );
 
+        self.needs_compression = false;
         Ok(())
     }
 
@@ -591,7 +593,7 @@ impl ContextEngine for LlmCompressor {
         self.needs_compression
     }
 
-    async fn compress(&self, messages: &mut Vec<Message>) -> Result<()> {
+    async fn compress(&mut self, messages: &mut Vec<Message>) -> Result<()> {
         let total = messages.len();
 
         if total <= PROTECT_FIRST + PROTECT_LAST + 1 {
@@ -599,6 +601,7 @@ impl ContextEngine for LlmCompressor {
                 message_count = total,
                 "LlmCompressor: not enough messages to compress; skipping"
             );
+            self.needs_compression = false;
             return Ok(());
         }
 
@@ -616,17 +619,10 @@ impl ContextEngine for LlmCompressor {
         let middle = &messages[compress_start..compress_end];
 
         // Step 1: Update question tracking from the full conversation.
-        // Note: we use a local copy because `compress` takes `&self`.
-        let question_status = {
-            // Reconstruct question state from the messages we're about to compress.
-            let mut temp_compressor = LlmCompressor::new(self.context_length);
-            temp_compressor.update_questions(messages);
-            temp_compressor.format_question_status()
-        };
+        self.update_questions(messages);
+        let question_status = self.format_question_status();
 
         // Step 2: Prune large tool outputs in the middle region.
-        // We clone the middle messages so we can prune without mutating the
-        // original until we're ready.
         let mut pruned_middle: Vec<Message> = middle.to_vec();
         let pruned_count = Self::prune_tool_outputs(&mut pruned_middle);
         if pruned_count > 0 {
@@ -680,6 +676,7 @@ impl ContextEngine for LlmCompressor {
             "LlmCompressor: context compression complete"
         );
 
+        self.needs_compression = false;
         Ok(())
     }
 
@@ -840,7 +837,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_llm_compress_small_messages_noop() {
-        let c = LlmCompressor::new(10000);
+        let mut c = LlmCompressor::new(10000);
         // Create fewer messages than PROTECT_FIRST + PROTECT_LAST + 1 = 10
         let mut messages = make_messages(5);
         let original_len = messages.len();
@@ -853,7 +850,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_llm_compress_with_enough_messages() {
-        let c = LlmCompressor::new(10000);
+        let mut c = LlmCompressor::new(10000);
         // Need more than PROTECT_FIRST + PROTECT_LAST + 1 = 10
         let mut messages = make_messages(20);
         let original_len = messages.len();
@@ -1035,7 +1032,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_llm_compress_full_pipeline() {
-        let c = LlmCompressor::new(10000);
+        let mut c = LlmCompressor::new(10000);
         let mut messages = vec![
             // System messages (protected: indices 0-2)
             Message::system("You are a coding assistant."),
