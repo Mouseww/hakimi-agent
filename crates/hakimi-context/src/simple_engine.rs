@@ -43,7 +43,7 @@ impl ContextEngine for SimpleContextEngine {
         self.estimated_tokens > threshold
     }
 
-    async fn compress(&self, messages: &mut Vec<Message>) -> Result<()> {
+    async fn compress(&mut self, messages: &mut Vec<Message>) -> Result<()> {
         if messages.is_empty() {
             return Ok(());
         }
@@ -133,7 +133,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_compress_drops_old_messages() {
-        let engine = SimpleContextEngine::new(100);
+        let mut engine = SimpleContextEngine::new(100);
         // Each message ~50 chars = ~13 tokens. 10 messages ≈ 130 tokens.
         // Target = 50 tokens → should compress.
         let mut messages: Vec<Message> = (0..10)

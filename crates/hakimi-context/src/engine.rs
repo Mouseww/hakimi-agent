@@ -23,7 +23,7 @@ pub trait ContextEngine: Send + Sync {
     fn should_compress(&self) -> bool;
 
     /// Compress the conversation history in-place.
-    async fn compress(&self, messages: &mut Vec<Message>) -> Result<()>;
+    async fn compress(&mut self, messages: &mut Vec<Message>) -> Result<()>;
 
     /// Called when a new session begins.
     fn on_session_start(&mut self);

@@ -17,6 +17,7 @@ use crate::Command;
 struct GatewayTaskControl {
     id: uuid::Uuid,
     token: CancellationToken,
+    guidance: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl GatewayTaskControl {
@@ -5706,30 +5707,32 @@ async fn process_gateway_messages_loop(
             match Command::parse(&text) {
                 Some(Command::Stop) => {
                     let key = gateway_task_key(&platform, &bot_id, &chat_id);
-                    let stopped = {
+                    let (stopped, guidance_count) = {
                         let mut active = active_tasks.lock().await;
-                        active
-                            .remove(&key)
-                            .map(|control| {
-                                control.cancel();
-                            })
-                            .is_some()
-                    };
-
-                    // Also clear any queued messages for this chat
-                    let queued_count = {
-                        let mut queues = message_queues.lock().await;
-                        queues.remove(&key).map(|q| q.len()).unwrap_or(0)
+                        if let Some(control) = active.remove(&key) {
+                            let cleared = control
+                                .guidance
+                                .lock()
+                                .ok()
+                                .map(|mut g| {
+                                    let n = g.len();
+                                    g.clear();
+                                    n
+                                })
+                                .unwrap_or(0);
+                            control.cancel();
+                            (true, cleared)
+                        } else {
+                            (false, 0)
+                        }
                     };
 
                     let response = if stopped {
-                        if queued_count > 0 {
-                            format!("⏹️ 已停止当前任务并清空 {} 条排队消息。", queued_count)
+                        if guidance_count > 0 {
+                            format!("⏹️ 已停止当前任务并清空 {} 条引导消息。", guidance_count)
                         } else {
                             "⏹️ 已停止当前任务。".to_string()
                         }
-                    } else if queued_count > 0 {
-                        format!("⏹️ 已清空 {} 条排队消息。", queued_count)
                     } else {
                         "ℹ️ 当前没有正在运行的任务。".to_string()
                     };
@@ -5828,30 +5831,25 @@ async fn process_gateway_messages_loop(
 
             // Check busy input mode configuration
             let busy_mode = config.gateways.busy_input_mode.as_str();
+            let guidance_arc: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
+                std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             {
                 let mut active = active_tasks.lock().await;
                 if let Some(previous) = active.get(&task_key) {
                     // There's already an active task for this chat
                     if busy_mode == "queue" {
-                        // Queue mode: add message to queue and return
-                        drop(active); // Release lock before accessing message_queues
-                        message_queues
-                            .lock()
-                            .await
-                            .entry(task_key.clone())
-                            .or_insert_with(VecDeque::new)
-                            .push_back(QueuedMessage {
-                                text: Some(text.clone()),
-                                media_id: media_id.clone(),
-                            });
+                        // Inject the message as guidance into the running task's
+                        // context so the LLM sees it on its next iteration.
+                        if let Ok(mut g) = previous.guidance.lock() {
+                            g.push(text.clone());
+                        }
 
-                        // Notify user that message was queued
                         send_gateway_text(
                             &gateway_clone,
                             &platform,
                             &bot_id,
                             &chat_id,
-                            "⏳ 正在处理之前的消息，已将新消息加入队列...",
+                            "💡 已将消息融入当前任务上下文，下次 AI 调用时会参考。",
                         )
                         .await;
                         return;
@@ -5862,12 +5860,15 @@ async fn process_gateway_messages_loop(
                     }
                 }
 
-                // Insert the new task
+                // Insert the new task with a fresh guidance queue.
+                // The same Arc is shared with the turn agent so messages
+                // injected here appear in the running loop.
                 active.insert(
                     task_key.clone(),
                     GatewayTaskControl {
                         id: task_id,
                         token: cancellation.clone(),
+                        guidance: guidance_arc.clone(),
                     },
                 );
             }
@@ -6302,6 +6303,7 @@ Just send a message to chat with me!"
 
                 let mut a = base_agent.lock().await.clone();
                 a.set_team_executor(Some(std::sync::Arc::new(team_base.for_lead(&persona_id))));
+                a.set_pending_guidance(guidance_arc.clone());
 
                 // Enable streaming
                 // We can't clone the MutexGuard, but we can set the field natively if we fix its visibility
@@ -6898,26 +6900,22 @@ Just send a message to chat with me!"
                 }
             }
 
-            // Process queued messages if any
-            if let Some(queued_msg) = {
-                let mut queues = message_queues.lock().await;
-                queues.get_mut(&task_key).and_then(|q| q.pop_front())
-            } {
-                // There's a queued message, process it
-                debug!(platform = %platform, chat_id = %chat_id, "processing queued message");
-
-                // Send the queued message back through the gateway to trigger processing
-                if let Some(text) = queued_msg.text {
-                    let msg = hakimi_gateway::GatewayMessage {
-                        platform: platform.clone(),
-                        bot_id: bot_id.clone(),
-                        chat_id: chat_id.clone(),
-                        user_id: String::new(),
-                        text,
-                        media: queued_msg.media_id,
-                    };
-                    let _ = gateway_clone.route_message(&msg).await;
-                }
+            // If any guidance messages arrived after the last LLM call but
+            // before the task finished, notify the user so they can resend.
+            let has_leftover = guidance_arc
+                .lock()
+                .ok()
+                .is_some_and(|g| !g.is_empty());
+            if has_leftover {
+                debug!(platform = %platform, chat_id = %chat_id, "leftover guidance after task completion");
+                send_gateway_text(
+                    &gateway_clone,
+                    &platform,
+                    &bot_id,
+                    &chat_id,
+                    "ℹ️ 任务已完成，最后的消息未被处理，请重新发送。",
+                )
+                .await;
             }
         });
     }

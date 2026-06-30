@@ -323,7 +323,7 @@ impl ContextEngine for SmartContextEngine {
         self.estimated_tokens > threshold
     }
 
-    async fn compress(&self, messages: &mut Vec<Message>) -> Result<()> {
+    async fn compress(&mut self, messages: &mut Vec<Message>) -> Result<()> {
         if messages.is_empty() {
             return Ok(());
         }
@@ -918,7 +918,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_compress_empty_messages() {
-        let engine = make_engine(1000);
+        let mut engine = make_engine(1000);
         let mut messages: Vec<Message> = vec![];
         engine.compress(&mut messages).await.unwrap();
         assert!(messages.is_empty());
