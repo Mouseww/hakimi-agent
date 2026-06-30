@@ -90,9 +90,7 @@ impl Embed {
     }
 
     pub fn thumbnail(mut self, url: impl Into<String>) -> Self {
-        self.thumbnail = Some(EmbedThumbnail {
-            url: url.into(),
-        });
+        self.thumbnail = Some(EmbedThumbnail { url: url.into() });
         self
     }
 
@@ -192,9 +190,7 @@ impl Keyboard {
     pub fn new() -> Self {
         Self {
             id: None,
-            content: KeyboardContent {
-                rows: Vec::new(),
-            },
+            content: KeyboardContent { rows: Vec::new() },
         }
     }
 
@@ -253,11 +249,7 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn new(
-        id: impl Into<String>,
-        label: impl Into<String>,
-        action_type: ActionType,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, label: impl Into<String>, action_type: ActionType) -> Self {
         let label_string = label.into();
         Self {
             id: id.into(),

@@ -1,8 +1,8 @@
+use crate::error::{Error, Result};
+use chrono::{DateTime, Duration, Utc};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use parking_lot::RwLock;
-use chrono::{DateTime, Utc, Duration};
-use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessToken {
@@ -78,14 +78,15 @@ impl TokenManager {
     pub async fn refresh_token(&self) -> Result<String> {
         let url = format!("{}/getAppAccessToken", self.api_base);
         tracing::info!("🔑 Requesting token from: {}", url);
-        
+
         #[derive(Serialize)]
         struct TokenRequest {
             appId: String,
             clientSecret: String,
         }
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .json(&TokenRequest {
                 appId: self.credentials.app_id.clone(),
@@ -98,17 +99,24 @@ impl TokenManager {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             tracing::error!("❌ Token request failed: {} - {}", status, text);
-            return Err(Error::Auth(format!("Token request failed: {} - {}", status, text)));
+            return Err(Error::Auth(format!(
+                "Token request failed: {} - {}",
+                status, text
+            )));
         }
 
         let body_text = resp.text().await?;
         tracing::info!("📥 Token response: {}", body_text);
-        
+
         let mut token: AccessToken = serde_json::from_str(&body_text)?;
         token.expires_at = Some(Utc::now() + Duration::seconds(token.expires_in));
 
         let token_str = token.access_token.clone();
-        tracing::info!("✅ Got access_token (len={}): {}", token_str.len(), token_str);
+        tracing::info!(
+            "✅ Got access_token (len={}): {}",
+            token_str.len(),
+            token_str
+        );
         *self.token.write() = Some(token);
 
         Ok(token_str)

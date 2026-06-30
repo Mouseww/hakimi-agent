@@ -1,8 +1,8 @@
 // QQBot WebSocket Integration Test
-// 
+//
 // 这个测试验证 QQBot 适配器的基本功能
 
-use hakimi_gateway::{QQBotAdapter, QQBotAdapterConfig, PlatformAdapter};
+use hakimi_gateway::{PlatformAdapter, QQBotAdapter, QQBotAdapterConfig};
 
 // 测试适配器初始化
 #[test]
@@ -38,11 +38,11 @@ fn test_receiver_can_be_taken() {
     };
 
     let mut adapter = QQBotAdapter::new(config);
-    
+
     // 第一次取出应该成功
     let receiver = adapter.take_receiver();
     assert!(receiver.is_some());
-    
+
     // 第二次取出应该返回 None
     let receiver2 = adapter.take_receiver();
     assert!(receiver2.is_none());

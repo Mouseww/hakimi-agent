@@ -67,7 +67,7 @@ impl Default for SessionState {
 impl Gateway {
     pub fn new(token_manager: Arc<TokenManager>, intents: Intents) -> (Self, EventReceiver) {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
-        
+
         let gateway = Self {
             token_manager,
             intents,
@@ -99,7 +99,7 @@ impl Gateway {
             }
 
             let _ = self.event_tx.send(GatewayEvent::Disconnected);
-            
+
             info!("Reconnecting in {:?}", reconnect_delay);
             sleep(reconnect_delay).await;
             reconnect_delay = (reconnect_delay * 2).min(max_reconnect_delay);
@@ -108,7 +108,7 @@ impl Gateway {
 
     async fn connect_once(&self) -> Result<()> {
         let token = self.token_manager.get_token().await?;
-        
+
         info!("Connecting to gateway: {}", GATEWAY_URL);
         let (ws_stream, _) = connect_async(GATEWAY_URL)
             .await
@@ -127,11 +127,11 @@ impl Gateway {
             WsMessage::Text(text) => {
                 info!("📨 Received WS message: {}", text);
                 serde_json::from_str(text)?
-            },
+            }
             other => {
                 warn!("⚠️  Received non-text WS message: {:?}", other);
-                return Err(Error::InvalidPayload("Expected text message".to_string()))
-            },
+                return Err(Error::InvalidPayload("Expected text message".to_string()));
+            }
         };
 
         if hello_payload.op != OpCode::Hello {
@@ -139,10 +139,15 @@ impl Gateway {
         }
 
         let hello: HelloPayload = serde_json::from_value(
-            hello_payload.d.ok_or(Error::InvalidPayload("Missing Hello data".to_string()))?
+            hello_payload
+                .d
+                .ok_or(Error::InvalidPayload("Missing Hello data".to_string()))?,
         )?;
 
-        info!("Received Hello, heartbeat_interval: {}ms", hello.heartbeat_interval);
+        info!(
+            "Received Hello, heartbeat_interval: {}ms",
+            hello.heartbeat_interval
+        );
 
         // 发送 Identify 或 Resume
         let state = self.session_state.read().clone();
@@ -218,20 +223,18 @@ impl Gateway {
         // 处理消息
         while let Some(msg) = read.next().await {
             let msg = msg.map_err(|e| Error::WebSocket(e.to_string()))?;
-            
+
             match msg {
-                WsMessage::Text(text) => {
-                    match self.handle_payload(&text).await {
-                        Ok(should_continue) => {
-                            if !should_continue {
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            error!("Error handling payload: {}", e);
+                WsMessage::Text(text) => match self.handle_payload(&text).await {
+                    Ok(should_continue) => {
+                        if !should_continue {
+                            break;
                         }
                     }
-                }
+                    Err(e) => {
+                        error!("Error handling payload: {}", e);
+                    }
+                },
                 WsMessage::Close(_) => {
                     info!("Received close frame");
                     break;
@@ -284,17 +287,24 @@ impl Gateway {
         Ok(true)
     }
 
-    async fn handle_dispatch_event(&self, event_type: &str, data: Option<serde_json::Value>) -> Result<()> {
+    async fn handle_dispatch_event(
+        &self,
+        event_type: &str,
+        data: Option<serde_json::Value>,
+    ) -> Result<()> {
         let data = data.ok_or_else(|| Error::InvalidPayload("Missing event data".to_string()))?;
 
         match event_type {
             "READY" => {
                 let ready: ReadyEvent = serde_json::from_value(data)?;
-                info!("Bot ready: {} (session: {})", ready.user.username, ready.session_id);
-                
+                info!(
+                    "Bot ready: {} (session: {})",
+                    ready.user.username, ready.session_id
+                );
+
                 self.session_state.write().session_id = Some(ready.session_id.clone());
                 self.session_state.write().should_resume = true;
-                
+
                 let _ = self.event_tx.send(GatewayEvent::Ready(ready));
             }
             "MESSAGE_CREATE" => {

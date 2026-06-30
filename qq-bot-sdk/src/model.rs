@@ -158,11 +158,7 @@ impl Intents {
     }
 
     pub fn default_messages() -> Self {
-        Self(
-            Self::GUILD_MESSAGES 
-                | Self::DIRECT_MESSAGE 
-                | Self::GROUP_AND_C2C_EVENT
-        )
+        Self(Self::GUILD_MESSAGES | Self::DIRECT_MESSAGE | Self::GROUP_AND_C2C_EVENT)
     }
 
     pub fn add(&mut self, intent: u32) {

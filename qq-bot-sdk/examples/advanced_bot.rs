@@ -27,7 +27,8 @@ impl EventHandler for MyBot {
             self.handle_embed_command(msg).await;
         } else {
             // 简单回复
-            if let Err(e) = self.api
+            if let Err(e) = self
+                .api
                 .reply_message(msg, "你好！我收到了你的消息。".to_string())
                 .await
             {
@@ -38,8 +39,9 @@ impl EventHandler for MyBot {
 
     async fn on_c2c_message(&self, msg: &Message) {
         tracing::info!("Received C2C message: {}", msg.content);
-        
-        if let Err(e) = self.api
+
+        if let Err(e) = self
+            .api
             .reply_message(msg, "你好！这是私聊回复。".to_string())
             .await
         {
@@ -49,8 +51,9 @@ impl EventHandler for MyBot {
 
     async fn on_group_at_message(&self, msg: &Message) {
         tracing::info!("Received group @message: {}", msg.content);
-        
-        if let Err(e) = self.api
+
+        if let Err(e) = self
+            .api
             .reply_message(msg, "收到群消息！".to_string())
             .await
         {
@@ -68,13 +71,9 @@ impl MyBot {
         };
 
         // 假设有一个图片文件
-        if let Err(e) = self.api
-            .send_image(
-                &target,
-                "example.jpg",
-                Some(msg.id.clone()),
-                &self.media,
-            )
+        if let Err(e) = self
+            .api
+            .send_image(&target, "example.jpg", Some(msg.id.clone()), &self.media)
             .await
         {
             tracing::error!("Failed to send image: {}", e);
@@ -100,7 +99,8 @@ impl MyBot {
 "#,
         );
 
-        if let Err(e) = self.api
+        if let Err(e) = self
+            .api
             .send_markdown(&target, markdown, Some(msg.id.clone()))
             .await
         {
@@ -134,7 +134,8 @@ impl MyBot {
                 ),
             );
 
-        if let Err(e) = self.api
+        if let Err(e) = self
+            .api
             .send_with_keyboard(
                 &target,
                 "请选择一个选项：".to_string(),
@@ -161,7 +162,8 @@ impl MyBot {
             .add_field("在线用户", "1,234 人")
             .add_field("消息数", "56,789 条");
 
-        if let Err(e) = self.api
+        if let Err(e) = self
+            .api
             .send_embed(&target, embed, Some(msg.id.clone()))
             .await
         {
@@ -184,7 +186,7 @@ async fn main() -> Result<()> {
 
     // 创建客户端
     let mut client = QQBotClient::new(app_id, app_secret);
-    
+
     if use_sandbox {
         client = client.with_sandbox();
     }
@@ -194,13 +196,13 @@ async fn main() -> Result<()> {
     client = client.with_intents(intents);
 
     // 创建处理器
-    let bot = MyBot { 
+    let bot = MyBot {
         api: client.api().clone(),
         media: client.media().clone(),
     };
 
     tracing::info!("Starting QQ Bot...");
-    
+
     // 启动机器人
     client.start(bot).await?;
 

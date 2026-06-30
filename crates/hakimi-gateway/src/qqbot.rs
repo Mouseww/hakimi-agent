@@ -5,8 +5,8 @@
 //! ingress, media upload, keyboards, and QR onboarding; those remain separate
 //! parity slices.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
-use tracing::{info, error, debug};
+use tracing::{debug, error, info};
 
 use crate::{GatewayMessage, PlatformAdapter};
 
@@ -265,11 +265,21 @@ impl QQBotAdapter {
     ) -> anyhow::Result<()> {
         match event {
             GatewayEvent::Ready(ready) => {
-                info!("QQBot ready: {} (session: {})", ready.user.username, ready.session_id);
+                info!(
+                    "QQBot ready: {} (session: {})",
+                    ready.user.username, ready.session_id
+                );
             }
             GatewayEvent::C2CMessageCreate(msg) => {
-                let chat_id = format!("c2c:{}", msg.author.as_ref().map(|u| &u.id).unwrap_or(&msg.id));
-                let user_id = msg.author.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                let chat_id = format!(
+                    "c2c:{}",
+                    msg.author.as_ref().map(|u| &u.id).unwrap_or(&msg.id)
+                );
+                let user_id = msg
+                    .author
+                    .as_ref()
+                    .map(|u| u.id.clone())
+                    .unwrap_or_default();
                 let gateway_msg = GatewayMessage {
                     platform: "qqbot".to_string(),
                     bot_id: bot_id.to_string(),
@@ -286,7 +296,11 @@ impl QQBotAdapter {
                 } else {
                     format!("group:{}", msg.id)
                 };
-                let user_id = msg.author.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                let user_id = msg
+                    .author
+                    .as_ref()
+                    .map(|u| u.id.clone())
+                    .unwrap_or_default();
                 let gateway_msg = GatewayMessage {
                     platform: "qqbot".to_string(),
                     bot_id: bot_id.to_string(),

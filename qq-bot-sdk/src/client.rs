@@ -55,7 +55,7 @@ impl QQBotClient {
     pub async fn start<H: EventHandler + 'static>(mut self, handler: H) -> Result<()> {
         let (gateway, event_rx) = Gateway::new(self.token_manager.clone(), self.intents);
         self.event_rx = Some(event_rx);
-        
+
         let gateway_handle = tokio::spawn({
             let gateway = gateway.clone();
             async move {
@@ -67,12 +67,15 @@ impl QQBotClient {
 
         self.run_event_loop(handler).await?;
         gateway_handle.abort();
-        
+
         Ok(())
     }
 
     async fn run_event_loop<H: EventHandler>(&mut self, handler: H) -> Result<()> {
-        let mut event_rx = self.event_rx.take().ok_or(Error::Other("Event receiver not initialized".to_string()))?;
+        let mut event_rx = self
+            .event_rx
+            .take()
+            .ok_or(Error::Other("Event receiver not initialized".to_string()))?;
 
         while let Some(event) = event_rx.recv().await {
             match event {
@@ -201,8 +204,9 @@ impl ApiClient {
         body: &impl serde::Serialize,
     ) -> Result<T> {
         let auth = self.get_auth_header().await?;
-        
-        let resp = self.client
+
+        let resp = self
+            .client
             .post(url)
             .header("Authorization", auth)
             .header("Content-Type", "application/json")
@@ -229,7 +233,11 @@ impl ApiClient {
 
 impl ApiClient {
     /// 回复消息（自动选择正确的 API）
-    pub async fn reply_message(&self, msg: &Message, content: String) -> Result<SendMessageResponse> {
+    pub async fn reply_message(
+        &self,
+        msg: &Message,
+        content: String,
+    ) -> Result<SendMessageResponse> {
         let req = SendMessageRequest {
             content,
             msg_id: Some(msg.id.clone()),
@@ -250,7 +258,9 @@ impl ApiClient {
         } else if let Some(author) = &msg.author {
             self.send_c2c_message(&author.id, req).await
         } else {
-            Err(Error::Other("Cannot determine message type for reply".to_string()))
+            Err(Error::Other(
+                "Cannot determine message type for reply".to_string(),
+            ))
         }
     }
 

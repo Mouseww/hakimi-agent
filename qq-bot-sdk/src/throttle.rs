@@ -155,9 +155,8 @@ impl RetryPolicy {
                     let mut actual_delay = delay;
                     if self.jitter {
                         let jitter_ms = (delay.as_millis() as f64 * 0.2) as u64;
-                        let jitter = Duration::from_millis(
-                            rand::random::<u64>() % (jitter_ms * 2).max(1),
-                        );
+                        let jitter =
+                            Duration::from_millis(rand::random::<u64>() % (jitter_ms * 2).max(1));
                         actual_delay = delay.saturating_add(jitter);
                     }
 
@@ -191,7 +190,8 @@ impl RetryPolicy {
 
                 // 5xx 服务器错误可重试
                 if let Some(status) = e.status() {
-                    return status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
+                    return status.is_server_error()
+                        || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
                 }
 
                 false

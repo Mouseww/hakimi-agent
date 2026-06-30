@@ -47,9 +47,11 @@ impl MediaClient {
         let file_size = metadata.len() as usize;
 
         if file_size > SMALL_FILE_THRESHOLD {
-            self.upload_large_file(path, message_type, MediaType::Image).await
+            self.upload_large_file(path, message_type, MediaType::Image)
+                .await
         } else {
-            self.upload_small_file(path, message_type, MediaType::Image).await
+            self.upload_small_file(path, message_type, MediaType::Image)
+                .await
         }
     }
 
@@ -63,9 +65,11 @@ impl MediaClient {
         let file_size = metadata.len() as usize;
 
         if file_size > SMALL_FILE_THRESHOLD {
-            self.upload_large_file(path, message_type, MediaType::File).await
+            self.upload_large_file(path, message_type, MediaType::File)
+                .await
         } else {
-            self.upload_small_file(path, message_type, MediaType::File).await
+            self.upload_small_file(path, message_type, MediaType::File)
+                .await
         }
     }
 
@@ -75,7 +79,8 @@ impl MediaClient {
         path: P,
         message_type: MediaMessageType,
     ) -> Result<FileInfoResponse> {
-        self.upload_small_file(path, message_type, MediaType::Audio).await
+        self.upload_small_file(path, message_type, MediaType::Audio)
+            .await
     }
 
     /// 上传视频
@@ -88,9 +93,11 @@ impl MediaClient {
         let file_size = metadata.len() as usize;
 
         if file_size > SMALL_FILE_THRESHOLD {
-            self.upload_large_file(path, message_type, MediaType::Video).await
+            self.upload_large_file(path, message_type, MediaType::Video)
+                .await
         } else {
-            self.upload_small_file(path, message_type, MediaType::Video).await
+            self.upload_small_file(path, message_type, MediaType::Video)
+                .await
         }
     }
 
