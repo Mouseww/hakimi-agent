@@ -30,6 +30,7 @@ export default function PersonaConfigForm({
   const [skills, setSkills] = useState<string[]>(agent?.enabled_skills ?? []);
   const [bindingsText, setBindingsText] = useState((agent?.bindings ?? []).join('\n'));
   const [isDefault, setIsDefault] = useState(agent?.is_default ?? false);
+  const [addressable, setAddressable] = useState(agent?.addressable ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchedSkills, setFetchedSkills] = useState<string[] | null>(null);
@@ -97,6 +98,7 @@ export default function PersonaConfigForm({
           enabled_skills: skills,
           bindings: parsedBindings(),
           is_default: isDefault,
+          addressable,
         });
         onSaved(saved);
       } else {
@@ -116,6 +118,7 @@ export default function PersonaConfigForm({
           enabled_skills: skills,
           bindings: parsedBindings(),
           is_default: isDefault,
+          addressable,
         });
         onSaved(saved);
       }
@@ -207,6 +210,14 @@ export default function PersonaConfigForm({
               type="checkbox"
               checked={isDefault}
               onChange={(e) => setIsDefault(e.target.checked)}
+            />
+          </label>
+          <label className="switch-row">
+            <span>Allow other agents to consult this persona (team)</span>
+            <input
+              type="checkbox"
+              checked={addressable}
+              onChange={(e) => setAddressable(e.target.checked)}
             />
           </label>
         </fieldset>
