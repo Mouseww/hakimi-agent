@@ -3951,9 +3951,15 @@ async fn agent_chat_stream(
     let session_id = cloned_agent.session_id().to_string();
     let should_persist = requested_session_id.is_some();
     let tx = tx_for_handler.clone();
+    let id = id.clone();
 
     tokio::spawn(async move {
         use hakimi_session::MessageOps;
+        hakimi_common::publish(hakimi_common::ActivityEvent::TurnStarted {
+            persona_id: id.clone(),
+            task_hint: None,
+            model: Some(cloned_agent.model().to_string()),
+        });
         match cloned_agent.chat(&user_message).await {
             Ok(response) => {
                 if should_persist {
@@ -3968,6 +3974,9 @@ async fn agent_chat_stream(
                             })
                     };
                     if let Err(e) = persist_result {
+                        hakimi_common::publish(hakimi_common::ActivityEvent::TurnEnded {
+                            persona_id: id.clone(),
+                        });
                         let _ = tx.send(format!("__ERROR__{e}")).await;
                         return;
                     }
@@ -3976,9 +3985,15 @@ async fn agent_chat_stream(
                     "response": response,
                     "session_id": session_id,
                 });
+                hakimi_common::publish(hakimi_common::ActivityEvent::TurnEnded {
+                    persona_id: id.clone(),
+                });
                 let _ = tx.send(format!("__DONE__{done}")).await;
             }
             Err(e) => {
+                hakimi_common::publish(hakimi_common::ActivityEvent::TurnEnded {
+                    persona_id: id.clone(),
+                });
                 let _ = tx.send(format!("__ERROR__{}", e)).await;
             }
         }
