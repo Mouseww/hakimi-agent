@@ -1,6 +1,5 @@
 use qq_bot_sdk::prelude::*;
 use std::env;
-use tracing_subscriber;
 
 struct MyBot {
     api: ApiClient,

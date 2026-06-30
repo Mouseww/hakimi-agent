@@ -1,6 +1,5 @@
 use qq_bot_sdk::prelude::*;
 use tracing::info;
-use tracing_subscriber;
 
 struct MyBot {
     api: ApiClient,
