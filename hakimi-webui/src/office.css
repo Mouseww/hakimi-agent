@@ -182,14 +182,86 @@
   50% { ry: 1; }
 }
 
-/* ---- Team ring & consult runner ---- */
+/* ---- Delegation walker ---- */
 
-.office-runner {
+.delegation-walker {
   position: absolute;
-  transition: transform 1.4s ease-in-out;
+  transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
   pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
 }
+
+.walker-legs line {
+  animation: walkCycle 0.4s ease-in-out infinite alternate;
+}
+
+.walker-legs line:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+@keyframes walkCycle {
+  from { transform: rotate(-12deg); transform-origin: 50% 0%; }
+  to { transform: rotate(12deg); transform-origin: 50% 0%; }
+}
+
+/* ---- Delegation connection line ---- */
+
+.delegation-line-svg {
+  z-index: 1;
+}
+
+.delegation-line-path {
+  animation: dashFlow 1.2s linear infinite;
+}
+
+@keyframes dashFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -24; }
+}
+
+/* ---- Talk bubble ---- */
+
+.delegation-talk-bubble {
+  position: absolute;
+  z-index: 4;
+  background: var(--card, #fffaf0);
+  border: 1.5px solid var(--accent, #c98a2b);
+  border-radius: 12px 12px 12px 4px;
+  padding: 4px 8px;
+  pointer-events: none;
+  animation: bubblePop 0.3s ease-out;
+}
+
+@keyframes bubblePop {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.talk-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.talk-dots .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent, #c98a2b);
+  animation: dotBounce 1s ease-in-out infinite;
+}
+
+.talk-dots .dot:nth-child(2) { animation-delay: 0.15s; }
+.talk-dots .dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dotBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ---- Team ring ---- */
 
 .office-team-ring {
   position: absolute;
@@ -239,7 +311,11 @@
   .desk-screen-lines rect,
   .desk-eyes,
   .desk-mouth-work,
-  .office-runner {
+  .delegation-walker,
+  .delegation-line-path,
+  .delegation-talk-bubble,
+  .talk-dots .dot,
+  .walker-legs line {
     animation: none;
     transition: none;
   }

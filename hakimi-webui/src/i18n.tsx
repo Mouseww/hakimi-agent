@@ -10,8 +10,9 @@ const messages = {
   'office.empty': { en: 'No personas yet', zh: '暂无人格' },
   'office.state.idle': { en: 'idle', zh: '空闲' },
   'office.state.working': { en: 'working', zh: '执行中' },
-  'office.state.consulting': { en: 'consulting', zh: '找人交付' },
+  'office.state.consulting': { en: 'delegating', zh: '委派中' },
   'office.state.in_team': { en: 'in a team', zh: '组队中' },
+  'office.delegatedBy': { en: 'Delegated by', zh: '受委派自' },
 } satisfies Record<string, Entry>;
 
 type MessageKey = keyof typeof messages;

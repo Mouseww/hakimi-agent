@@ -73,7 +73,7 @@ pub enum ActivityEvent {
     },
 }
 
-/// Internal per-persona tracking: base (working) + overlays (consulting/team).
+/// Internal per-persona tracking: base (working) + overlays (consulting/team/delegation).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct HubEntry {
     working: bool,
@@ -81,6 +81,8 @@ pub(crate) struct HubEntry {
     team_id: Option<String>,
     task_hint: Option<String>,
     model: Option<String>,
+    /// Set on the *delegate* when another persona consults them (from_id).
+    delegated_from: Option<String>,
 }
 
 /// Public, cloneable live state for one persona (overlay only; name/avatar come
@@ -91,6 +93,8 @@ pub struct LiveState {
     pub task_hint: Option<String>,
     pub model: Option<String>,
     pub team_id: Option<String>,
+    pub consulting_to: Option<String>,
+    pub delegated_from: Option<String>,
 }
 
 /// One persona's full activity row returned by `GET /api/activity/snapshot`.
@@ -106,6 +110,10 @@ pub struct PersonaActivity {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consulting_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_from: Option<String>,
 }
 
 impl PersonaActivity {
@@ -119,6 +127,8 @@ impl PersonaActivity {
             task_hint: live.and_then(|l| l.task_hint.clone()),
             model: live.and_then(|l| l.model.clone()),
             team_id: live.and_then(|l| l.team_id.clone()),
+            consulting_to: live.and_then(|l| l.consulting_to.clone()),
+            delegated_from: live.and_then(|l| l.delegated_from.clone()),
         }
     }
 }
@@ -129,7 +139,7 @@ pub(crate) fn displayed_state(entry: &HubEntry) -> PersonaState {
         PersonaState::InTeam
     } else if entry.consulting_to.is_some() {
         PersonaState::Consulting
-    } else if entry.working {
+    } else if entry.working || entry.delegated_from.is_some() {
         PersonaState::Working
     } else {
         PersonaState::Idle
@@ -164,11 +174,24 @@ pub(crate) fn apply(map: &mut HashMap<String, HubEntry>, event: &ActivityEvent) 
             e.task_hint = None;
             e.model = None;
         }
-        ActivityEvent::ConsultStarted { from_id, to_id, .. } => {
+        ActivityEvent::ConsultStarted {
+            from_id,
+            to_id,
+            task_hint,
+        } => {
             map.entry(from_id.clone()).or_default().consulting_to = Some(to_id.clone());
+            let delegate = map.entry(to_id.clone()).or_default();
+            delegate.delegated_from = Some(from_id.clone());
+            if let Some(hint) = task_hint {
+                delegate.task_hint = Some(hint.clone());
+            }
         }
-        ActivityEvent::ConsultEnded { from_id, .. } => {
+        ActivityEvent::ConsultEnded { from_id, to_id } => {
             map.entry(from_id.clone()).or_default().consulting_to = None;
+            let delegate = map.entry(to_id.clone()).or_default();
+            if delegate.delegated_from.as_deref() == Some(from_id.as_str()) {
+                delegate.delegated_from = None;
+            }
         }
         ActivityEvent::TeamFormed {
             team_id,
@@ -229,6 +252,8 @@ pub fn all_live_states() -> HashMap<String, LiveState> {
                     task_hint: entry.task_hint.clone(),
                     model: entry.model.clone(),
                     team_id: entry.team_id.clone(),
+                    consulting_to: entry.consulting_to.clone(),
+                    delegated_from: entry.delegated_from.clone(),
                 },
             )
         })
@@ -276,6 +301,9 @@ mod tests {
             },
         );
         assert_eq!(displayed_state(&m["coder"]), PersonaState::Consulting);
+        // delegate is now working
+        assert_eq!(displayed_state(&m["writer"]), PersonaState::Working);
+        assert_eq!(m["writer"].delegated_from.as_deref(), Some("coder"));
         apply(
             &mut m,
             &ActivityEvent::ConsultEnded {
@@ -285,6 +313,9 @@ mod tests {
         );
         // base turn still active -> back to working, NOT idle
         assert_eq!(displayed_state(&m["coder"]), PersonaState::Working);
+        // delegate back to idle
+        assert_eq!(displayed_state(&m["writer"]), PersonaState::Idle);
+        assert!(m["writer"].delegated_from.is_none());
     }
 
     #[test]

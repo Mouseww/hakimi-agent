@@ -30,6 +30,30 @@ describe('officeState', () => {
     expect(displayedState(s.get('a')!)).toBe('working'); // base preserved
   });
 
+  it('delegate shows as working when consulted', () => {
+    let s = new Map<string, DeskState>([
+      ['a', desk({ id: 'a', working: true })],
+      ['b', desk({ id: 'b' })],
+    ]);
+    s = reduceActivity(s, { type: 'consult_started', from_id: 'a', to_id: 'b', task_hint: 'review code' });
+    expect(displayedState(s.get('b')!)).toBe('working');
+    expect(s.get('b')!.delegatedFrom).toBe('a');
+    expect(s.get('b')!.taskHint).toBe('review code');
+    s = reduceActivity(s, { type: 'consult_ended', from_id: 'a', to_id: 'b' });
+    expect(displayedState(s.get('b')!)).toBe('idle');
+    expect(s.get('b')!.delegatedFrom).toBeUndefined();
+  });
+
+  it('seed restores delegated_from from snapshot', () => {
+    const s = seedOffice([
+      { id: 'a', name: 'A', avatar: '🤖', state: 'consulting', consulting_to: 'b' },
+      { id: 'b', name: 'B', avatar: '📝', state: 'working', delegated_from: 'a' },
+    ]);
+    expect(s.get('a')!.consultingTo).toBe('b');
+    expect(s.get('b')!.delegatedFrom).toBe('a');
+    expect(displayedState(s.get('b')!)).toBe('working');
+  });
+
   it('team masks other states until disbanded', () => {
     let s = new Map<string, DeskState>([
       ['a', desk({ id: 'a', working: true })],

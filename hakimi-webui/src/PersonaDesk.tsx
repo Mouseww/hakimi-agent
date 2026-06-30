@@ -46,7 +46,7 @@ export default function PersonaDesk({ desk, x, y, onOpen, onHover }: PersonaDesk
   const state = displayedState(desk);
   const working = state === 'working';
   const idle = state === 'idle';
-  const dimmed = state === 'consulting' || state === 'in_team';
+  const dimmed = state === 'in_team';
   const role = inferRole(desk);
   const color = ROLE_COLORS[role];
   const label = ROLE_LABELS[role];

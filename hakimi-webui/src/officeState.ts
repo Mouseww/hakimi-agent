@@ -5,7 +5,8 @@ export interface DeskState {
   name: string;
   avatar: string;
   working: boolean;            // base
-  consultingTo?: string;       // overlay
+  consultingTo?: string;       // overlay: who this agent is consulting
+  delegatedFrom?: string;      // overlay: who delegated work to this agent
   teamId?: string;             // overlay
   taskHint?: string;
   model?: string;
@@ -13,11 +14,11 @@ export interface DeskState {
 
 export type OfficeState = Map<string, DeskState>;
 
-/** Displayed state from base + overlay (priority: in_team > consulting > working > idle). */
+/** Displayed state from base + overlay (priority: in_team > consulting > working/delegated > idle). */
 export function displayedState(desk: DeskState): PersonaState {
   if (desk.teamId) return 'in_team';
   if (desk.consultingTo) return 'consulting';
-  if (desk.working) return 'working';
+  if (desk.working || desk.delegatedFrom) return 'working';
   return 'idle';
 }
 
@@ -29,8 +30,9 @@ export function seedOffice(rows: PersonaActivity[]): OfficeState {
       id: r.id,
       name: r.name,
       avatar: r.avatar,
-      working: r.state === 'working',
-      consultingTo: r.state === 'consulting' ? '?' : undefined,
+      working: r.state === 'working' && !r.delegated_from,
+      consultingTo: r.consulting_to ?? (r.state === 'consulting' ? '?' : undefined),
+      delegatedFrom: r.delegated_from,
       teamId: r.team_id ?? (r.state === 'in_team' ? '?' : undefined),
       taskHint: r.task_hint,
       model: r.model,
@@ -69,9 +71,14 @@ export function reduceActivity(state: OfficeState, event: ActivityEvent): Office
       break;
     case 'consult_started':
       set(event.from_id, { consultingTo: event.to_id });
+      set(event.to_id, {
+        delegatedFrom: event.from_id,
+        taskHint: event.task_hint ?? undefined,
+      });
       break;
     case 'consult_ended':
       set(event.from_id, { consultingTo: undefined });
+      set(event.to_id, { delegatedFrom: undefined });
       break;
     case 'team_formed':
       for (const id of [event.lead_id, ...event.member_ids]) {

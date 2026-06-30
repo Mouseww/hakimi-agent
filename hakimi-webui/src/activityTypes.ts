@@ -8,6 +8,8 @@ export interface PersonaActivity {
   task_hint?: string;
   model?: string;
   team_id?: string;
+  consulting_to?: string;
+  delegated_from?: string;
 }
 
 export interface ActivitySnapshotResponse {
