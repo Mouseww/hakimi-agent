@@ -1,4 +1,5 @@
 mod account_usage;
+mod activity;
 mod config_ref;
 mod error;
 mod file_safety;
@@ -15,6 +16,7 @@ mod usage;
 mod usage_pricing;
 
 pub use account_usage::*;
+pub use activity::*;
 pub use config_ref::*;
 pub use error::*;
 pub use file_safety::*;
