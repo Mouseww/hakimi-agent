@@ -6,14 +6,17 @@
 //! parity slices.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use qq_bot_sdk::prelude::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{Mutex, mpsc};
-use tracing::info;
+use tokio::task::JoinHandle;
+use tracing::{info, error, debug};
 
 use crate::{GatewayMessage, PlatformAdapter};
 
@@ -71,21 +74,25 @@ pub struct QQBotAdapter {
     bot_id: String,
     client: Client,
     receiver: Option<mpsc::UnboundedReceiver<GatewayMessage>>,
+    sender: mpsc::UnboundedSender<GatewayMessage>,
     token: Mutex<Option<QQBotToken>>,
     msg_seq: AtomicU64,
+    gateway_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl QQBotAdapter {
     pub fn new(config: QQBotAdapterConfig) -> Self {
-        let (_, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::unbounded_channel();
         let bot_id = config.bot_id.clone();
         Self {
             config,
             bot_id,
             client: Client::new(),
             receiver: Some(receiver),
+            sender,
             token: Mutex::new(None),
             msg_seq: AtomicU64::new(1),
+            gateway_handle: Mutex::new(None),
         }
     }
 
@@ -265,11 +272,152 @@ impl PlatformAdapter for QQBotAdapter {
         if self.config.app_id.trim().is_empty() || self.config.client_secret.trim().is_empty() {
             anyhow::bail!("QQBot gateway requires app_id and client_secret");
         }
+
+        // 创建 TokenManager
+        let token_manager = Arc::new(TokenManager::new(
+            self.config.app_id.clone(),
+            self.config.client_secret.clone(),
+        ));
+
+        // 配置 Intents - 启用所有消息事件
+        let intents = Intents::default_messages();
+
+        // 创建 Gateway
+        let (gateway, mut event_rx) = Gateway::new(token_manager, intents);
+
+        // 启动 Gateway 连接任务
+        let gateway_clone = gateway.clone();
+        let gateway_task = tokio::spawn(async move {
+            if let Err(e) = gateway_clone.connect().await {
+                error!("QQBot Gateway connection error: {}", e);
+            }
+        });
+
+        // 启动消息处理任务
+        let sender = self.sender.clone();
+        let bot_id = self.bot_id.clone();
+        let event_handler = tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                if let Err(e) = Self::handle_gateway_event(event, &sender, &bot_id) {
+                    error!("Error handling gateway event: {}", e);
+                }
+            }
+            debug!("QQBot event handler loop exited");
+        });
+
+        // 保存任务句柄以便稍后清理
+        *self.gateway_handle.lock().await = Some(gateway_task);
+
+        // 不阻塞，让事件处理在后台运行
+        tokio::spawn(async move {
+            let _ = event_handler.await;
+        });
+
         info!(
             app_id = %redact_id(&self.config.app_id),
             default_chat_type = %self.config.default_chat_type,
-            "QQBot adapter connected"
+            "QQBot adapter connected with WebSocket gateway"
         );
+        Ok(())
+    }
+
+    /// 处理来自 Gateway 的事件，转换为 GatewayMessage
+    fn handle_gateway_event(
+        event: GatewayEvent,
+        sender: &mpsc::UnboundedSender<GatewayMessage>,
+        bot_id: &str,
+    ) -> anyhow::Result<()> {
+        match event {
+            GatewayEvent::Ready(ready) => {
+                info!("QQBot ready: {} (session: {})", ready.user.username, ready.session_id);
+            }
+            GatewayEvent::C2CMessageCreate(msg) => {
+                let chat_id = format!("c2c:{}", msg.author.as_ref().map(|u| &u.id).unwrap_or(&msg.id));
+                let user_id = msg.author.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                let gateway_msg = GatewayMessage {
+                    platform: "qqbot".to_string(),
+                    bot_id: bot_id.to_string(),
+                    chat_id,
+                    user_id,
+                    text: msg.content,
+                    media: None,
+                };
+                sender.send(gateway_msg)?;
+            }
+            GatewayEvent::GroupAtMessageCreate(msg) => {
+                let chat_id = if let Some(group_openid) = msg.group_openid {
+                    format!("group:{}", group_openid)
+                } else if let Some(group_id) = msg.group_id {
+                    format!("group:{}", group_id)
+                } else {
+                    format!("group:{}", msg.id)
+                };
+                let user_id = msg.author.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                let gateway_msg = GatewayMessage {
+                    platform: "qqbot".to_string(),
+                    bot_id: bot_id.to_string(),
+                    chat_id,
+                    user_id,
+                    text: msg.content,
+                    media: None,
+                };
+                sender.send(gateway_msg)?;
+            }
+            GatewayEvent::AtMessageCreate(msg) => {
+                let chat_id = if let Some(channel_id) = msg.channel_id {
+                    format!("guild:{}", channel_id)
+                } else {
+                    format!("guild:{}", msg.id)
+                };
+                let user_id = msg.author.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                let gateway_msg = GatewayMessage {
+                    platform: "qqbot".to_string(),
+                    bot_id: bot_id.to_string(),
+                    chat_id,
+                    user_id,
+                    text: msg.content,
+                    media: None,
+                };
+                sender.send(gateway_msg)?;
+            }
+            GatewayEvent::DirectMessageCreate(msg) => {
+                let chat_id = format!("dm:{}", msg.author.as_ref().map(|u| &u.id).unwrap_or(&msg.id));
+                let user_id = msg.author.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                let gateway_msg = GatewayMessage {
+                    platform: "qqbot".to_string(),
+                    bot_id: bot_id.to_string(),
+                    chat_id,
+                    user_id,
+                    text: msg.content,
+                    media: None,
+                };
+                sender.send(gateway_msg)?;
+            }
+            GatewayEvent::MessageCreate(msg) => {
+                // 频道消息（无 @ 的）
+                let chat_id = if let Some(channel_id) = msg.channel_id {
+                    format!("guild:{}", channel_id)
+                } else {
+                    format!("guild:{}", msg.id)
+                };
+                let user_id = msg.author.as_ref().map(|u| u.id.clone()).unwrap_or_default();
+                let gateway_msg = GatewayMessage {
+                    platform: "qqbot".to_string(),
+                    bot_id: bot_id.to_string(),
+                    chat_id,
+                    user_id,
+                    text: msg.content,
+                    media: None,
+                };
+                sender.send(gateway_msg)?;
+            }
+            GatewayEvent::Reconnect => {
+                debug!("QQBot gateway reconnecting");
+            }
+            GatewayEvent::Disconnected => {
+                debug!("QQBot gateway disconnected");
+            }
+        }
         Ok(())
     }
 
@@ -296,6 +444,11 @@ impl PlatformAdapter for QQBotAdapter {
     }
 
     async fn disconnect(&mut self) -> anyhow::Result<()> {
+        // 终止 Gateway 任务
+        if let Some(handle) = self.gateway_handle.lock().await.take() {
+            handle.abort();
+            let _ = handle.await;
+        }
         info!("QQBot adapter disconnected");
         Ok(())
     }
