@@ -17,12 +17,10 @@ export function useActivityStream(enabled: boolean): ActivityStream {
   const [office, setOffice] = useState<OfficeState>(new Map());
   const [connected, setConnected] = useState(false);
 
-  // keep latest office in a ref so the SSE callback reduces onto current state
+  // Latest office state for the SSE callback to reduce onto. `seed` and `apply`
+  // below are the only places `office` changes and they update this ref
+  // synchronously, so no render-time/post-render ref write is needed.
   const officeRef = useRef<OfficeState>(office);
-
-  useEffect(() => {
-    officeRef.current = office;
-  });
 
   useEffect(() => {
     if (!enabled) {

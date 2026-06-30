@@ -29,7 +29,12 @@ export default function PersonaDesk({ desk, x, y, onOpen, onHover }: PersonaDesk
       tabIndex={0}
       title={`${desk.name || desk.id} · ${state}`}
       onClick={() => onOpen(desk.id)}
-      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(desk.id); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(desk.id);
+        }
+      }}
       onMouseEnter={() => onHover(desk.id)}
       onMouseLeave={() => onHover(null)}
     >
