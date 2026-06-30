@@ -1136,6 +1136,7 @@ async fn team_consult_publishes_activity_events() {
                 saw_ended = true;
             }
             Ok(_) => continue,
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
             Err(_) => break,
         }
     }

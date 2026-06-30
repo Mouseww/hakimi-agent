@@ -207,11 +207,6 @@ impl TeamExecutor for PersonaTeamExecutor {
             "\u{5df2}\u{52a0}\u{5165}\u{534f}\u{4f5c}",
         );
         let from_id = self.lineage.last().cloned().unwrap_or_default();
-        hakimi_common::publish(hakimi_common::ActivityEvent::ConsultStarted {
-            from_id: from_id.clone(),
-            to_id: cfg.id.clone(),
-            task_hint: Some(truncate_for_title(&call.task, 48)),
-        });
 
         let seed = if call.context.trim().is_empty() {
             format!("{TEAM_RESULT_CONTRACT}\n\nTask: {}", call.task)
@@ -227,6 +222,15 @@ impl TeamExecutor for PersonaTeamExecutor {
             .acquire()
             .await
             .map_err(|e| HakimiError::Tool(format!("failed to acquire team permit: {e}")))?;
+
+        // Publish ConsultStarted only after the permit is held, so the two consult
+        // exit arms below (which publish ConsultEnded) are the only reachable exits
+        // once this persona is marked "consulting".
+        hakimi_common::publish(hakimi_common::ActivityEvent::ConsultStarted {
+            from_id: from_id.clone(),
+            to_id: cfg.id.clone(),
+            task_hint: Some(truncate_for_title(&call.task, 48)),
+        });
 
         let mut attempt = 0;
         loop {
@@ -313,7 +317,7 @@ impl TeamExecutor for PersonaTeamExecutor {
             hakimi_common::publish(hakimi_common::ActivityEvent::TeamFormed {
                 team_id: team_id.clone(),
                 lead_id: lead_id.clone(),
-                member_ids: member_ids.clone(),
+                member_ids,
                 task_hint: calls.first().map(|c| truncate_for_title(&c.task, 48)),
             });
         }
