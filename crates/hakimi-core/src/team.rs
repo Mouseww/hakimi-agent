@@ -226,7 +226,7 @@ impl TeamExecutor for PersonaTeamExecutor {
         loop {
             attempt += 1;
             let mut teammate =
-                crate::build_persona_agent(&*self.template, &cfg, &skills_dir, self.context_length);
+                crate::build_persona_agent(&self.template, &cfg, &skills_dir, self.context_length);
             teammate.set_session_id(task_id.clone());
             // Nested consults allowed up to the depth cap, with this teammate in the lineage.
             teammate.set_team_executor(Some(Arc::new(self.descend(&cfg.id))));

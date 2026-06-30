@@ -5796,6 +5796,7 @@ async fn process_gateway_messages_loop(
         let onboarding_config_path = onboarding_config_path.clone();
         let runtime_home = runtime_home.clone();
         let persona_agents = persona_agents.clone();
+        let team_base = team_base.clone();
         let persona_cfg = persona_cfg.clone();
         let persona_id = persona_id.clone();
         let history_key = history_key.clone();
