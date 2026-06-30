@@ -206,6 +206,12 @@ impl TeamExecutor for PersonaTeamExecutor {
             &title,
             "\u{5df2}\u{52a0}\u{5165}\u{534f}\u{4f5c}",
         );
+        let from_id = self.lineage.last().cloned().unwrap_or_default();
+        hakimi_common::publish(hakimi_common::ActivityEvent::ConsultStarted {
+            from_id: from_id.clone(),
+            to_id: cfg.id.clone(),
+            task_hint: Some(truncate_for_title(&call.task, 48)),
+        });
 
         let seed = if call.context.trim().is_empty() {
             format!("{TEAM_RESULT_CONTRACT}\n\nTask: {}", call.task)
@@ -257,6 +263,10 @@ impl TeamExecutor for PersonaTeamExecutor {
                         &title,
                         "\u{5b8c}\u{6210}，\u{8fd4}\u{56de}\u{7ed3}\u{679c}",
                     );
+                    hakimi_common::publish(hakimi_common::ActivityEvent::ConsultEnded {
+                        from_id: from_id.clone(),
+                        to_id: cfg.id.clone(),
+                    });
                     return Ok(res.final_response);
                 }
                 Err(e) if attempt >= MAX_CONSULT_ATTEMPTS => {
@@ -266,6 +276,10 @@ impl TeamExecutor for PersonaTeamExecutor {
                         &title,
                         format!("\u{5931}\u{8d25}: {e}"),
                     );
+                    hakimi_common::publish(hakimi_common::ActivityEvent::ConsultEnded {
+                        from_id: from_id.clone(),
+                        to_id: cfg.id.clone(),
+                    });
                     return Err(HakimiError::Tool(format!(
                         "teammate '{}' failed after {MAX_CONSULT_ATTEMPTS} attempts: {e}",
                         cfg.id
@@ -291,6 +305,18 @@ impl TeamExecutor for PersonaTeamExecutor {
     /// interleaved on the calling async task, not spawned onto separate OS threads.
     /// Concurrency is bounded by the shared semaphore (`MAX_CONCURRENT_CONSULTS`).
     async fn consult_many(&self, calls: Vec<TeamCallContext>) -> Result<Vec<String>> {
+        let lead_id = self.lineage.last().cloned().unwrap_or_default();
+        let member_ids: Vec<String> = calls.iter().map(|c| c.teammate_id.clone()).collect();
+        let team_id = format!("team_{}", uuid::Uuid::new_v4().simple());
+        let is_team = member_ids.len() > 1;
+        if is_team {
+            hakimi_common::publish(hakimi_common::ActivityEvent::TeamFormed {
+                team_id: team_id.clone(),
+                lead_id: lead_id.clone(),
+                member_ids: member_ids.clone(),
+                task_hint: calls.first().map(|c| truncate_for_title(&c.task, 48)),
+            });
+        }
         // Concurrent (not spawned): each future awaits its own semaphore permit.
         let futures = calls.into_iter().map(|call| {
             let id = call.teammate_id.clone();
@@ -301,7 +327,11 @@ impl TeamExecutor for PersonaTeamExecutor {
                 }
             }
         });
-        Ok(futures::future::join_all(futures).await)
+        let results = futures::future::join_all(futures).await;
+        if is_team {
+            hakimi_common::publish(hakimi_common::ActivityEvent::TeamDisbanded { team_id });
+        }
+        Ok(results)
     }
 }
 
