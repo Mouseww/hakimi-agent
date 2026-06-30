@@ -5472,6 +5472,9 @@ async fn build_agent(
     tool_registry
         .register(std::sync::Arc::new(hakimi_tools::DelegateTaskTool))
         .await;
+    tool_registry
+        .register(std::sync::Arc::new(hakimi_tools::TeamTool))
+        .await;
 
     // Register MCP tools.
     register_mcp_tools(
@@ -5643,6 +5646,16 @@ async fn process_gateway_messages_loop(
     config: hakimi_config::HakimiConfig,
 ) -> Result<()> {
     use std::collections::{HashMap, VecDeque};
+    // Base team executor: teammates are built from the instance template (the
+    // default agent carries the shared runtime). Repositioned per message via for_lead.
+    let team_base = {
+        let template = std::sync::Arc::new(agent_arc.lock().await.clone());
+        std::sync::Arc::new(hakimi_core::PersonaTeamExecutor::new(
+            persona_registry.clone(),
+            template,
+            128_000,
+        ))
+    };
     while let Some(msg) = messages.recv().await {
         let chat_id = msg.chat_id.clone();
         let bot_id = msg.bot_id.clone();
@@ -5783,6 +5796,7 @@ async fn process_gateway_messages_loop(
         let onboarding_config_path = onboarding_config_path.clone();
         let runtime_home = runtime_home.clone();
         let persona_agents = persona_agents.clone();
+        let team_base = team_base.clone();
         let persona_cfg = persona_cfg.clone();
         let persona_id = persona_id.clone();
         let history_key = history_key.clone();
@@ -6287,6 +6301,7 @@ Just send a message to chat with me!"
                 drop(trackers);
 
                 let mut a = base_agent.lock().await.clone();
+                a.set_team_executor(Some(std::sync::Arc::new(team_base.for_lead(&persona_id))));
 
                 // Enable streaming
                 // We can't clone the MutexGuard, but we can set the field natively if we fix its visibility

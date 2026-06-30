@@ -349,6 +349,7 @@ async fn build_agent(
         Arc::new(hakimi_tools::MixtureOfAgentsTool),
         Arc::new(hakimi_tools::CodeExecTool),
         Arc::new(hakimi_tools::DelegateTaskTool),
+        Arc::new(hakimi_tools::TeamTool),
         Arc::new(hakimi_tools::SessionSearchTool),
         Arc::new(hakimi_tools::SendMessageTool),
         Arc::new(hakimi_tools::SkillManageTool),

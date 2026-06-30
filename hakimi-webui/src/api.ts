@@ -267,6 +267,7 @@ export interface Agent {
   enabled_skills: string[];
   bindings: string[];
   is_default: boolean;
+  addressable: boolean;
 }
 
 export interface AgentsListResponse {
@@ -284,6 +285,7 @@ export interface AgentUpdate {
   enabled_skills?: string[];
   bindings?: string[];
   is_default?: boolean;
+  addressable?: boolean;
 }
 
 export interface BindingsResponse {

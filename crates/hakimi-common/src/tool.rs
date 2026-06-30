@@ -272,6 +272,57 @@ pub trait DelegateExecutor: Send + Sync {
     async fn enqueue_task(&self, goal: &str, priority: u32) -> crate::Result<String>;
 }
 
+/// Metadata describing a teammate persona that can be consulted via the `team` tool.
+#[derive(Debug, Clone)]
+pub struct TeammateInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+/// A single consultation request handed to a [`TeamExecutor`].
+///
+/// `depth` and `lineage` are NOT carried here: they live on the executor instance
+/// bound to the calling agent (each consult descends into a child executor).
+pub struct TeamCallContext {
+    /// Target teammate persona id.
+    pub teammate_id: String,
+    /// The sub-task / question for the teammate.
+    pub task: String,
+    /// Optional shared context and constraints.
+    pub context: String,
+    /// Progress callback (reuses the delegate bubble protocol).
+    pub progress: Option<ToolProgressCallback>,
+}
+
+impl std::fmt::Debug for TeamCallContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TeamCallContext")
+            .field("teammate_id", &self.teammate_id)
+            .field("task", &self.task)
+            .field("context", &self.context)
+            .field("progress", &self.progress.is_some())
+            .finish()
+    }
+}
+
+/// Executes a sub-task on a named teammate persona and returns its answer.
+///
+/// Implemented by `hakimi-core`'s `PersonaTeamExecutor`. Tools reach it through
+/// [`ToolContext::team_executor`].
+#[async_trait]
+pub trait TeamExecutor: Send + Sync {
+    /// List teammate personas this agent may consult (id, name, description).
+    async fn roster(&self) -> Vec<TeammateInfo>;
+
+    /// Consult a single teammate; returns its final structured answer.
+    async fn consult(&self, call: TeamCallContext) -> crate::Result<String>;
+
+    /// Consult several teammates concurrently; returns one answer per input
+    /// (failures become `"Teammate <id> failed: ..."` strings, never aborting the batch).
+    async fn consult_many(&self, calls: Vec<TeamCallContext>) -> crate::Result<Vec<String>>;
+}
+
 /// Trait for searching the knowledge base.
 #[async_trait]
 pub trait KnowledgeSearcher: Send + Sync {
@@ -304,6 +355,11 @@ pub struct ToolContext {
     /// Holds shared resources (transport, context engine, tool registry).
     #[serde(skip)]
     pub delegate_executor: Option<Arc<dyn DelegateExecutor>>,
+
+    /// Optional team executor for delegating to named teammate personas
+    /// (`team` tool). Set by the dispatch layer; `None` disables team collaboration.
+    #[serde(skip)]
+    pub team_executor: Option<Arc<dyn TeamExecutor>>,
 
     /// TTS Provider setting
     #[serde(skip)]
@@ -364,6 +420,7 @@ impl std::fmt::Debug for ToolContext {
             .field("workdir", &self.workdir)
             .field("model", &self.model)
             .field("delegate_executor", &self.delegate_executor.is_some())
+            .field("team_executor", &self.team_executor.is_some())
             .field("knowledge_searcher", &self.knowledge_searcher.is_some())
             .field("progress_callback", &self.progress_callback.is_some())
             .field("tts_auto_play", &self.tts_auto_play)

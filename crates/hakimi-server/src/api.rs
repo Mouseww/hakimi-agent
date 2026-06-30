@@ -265,6 +265,7 @@ struct AgentUpdateRequest {
     enabled_skills: Option<Vec<String>>,
     bindings: Option<Vec<String>>,
     is_default: Option<bool>,
+    addressable: Option<bool>,
 }
 
 /// Response body for DELETE /api/agents/{id}.
@@ -3493,6 +3494,9 @@ async fn update_agent(
         if let Some(is_default) = req.is_default {
             cfg.is_default = is_default;
         }
+        if let Some(addressable) = req.addressable {
+            cfg.addressable = addressable;
+        }
 
         reg.update(cfg).map_err(|e| {
             (
@@ -3836,6 +3840,21 @@ async fn agent_chat_stream(
     } else {
         build_persona_agent_for(&state, &cfg, &skills_dir).await
     };
+
+    {
+        let template = std::sync::Arc::new(state.agent.lock().await.clone());
+        let team_base = hakimi_core::PersonaTeamExecutor::new(
+            state.persona_registry.clone(),
+            template,
+            128_000,
+        );
+        let lead_id = if is_default {
+            hakimi_core::DEFAULT_PERSONA_ID.to_string()
+        } else {
+            cfg.id.clone()
+        };
+        cloned_agent.set_team_executor(Some(Arc::new(team_base.for_lead(&lead_id))));
+    }
 
     if let Some(session_id) = requested_session_id.as_deref() {
         let restored = {
@@ -5663,6 +5682,37 @@ mod tests {
             .map(|a| a["id"].as_str().unwrap())
             .collect();
         assert!(ids.contains(&"default"));
+    }
+
+    #[tokio::test]
+    async fn test_update_agent_toggles_addressable() {
+        let app = build_router(test_state());
+
+        // New personas are addressable by default (auto-exposed in the response).
+        let resp = app
+            .clone()
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": "coder", "name": "Coder"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["addressable"], true);
+
+        // PATCH can turn it off.
+        let resp = app
+            .clone()
+            .oneshot(json_patch(
+                "/api/agents/coder",
+                json!({"addressable": false}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let json = read_json(resp).await;
+        assert_eq!(json["addressable"], false);
     }
 
     #[tokio::test]
