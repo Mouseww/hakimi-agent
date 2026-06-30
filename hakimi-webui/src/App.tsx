@@ -175,6 +175,8 @@ function App() {
   const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
   const [showSessions, setShowSessions] = useState(true);
   const [showPanel, setShowPanel] = useState(true);
+  const [agentSessionList, setAgentSessionList] = useState<SessionInfo[]>([]);
+  const [personaSessionMap, setPersonaSessionMap] = useState<Record<string, string | null>>({});
 
   const activePersona = useMemo(
     () => agents.find((a) => a.id === activePersonaId) ?? null,
@@ -211,17 +213,28 @@ function App() {
     }
   }
 
+  async function loadAgentSessions(agentId: string) {
+    try {
+      const sessions = await api.agentSessions(agentId);
+      setAgentSessionList(sessions);
+    } catch {
+      setAgentSessionList([]);
+    }
+  }
+
+  const effectiveSessions = activePersonaId ? agentSessionList : data.sessions;
+
   const selectedSession = useMemo(
-    () => data.sessions.find((session) => session.id === selectedSessionId) ?? null,
-    [data.sessions, selectedSessionId],
+    () => effectiveSessions.find((session) => session.id === selectedSessionId) ?? null,
+    [effectiveSessions, selectedSessionId],
   );
 
   const visibleSessions = useMemo(() => {
     const query = sessionQuery.trim().toLowerCase();
     if (!query) {
-      return data.sessions;
+      return effectiveSessions;
     }
-    return data.sessions.filter((session) => {
+    return effectiveSessions.filter((session) => {
       const text = [
         session.id,
         session.title,
@@ -234,7 +247,7 @@ function App() {
         .toLowerCase();
       return text.includes(query);
     });
-  }, [data.sessions, sessionQuery]);
+  }, [effectiveSessions, sessionQuery]);
 
   const visibleTools = useMemo(() => {
     const query = toolQuery.trim().toLowerCase();
@@ -315,6 +328,10 @@ function App() {
     setData(nextData);
     setLoading(false);
     setRefreshing(false);
+
+    if (activePersonaId) {
+      void loadAgentSessions(activePersonaId);
+    }
   }
 
   async function loadSessionMessages(sessionId: string) {
@@ -464,14 +481,38 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (activePersonaId) {
+      void loadAgentSessions(activePersonaId);
+    } else {
+      setAgentSessionList([]);
+    }
+  }, [activePersonaId]);
+
   function handleSelectPersona(id: string) {
+    if (id === activePersonaId) {
+      setView('chat');
+      return;
+    }
+
+    // Save current persona's active session so we can restore it later.
+    if (activePersonaId) {
+      setPersonaSessionMap((prev) => ({ ...prev, [activePersonaId]: selectedSessionId }));
+    }
+
     setActivePersonaId(id);
     setView('chat');
-    // Start fresh in the new persona's context so a previous persona's session
-    // transcript doesn't linger in the center.
-    setMessages([]);
-    setSessionMessages([]);
-    setSelectedSessionId(null);
+
+    const savedSessionId = personaSessionMap[id] ?? null;
+    if (savedSessionId) {
+      void loadSessionMessages(savedSessionId);
+    } else {
+      setMessages([]);
+      setSessionMessages([]);
+      setSelectedSessionId(null);
+    }
+
+    void loadAgentSessions(id);
   }
   function handleEditPersona(id: string) {
     setEditingPersona(agents.find((a) => a.id === id) ?? null);
@@ -503,8 +544,8 @@ function App() {
   }
 
   const topFeatures = pickTopFeatures(data.capabilities);
-  const sampledSessions = data.status?.resources.sessions_sampled ?? data.sessions.length;
-  const totalTokens = data.sessions.reduce(
+  const sampledSessions = data.status?.resources.sessions_sampled ?? effectiveSessions.length;
+  const totalTokens = effectiveSessions.reduce(
     (sum, session) => sum + session.input_tokens + session.output_tokens,
     0,
   );

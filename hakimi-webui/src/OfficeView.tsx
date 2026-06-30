@@ -35,7 +35,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
   }
 
   const desks = Array.from(office.values());
-  const width = COLS * CELL_W + 48;
+  const width = COLS * CELL_W + 64;
   const height = layout.rows * CELL_H + 80;
 
   // consult runners: from-seat -> to-seat
@@ -112,7 +112,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
 
         {/* hover detail card */}
         {hovered && hoveredSeat && (
-          <div className="office-card" style={{ left: hoveredSeat.x + CELL_W - 12, top: hoveredSeat.y }}>
+          <div className="office-card" style={{ left: hoveredSeat.x + 190, top: hoveredSeat.y }}>
             <strong>{hovered.avatar} {hovered.name || hovered.id}</strong>
             <span className="muted">{t(`office.state.${displayedState(hovered)}`)}</span>
             {hovered.taskHint && <div className="muted">{hovered.taskHint}</div>}

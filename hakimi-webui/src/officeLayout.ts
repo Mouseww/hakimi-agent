@@ -12,9 +12,9 @@ export interface OfficeLayout {
   rows: number;
 }
 
-export const CELL_W = 150;
-export const CELL_H = 130;
-const PAD = 24;
+export const CELL_W = 220;
+export const CELL_H = 200;
+const PAD = 32;
 
 function coords(row: number, col: number): { x: number; y: number } {
   return { x: PAD + col * CELL_W, y: PAD + row * CELL_H };

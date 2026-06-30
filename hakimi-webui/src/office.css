@@ -1,30 +1,246 @@
-.office-view { position: relative; width: 100%; height: 100%; overflow: auto; padding: 8px; }
-.office-floor { position: relative; }
-.office-hint { font-size: 12px; color: var(--muted, #8a7a5f); margin: 4px 8px; }
+.office-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
-.persona-desk { position: absolute; width: 132px; height: 112px; cursor: pointer; }
-.persona-desk .desk-name { font-size: 12px; font-weight: 600; text-align: center; }
-.persona-desk.is-dimmed { opacity: 0.45; }
+.office-floor {
+  position: relative;
+  margin: 0 auto;
+}
 
-.screen-lit { fill: #8be0ff; animation: deskGlow 1.6s ease-in-out infinite; }
-@keyframes deskGlow { 0%,100% { fill: #7fd6f5; } 50% { fill: #caf2ff; } }
-.screen-game { fill: #26304a; }
-.game-block { animation: deskHop 1s steps(2) infinite; }
-.game-block.b2 { animation-duration: 1.3s; }
-.typing-hand { animation: deskTap .35s ease-in-out infinite alternate; }
-.typing-hand.h2 { animation-delay: .17s; }
-@keyframes deskTap { from { transform: translateY(0); } to { transform: translateY(3px); } }
-@keyframes deskHop { 0%,100% { transform: translateY(0); } 50% { transform: translateY(7px); } }
+.office-hint {
+  font-size: 12px;
+  color: var(--muted, #8a7a5f);
+  margin: 4px 8px;
+  text-align: center;
+}
 
-.office-runner { position: absolute; transition: transform 1.4s ease-in-out; will-change: transform; pointer-events: none; }
-.office-team-ring { position: absolute; border: 2.5px solid var(--accent, #c98a2b); background: rgba(251,244,230,.5); border-radius: 16px; pointer-events: none; }
-.office-team-label { position: absolute; font-size: 12px; font-weight: 700; color: var(--accent, #9a6a16); }
+/* ---- Persona desk card ---- */
 
-.office-card { position: absolute; z-index: 5; background: var(--card, #fffaf0); border: 1px solid var(--accent, #c98a2b);
-  border-radius: 9px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); pointer-events: none; }
-.office-card strong { display: block; font-size: 13px; }
-.office-card .muted { color: var(--muted, #6b5b45); }
+.persona-desk {
+  position: absolute;
+  width: 180px;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.persona-desk:hover {
+  transform: scale(1.04);
+  z-index: 2;
+}
+
+.persona-desk:focus-visible {
+  outline: 2px solid var(--desk-color, #475569);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.persona-desk.is-dimmed {
+  opacity: 0.4;
+  filter: grayscale(0.3);
+}
+
+.persona-desk.is-working {
+  filter: drop-shadow(0 0 6px var(--desk-color, #475569));
+}
+
+/* ---- Desk label ---- */
+
+.desk-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-top: -4px;
+}
+
+.desk-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--foreground, #3d3425);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.desk-role {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+}
+
+/* ---- Screen states ---- */
+
+.screen-lit {
+  fill: #8be0ff;
+  animation: deskGlow 1.6s ease-in-out infinite;
+}
+
+.screen-off {
+  fill: #26304a;
+  opacity: 0.3;
+}
+
+.screen-game {
+  fill: #26304a;
+}
+
+@keyframes deskGlow {
+  0%, 100% { fill: #7fd6f5; }
+  50% { fill: #caf2ff; }
+}
+
+/* ---- Idle screen blocks ---- */
+
+.game-block {
+  animation: deskHop 1s steps(2) infinite;
+}
+
+.game-block.b2 {
+  animation-duration: 1.3s;
+}
+
+@keyframes deskHop {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(7px); }
+}
+
+/* ---- Working screen lines ---- */
+
+.desk-screen-lines rect {
+  animation: screenType 2s steps(4) infinite;
+}
+
+.desk-screen-lines rect:nth-child(2) { animation-delay: 0.3s; }
+.desk-screen-lines rect:nth-child(3) { animation-delay: 0.6s; }
+.desk-screen-lines rect:nth-child(4) { animation-delay: 0.9s; }
+
+@keyframes screenType {
+  0% { opacity: 0; width: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+/* ---- Typing arms ---- */
+
+.desk-arms-typing path {
+  animation: armBob 0.5s ease-in-out infinite alternate;
+}
+
+.desk-arms-typing path:nth-child(2) {
+  animation-delay: 0.25s;
+}
+
+.desk-arms-typing circle {
+  animation: handTap 0.35s ease-in-out infinite alternate;
+}
+
+.desk-arms-typing circle:nth-child(4) {
+  animation-delay: 0.18s;
+}
+
+@keyframes armBob {
+  from { transform: translateY(0); }
+  to { transform: translateY(2px); }
+}
+
+@keyframes handTap {
+  from { transform: translateY(0); }
+  to { transform: translateY(3px); }
+}
+
+/* ---- Eyes (look at screen when working) ---- */
+
+.is-working .desk-eyes {
+  animation: eyeLook 3s ease-in-out infinite;
+}
+
+@keyframes eyeLook {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(-1px); }
+  70% { transform: translateX(1px); }
+}
+
+/* ---- Mouth work animation ---- */
+
+.desk-mouth-work {
+  animation: mouthMumble 0.8s ease-in-out infinite;
+}
+
+@keyframes mouthMumble {
+  0%, 100% { ry: 2; }
+  50% { ry: 1; }
+}
+
+/* ---- Team ring & consult runner ---- */
+
+.office-runner {
+  position: absolute;
+  transition: transform 1.4s ease-in-out;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.office-team-ring {
+  position: absolute;
+  border: 2.5px solid var(--accent, #c98a2b);
+  background: rgba(251, 244, 230, 0.5);
+  border-radius: 16px;
+  pointer-events: none;
+}
+
+.office-team-label {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent, #9a6a16);
+}
+
+/* ---- Hover detail card ---- */
+
+.office-card {
+  position: absolute;
+  z-index: 5;
+  background: var(--card, #fffaf0);
+  border: 1px solid var(--accent, #c98a2b);
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+.office-card strong {
+  display: block;
+  font-size: 13px;
+}
+
+.office-card .muted {
+  color: var(--muted, #6b5b45);
+}
+
+/* ---- Reduced motion ---- */
 
 @media (prefers-reduced-motion: reduce) {
-  .screen-lit, .game-block, .typing-hand, .office-runner { animation: none; transition: none; }
+  .screen-lit,
+  .game-block,
+  .desk-arms-typing path,
+  .desk-arms-typing circle,
+  .desk-screen-lines rect,
+  .desk-eyes,
+  .desk-mouth-work,
+  .office-runner {
+    animation: none;
+    transition: none;
+  }
 }
