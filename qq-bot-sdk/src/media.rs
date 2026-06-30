@@ -167,7 +167,7 @@ impl MediaClient {
 
         let metadata = tokio::fs::metadata(path).await?;
         let file_size = metadata.len() as usize;
-        let total_chunks = (file_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+        let total_chunks = file_size.div_ceil(CHUNK_SIZE);
 
         // 分片上传
         let mut file = File::open(path).await?;

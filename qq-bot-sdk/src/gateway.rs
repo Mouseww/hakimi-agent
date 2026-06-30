@@ -48,21 +48,13 @@ pub struct Gateway {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 struct SessionState {
     session_id: Option<String>,
     seq: u64,
     should_resume: bool,
 }
 
-impl Default for SessionState {
-    fn default() -> Self {
-        Self {
-            session_id: None,
-            seq: 0,
-            should_resume: false,
-        }
-    }
-}
 
 impl Gateway {
     pub fn new(token_manager: Arc<TokenManager>, intents: Intents) -> (Self, EventReceiver) {
@@ -151,13 +143,13 @@ impl Gateway {
 
         // 发送 Identify 或 Resume
         let state = self.session_state.read().clone();
-        if state.should_resume && state.session_id.is_some() {
-            info!("Resuming session: {:?}", state.session_id);
+        if let (true, Some(session_id)) = (state.should_resume, state.session_id) {
+            info!("Resuming session: {:?}", session_id);
             let resume_payload = GatewayPayload {
                 op: OpCode::Resume,
                 d: Some(json!(ResumePayload {
                     token: format!("QQBot {}", token),
-                    session_id: state.session_id.unwrap(),
+                    session_id,
                     seq: state.seq,
                 })),
                 s: None,

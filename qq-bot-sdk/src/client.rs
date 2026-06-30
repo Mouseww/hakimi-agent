@@ -13,6 +13,7 @@ pub struct QQBotClient {
     token_manager: Arc<TokenManager>,
     api_client: ApiClient,
     media_client: MediaClient,
+    #[allow(dead_code)]
     gateway: Option<Gateway>,
     event_rx: Option<EventReceiver>,
     intents: Intents,
@@ -445,11 +446,7 @@ impl MessageTarget {
             Some(Self::Channel(channel_id.clone()))
         } else if let Some(group_openid) = &msg.group_openid {
             Some(Self::Group(group_openid.clone()))
-        } else if let Some(author) = &msg.author {
-            Some(Self::C2C(author.id.clone()))
-        } else {
-            None
-        }
+        } else { msg.author.as_ref().map(|author| Self::C2C(author.id.clone())) }
     }
 
     fn to_media_type(&self) -> MediaMessageType {

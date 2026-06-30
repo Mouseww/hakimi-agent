@@ -81,16 +81,18 @@ impl TokenManager {
 
         #[derive(Serialize)]
         struct TokenRequest {
-            appId: String,
-            clientSecret: String,
+            #[serde(rename = "appId")]
+            app_id: String,
+            #[serde(rename = "clientSecret")]
+            client_secret: String,
         }
 
         let resp = self
             .client
             .post(&url)
             .json(&TokenRequest {
-                appId: self.credentials.app_id.clone(),
-                clientSecret: self.credentials.app_secret.clone(),
+                app_id: self.credentials.app_id.clone(),
+                client_secret: self.credentials.app_secret.clone(),
             })
             .send()
             .await?;
