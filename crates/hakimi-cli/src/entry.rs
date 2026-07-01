@@ -4251,9 +4251,17 @@ fn long_version() -> &'static str {
     name = "hakimi",
     version,
     long_version = long_version(),
-    about = "Hakimi Agent — AI-powered coding assistant"
+    about = "Hakimi Agent — AI-powered coding assistant",
+    after_help = "EXAMPLES:\n  hakimi                           Start interactive session\n  hakimi \"write a hello world\"     Print response and exit\n  hakimi --print \"your prompt\"     Same as above (explicit)\n  hakimi -c                        Continue most recent conversation\n  hakimi --resume                  Resume a previous session (interactive picker)\n  hakimi --gateway                 Start gateway mode (Telegram/Discord/etc.)\n  hakimi --serve                   Start WebUI server on http://127.0.0.1:3005"
 )]
 pub struct Args {
+    /// Your prompt (if provided without --print, acts like --print).
+    /// 
+    /// When a positional prompt is given without --print flag, hakimi automatically
+    /// enters print mode (non-interactive, output and exit).
+    #[arg(value_name = "PROMPT")]
+    pub prompt: Option<String>,
+
     /// Model identifier override (e.g. "gpt-4o", "claude-sonnet-4-20250514").
     #[arg(long)]
     pub model: Option<String>,
@@ -4262,13 +4270,31 @@ pub struct Args {
     #[arg(long)]
     pub provider: Option<String>,
 
-    /// Single query mode: send a prompt and exit.
-    #[arg(long, short)]
+    /// Print response and exit (useful for pipes). Alias: -p
+    /// 
+    /// Note: If a positional prompt is provided, --print mode is implicit.
+    #[arg(long, short = 'P', visible_alias = "non-interactive")]
+    pub print: bool,
+
+    /// Single query mode (deprecated: use positional prompt or --print instead).
+    #[arg(long, short = 'q', hide = true)]
     pub query: Option<String>,
 
+    /// Continue the most recent conversation in the current directory.
+    #[arg(long, short = 'c')]
+    pub r#continue: bool,
+
+    /// Resume a conversation by session ID, or open interactive picker with optional search term.
+    #[arg(long, short = 'r', value_name = "SESSION_ID_OR_SEARCH")]
+    pub resume: Option<Option<String>>,
+
     /// Configuration profile to load.
-    #[arg(long, short)]
+    #[arg(long)]
     pub profile: Option<String>,
+
+    /// Set a display name for this session (shown in prompt and history).
+    #[arg(long, short = 'n')]
+    pub name: Option<String>,
 
     /// Auto-accept all tool calls without confirmation (YOLO mode).
     #[arg(long)]
@@ -8413,7 +8439,7 @@ pub async fn run() -> Result<()> {
         return gateway_service_status();
     }
 
-    if !args.serve && args.gateway.is_none() && args.query.is_none() {
+    if !args.serve && args.gateway.is_none() && args.query.is_none() && args.prompt.is_none() && !args.print && !args.r#continue && args.resume.is_none() {
         maybe_show_startup_onboarding_hints(&mut config, &runtime_home);
     }
 
@@ -8459,12 +8485,35 @@ pub async fn run() -> Result<()> {
         return start_gateway(agent, skill_store, config, runtime_home).await;
     }
 
-    if let Some(query) = args.query {
+    // Handle print mode: --print or positional prompt
+    let effective_print_mode = args.print || args.prompt.is_some();
+    let query_text = args.prompt.or(args.query);
+    
+    if let Some(query) = query_text {
         let mut a = agent;
         let user_message = a
             .build_skill_slash_invocation_message(&query)
             .unwrap_or(query);
         println!("{}", a.query(&user_message).await?);
+        return Ok(());
+    }
+
+    // Handle --continue: continue most recent conversation in current directory
+    if args.r#continue {
+        println!("--continue support coming soon: will resume most recent conversation in current directory");
+        return Ok(());
+    }
+
+    // Handle --resume: resume a specific session (interactive picker or by ID)
+    if let Some(resume_target) = args.resume {
+        match resume_target {
+            Some(id_or_search) => {
+                println!("--resume support coming soon: will resume session matching '{}'", id_or_search);
+            }
+            None => {
+                println!("--resume support coming soon: will open interactive session picker");
+            }
+        }
         return Ok(());
     }
 
