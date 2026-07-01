@@ -2136,6 +2136,53 @@ h3 {
   padding-bottom: 2px;
 }
 
+.bindings-editor-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(36, 115, 92, 0.06);
+  border: 1px solid rgba(36, 115, 92, 0.15);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.bindings-editor-hint svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--green);
+}
+
+.bindings-editor-preview {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.bindings-editor-preview code {
+  background: var(--surface-strong);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.78rem;
+}
+
+.bindings-platform-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 5px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
 .bindings-actions {
   display: flex;
   gap: 4px;

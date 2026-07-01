@@ -1,15 +1,50 @@
-import { Edit3, Loader2, Plus, RefreshCcw, Share2, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Edit3, HelpCircle, Loader2, Plus, RefreshCcw, Share2, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, type Agent, type BindingsResponse } from './api';
 import GatewayPanel from './GatewayPanel';
 import SettingsPanel from './SettingsPanel';
 import { useI18n } from './i18n';
 
+const SUPPORTED_PLATFORMS = [
+  'telegram',
+  'qqbot',
+  'clawbot',
+  'weixin',
+  'discord',
+  'slack',
+  'dingtalk',
+  'feishu',
+  'wecom',
+  'email',
+  'whatsapp',
+  'signal',
+  'matrix',
+  'mattermost',
+  'sms',
+  'bluebubbles',
+  'homeassistant',
+  'webhook',
+  'msgraph',
+] as const;
+
+type SupportedPlatform = (typeof SUPPORTED_PLATFORMS)[number];
+
 interface BindingEditorState {
   mode: 'add' | 'edit';
-  channel: string;
+  platform: string;
+  botId: string;
   personaId: string;
   originalChannel?: string;
+}
+
+function splitChannel(channel: string): { platform: string; botId: string } {
+  const idx = channel.indexOf(':');
+  if (idx === -1) return { platform: channel, botId: '' };
+  return { platform: channel.slice(0, idx), botId: channel.slice(idx + 1) };
+}
+
+function joinChannel(platform: string, botId: string): string {
+  return `${platform.trim()}:${botId.trim()}`;
 }
 
 export default function InstanceSettings() {
@@ -48,22 +83,39 @@ export default function InstanceSettings() {
   const entries = bindings ? Object.entries(bindings.bindings) : [];
 
   function openAdd() {
-    setEditor({ mode: 'add', channel: '', personaId: agents[0]?.id ?? '' });
+    setEditor({
+      mode: 'add',
+      platform: 'telegram',
+      botId: '',
+      personaId: agents[0]?.id ?? '',
+    });
   }
 
   function openEdit(channel: string, personaId: string) {
-    setEditor({ mode: 'edit', channel, personaId, originalChannel: channel });
+    const { platform, botId } = splitChannel(channel);
+    setEditor({
+      mode: 'edit',
+      platform,
+      botId,
+      personaId,
+      originalChannel: channel,
+    });
   }
 
   function closeEditor() {
     setEditor(null);
   }
 
+  const editorChannel = useMemo(() => {
+    if (!editor) return '';
+    return joinChannel(editor.platform, editor.botId);
+  }, [editor]);
+
   async function saveBinding() {
     if (!editor || saving) return;
-    const channel = editor.channel.trim();
+    const channel = editorChannel.trim();
     const personaId = editor.personaId.trim();
-    if (!channel || !personaId) return;
+    if (!channel || !personaId || !editor.botId.trim()) return;
 
     setSaving(true);
     setError(null);
@@ -127,6 +179,8 @@ export default function InstanceSettings() {
     }
   }
 
+  const platformHint = editor ? t(`instance.hint.${editor.platform}` as any) : '';
+
   return (
     <div className="instance-settings">
       <section className="settings-surface">
@@ -162,12 +216,25 @@ export default function InstanceSettings() {
           <div className="bindings-editor">
             <div className="bindings-editor-row">
               <label>
-                {t('instance.channel')}
-                <input
-                  value={editor.channel}
-                  onChange={(e) => setEditor({ ...editor, channel: e.target.value })}
-                  placeholder="telegram:devbot"
+                {t('instance.platform')}
+                <select
+                  value={editor.platform}
+                  onChange={(e) => setEditor({ ...editor, platform: e.target.value })}
                   autoFocus
+                >
+                  {SUPPORTED_PLATFORMS.map((p) => (
+                    <option key={p} value={p}>
+                      {t(`instance.platform.${p}` as any)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t('instance.botIdLabel')}
+                <input
+                  value={editor.botId}
+                  onChange={(e) => setEditor({ ...editor, botId: e.target.value })}
+                  placeholder={t('instance.botIdPlaceholder')}
                 />
               </label>
               <label>
@@ -188,7 +255,7 @@ export default function InstanceSettings() {
                   className="button button-primary"
                   type="button"
                   onClick={() => void saveBinding()}
-                  disabled={saving || !editor.channel.trim() || !editor.personaId.trim()}
+                  disabled={saving || !editor.botId.trim() || !editor.personaId.trim()}
                 >
                   {t('instance.saveBinding')}
                 </button>
@@ -196,6 +263,15 @@ export default function InstanceSettings() {
                   <X size={16} />
                 </button>
               </div>
+            </div>
+            {platformHint && (
+              <div className="bindings-editor-hint">
+                <HelpCircle size={13} aria-hidden="true" />
+                <span>{platformHint}</span>
+              </div>
+            )}
+            <div className="bindings-editor-preview">
+              {t('instance.preview')}: <code>{editorChannel || '...'}</code>
             </div>
           </div>
         )}
@@ -208,31 +284,37 @@ export default function InstanceSettings() {
             <span>{t('instance.persona')}</span>
             <span>{t('instance.actions')}</span>
           </div>
-          {entries.map(([channel, persona]) => (
-            <div className="bindings-row" key={channel}>
-              <span className="bindings-channel">{channel}</span>
-              <span className="bindings-persona">{persona}</span>
-              <span className="bindings-actions">
-                <button
-                  type="button"
-                  className="icon-button"
-                  title={t('instance.editBinding')}
-                  onClick={() => openEdit(channel, agents.find((a) => a.bindings.includes(channel))?.id ?? '')}
-                >
-                  <Edit3 size={13} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  title={t('instance.deleteBinding')}
-                  onClick={() => void deleteBinding(channel)}
-                  disabled={saving}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </span>
-            </div>
-          ))}
+          {entries.map(([channel, persona]) => {
+            const { platform, botId } = splitChannel(channel);
+            return (
+              <div className="bindings-row" key={channel}>
+                <span className="bindings-channel">
+                  <span className="bindings-platform-tag">{platform}</span>
+                  <span>{botId}</span>
+                </span>
+                <span className="bindings-persona">{persona}</span>
+                <span className="bindings-actions">
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={t('instance.editBinding')}
+                    onClick={() => openEdit(channel, agents.find((a) => a.bindings.includes(channel))?.id ?? '')}
+                  >
+                    <Edit3 size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={t('instance.deleteBinding')}
+                    onClick={() => void deleteBinding(channel)}
+                    disabled={saving}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </span>
+              </div>
+            );
+          })}
           {!loading && entries.length === 0 && (
             <div className="panel-empty">
               {t('instance.noBindings')}
