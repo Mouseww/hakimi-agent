@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type DelegationPhase =
   | 'walk_to'       // delegator walks to delegate's desk
@@ -44,7 +44,6 @@ function animKey(fromId: string, toId: string): string {
 
 export function useDelegationAnims() {
   const [anims, setAnims] = useState<Map<string, DelegationAnim>>(new Map());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tick = useCallback(() => {
     setAnims((prev) => {

@@ -84,7 +84,7 @@ function RoleIcon({ role, size = 20 }: { role: string; size?: number }) {
   );
 }
 
-function HumanFigure({ role, working, color }: { role: string; working: boolean; color: string }) {
+function HumanFigure({ working, color }: { role: string; working: boolean; color: string }) {
   return (
     <svg className={`desk-figure ${working ? 'is-working' : ''}`} viewBox="0 0 120 140" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Shadow */}

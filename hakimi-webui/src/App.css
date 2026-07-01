@@ -63,14 +63,13 @@ button:disabled {
 }
 
 .topbar {
-  display: grid;
-  min-height: 72px;
-  grid-template-columns: minmax(240px, 1fr) auto minmax(330px, 420px);
-  gap: 18px;
+  display: flex;
+  min-height: 56px;
+  gap: 16px;
   align-items: center;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 253, 247, 0.92);
-  padding: 12px 18px;
+  padding: 8px 18px;
   position: sticky;
   top: 0;
   z-index: 20;
@@ -179,23 +178,44 @@ h3 {
   background: var(--line);
 }
 
-.auth-cluster {
-  min-width: 0;
-  justify-content: flex-end;
-  gap: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 6px;
-  padding: 7px;
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
-.auth-cluster input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
+.topbar-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
   background: transparent;
-  outline: 0;
+  color: var(--ink-soft);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.topbar-nav-btn:hover {
+  background: var(--surface-strong);
   color: var(--ink);
+  border-color: var(--line);
+}
+
+.topbar-nav-btn.is-active {
+  background: var(--surface);
+  color: var(--green-strong);
+  border-color: var(--line-strong);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .icon-button,
@@ -256,23 +276,14 @@ h3 {
   display: grid;
   min-height: 0;
   flex: 1;
-  /* Narrower side columns so the chat (center) gets the bulk of the width.
-     The two side columns are collapsible (see toggles in the chat header). */
-  --col-sessions: minmax(204px, 248px);
-  --col-panel: minmax(288px, 340px);
-  grid-template-columns: var(--col-sessions) minmax(420px, 1fr) var(--col-panel);
+  --col-sessions: minmax(204px, 280px);
+  grid-template-columns: var(--col-sessions) minmax(420px, 1fr);
 }
 
 .workspace-grid.sessions-collapsed {
   --col-sessions: 0px;
 }
 
-.workspace-grid.panel-collapsed {
-  --col-panel: 0px;
-}
-
-/* Pin each pane to its track so a hidden (display:none) side rail never makes
-   the chat column auto-place into a collapsed 0px track. */
 .workspace-grid > .left-rail {
   grid-column: 1;
 }
@@ -281,28 +292,15 @@ h3 {
   grid-column: 2;
 }
 
-.workspace-grid > .right-rail {
-  grid-column: 3;
-}
-
-.workspace-grid.sessions-collapsed .left-rail,
-.workspace-grid.panel-collapsed .right-rail {
+.workspace-grid.sessions-collapsed .left-rail {
   display: none;
 }
 
-.left-rail,
-.right-rail {
+.left-rail {
   min-width: 0;
   border-color: var(--line);
   background: rgba(248, 245, 236, 0.86);
-}
-
-.left-rail {
   border-right: 1px solid var(--line);
-}
-
-.right-rail {
-  border-left: 1px solid var(--line);
 }
 
 .rail-section {
@@ -2378,13 +2376,13 @@ h3 {
   margin-top: 3px;
 }
 
-/* ---- Delegate progress ---- */
+/* ---- Delegate progress (parallel-aware) ---- */
 .delegate-progress {
   margin-top: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   background: var(--surface-strong);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.78rem;
 }
 
@@ -2392,28 +2390,173 @@ h3 {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 600;
-  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  color: var(--ink-soft);
+}
+
+.delegate-parallel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: rgba(36, 115, 92, 0.12);
+  color: var(--green-strong);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  animation: parallel-badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes parallel-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.delegate-progress-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.delegate-progress-lanes::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--line);
 }
 
 .delegate-progress-item {
   display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 2px 0;
+  padding: 5px 8px 5px 0;
   color: var(--ink-soft);
+  border-radius: 6px;
+  position: relative;
+  animation: delegate-slide-in 300ms ease-out both;
+}
+
+.delegate-progress-item:nth-child(1) { animation-delay: 0ms; }
+.delegate-progress-item:nth-child(2) { animation-delay: 60ms; }
+.delegate-progress-item:nth-child(3) { animation-delay: 120ms; }
+.delegate-progress-item:nth-child(4) { animation-delay: 180ms; }
+.delegate-progress-item:nth-child(5) { animation-delay: 240ms; }
+
+@keyframes delegate-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.delegate-lane-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  position: relative;
+  z-index: 1;
+}
+
+.delegate-lane-dot.is-running {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(36, 115, 92, 0.15);
+  animation: lane-dot-breathe 1.6s ease-in-out infinite;
+}
+
+.delegate-lane-dot.is-done {
+  background: var(--green-strong);
+}
+
+.delegate-lane-dot.is-error {
+  background: var(--red);
+}
+
+@keyframes lane-dot-breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(36, 115, 92, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(36, 115, 92, 0.08);
+  }
+}
+
+.delegate-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .delegate-title {
-  font-weight: 500;
+  flex-shrink: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
   color: var(--ink);
 }
 
 .delegate-status {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .delegate-time {
-  font-size: 0.72rem;
-  opacity: 0.7;
+  flex-shrink: 0;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* Parallel wave bar at the bottom */
+.delegate-parallel-wave {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 14px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.delegate-wave-bar {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--green);
+  animation: wave-bar 1.2s ease-in-out infinite;
+}
+
+.delegate-wave-bar:nth-child(1) { height: 6px; animation-delay: 0ms; }
+.delegate-wave-bar:nth-child(2) { height: 10px; animation-delay: 150ms; }
+.delegate-wave-bar:nth-child(3) { height: 4px; animation-delay: 300ms; }
+.delegate-wave-bar:nth-child(4) { height: 8px; animation-delay: 450ms; }
+.delegate-wave-bar:nth-child(5) { height: 12px; animation-delay: 600ms; }
+.delegate-wave-bar:nth-child(6) { height: 5px; animation-delay: 750ms; }
+.delegate-wave-bar:nth-child(7) { height: 9px; animation-delay: 900ms; }
+.delegate-wave-bar:nth-child(8) { height: 7px; animation-delay: 1050ms; }
+
+@keyframes wave-bar {
+  0%, 100% { transform: scaleY(1); opacity: 0.5; }
+  50% { transform: scaleY(1.8); opacity: 1; }
 }
 

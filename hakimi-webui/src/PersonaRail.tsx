@@ -1,4 +1,4 @@
-import { Bot, Building2, FolderTree, Plus, Settings } from 'lucide-react';
+import { Bot, Plus, Settings } from 'lucide-react';
 import type { Agent } from './api';
 import { useI18n } from './i18n';
 
@@ -9,9 +9,6 @@ interface PersonaRailProps {
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onCreate: () => void;
-  onInstance: () => void;
-  onWorkspace: () => void;
-  onOffice: () => void;
 }
 
 function avatarText(agent: Agent): string {
@@ -29,14 +26,11 @@ export default function PersonaRail({
   onSelect,
   onEdit,
   onCreate,
-  onInstance,
-  onWorkspace,
-  onOffice,
 }: PersonaRailProps) {
   const { t } = useI18n();
 
   return (
-    <nav className="persona-rail" aria-label="Personas">
+    <nav className="persona-rail" aria-label="Agents">
       <div className="persona-rail-list">
         {agents.map((agent) => {
           const active = agent.id === activeId && view === 'chat';
@@ -72,30 +66,6 @@ export default function PersonaRail({
       <div className="persona-rail-foot">
         <button type="button" className="persona-add" title={t('rail.newPersona')} onClick={onCreate}>
           <Plus size={18} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={`persona-instance ${view === 'office' ? 'is-active' : ''}`}
-          title={t('rail.office')}
-          onClick={onOffice}
-        >
-          <Building2 size={18} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={`persona-instance ${view === 'workspace' ? 'is-active' : ''}`}
-          title={t('rail.workspace')}
-          onClick={onWorkspace}
-        >
-          <FolderTree size={18} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={`persona-instance ${view === 'instance' ? 'is-active' : ''}`}
-          title={t('rail.instance')}
-          onClick={onInstance}
-        >
-          <Settings size={18} aria-hidden="true" />
         </button>
       </div>
     </nav>

@@ -12,14 +12,18 @@ declare module 'lucide-react' {
   export const Building2: FC<LucideProps>;
   export const Boxes: FC<LucideProps>;
   export const Brain: FC<LucideProps>;
+  export const ChevronDown: FC<LucideProps>;
   export const ChevronRight: FC<LucideProps>;
   export const Copy: FC<LucideProps>;
   export const Database: FC<LucideProps>;
+  export const Edit3: FC<LucideProps>;
   export const FileSearch: FC<LucideProps>;
   export const FileText: FC<LucideProps>;
   export const Folder: FC<LucideProps>;
   export const FolderTree: FC<LucideProps>;
   export const Gauge: FC<LucideProps>;
+  export const Globe: FC<LucideProps>;
+  export const HelpCircle: FC<LucideProps>;
   export const KeyRound: FC<LucideProps>;
   export const Layers3: FC<LucideProps>;
   export const Loader2: FC<LucideProps>;

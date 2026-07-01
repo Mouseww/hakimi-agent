@@ -27,7 +27,6 @@ const SUPPORTED_PLATFORMS = [
   'msgraph',
 ] as const;
 
-type SupportedPlatform = (typeof SUPPORTED_PLATFORMS)[number];
 
 interface BindingEditorState {
   mode: 'add' | 'edit';

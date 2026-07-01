@@ -1,30 +1,23 @@
 import {
   Activity,
-  BadgeCheck,
   Bot,
-  Boxes,
   Brain,
+  Building2,
   Copy,
-  Database,
-  FileSearch,
-  Gauge,
+  FolderTree,
   Globe,
   KeyRound,
-  Layers3,
   Loader2,
   MessageSquare,
   PanelLeft,
-  PanelRight,
+  Plus,
   RefreshCcw,
   RotateCcw,
   Search,
   Send,
-  Server,
-  ShieldCheck,
+  Settings,
   SquareTerminal,
   Trash2,
-  Workflow,
-  Wrench,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
@@ -54,8 +47,6 @@ import {
   type ToolsetInfo,
   type WebhookResponse,
 } from './api';
-
-type RightPanel = 'runtime' | 'tools' | 'skills';
 
 type UiMessage = {
   id: string;
@@ -118,56 +109,13 @@ function formatDate(value: string | null): string {
   }).format(date);
 }
 
-function compactNumber(value: number): string {
-  return new Intl.NumberFormat(undefined, { notation: 'compact' }).format(value);
-}
-
 function sessionLabel(session: SessionInfo): string {
   return session.title || session.id;
-}
-
-function roleLabel(role: string): string {
-  if (role === 'assistant') {
-    return 'assistant';
-  }
-  if (role === 'tool') {
-    return 'tool';
-  }
-  return 'user';
-}
-
-function featureValue(value: boolean | string, t: (key: 'panel.enabled' | 'panel.off') => string): string {
-  if (typeof value === 'boolean') {
-    return value ? t('panel.enabled') : t('panel.off');
-  }
-  return value;
-}
-
-function pickTopFeatures(capabilities: CapabilitiesResponse | null): Array<[string, boolean | string]> {
-  if (!capabilities) {
-    return [];
-  }
-
-  return Object.entries(capabilities.features)
-    .filter(([name]) =>
-      [
-        'chat',
-        'chat_completions',
-        'responses_api',
-        'skills_api',
-        'toolsets_api',
-        'session_messages',
-        'session_search',
-        'run_events_sse',
-      ].includes(name),
-    )
-    .slice(0, 8);
 }
 
 function App() {
   const { t, lang, setLang } = useI18n();
   const [data, setData] = useState<LoadState>(emptyState);
-  const [rightPanel, setRightPanel] = useState<RightPanel>('runtime');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,13 +127,11 @@ function App() {
   const [sessionMessages, setSessionMessages] = useState<SessionMessageInfo[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionQuery, setSessionQuery] = useState('');
-  const [toolQuery, setToolQuery] = useState('');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activePersonaId, setActivePersonaId] = useState<string | null>(null);
   const [view, setView] = useState<'chat' | 'config' | 'instance' | 'workspace' | 'office'>('office');
   const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
   const [showSessions, setShowSessions] = useState(true);
-  const [showPanel, setShowPanel] = useState(true);
   const [agentSessionList, setAgentSessionList] = useState<SessionInfo[]>([]);
   const [personaSessionMap, setPersonaSessionMap] = useState<Record<string, string | null>>({});
   const [delegateStatuses, setDelegateStatuses] = useState<DelegateStatus[]>([]);
@@ -256,10 +202,6 @@ function App() {
     return [...agentSessionList, ...gatewayExtras];
   }, [activePersonaId, agentSessionList, data.sessions]);
 
-  const selectedSession = useMemo(
-    () => effectiveSessions.find((session) => session.id === selectedSessionId) ?? null,
-    [effectiveSessions, selectedSessionId],
-  );
 
   const visibleSessions = useMemo(() => {
     const query = sessionQuery.trim().toLowerCase();
@@ -280,21 +222,6 @@ function App() {
       return text.includes(query);
     });
   }, [effectiveSessions, sessionQuery]);
-
-  const visibleTools = useMemo(() => {
-    const query = toolQuery.trim().toLowerCase();
-    if (!query) {
-      return data.tools;
-    }
-    return data.tools.filter((tool) =>
-      `${tool.name} ${tool.description}`.toLowerCase().includes(query),
-    );
-  }, [data.tools, toolQuery]);
-
-  const activeSkills = useMemo(
-    () => data.skills.filter((skill) => skill.active),
-    [data.skills],
-  );
 
   async function refreshAll(options: { quiet?: boolean } = {}) {
     if (options.quiet) {
@@ -606,12 +533,14 @@ function App() {
     void loadAgents();
   }
 
-  const topFeatures = pickTopFeatures(data.capabilities);
   const sampledSessions = data.status?.resources.sessions_sampled ?? effectiveSessions.length;
-  const totalTokens = effectiveSessions.reduce(
-    (sum, session) => sum + session.input_tokens + session.output_tokens,
-    0,
-  );
+
+  function handleNewSession() {
+    setSelectedSessionId(null);
+    setMessages([]);
+    setSessionMessages([]);
+    setView('chat');
+  }
 
   // Login screen
   if (showLogin) {
@@ -659,7 +588,46 @@ function App() {
           <span>{data.status?.model ?? t('topbar.modelPending')}</span>
         </div>
 
-        <div className="auth-cluster">
+        <nav className="topbar-nav">
+          <button
+            type="button"
+            className={`topbar-nav-btn ${view === 'config' && !editingPersona ? 'is-active' : ''}`}
+            onClick={handleCreatePersona}
+            title={t('rail.newPersona')}
+          >
+            <Plus size={15} aria-hidden="true" />
+            <span>{t('rail.newPersona')}</span>
+          </button>
+          <button
+            type="button"
+            className={`topbar-nav-btn ${view === 'office' ? 'is-active' : ''}`}
+            onClick={() => setView('office')}
+            title={t('rail.office')}
+          >
+            <Building2 size={15} aria-hidden="true" />
+            <span>{t('rail.office')}</span>
+          </button>
+          <button
+            type="button"
+            className={`topbar-nav-btn ${view === 'workspace' ? 'is-active' : ''}`}
+            onClick={() => setView('workspace')}
+            title={t('rail.workspace')}
+          >
+            <FolderTree size={15} aria-hidden="true" />
+            <span>{t('rail.workspace')}</span>
+          </button>
+          <button
+            type="button"
+            className={`topbar-nav-btn ${view === 'instance' ? 'is-active' : ''}`}
+            onClick={() => setView('instance')}
+            title={t('rail.instance')}
+          >
+            <Settings size={15} aria-hidden="true" />
+            <span>{t('rail.instance')}</span>
+          </button>
+        </nav>
+
+        <div className="topbar-actions">
           <button
             className="icon-button"
             type="button"
@@ -668,17 +636,6 @@ function App() {
           >
             <Globe size={16} aria-hidden="true" />
             <span style={{ fontSize: 11, marginLeft: 2 }}>{t('lang.switch')}</span>
-          </button>
-          <KeyRound size={16} aria-hidden="true" />
-          <input
-            aria-label={t('topbar.bearerToken')}
-            type="password"
-            value={authDraft}
-            onChange={(event) => setAuthDraft(event.target.value)}
-            placeholder={t('topbar.bearerToken')}
-          />
-          <button className="icon-button" type="button" onClick={saveAuthToken} title={t('topbar.saveToken')}>
-            <ShieldCheck size={16} aria-hidden="true" />
           </button>
           <button
             className="icon-button"
@@ -700,9 +657,6 @@ function App() {
           onSelect={handleSelectPersona}
           onEdit={handleEditPersona}
           onCreate={handleCreatePersona}
-          onInstance={() => setView('instance')}
-          onWorkspace={() => setView('workspace')}
-          onOffice={() => setView('office')}
         />
         <div className="console-main">
           {view === 'office' ? (
@@ -721,7 +675,7 @@ function App() {
             />
           ) : (
             <div
-              className={`workspace-grid ${showSessions ? '' : 'sessions-collapsed'} ${showPanel ? '' : 'panel-collapsed'}`}
+              className={`workspace-grid ${showSessions ? '' : 'sessions-collapsed'}`}
             >
         <aside className="left-rail">
           <section className="rail-section rail-section-metrics" aria-label="Runtime summary">
@@ -734,10 +688,6 @@ function App() {
                 <span>{data.tools.length}</span>
                 <small>{t('sessions.tools')}</small>
               </div>
-              <div>
-                <span>{compactNumber(totalTokens)}</span>
-                <small>{t('sessions.tokens')}</small>
-              </div>
             </div>
           </section>
 
@@ -747,7 +697,14 @@ function App() {
                 <p className="eyebrow">{t('sessions.title')}</p>
                 <h2>{t('sessions.recentWork')}</h2>
               </div>
-              <Database size={18} aria-hidden="true" />
+              <button
+                type="button"
+                className="icon-button"
+                title={t('sessions.newSession')}
+                onClick={handleNewSession}
+              >
+                <Plus size={16} aria-hidden="true" />
+              </button>
             </div>
             <div className="search-field">
               <Search size={15} aria-hidden="true" />
@@ -810,15 +767,6 @@ function App() {
               >
                 <PanelLeft size={16} aria-hidden="true" />
               </button>
-              <button
-                className={`icon-button ${showPanel ? 'is-active' : ''}`}
-                type="button"
-                onClick={() => setShowPanel((value) => !value)}
-                title={showPanel ? t('chat.hidePanel') : t('chat.showPanel')}
-                aria-pressed={showPanel}
-              >
-                <PanelRight size={16} aria-hidden="true" />
-              </button>
               <div className="chat-badges">
                 <span>
                   <Brain size={14} aria-hidden="true" />
@@ -869,21 +817,47 @@ function App() {
                         {t('chat.runningTurn')}
                       </span>
                     ) : null}
-                    {sending && index === transcriptMessages.length - 1 && message.role === 'assistant' && delegateStatuses.length > 0 && (
-                      <div className="delegate-progress">
-                        <div className="delegate-progress-header">
-                          <Loader2 className="spin" size={12} aria-hidden="true" />
-                          <span>{t('chat.working')}</span>
-                        </div>
-                        {delegateStatuses.map((d) => (
-                          <div key={d.taskId} className="delegate-progress-item">
-                            {d.title && <span className="delegate-title">{d.title}</span>}
-                            <span className="delegate-status">{d.status}</span>
-                            {d.timestamp && <span className="delegate-time">{d.timestamp}</span>}
+                    {sending && index === transcriptMessages.length - 1 && message.role === 'assistant' && delegateStatuses.length > 0 && (() => {
+                      const runningCount = delegateStatuses.filter(d => !d.status?.match(/done|complete|finish|error|fail/i)).length;
+                      const isParallel = delegateStatuses.length > 1;
+                      return (
+                        <div className="delegate-progress">
+                          <div className="delegate-progress-header">
+                            <Loader2 className="spin" size={12} aria-hidden="true" />
+                            <span>{t('chat.working')}</span>
+                            {isParallel && (
+                              <span className="delegate-parallel-badge">
+                                {runningCount > 0 ? `${runningCount} ${t('chat.parallel')}` : t('chat.parallel')}
+                              </span>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          <div className="delegate-progress-lanes">
+                            {delegateStatuses.map((d) => {
+                              const isDone = !!d.status?.match(/done|complete|finish/i);
+                              const isError = !!d.status?.match(/error|fail/i);
+                              const dotClass = isError ? 'is-error' : isDone ? 'is-done' : 'is-running';
+                              return (
+                                <div key={d.taskId} className="delegate-progress-item">
+                                  <span className={`delegate-lane-dot ${dotClass}`} />
+                                  <div className="delegate-item-body">
+                                    {d.title && <span className="delegate-title">{d.title}</span>}
+                                    <span className="delegate-status">{d.status}</span>
+                                    {d.timestamp && <span className="delegate-time">{d.timestamp}</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {isParallel && runningCount > 0 && (
+                            <div className="delegate-parallel-wave">
+                              {Array.from({ length: 8 }, (_, i) => (
+                                <span key={i} className="delegate-wave-bar" />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {message.content && (
                       <div className="message-actions">
                         <button
@@ -944,223 +918,6 @@ function App() {
           </form>
         </main>
 
-        <aside className="right-rail">
-          <nav className="panel-tabs" aria-label="Right panel">
-            <button
-              className={rightPanel === 'runtime' ? 'is-active' : ''}
-              type="button"
-              onClick={() => setRightPanel('runtime')}
-              title={t('panel.runtime')}
-            >
-              <Gauge size={17} aria-hidden="true" />
-              <span>{t('panel.runtime')}</span>
-            </button>
-            <button
-              className={rightPanel === 'tools' ? 'is-active' : ''}
-              type="button"
-              onClick={() => setRightPanel('tools')}
-              title={t('panel.tools')}
-            >
-              <Wrench size={17} aria-hidden="true" />
-              <span>{t('panel.tools')}</span>
-            </button>
-            <button
-              className={rightPanel === 'skills' ? 'is-active' : ''}
-              type="button"
-              onClick={() => setRightPanel('skills')}
-              title={t('panel.skills')}
-            >
-              <Layers3 size={17} aria-hidden="true" />
-              <span>{t('panel.skills')}</span>
-            </button>
-          </nav>
-
-          <div className="right-panel-scroll">
-            {rightPanel === 'runtime' && (
-              <div className="panel-stack">
-                <section className="runtime-card">
-                  <header>
-                    <Server size={18} aria-hidden="true" />
-                    <h3>{t('panel.server')}</h3>
-                  </header>
-                  <dl className="kv-grid">
-                    <div>
-                      <dt>{t('panel.status')}</dt>
-                      <dd>{data.status?.status ?? data.health?.status ?? t('panel.unknown')}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('panel.model')}</dt>
-                      <dd>{data.status?.model ?? t('panel.unknown')}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('panel.auth')}</dt>
-                      <dd>{data.status?.auth.required ? t('panel.required') : t('panel.open')}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('panel.persistence')}</dt>
-                      <dd>{data.status?.dashboard_admin.persistence ?? 'runtime'}</dd>
-                    </div>
-                  </dl>
-                </section>
-
-                <section className="runtime-card">
-                  <header>
-                    <Boxes size={18} aria-hidden="true" />
-                    <h3>{t('panel.resources')}</h3>
-                  </header>
-                  <div className="resource-grid">
-                    <span>
-                      <strong>{data.status?.resources.tools ?? data.tools.length}</strong>
-                      {t('panel.tools')}
-                    </span>
-                    <span>
-                      <strong>{data.mcp?.count ?? data.status?.resources.mcp_servers ?? 0}</strong>
-                      {t('panel.mcp')}
-                    </span>
-                    <span>
-                      <strong>{data.credentials?.count ?? data.status?.resources.credential_providers ?? 0}</strong>
-                      {t('panel.credentials')}
-                    </span>
-                    <span>
-                      <strong>{data.webhooks?.enabled ? 'on' : 'off'}</strong>
-                      {t('panel.webhook')}
-                    </span>
-                  </div>
-                </section>
-
-                <section className="runtime-card">
-                  <header>
-                    <BadgeCheck size={18} aria-hidden="true" />
-                    <h3>{t('panel.capabilities')}</h3>
-                  </header>
-                  <div className="feature-list">
-                    {topFeatures.map(([name, value]) => (
-                      <span key={name}>
-                        <i className={value ? 'feature-on' : 'feature-off'} />
-                        {name.replaceAll('_', ' ')}
-                        <b>{featureValue(value, t)}</b>
-                      </span>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="runtime-card">
-                  <header>
-                    <FileSearch size={18} aria-hidden="true" />
-                    <h3>{t('panel.sessionInspector')}</h3>
-                  </header>
-                  {selectedSession ? (
-                    <>
-                      <div className="session-inspector-head">
-                        <strong>{sessionLabel(selectedSession)}</strong>
-                        <span>{selectedSession.id}</span>
-                      </div>
-                      <div className="message-preview-list">
-                        {sessionLoading ? (
-                          <div className="panel-empty">{t('panel.loadingMessages')}</div>
-                        ) : (
-                          sessionMessages.slice(-8).map((message, index) => (
-                            <article className="message-preview" key={`${message.timestamp ?? index}-${message.role}`}>
-                              <header>
-                                <span>{roleLabel(message.role)}</span>
-                                <time>{formatDate(message.timestamp)}</time>
-                              </header>
-                              <p>{message.content ?? '[empty]'}</p>
-                            </article>
-                          ))
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="panel-empty">{t('panel.noSession')}</div>
-                  )}
-                </section>
-              </div>
-            )}
-
-            {rightPanel === 'tools' && (
-              <div className="panel-stack">
-                <section className="runtime-card">
-                  <header>
-                    <Wrench size={18} aria-hidden="true" />
-                    <h3>{t('panel.toolRegistry')}</h3>
-                  </header>
-                  <div className="search-field">
-                    <Search size={15} aria-hidden="true" />
-                    <input
-                      value={toolQuery}
-                      onChange={(event) => setToolQuery(event.target.value)}
-                      placeholder={t('panel.filterTools')}
-                    />
-                  </div>
-                  <div className="tool-list">
-                    {visibleTools.map((tool) => (
-                      <article className="tool-row" key={tool.name}>
-                        <strong>{tool.name}</strong>
-                        <p>{tool.description}</p>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-                <section className="runtime-card">
-                  <header>
-                    <Workflow size={18} aria-hidden="true" />
-                    <h3>{t('panel.toolsets')}</h3>
-                  </header>
-                  <div className="toolset-list">
-                    {data.toolsets.map((toolset) => (
-                      <span key={toolset.name}>
-                        <strong>{toolset.name}</strong>
-                        <small>{toolset.source} / {toolset.tool_count}</small>
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            )}
-
-            {rightPanel === 'skills' && (
-              <div className="panel-stack">
-                <section className="runtime-card">
-                  <header>
-                    <Layers3 size={18} aria-hidden="true" />
-                    <h3>{t('panel.activeSkills')}</h3>
-                  </header>
-                  <div className="skill-strip">
-                    {activeSkills.length ? (
-                      activeSkills.map((skill) => <span key={skill.name}>{skill.name}</span>)
-                    ) : (
-                      <span>{t('panel.none')}</span>
-                    )}
-                  </div>
-                </section>
-                <section className="runtime-card">
-                  <header>
-                    <Brain size={18} aria-hidden="true" />
-                    <h3>{t('panel.skillCatalog')}</h3>
-                  </header>
-                  <div className="skill-list">
-                    {data.skills.map((skill) => (
-                      <article className={`skill-row ${skill.active ? 'is-active' : ''}`} key={skill.name}>
-                        <header>
-                          <strong>{skill.name}</strong>
-                          <span>{skill.provenance}</span>
-                        </header>
-                        <p>{skill.description}</p>
-                        <footer>
-                          {skill.tags.slice(0, 4).map((tag) => (
-                            <span key={tag}>{tag}</span>
-                          ))}
-                        </footer>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            )}
-
-          </div>
-        </aside>
             </div>
           )}
         </div>
