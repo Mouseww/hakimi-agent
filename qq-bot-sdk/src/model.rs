@@ -15,25 +15,43 @@ pub struct GatewayPayload {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[repr(u8)]
+#[serde(try_from = "u8", into = "u8")]
 pub enum OpCode {
-    #[serde(rename = "0")]
     Dispatch = 0,
-    #[serde(rename = "1")]
     Heartbeat = 1,
-    #[serde(rename = "2")]
     Identify = 2,
-    #[serde(rename = "6")]
     Resume = 6,
-    #[serde(rename = "7")]
     Reconnect = 7,
-    #[serde(rename = "9")]
     InvalidSession = 9,
-    #[serde(rename = "10")]
     Hello = 10,
-    #[serde(rename = "11")]
     HeartbeatAck = 11,
-    #[serde(rename = "13")]
     HttpCallbackAck = 13,
+}
+
+impl TryFrom<u8> for OpCode {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(OpCode::Dispatch),
+            1 => Ok(OpCode::Heartbeat),
+            2 => Ok(OpCode::Identify),
+            6 => Ok(OpCode::Resume),
+            7 => Ok(OpCode::Reconnect),
+            9 => Ok(OpCode::InvalidSession),
+            10 => Ok(OpCode::Hello),
+            11 => Ok(OpCode::HeartbeatAck),
+            13 => Ok(OpCode::HttpCallbackAck),
+            _ => Err(format!("Unknown OpCode: {}", value)),
+        }
+    }
+}
+
+impl From<OpCode> for u8 {
+    fn from(op: OpCode) -> Self {
+        op as u8
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
