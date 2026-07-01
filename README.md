@@ -23,6 +23,11 @@
 </p>
 
 ---
+<img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
+
+<img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
 
 ## Install
 
@@ -304,26 +309,6 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Basic Hakimi WebUI operator console
 - [ ] WASM plugin runtime
 - [ ] Web dashboard PTY terminal, session-scoped streaming, and full Kanban UI
-
----
-
-## Changelog
-
-### v0.3.266 (2026-06-18)
-**消息队列功能** - 参考 Hermes Agent 实现并发消息处理
-
-- 🎯 **新增配置项** `gateways.busy_input_mode`（默认 `"queue"`）
-  - `"queue"` 模式：新消息排队等待当前任务完成
-  - `"interrupt"` 模式：立即取消当前任务（原有行为）
-- 🔄 **队列处理机制**：任务完成后自动处理队列中的下一条消息
-- 💬 **用户友好提示**：队列模式下显示 "⏳ 正在处理之前的消息，已将新消息加入队列..."
-- 🧩 **无缝集成**：支持文本和媒体附件的队列化处理
-- 🐛 **向后兼容**：可通过配置切换回 interrupt 模式
-
-**技术细节**：
-- 添加 `QueuedMessage` 结构体和 per-chat 队列存储
-- 实现基于 `task_key` 的消息队列管理（`platform:bot_id:chat_id`）
-- 任务完成后通过 `gateway.route_message()` 递归触发下一条消息
 
 ---
 
