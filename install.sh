@@ -128,7 +128,20 @@ info "Download URL: ${DOWNLOAD_URL}"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-printf "${BOLD}Installing Hakimi Agent...${RESET}\n"
+# Print banner
+echo ""
+echo "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════╗${RESET}"
+echo "${BOLD}${BLUE}║                                                              ║${RESET}"
+echo "${BOLD}${BLUE}║${RESET}   ${BOLD}${GREEN}_  _               _ _             _${RESET}                   ${BOLD}${BLUE}║${RESET}"
+echo "${BOLD}${BLUE}║${RESET}  ${BOLD}${GREEN}| || |__ _ __ _ __ (_) |_ _  _ __ _| |___ _ _${RESET}          ${BOLD}${BLUE}║${RESET}"
+echo "${BOLD}${BLUE}║${RESET}  ${BOLD}${GREEN}| __ / _\` / _| '  \\| |  _| || / _\` | / -_) '_|${RESET}         ${BOLD}${BLUE}║${RESET}"
+echo "${BOLD}${BLUE}║${RESET}  ${BOLD}${GREEN}|_||_\\__,_\\__|_|_|_|_|\\__|\\_, \\__,_|_\\___|_|${RESET}           ${BOLD}${BLUE}║${RESET}"
+echo "${BOLD}${BLUE}║${RESET}                         ${BOLD}${GREEN}|__/${RESET}                            ${BOLD}${BLUE}║${RESET}"
+echo "${BOLD}${BLUE}║                                                              ║${RESET}"
+echo "${BOLD}${BLUE}║${RESET}            ${BOLD}${YELLOW}AI-Powered Development Environment${RESET}            ${BOLD}${BLUE}║${RESET}"
+echo "${BOLD}${BLUE}║                                                              ║${RESET}"
+echo "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════╝${RESET}"
+echo ""
 
 mkdir -p "$INSTALL_DIR"
 
@@ -301,13 +314,19 @@ ensure_usr_local_hakimi_is_shim "$WANT_SYSTEM_LINK"
 # ── Verify installation ─────────────────────────────────────────────────────
 
 echo ""
+echo "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 if "$INSTALL_DIR/hakimi" --version &>/dev/null; then
-    success "Hakimi Agent installed successfully!"
+    VERSION_INFO=$("$INSTALL_DIR/hakimi" --version 2>&1 | head -1)
     echo ""
-    printf "  Run ${BOLD}hakimi${RESET} to get started.\n"
+    echo "  ${GREEN}✓${RESET} ${BOLD}${GREEN}Installation successful!${RESET}"
+    echo ""
+    echo "  ${BOLD}Version:${RESET}        ${VERSION_INFO}"
+    echo "  ${BOLD}Installed to:${RESET}   ${INSTALL_DIR}/hakimi"
+    echo ""
 else
-    success "Hakimi Agent installed to ${INSTALL_DIR}/hakimi"
+    echo "  ${GREEN}✓${RESET} ${BOLD}Hakimi Agent installed to ${INSTALL_DIR}/hakimi${RESET}"
 fi
+echo "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
 # ── Optional: run setup wizard ──────────────────────────────────────────────
 

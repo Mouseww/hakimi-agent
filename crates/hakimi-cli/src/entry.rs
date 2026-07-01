@@ -4222,10 +4222,35 @@ pub enum TopLevelCommand {
     Import(ImportCommandArgs),
 }
 
+/// Generate a rich version string for `--version` output
+fn long_version() -> &'static str {
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+    const BUILD_INFO: &str = concat!(
+        "\n",
+        "╭───────────────────────────────────────────────╮\n",
+        "│                                               │\n",
+        "│    _  _               _ _             _       │\n",
+        "│   | || |__ _ __ _ __ (_) |_ _  _ __ _| |___   │\n",
+        "│   | __ / _` / _| '  \\| |  _| || / _` | / -_)  │\n",
+        "│   |_||_\\__,_\\__|_|_|_|_|\\__|\\_, \\__,_|_\\___|  │\n",
+        "│                             |__/              │\n",
+        "│                                               │\n",
+        "│       AI-Powered Development Environment      │\n",
+        "│                                               │\n",
+        "╰───────────────────────────────────────────────╯\n",
+        "\n",
+        "Version:        ", env!("CARGO_PKG_VERSION"), "\n",
+        "Repository:     https://github.com/Mouseww/hakimi-agent\n",
+        "Documentation:  https://github.com/Mouseww/hakimi-agent#readme\n"
+    );
+    BUILD_INFO
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "hakimi",
     version,
+    long_version = long_version(),
     about = "Hakimi Agent — AI-powered coding assistant"
 )]
 pub struct Args {

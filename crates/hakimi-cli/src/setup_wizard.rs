@@ -144,16 +144,17 @@ const MCP_SERVERS: &[McpServerDef] = &[
 
 fn print_banner() {
     println!();
-    println!(r"  ╔═══════════════════════════════════════════════════════╗");
-    println!(r"  ║                                                       ║");
-    println!(r"  ║    _  _               _ _             _               ║");
-    println!(r"  ║   | || |__ _ __ _ __ (_) |_ _  _ __ _| |___ _ _      ║");
-    println!(r"  ║   | __ / _` / _| '  \| |  _| || / _` | / -_) '_|    ║");
-    println!(r"  ║   |_||_\__,_\__|_|_|_|_|\__|\_,_\__,_|_\___|_|       ║");
-    println!(r"  ║                                                       ║");
-    println!(r"  ║           Interactive Setup Wizard                    ║");
-    println!(r"  ║                                                       ║");
-    println!(r"  ╚═══════════════════════════════════════════════════════╝");
+    println!(r"  ╔═══════════════════════════════════════════════════════════════╗");
+    println!(r"  ║                                                               ║");
+    println!(r"  ║    _  _               _ _             _                       ║");
+    println!(r"  ║   | || |__ _ __ _ __ (_) |_ _  _ __ _| |___ _ _              ║");
+    println!(r"  ║   | __ / _` / _| '  \| |  _| || / _` | / -_) '_|             ║");
+    println!(r"  ║   |_||_\__,_\__|_|_|_|_|\__|\_, \__,_|_\___|_|               ║");
+    println!(r"  ║                             |__/                             ║");
+    println!(r"  ║                                                               ║");
+    println!(r"  ║           🚀 Interactive Setup Wizard                         ║");
+    println!(r"  ║                                                               ║");
+    println!(r"  ╚═══════════════════════════════════════════════════════════════╝");
     println!();
     println!("  Welcome to Hakimi Agent! This wizard will guide you through");
     println!("  the initial configuration. Press Ctrl+C at any time to exit.");
