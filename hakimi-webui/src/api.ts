@@ -405,6 +405,13 @@ export interface GatewayConfigResponse {
   filter_silence_narration: boolean;
 }
 
+export interface GatewayPlatformConfig {
+  platform: string;
+  enabled: boolean;
+  bot_id: string;
+  config: Record<string, unknown>;
+}
+
 export const api = {
   health: () => request<HealthResponse>('/api/health'),
   status: () => request<DashboardStatus>('/api/status'),
@@ -489,6 +496,12 @@ export const api = {
   workspaceRead: (path: string) =>
     request<WorkspaceReadResponse>(`/api/workspace/read?path=${encodeURIComponent(path)}`),
   activitySnapshot: () => request<ActivitySnapshotResponse>('/api/activity/snapshot'),
+  gatewayPlatforms: () => request<GatewayPlatformConfig[]>('/api/gateways/platforms'),
+  updateGatewayPlatform: (platform: string, config: Record<string, unknown>) =>
+    request<{ success: boolean; message: string; restart_required?: boolean }>(
+      `/api/gateways/platforms/${encodeURIComponent(platform)}`,
+      { method: 'PATCH', body: JSON.stringify(config) },
+    ),
 };
 
 /**

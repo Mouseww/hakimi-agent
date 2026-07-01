@@ -635,6 +635,7 @@ pub struct GatewaysConfig {
     #[serde(default = "default_gateway_filter_silence_narration")]
     pub filter_silence_narration: bool,
     /// Behavior when a new message arrives while an agent is already running.
+    /// - "parallel": run all messages concurrently as independent tasks
     /// - "interrupt": immediately cancel the running task and start a new one
     /// - "queue": queue the new message and process it after the current task finishes
     #[serde(default = "default_busy_input_mode")]
@@ -687,7 +688,7 @@ fn default_gateway_filter_silence_narration() -> bool {
 }
 
 fn default_busy_input_mode() -> String {
-    "queue".to_string()
+    "parallel".to_string()
 }
 
 impl Default for GatewaysConfig {
@@ -696,7 +697,7 @@ impl Default for GatewaysConfig {
             allow_all: false,
             allowed_users: Vec::new(),
             filter_silence_narration: default_gateway_filter_silence_narration(),
-            busy_input_mode: default_busy_input_mode(),
+            busy_input_mode: "parallel".to_string(),
             streaming: GatewayStreamingConfig::default(),
             telegram: TelegramGatewayConfig::default(),
             clawbot: ClawBotGatewayConfig::default(),

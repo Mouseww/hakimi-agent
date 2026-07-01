@@ -243,12 +243,15 @@ function App() {
   }
 
   // Merge gateway sessions with agent sessions: include sessions from
-  // the global pool whose source indicates gateway origin.
+  // the global pool whose source starts with "gateway:" (covers all platforms).
   const effectiveSessions = useMemo(() => {
     if (!activePersonaId) return data.sessions;
     const agentIds = new Set(agentSessionList.map((s) => s.id));
     const gatewayExtras = data.sessions.filter(
-      (s) => !agentIds.has(s.id) && s.source && /gateway|telegram|slack|discord|qq/i.test(s.source),
+      (s) =>
+        !agentIds.has(s.id) &&
+        s.source &&
+        (s.source.startsWith('gateway:') || /^gateway$/i.test(s.source)),
     );
     return [...agentSessionList, ...gatewayExtras];
   }, [activePersonaId, agentSessionList, data.sessions]);

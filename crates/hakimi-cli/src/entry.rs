@@ -5613,6 +5613,91 @@ fn build_gateway_persona_agents(
 /// Start gateway mode.
 /// Process gateway messages loop - shared by separated and unified modes
 #[allow(clippy::too_many_arguments)]
+/// Resolve the session DB for a given persona. Default persona uses the shared
+/// instance DB; named personas use per-persona DBs under `agents/<id>/sessions.db`.
+async fn resolve_gateway_session_db(
+    persona_id: &str,
+    session_db: &std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>,
+    persona_session_dbs: &hakimi_server::server::PersonaSessionDbs,
+    runtime_home: &hakimi_common::RuntimeHome,
+) -> Option<std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>> {
+    if persona_id == hakimi_core::DEFAULT_PERSONA_ID {
+        return Some(session_db.clone());
+    }
+    if let Some(db) = persona_session_dbs.read().await.get(persona_id) {
+        return Some(db.clone());
+    }
+    let path = runtime_home.agents_dir().join(persona_id).join("sessions.db");
+    let pid = persona_id.to_string();
+    let db = match tokio::task::spawn_blocking(move || {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        let db = hakimi_session::SessionDB::new(&path)?;
+        db.initialize()?;
+        Ok::<_, anyhow::Error>(db)
+    })
+    .await
+    {
+        Ok(Ok(db)) => db,
+        _ => return None,
+    };
+    let arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
+    persona_session_dbs
+        .write()
+        .await
+        .insert(pid, arc.clone());
+    Some(arc)
+}
+
+/// Persist a gateway turn as a session record. Creates the session on first
+/// contact; updates usage totals after each turn.
+async fn gateway_persist_session(
+    session_db: &std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>,
+    session_id: &str,
+    source: &str,
+    user_id: Option<&str>,
+    model: &str,
+    title: Option<&str>,
+    user_text: &str,
+    assistant_text: &str,
+) {
+    use hakimi_session::SessionOps;
+    let db = session_db.lock().await;
+    if db.get_session(session_id).ok().flatten().is_none() {
+        let auto_title = if let Some(t) = title {
+            t.to_string()
+        } else {
+            let max_len = 60;
+            let cleaned: String = user_text.split_whitespace().collect::<Vec<&str>>().join(" ");
+            if cleaned.chars().count() <= max_len {
+                cleaned
+            } else {
+                let truncated: String = cleaned.chars().take(max_len).collect();
+                format!("{}...", truncated.trim_end())
+            }
+        };
+        if let Ok(id) = db.create_session_with_id(
+            session_id,
+            source,
+            user_id,
+            Some(model),
+            None,
+            None,
+        ) {
+            let _ = db.set_title(&id, &auto_title);
+        }
+    }
+    let usage = hakimi_common::Usage {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        reasoning_tokens: 0,
+    };
+    let _ = db.update_session_totals(session_id, &usage, 1);
+}
+
 async fn process_gateway_messages_loop(
     mut messages: tokio::sync::mpsc::UnboundedReceiver<hakimi_gateway::GatewayMessage>,
     gateway: std::sync::Arc<hakimi_gateway::Gateway>,
@@ -5646,6 +5731,8 @@ async fn process_gateway_messages_loop(
     onboarding_config_path: std::sync::Arc<std::path::PathBuf>,
     runtime_home: std::sync::Arc<hakimi_common::RuntimeHome>,
     config: hakimi_config::HakimiConfig,
+    session_db: std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>,
+    persona_session_dbs: hakimi_server::server::PersonaSessionDbs,
 ) -> Result<()> {
     use std::collections::{HashMap, VecDeque};
     // Base team executor: teammates are built from the instance template (the
@@ -5664,6 +5751,7 @@ async fn process_gateway_messages_loop(
         let platform = msg.platform.clone();
         let text = msg.text.clone();
         let media_id = msg.media.clone();
+        let msg_user_id = msg.user_id.clone();
 
         // Resolve the persona that owns this channel (falls back to the default
         // persona). Histories are scoped to the persona so chats never bleed
@@ -5804,6 +5892,8 @@ async fn process_gateway_messages_loop(
         let persona_cfg = persona_cfg.clone();
         let persona_id = persona_id.clone();
         let history_key = history_key.clone();
+        let session_db = session_db.clone();
+        let persona_session_dbs = persona_session_dbs.clone();
 
         let config_clone = config.clone();
         tokio::spawn(async move {
@@ -5830,34 +5920,43 @@ async fn process_gateway_messages_loop(
                 (agent_clone.clone(), false)
             };
 
+            // Slash commands are always independent -- skip busy_mode
+            // checks so they execute immediately even while a task is running.
+            let is_slash_command = text.starts_with('/')
+                && Command::parse(&text).is_some();
+
             // Check busy input mode configuration
             let busy_mode = config.gateways.busy_input_mode.as_str();
             let guidance_arc: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
                 std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             {
                 let mut active = active_tasks.lock().await;
-                if let Some(previous) = active.get(&task_key) {
-                    // There's already an active task for this chat
-                    if busy_mode == "queue" {
-                        // Inject the message as guidance into the running task's
-                        // context so the LLM sees it on its next iteration.
-                        if let Ok(mut g) = previous.guidance.lock() {
-                            g.push(text.clone());
-                        }
+                if !is_slash_command {
+                    if let Some(previous) = active.get(&task_key) {
+                        // There's already an active task for this chat
+                        if busy_mode == "queue" {
+                            // Inject the message as guidance into the running task's
+                            // context so the LLM sees it on its next iteration.
+                            if let Ok(mut g) = previous.guidance.lock() {
+                                g.push(text.clone());
+                            }
 
-                        send_gateway_text(
-                            &gateway_clone,
-                            &platform,
-                            &bot_id,
-                            &chat_id,
-                            "💡 已将消息融入当前任务上下文，下次 AI 调用时会参考。",
-                        )
-                        .await;
-                        return;
-                    } else {
-                        // Interrupt mode: cancel previous task
-                        previous.cancel();
-                        debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
+                            send_gateway_text(
+                                &gateway_clone,
+                                &platform,
+                                &bot_id,
+                                &chat_id,
+                                "💡 已将消息融入当前任务上下文，下次 AI 调用时会参考。",
+                            )
+                            .await;
+                            return;
+                        } else if busy_mode == "interrupt" {
+                            // Interrupt mode: cancel previous task
+                            previous.cancel();
+                            debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
+                        }
+                        // Parallel mode (default): let previous task keep running,
+                        // start a new independent task concurrently.
                     }
                 }
 
@@ -6114,10 +6213,18 @@ Just send a message to chat with me!"
                             let _ = gateway.route_message(&result_msg).await;
 
                             if success {
-                                let _ = std::process::Command::new("bash")
-                                    .arg("-c")
-                                    .arg("nohup sh -c 'pkill -f \"hakimi --gateway\"; hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' &")
-                                    .spawn();
+                                // Try systemd restart first (matches /restart behavior),
+                                // fall back to direct process restart.
+                                let restarted = tokio::task::spawn_blocking(restart_gateway_service)
+                                    .await
+                                    .map(|r| r.is_ok())
+                                    .unwrap_or(false);
+                                if !restarted {
+                                    let _ = std::process::Command::new("bash")
+                                        .arg("-c")
+                                        .arg("nohup sh -c 'pkill -f \"hakimi --gateway\"; hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' &")
+                                        .spawn();
+                                }
                             }
                         });
                         "Update sequence initiated...".to_string()
@@ -6809,6 +6916,31 @@ Just send a message to chat with me!"
                             let mut usage = last_usage.lock().await;
                             usage.insert(chat_id.clone(), usage_snapshot);
                         }
+                        if let Some(db) = resolve_gateway_session_db(
+                            &persona_id,
+                            &session_db,
+                            &persona_session_dbs,
+                            &runtime_home,
+                        )
+                        .await
+                        {
+                            let gw_session_id =
+                                format!("gw-{}-{}", platform, chat_id);
+                            let source =
+                                format!("gateway:{}", platform);
+                            let model = turn_agent.model().to_string();
+                            gateway_persist_session(
+                                &db,
+                                &gw_session_id,
+                                &source,
+                                Some(&msg_user_id),
+                                &model,
+                                None,
+                                &text,
+                                &res.final_response,
+                            )
+                            .await;
+                        }
                         (res.final_response, None, stream_snapshot)
                     }
                     Err(e) if e.to_string() == "cancelled by /stop" => {
@@ -6984,6 +7116,18 @@ async fn start_gateway(
     let onboarding_state = Arc::new(Mutex::new(config.clone()));
     let onboarding_config_path = Arc::new(hakimi_config_path(&runtime_home));
     let runtime_home = Arc::new(runtime_home);
+
+    // Initialize session DB for gateway session persistence.
+    let gw_db_path = runtime_home.sessions_db_path();
+    let gw_db = tokio::task::spawn_blocking(move || {
+        let db = hakimi_session::SessionDB::new(&gw_db_path)?;
+        db.initialize()?;
+        Ok::<_, anyhow::Error>(db)
+    })
+    .await??;
+    let session_db: Arc<Mutex<hakimi_session::SessionDB>> = Arc::new(Mutex::new(gw_db));
+    let persona_session_dbs: hakimi_server::server::PersonaSessionDbs =
+        Arc::new(tokio::sync::RwLock::new(HashMap::new()));
 
     // Persona registry + per-persona base agents for gateway routing.
     let persona_registry = Arc::new(tokio::sync::RwLock::new(
@@ -7187,6 +7331,8 @@ async fn start_gateway(
         onboarding_config_path,
         runtime_home,
         config,
+        session_db,
+        persona_session_dbs,
     )
     .await?;
 
@@ -7324,6 +7470,10 @@ async fn start_unified_server(
     let onboarding_config_path_for_msg = onboarding_config_path.clone();
     let runtime_home_for_msg = runtime_home_arc.clone();
     let config_for_msg = config.clone();
+    let session_db_for_msg = session_db.clone();
+    let shared_persona_session_dbs: hakimi_server::server::PersonaSessionDbs =
+        Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+    let persona_session_dbs_for_msg = shared_persona_session_dbs.clone();
 
     tokio::spawn(async move {
         let _ = process_gateway_messages_loop(
@@ -7345,6 +7495,8 @@ async fn start_unified_server(
             onboarding_config_path_for_msg,
             runtime_home_for_msg,
             config_for_msg,
+            session_db_for_msg,
+            persona_session_dbs_for_msg,
         )
         .await;
     });
@@ -7527,7 +7679,7 @@ async fn start_unified_server(
         gateway: Some(gateway.clone()),
         persona_registry,
         persona_agents,
-        persona_session_dbs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        persona_session_dbs: shared_persona_session_dbs,
     };
 
     let app = hakimi_server::api::build_router(app_state);

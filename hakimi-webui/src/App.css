@@ -2037,6 +2037,129 @@ h3 {
   cursor: not-allowed;
 }
 
+/* ---- Gateway Platforms ---- */
+.gateway-platforms {
+  background: #1e2029;
+  border: 1px solid #2a2d3a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.gateway-platforms h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #e8eaed;
+  margin: 0 0 1rem 0;
+}
+
+.platform-card {
+  background: #23252f;
+  border: 1px solid #2a2d3a;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+
+.platform-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.platform-card-header:hover {
+  background: #2a2d3a;
+}
+
+.platform-bot-id {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-family: 'JetBrains Mono', 'Monaco', 'Courier New', monospace;
+  background: #2a2d3a;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+}
+
+.platform-card-details {
+  padding: 0.5rem 0.75rem 0.75rem 1.75rem;
+  border-top: 1px solid #2a2d3a;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.platform-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.platform-detail-key {
+  color: #9ca3af;
+  min-width: 120px;
+  text-transform: capitalize;
+}
+
+.platform-detail-value {
+  color: #e8eaed;
+  font-family: 'JetBrains Mono', 'Monaco', 'Courier New', monospace;
+  word-break: break-all;
+}
+
+.disabled-platforms-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.platform-chip-disabled {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  background: #23252f;
+  border: 1px solid #2a2d3a;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.platform-chip-disabled:hover {
+  border-color: #3d4152;
+  color: #9ca3af;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"],
+.form-group input[type="number"] {
+  padding: 0.75rem;
+  background: #2a2d3a;
+  border: 1px solid #3d4152;
+  border-radius: 6px;
+  color: #e8eaed;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus,
+.form-group input[type="number"]:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.panel-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
 /* ---- Login overlay ---- */
 .login-overlay {
   display: flex;

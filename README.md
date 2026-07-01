@@ -175,9 +175,10 @@ hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 - 🎯 **用户体验**：解决 queue 模式下 `/stop` 后队列消息继续执行的问题
 
 **v0.3.266 — 消息队列功能 (参考 Hermes Agent):**
-- 📬 **Queue 模式**：新消息加入队列，任务按顺序执行（默认）
-- ⚡ **Interrupt 模式**：新消息立即中断当前任务（向后兼容）
-- 🎛️ **配置项**：`gateways.busy_input_mode` (`"queue"` | `"interrupt"`)
+- 🔀 **Parallel 模式**：所有消息独立并发执行（默认）
+- 📬 **Queue 模式**：新消息加入队列，任务按顺序执行
+- ⚡ **Interrupt 模式**：新消息立即中断当前任务
+- 🎛️ **配置项**：`gateways.busy_input_mode` (`"parallel"` | `"queue"` | `"interrupt"`)
 - 💬 **用户提示**：排队时显示友好消息
 - 🔄 **架构对齐**：参考 Hermes Agent 的并发处理机制
 

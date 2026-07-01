@@ -1886,6 +1886,9 @@ async fn gateway_config(
 #[derive(Debug, serde::Deserialize)]
 struct GatewayConfigUpdate {
     busy_input_mode: Option<String>,
+    allow_all: Option<bool>,
+    allowed_users: Option<Vec<String>>,
+    filter_silence_narration: Option<bool>,
 }
 
 async fn gateway_update_config(
@@ -1895,12 +1898,12 @@ async fn gateway_update_config(
     let mut config = state.config.lock().await;
 
     if let Some(mode) = req.busy_input_mode {
-        if mode != "queue" && mode != "interrupt" {
+        if mode != "parallel" && mode != "queue" && mode != "interrupt" {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
                     error: format!(
-                        "Invalid busy_input_mode: {}. Must be 'queue' or 'interrupt'",
+                        "Invalid busy_input_mode: {}. Must be 'parallel', 'queue', or 'interrupt'",
                         mode
                     ),
                 }),
@@ -1908,24 +1911,22 @@ async fn gateway_update_config(
         }
         config.gateways.busy_input_mode = mode.clone();
     }
-
-    // Save config to disk
-    let config_path = std::env::var("HOME")
-        .map(|h| format!("{}/.hakimi/config.yaml", h))
-        .unwrap_or_else(|_| "/root/.hakimi/config.yaml".to_string());
-
-    match std::fs::write(&config_path, serde_yaml::to_string(&*config).unwrap()) {
-        Ok(_) => Ok(Json(json!({
-            "success": true,
-            "message": "Gateway configuration updated"
-        }))),
-        Err(e) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to save config: {}", e),
-            }),
-        )),
+    if let Some(allow_all) = req.allow_all {
+        config.gateways.allow_all = allow_all;
     }
+    if let Some(users) = req.allowed_users {
+        config.gateways.allowed_users = users;
+    }
+    if let Some(filter) = req.filter_silence_narration {
+        config.gateways.filter_silence_narration = filter;
+    }
+
+    save_config_to_disk(&config)?;
+
+    Ok(Json(json!({
+        "success": true,
+        "message": "Gateway configuration updated"
+    })))
 }
 
 async fn gateway_restart(
@@ -1958,6 +1959,418 @@ async fn gateway_restart(
             }),
         )),
     }
+}
+
+/// Mask a secret string for safe display: show first 4 and last 2 chars.
+fn mask_secret(s: &str) -> String {
+    if s.is_empty() {
+        return String::new();
+    }
+    if s.len() <= 8 {
+        return "*".repeat(s.len());
+    }
+    let prefix = &s[..4];
+    let suffix = &s[s.len() - 2..];
+    format!("{prefix}{}…{suffix}", "*".repeat(4))
+}
+
+fn config_home_path() -> String {
+    std::env::var("HOME")
+        .map(|h| format!("{h}/.hakimi/config.yaml"))
+        .unwrap_or_else(|_| "/root/.hakimi/config.yaml".to_string())
+}
+
+fn save_config_to_disk(
+    config: &hakimi_config::HakimiConfig,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let path = config_home_path();
+    std::fs::write(&path, serde_yaml::to_string(config).unwrap()).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to save config: {e}"),
+        )
+    })
+}
+
+/// GET /api/gateways/platforms -- list every gateway platform with its config.
+async fn list_gateway_platforms(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let config = state.config.lock().await;
+    let gw = &config.gateways;
+
+    let platforms = json!([
+        {
+            "platform": "telegram",
+            "enabled": !gw.telegram.bot_token.is_empty(),
+            "bot_id": "telegram_bot",
+            "config": {
+                "bot_token": mask_secret(&gw.telegram.bot_token),
+                "allowed_users": gw.telegram.allowed_users,
+            }
+        },
+        {
+            "platform": "qqbot",
+            "enabled": gw.qqbot.enabled,
+            "bot_id": gw.qqbot.bot_id,
+            "config": {
+                "enabled": gw.qqbot.enabled,
+                "bot_id": gw.qqbot.bot_id,
+                "app_id": mask_secret(&gw.qqbot.app_id),
+                "client_secret": mask_secret(&gw.qqbot.client_secret),
+                "home_channel": gw.qqbot.home_channel,
+                "default_chat_type": gw.qqbot.default_chat_type,
+                "markdown_support": gw.qqbot.markdown_support,
+            }
+        },
+        {
+            "platform": "clawbot",
+            "enabled": gw.clawbot.enabled,
+            "bot_id": gw.clawbot.bot_id,
+            "config": {
+                "enabled": gw.clawbot.enabled,
+                "bot_id": gw.clawbot.bot_id,
+                "mode": gw.clawbot.mode,
+                "base_url": gw.clawbot.base_url,
+                "token": mask_secret(&gw.clawbot.token),
+                "poll_path": gw.clawbot.poll_path,
+                "send_path": gw.clawbot.send_path,
+                "poll_interval_ms": gw.clawbot.poll_interval_ms,
+            }
+        },
+        {
+            "platform": "weixin",
+            "enabled": gw.weixin.enabled,
+            "bot_id": gw.weixin.bot_id,
+            "config": {
+                "enabled": gw.weixin.enabled,
+                "bot_id": gw.weixin.bot_id,
+                "base_url": gw.weixin.base_url,
+                "token": mask_secret(&gw.weixin.token),
+                "home_channel": gw.weixin.home_channel,
+                "login_notify_platform": gw.weixin.login_notify_platform,
+                "login_notify_bot_id": gw.weixin.login_notify_bot_id,
+                "login_notify_chat_id": gw.weixin.login_notify_chat_id,
+            }
+        },
+        {
+            "platform": "discord",
+            "enabled": gw.discord.enabled,
+            "bot_id": gw.discord.bot_id,
+            "config": {
+                "enabled": gw.discord.enabled,
+                "bot_id": gw.discord.bot_id,
+                "token": mask_secret(&gw.discord.token),
+                "channel_id": gw.discord.channel_id,
+            }
+        },
+        {
+            "platform": "slack",
+            "enabled": gw.slack.enabled,
+            "bot_id": gw.slack.bot_id,
+            "config": {
+                "enabled": gw.slack.enabled,
+                "bot_id": gw.slack.bot_id,
+                "token": mask_secret(&gw.slack.token),
+                "channel_id": gw.slack.channel_id,
+            }
+        },
+        {
+            "platform": "dingtalk",
+            "enabled": gw.dingtalk.enabled,
+            "bot_id": gw.dingtalk.bot_id,
+            "config": {
+                "enabled": gw.dingtalk.enabled,
+                "bot_id": gw.dingtalk.bot_id,
+            }
+        },
+        {
+            "platform": "feishu",
+            "enabled": gw.feishu.enabled,
+            "bot_id": gw.feishu.bot_id,
+            "config": {
+                "enabled": gw.feishu.enabled,
+                "bot_id": gw.feishu.bot_id,
+            }
+        },
+        {
+            "platform": "wecom",
+            "enabled": gw.wecom.enabled,
+            "bot_id": gw.wecom.bot_id,
+            "config": {
+                "enabled": gw.wecom.enabled,
+                "bot_id": gw.wecom.bot_id,
+            }
+        },
+        {
+            "platform": "webhook",
+            "enabled": gw.webhook.enabled,
+            "bot_id": gw.webhook.bot_id,
+            "config": {
+                "enabled": gw.webhook.enabled,
+                "bot_id": gw.webhook.bot_id,
+                "port": gw.webhook.port,
+                "path": gw.webhook.path,
+                "secret": mask_secret(&gw.webhook.secret),
+            }
+        },
+        {
+            "platform": "mattermost",
+            "enabled": gw.mattermost.enabled,
+            "bot_id": gw.mattermost.bot_id,
+            "config": {
+                "enabled": gw.mattermost.enabled,
+                "bot_id": gw.mattermost.bot_id,
+                "base_url": gw.mattermost.base_url,
+                "token": mask_secret(&gw.mattermost.token),
+            }
+        },
+        {
+            "platform": "signal",
+            "enabled": gw.signal.enabled,
+            "bot_id": gw.signal.bot_id,
+            "config": {
+                "enabled": gw.signal.enabled,
+                "bot_id": gw.signal.bot_id,
+            }
+        },
+        {
+            "platform": "email",
+            "enabled": gw.email.enabled,
+            "bot_id": gw.email.bot_id,
+            "config": {
+                "enabled": gw.email.enabled,
+                "bot_id": gw.email.bot_id,
+            }
+        },
+        {
+            "platform": "whatsapp",
+            "enabled": gw.whatsapp.enabled,
+            "bot_id": gw.whatsapp.bot_id,
+            "config": {
+                "enabled": gw.whatsapp.enabled,
+                "bot_id": gw.whatsapp.bot_id,
+            }
+        },
+        {
+            "platform": "matrix",
+            "enabled": gw.matrix.enabled,
+            "bot_id": gw.matrix.bot_id,
+            "config": {
+                "enabled": gw.matrix.enabled,
+                "bot_id": gw.matrix.bot_id,
+            }
+        },
+        {
+            "platform": "homeassistant",
+            "enabled": gw.homeassistant.enabled,
+            "bot_id": gw.homeassistant.bot_id,
+            "config": {
+                "enabled": gw.homeassistant.enabled,
+                "bot_id": gw.homeassistant.bot_id,
+            }
+        },
+        {
+            "platform": "bluebubbles",
+            "enabled": gw.bluebubbles.enabled,
+            "bot_id": gw.bluebubbles.bot_id,
+            "config": {
+                "enabled": gw.bluebubbles.enabled,
+                "bot_id": gw.bluebubbles.bot_id,
+            }
+        },
+        {
+            "platform": "sms",
+            "enabled": gw.sms.enabled,
+            "bot_id": gw.sms.bot_id,
+            "config": {
+                "enabled": gw.sms.enabled,
+                "bot_id": gw.sms.bot_id,
+            }
+        },
+        {
+            "platform": "msgraph",
+            "enabled": gw.msgraph_webhook.enabled,
+            "bot_id": gw.msgraph_webhook.bot_id,
+            "config": {
+                "enabled": gw.msgraph_webhook.enabled,
+                "bot_id": gw.msgraph_webhook.bot_id,
+            }
+        },
+    ]);
+
+    Ok(Json(platforms))
+}
+
+/// PATCH /api/gateways/platforms/{platform} -- update a platform's config.
+async fn update_gateway_platform(
+    State(state): State<AppState>,
+    Path(platform): Path<String>,
+    Json(req): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let mut config = state.config.lock().await;
+
+    macro_rules! apply_str {
+        ($target:expr, $field:literal, $req:expr) => {
+            if let Some(v) = $req.get($field).and_then(|v| v.as_str()) {
+                $target = v.to_string();
+            }
+        };
+    }
+    macro_rules! apply_bool {
+        ($target:expr, $field:literal, $req:expr) => {
+            if let Some(v) = $req.get($field).and_then(|v| v.as_bool()) {
+                $target = v;
+            }
+        };
+    }
+
+    match platform.as_str() {
+        "telegram" => {
+            let tg = &mut config.gateways.telegram;
+            apply_str!(tg.bot_token, "bot_token", req);
+            if let Some(users) = req.get("allowed_users").and_then(|v| v.as_array()) {
+                tg.allowed_users = users
+                    .iter()
+                    .filter_map(|v| v.as_i64())
+                    .collect();
+            }
+        }
+        "qqbot" => {
+            let qq = &mut config.gateways.qqbot;
+            apply_bool!(qq.enabled, "enabled", req);
+            apply_str!(qq.bot_id, "bot_id", req);
+            apply_str!(qq.app_id, "app_id", req);
+            apply_str!(qq.client_secret, "client_secret", req);
+            apply_str!(qq.home_channel, "home_channel", req);
+            apply_str!(qq.default_chat_type, "default_chat_type", req);
+            apply_bool!(qq.markdown_support, "markdown_support", req);
+        }
+        "clawbot" => {
+            let cb = &mut config.gateways.clawbot;
+            apply_bool!(cb.enabled, "enabled", req);
+            apply_str!(cb.bot_id, "bot_id", req);
+            apply_str!(cb.mode, "mode", req);
+            apply_str!(cb.base_url, "base_url", req);
+            apply_str!(cb.token, "token", req);
+            apply_str!(cb.poll_path, "poll_path", req);
+            apply_str!(cb.send_path, "send_path", req);
+            if let Some(v) = req.get("poll_interval_ms").and_then(|v| v.as_u64()) {
+                cb.poll_interval_ms = v;
+            }
+        }
+        "weixin" => {
+            let wx = &mut config.gateways.weixin;
+            apply_bool!(wx.enabled, "enabled", req);
+            apply_str!(wx.bot_id, "bot_id", req);
+            apply_str!(wx.base_url, "base_url", req);
+            apply_str!(wx.token, "token", req);
+            apply_str!(wx.home_channel, "home_channel", req);
+            apply_str!(wx.login_notify_platform, "login_notify_platform", req);
+            apply_str!(wx.login_notify_bot_id, "login_notify_bot_id", req);
+            apply_str!(wx.login_notify_chat_id, "login_notify_chat_id", req);
+        }
+        "discord" => {
+            let dc = &mut config.gateways.discord;
+            apply_bool!(dc.enabled, "enabled", req);
+            apply_str!(dc.bot_id, "bot_id", req);
+            apply_str!(dc.token, "token", req);
+            apply_str!(dc.channel_id, "channel_id", req);
+        }
+        "slack" => {
+            let sl = &mut config.gateways.slack;
+            apply_bool!(sl.enabled, "enabled", req);
+            apply_str!(sl.bot_id, "bot_id", req);
+            apply_str!(sl.token, "token", req);
+            apply_str!(sl.channel_id, "channel_id", req);
+        }
+        "dingtalk" => {
+            let dt = &mut config.gateways.dingtalk;
+            apply_bool!(dt.enabled, "enabled", req);
+            apply_str!(dt.bot_id, "bot_id", req);
+        }
+        "feishu" => {
+            let fs = &mut config.gateways.feishu;
+            apply_bool!(fs.enabled, "enabled", req);
+            apply_str!(fs.bot_id, "bot_id", req);
+        }
+        "wecom" => {
+            let wc = &mut config.gateways.wecom;
+            apply_bool!(wc.enabled, "enabled", req);
+            apply_str!(wc.bot_id, "bot_id", req);
+        }
+        "webhook" => {
+            let wh = &mut config.gateways.webhook;
+            apply_bool!(wh.enabled, "enabled", req);
+            apply_str!(wh.bot_id, "bot_id", req);
+            if let Some(v) = req.get("port").and_then(|v| v.as_u64()) {
+                wh.port = v as u16;
+            }
+            apply_str!(wh.path, "path", req);
+            apply_str!(wh.secret, "secret", req);
+        }
+        "mattermost" => {
+            let mm = &mut config.gateways.mattermost;
+            apply_bool!(mm.enabled, "enabled", req);
+            apply_str!(mm.bot_id, "bot_id", req);
+            apply_str!(mm.base_url, "base_url", req);
+            apply_str!(mm.token, "token", req);
+        }
+        "signal" => {
+            let sg = &mut config.gateways.signal;
+            apply_bool!(sg.enabled, "enabled", req);
+            apply_str!(sg.bot_id, "bot_id", req);
+        }
+        "email" => {
+            let em = &mut config.gateways.email;
+            apply_bool!(em.enabled, "enabled", req);
+            apply_str!(em.bot_id, "bot_id", req);
+        }
+        "whatsapp" => {
+            let wa = &mut config.gateways.whatsapp;
+            apply_bool!(wa.enabled, "enabled", req);
+            apply_str!(wa.bot_id, "bot_id", req);
+        }
+        "matrix" => {
+            let mx = &mut config.gateways.matrix;
+            apply_bool!(mx.enabled, "enabled", req);
+            apply_str!(mx.bot_id, "bot_id", req);
+        }
+        "homeassistant" => {
+            let ha = &mut config.gateways.homeassistant;
+            apply_bool!(ha.enabled, "enabled", req);
+            apply_str!(ha.bot_id, "bot_id", req);
+        }
+        "bluebubbles" => {
+            let bb = &mut config.gateways.bluebubbles;
+            apply_bool!(bb.enabled, "enabled", req);
+            apply_str!(bb.bot_id, "bot_id", req);
+        }
+        "sms" => {
+            let sm = &mut config.gateways.sms;
+            apply_bool!(sm.enabled, "enabled", req);
+            apply_str!(sm.bot_id, "bot_id", req);
+        }
+        "msgraph" => {
+            let mg = &mut config.gateways.msgraph_webhook;
+            apply_bool!(mg.enabled, "enabled", req);
+            apply_str!(mg.bot_id, "bot_id", req);
+        }
+        _ => {
+            return Err(api_error(
+                StatusCode::NOT_FOUND,
+                format!("Unknown gateway platform: {platform}"),
+            ));
+        }
+    }
+
+    save_config_to_disk(&config)?;
+
+    Ok(Json(json!({
+        "success": true,
+        "message": format!("Gateway platform '{platform}' updated"),
+        "restart_required": true
+    })))
 }
 
 /// Build the axum Router with all API routes.
@@ -2021,6 +2434,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/gateway/config", get(gateway_config))
         .route("/gateway/config", patch(gateway_update_config))
         .route("/gateway/restart", post(gateway_restart))
+        .route("/gateways/platforms", get(list_gateway_platforms))
+        .route("/gateways/platforms/{platform}", patch(update_gateway_platform))
         // Agent-dimension (persona) endpoints
         .route("/agents", get(list_agents))
         .route("/agents", post(create_agent))
