@@ -524,6 +524,94 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Systemd service setup
+// ---------------------------------------------------------------------------
+
+/// Setup systemd service for auto-start on boot
+fn setup_systemd_service() -> Result<()> {
+    use std::process::Command;
+    
+    // Detect hakimi binary path
+    let hakimi_bin = std::env::current_exe()?;
+    let hakimi_path = hakimi_bin.to_string_lossy();
+    
+    // Get user home directory
+    let home = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Failed to determine home directory"))?;
+    let home_path = home.to_string_lossy();
+    
+    // Generate systemd service file content
+    let service_content = format!(
+r#"[Unit]
+Description=Hakimi Agent Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={} --gateway
+WorkingDirectory={}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+"#,
+        hakimi_path,
+        home_path
+    );
+    
+    // Write service file to /etc/systemd/system/hakimi.service
+    let service_path = "/etc/systemd/system/hakimi.service";
+    
+    // Check if we have root permissions
+    let temp_file = "/tmp/hakimi.service";
+    std::fs::write(temp_file, &service_content)?;
+    
+    // Try to copy with sudo
+    let status = Command::new("sudo")
+        .args(&["cp", temp_file, service_path])
+        .status()?;
+    
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to copy service file (need sudo)"));
+    }
+    
+    // Reload systemd daemon
+    let status = Command::new("sudo")
+        .args(&["systemctl", "daemon-reload"])
+        .status()?;
+    
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to reload systemd daemon"));
+    }
+    
+    // Enable the service
+    let status = Command::new("sudo")
+        .args(&["systemctl", "enable", "hakimi"])
+        .status()?;
+    
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to enable hakimi service"));
+    }
+    
+    // Start the service immediately
+    let status = Command::new("sudo")
+        .args(&["systemctl", "start", "hakimi"])
+        .status()?;
+    
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to start hakimi service"));
+    }
+    
+    // Clean up temp file
+    let _ = std::fs::remove_file(temp_file);
+    
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -596,7 +684,53 @@ pub fn run_setup_wizard(non_interactive: bool) -> Result<SetupConfig> {
         println!("  ✓ Configuration saved to ~/.hakimi/config.yaml");
         println!("  ✓ Directory structure created at ~/.hakimi/");
         println!();
-        println!("  You can now run `hakimi` to start, or `hakimi doctor` to verify.");
+        
+        // Step 6: Launch mode selection
+        println!("━━━ Launch Mode ━━━");
+        println!();
+        
+        let launch_options = &[
+            "Manual launch (run `hakimi --gateway` when needed)",
+            "Auto-start on boot (enable systemd service)",
+        ];
+        
+        let launch_idx = Select::new()
+            .with_prompt("How would you like to launch Hakimi?")
+            .items(launch_options)
+            .default(0)
+            .interact()?;
+        
+        match launch_idx {
+            0 => {
+                // Manual launch
+                println!();
+                println!("  ✓ Manual launch mode selected.");
+                println!();
+                println!("  To start Hakimi Gateway, run:");
+                println!("    hakimi --gateway");
+            }
+            1 => {
+                // Auto-start on boot
+                println!();
+                println!("  Setting up systemd service for auto-start...");
+                
+                if let Err(e) = setup_systemd_service() {
+                    eprintln!("  ✗ Failed to setup systemd service: {}", e);
+                    println!();
+                    println!("  You can manually start Hakimi with:");
+                    println!("    hakimi --gateway");
+                } else {
+                    println!("  ✓ Systemd service installed and enabled.");
+                    println!("  ✓ Hakimi Gateway is starting now...");
+                    println!();
+                    println!("  Service status:");
+                    println!("    systemctl status hakimi");
+                    println!("  View logs:");
+                    println!("    journalctl -u hakimi -f");
+                }
+            }
+            _ => {}
+        }
     } else {
         println!();
         println!("  Configuration not saved. You can run `hakimi setup` anytime.");
