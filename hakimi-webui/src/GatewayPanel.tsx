@@ -1,8 +1,10 @@
 import { Activity, BadgeCheck, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, type GatewayConfigResponse, type GatewayStatusResponse } from './api';
+import { useI18n } from './i18n';
 
 export default function GatewayPanel() {
+  const { t } = useI18n();
   const [status, setStatus] = useState<GatewayStatusResponse | null>(null);
   const [config, setConfig] = useState<GatewayConfigResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ export default function GatewayPanel() {
     setSuccessMsg(null);
     try {
       await api.updateGatewayConfig(config);
-      setSuccessMsg('配置已保存');
+      setSuccessMsg(t('gateway.configSaved'));
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save config');
@@ -57,7 +59,7 @@ export default function GatewayPanel() {
     setSuccessMsg(null);
     try {
       await api.restartGateway();
-      setSuccessMsg('Gateway 重启请求已发送');
+      setSuccessMsg(t('gateway.restartSent'));
       setTimeout(() => {
         setSuccessMsg(null);
         fetchData();
@@ -73,7 +75,7 @@ export default function GatewayPanel() {
     return (
       <div className="gateway-panel-loading">
         <Loader2 className="icon-spin" size={32} />
-        <p>加载 Gateway 状态...</p>
+        <p>{t('gateway.loadingStatus')}</p>
       </div>
     );
   }
@@ -81,10 +83,10 @@ export default function GatewayPanel() {
   return (
     <div className="gateway-panel">
       <div className="gateway-header">
-        <h2>Gateway 管理</h2>
+        <h2>{t('gateway.title')}</h2>
         <button className="btn-refresh" onClick={fetchData} disabled={loading}>
           <RefreshCcw size={16} />
-          刷新
+          {t('gateway.refresh')}
         </button>
       </div>
 
@@ -104,20 +106,20 @@ export default function GatewayPanel() {
 
       {/* Status Section */}
       <section className="gateway-status">
-        <h3>运行状态</h3>
+        <h3>{t('gateway.runningStatus')}</h3>
         <div className="status-grid">
           <div className="status-item">
-            <span className="status-label">Gateway 状态</span>
+            <span className="status-label">{t('gateway.status')}</span>
             <div className="status-value">
               {status?.running ? (
                 <>
                   <Activity className="status-icon status-running" size={20} />
-                  <span className="status-text status-running">运行中</span>
+                  <span className="status-text status-running">{t('gateway.running')}</span>
                 </>
               ) : (
                 <>
                   <ShieldCheck className="status-icon status-stopped" size={20} />
-                  <span className="status-text status-stopped">未运行</span>
+                  <span className="status-text status-stopped">{t('gateway.stopped')}</span>
                 </>
               )}
             </div>
@@ -126,7 +128,7 @@ export default function GatewayPanel() {
           {status?.running && (
             <>
               <div className="status-item">
-                <span className="status-label">已连接平台</span>
+                <span className="status-label">{t('gateway.connectedPlatforms')}</span>
                 <span className="status-value">
                   {status.platforms.length > 0 ? (
                     <div className="platform-list">
@@ -139,13 +141,13 @@ export default function GatewayPanel() {
                       ))}
                     </div>
                   ) : (
-                    <span className="text-muted">无</span>
+                    <span className="text-muted">{t('gateway.none')}</span>
                   )}
                 </span>
               </div>
 
               <div className="status-item">
-                <span className="status-label">总消息数</span>
+                <span className="status-label">{t('gateway.totalMessages')}</span>
                 <span className="status-value status-number">
                   {status.total_messages_sent || 0}
                 </span>
@@ -163,12 +165,12 @@ export default function GatewayPanel() {
             {restarting ? (
               <>
                 <Loader2 className="icon-spin" size={16} />
-                重启中...
+                {t('gateway.restarting')}
               </>
             ) : (
               <>
                 <RefreshCcw size={16} />
-                重启 Gateway
+                {t('gateway.restart')}
               </>
             )}
           </button>
@@ -178,10 +180,10 @@ export default function GatewayPanel() {
       {/* Config Section */}
       {config && (
         <section className="gateway-config">
-          <h3>配置管理</h3>
+          <h3>{t('gateway.config')}</h3>
           <div className="config-form">
             <div className="form-group">
-              <label htmlFor="busy-mode">繁忙输入模式</label>
+              <label htmlFor="busy-mode">{t('gateway.busyMode')}</label>
               <select
                 id="busy-mode"
                 value={config.busy_input_mode}
@@ -189,11 +191,11 @@ export default function GatewayPanel() {
                   setConfig({ ...config, busy_input_mode: e.target.value })
                 }
               >
-                <option value="queue">队列模式 (queue)</option>
-                <option value="interrupt">中断模式 (interrupt)</option>
+                <option value="queue">{t('gateway.queue')}</option>
+                <option value="interrupt">{t('gateway.interrupt')}</option>
               </select>
               <small className="form-hint">
-                队列模式：新消息排队等待。中断模式：新消息取消当前任务。
+                {t('gateway.busyHint')}
               </small>
             </div>
 
@@ -206,20 +208,20 @@ export default function GatewayPanel() {
                     setConfig({ ...config, allow_all: e.target.checked })
                   }
                 />
-                允许所有用户访问
+                {t('gateway.allowAll')}
               </label>
               <small className="form-hint">
-                启用后，所有用户都可以使用 Gateway。禁用后仅限白名单用户。
+                {t('gateway.allowAllHint')}
               </small>
             </div>
 
             {!config.allow_all && (
               <div className="form-group">
-                <label htmlFor="allowed-users">白名单用户</label>
+                <label htmlFor="allowed-users">{t('gateway.whitelist')}</label>
                 <textarea
                   id="allowed-users"
                   rows={3}
-                  placeholder="每行一个用户 ID 或用户名"
+                  placeholder={t('gateway.whitelistPlaceholder')}
                   value={config.allowed_users.join('\n')}
                   onChange={(e) =>
                     setConfig({
@@ -232,7 +234,7 @@ export default function GatewayPanel() {
                   }
                 />
                 <small className="form-hint">
-                  每行一个用户 ID 或用户名（例如：telegram:123456789）
+                  {t('gateway.whitelistHint')}
                 </small>
               </div>
             )}
@@ -249,10 +251,10 @@ export default function GatewayPanel() {
                     })
                   }
                 />
-                过滤叙述性文本
+                {t('gateway.filterNarration')}
               </label>
               <small className="form-hint">
-                移除响应中的 "正在执行..."、"已完成..." 等叙述性内容。
+                {t('gateway.filterNarrationHint')}
               </small>
             </div>
 
@@ -264,12 +266,12 @@ export default function GatewayPanel() {
               {saving ? (
                 <>
                   <Loader2 className="icon-spin" size={16} />
-                  保存中...
+                  {t('gateway.saving')}
                 </>
               ) : (
                 <>
                   <BadgeCheck size={16} />
-                  保存配置
+                  {t('gateway.saveConfig')}
                 </>
               )}
             </button>

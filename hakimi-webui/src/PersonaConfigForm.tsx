@@ -1,6 +1,7 @@
 import { Loader2, Save, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, type Agent } from './api';
+import { api, type Agent, type AgentMemoryResponse } from './api';
+import { useI18n } from './i18n';
 
 interface PersonaConfigFormProps {
   agent: Agent | null;
@@ -19,6 +20,7 @@ export default function PersonaConfigForm({
   onDeleted,
   onCancel,
 }: PersonaConfigFormProps) {
+  const { t } = useI18n();
   const isEdit = agent !== null;
   const [id, setId] = useState(agent?.id ?? '');
   const [name, setName] = useState(agent?.name ?? '');
@@ -34,11 +36,11 @@ export default function PersonaConfigForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchedSkills, setFetchedSkills] = useState<string[] | null>(null);
+  const [memory, setMemory] = useState<AgentMemoryResponse | null>(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
 
   const idValid = useMemo(() => ID_PATTERN.test(id.trim()), [id]);
 
-  // In edit mode, load the persona's actual skills (from its skills dir) so the
-  // chips reflect what is available to this persona, not just the instance set.
   useEffect(() => {
     if (!agent) {
       return;
@@ -48,15 +50,43 @@ export default function PersonaConfigForm({
       void api
         .agentSkills(personaId)
         .then((res) => setFetchedSkills(res.available.map((skill) => skill.name)))
-        .catch(() => {
-          // Keep the instance-wide fallback on failure.
-        });
+        .catch(() => {});
     }, 0);
     return () => window.clearTimeout(timer);
   }, [agent]);
 
-  // Skills to show as chips: the persona's available skills (edit mode) or the
-  // instance set (create mode), always including currently-enabled skills.
+  useEffect(() => {
+    if (!agent) {
+      setMemory(null);
+      return;
+    }
+    const personaId = agent.id;
+    setMemoryLoading(true);
+    const timer = window.setTimeout(() => {
+      void api
+        .agentMemory(personaId)
+        .then((res) => setMemory(res))
+        .catch(() => setMemory(null))
+        .finally(() => setMemoryLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [agent]);
+
+  // Re-sync form fields when the agent prop changes (e.g. switching persona)
+  useEffect(() => {
+    setId(agent?.id ?? '');
+    setName(agent?.name ?? '');
+    setAvatar(agent?.avatar ?? '');
+    setDescription(agent?.description ?? '');
+    setModel(agent?.model ?? '');
+    setReasoning(agent?.reasoning_effort ?? '');
+    setSystemPrompt(agent?.system_prompt ?? '');
+    setSkills(agent?.enabled_skills ?? []);
+    setBindingsText((agent?.bindings ?? []).join('\n'));
+    setIsDefault(agent?.is_default ?? false);
+    setAddressable(agent?.addressable ?? true);
+  }, [agent]);
+
   const skillOptions = useMemo(() => {
     const base = new Set(fetchedSkills ?? availableSkills);
     for (const skill of skills) {
@@ -103,7 +133,7 @@ export default function PersonaConfigForm({
         onSaved(saved);
       } else {
         if (!idValid) {
-          setError('Persona id must match [a-z0-9][a-z0-9_-]{0,63}');
+          setError(t('persona.idError'));
           setBusy(false);
           return;
         }
@@ -148,10 +178,10 @@ export default function PersonaConfigForm({
     <form className="persona-form settings-surface" onSubmit={handleSubmit}>
       <div className="settings-header">
         <div>
-          <p className="eyebrow">{isEdit ? 'Edit persona' : 'New persona'}</p>
-          <h2>{isEdit ? agent?.name || agent?.id : 'Create a persona'}</h2>
+          <p className="eyebrow">{isEdit ? t('persona.edit') : t('persona.new')}</p>
+          <h2>{isEdit ? agent?.name || agent?.id : t('persona.create')}</h2>
         </div>
-        <button type="button" className="icon-button" onClick={onCancel} title="Cancel">
+        <button type="button" className="icon-button" onClick={onCancel} title={t('persona.cancel')}>
           <X size={16} aria-hidden="true" />
         </button>
       </div>
@@ -160,23 +190,23 @@ export default function PersonaConfigForm({
 
       <div className="settings-grid">
         <fieldset className="settings-group">
-          <legend>Identity</legend>
+          <legend>{t('persona.identity')}</legend>
           {!isEdit && (
             <label>
-              id
+              {t('persona.id')}
               <input value={id} onChange={(e) => setId(e.target.value)} placeholder="coder" />
             </label>
           )}
           <label>
-            name
+            {t('persona.name')}
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Coder" />
           </label>
           <label>
-            avatar (emoji)
+            {t('persona.avatarEmoji')}
             <input value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="🤖" />
           </label>
           <label>
-            description
+            {t('persona.description')}
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -186,26 +216,26 @@ export default function PersonaConfigForm({
         </fieldset>
 
         <fieldset className="settings-group">
-          <legend>Model</legend>
+          <legend>{t('persona.model')}</legend>
           <label>
-            model
+            {t('persona.modelField')}
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="(inherit default)"
+              placeholder={t('persona.inheritDefault')}
             />
           </label>
           <label>
-            reasoning effort
+            {t('persona.reasoningEffort')}
             <select value={reasoning ?? ''} onChange={(e) => setReasoning(e.target.value)}>
-              <option value="">(default)</option>
+              <option value="">{t('persona.default')}</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>
             </select>
           </label>
           <label className="switch-row">
-            <span>Default persona (gateway fallback)</span>
+            <span>{t('persona.isDefault')}</span>
             <input
               type="checkbox"
               checked={isDefault}
@@ -213,7 +243,7 @@ export default function PersonaConfigForm({
             />
           </label>
           <label className="switch-row">
-            <span>Allow other agents to consult this persona (team)</span>
+            <span>{t('persona.addressable')}</span>
             <input
               type="checkbox"
               checked={addressable}
@@ -223,22 +253,22 @@ export default function PersonaConfigForm({
         </fieldset>
 
         <fieldset className="settings-group settings-group-wide">
-          <legend>System prompt</legend>
+          <legend>{t('persona.systemPrompt')}</legend>
           <label>
-            identity prompt
+            {t('persona.identityPrompt')}
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="You are…"
+              placeholder="You are..."
             />
           </label>
         </fieldset>
 
         <fieldset className="settings-group settings-group-wide">
-          <legend>Skills</legend>
+          <legend>{t('persona.skills')}</legend>
           <div className="persona-skill-chips">
             {skillOptions.length === 0 && (
-              <span className="panel-empty">No skills available</span>
+              <span className="panel-empty">{t('persona.noSkills')}</span>
             )}
             {skillOptions.map((skill) => (
               <button
@@ -254,9 +284,9 @@ export default function PersonaConfigForm({
         </fieldset>
 
         <fieldset className="settings-group settings-group-wide">
-          <legend>Channel bindings</legend>
+          <legend>{t('persona.channelBindings')}</legend>
           <label>
-            one platform:bot_id per line (empty = WebUI only)
+            {t('persona.bindingsHint')}
             <textarea
               className="persona-bindings"
               value={bindingsText}
@@ -265,12 +295,47 @@ export default function PersonaConfigForm({
             />
           </label>
         </fieldset>
+
+        {isEdit && (
+          <fieldset className="settings-group settings-group-wide">
+            <legend>{t('persona.memory')}</legend>
+            {memoryLoading ? (
+              <div className="panel-empty">
+                <Loader2 className="spin" size={16} aria-hidden="true" />
+              </div>
+            ) : memory ? (
+              <div className="persona-memory">
+                <div className="persona-memory-dir">
+                  <small>{t('persona.memoryDir')}: <code>{memory.dir}</code></small>
+                </div>
+                {memory.memory_md && (
+                  <div className="persona-memory-index">
+                    <small>{t('persona.memoryIndex')}:</small>
+                    <pre className="persona-memory-content">{memory.memory_md}</pre>
+                  </div>
+                )}
+                {memory.files.length > 0 && (
+                  <div className="persona-memory-files">
+                    {memory.files.map((f) => (
+                      <span key={f} className="persona-memory-file">{f}</span>
+                    ))}
+                  </div>
+                )}
+                {!memory.memory_md && memory.files.length === 0 && (
+                  <div className="panel-empty">{t('persona.noMemory')}</div>
+                )}
+              </div>
+            ) : (
+              <div className="panel-empty">{t('persona.noMemory')}</div>
+            )}
+          </fieldset>
+        )}
       </div>
 
       <div className="persona-form-actions">
         <button className="button button-primary" type="submit" disabled={busy}>
           {busy ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-          <span>Save</span>
+          <span>{t('persona.save')}</span>
         </button>
         {isEdit && !agent?.is_default && (
           <button
@@ -280,11 +345,11 @@ export default function PersonaConfigForm({
             disabled={busy}
           >
             <Trash2 size={16} aria-hidden="true" />
-            <span>Delete</span>
+            <span>{t('persona.deleteBtn')}</span>
           </button>
         )}
         <button className="button" type="button" onClick={onCancel} disabled={busy}>
-          <span>Cancel</span>
+          <span>{t('persona.cancel')}</span>
         </button>
       </div>
     </form>

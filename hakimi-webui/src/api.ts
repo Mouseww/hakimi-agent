@@ -343,6 +343,12 @@ export function setAuthToken(token: string): void {
   }
 }
 
+export const AUTH_EVENT = 'hakimi-auth-required';
+
+function dispatchAuthRequired() {
+  window.dispatchEvent(new CustomEvent(AUTH_EVENT));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const headers: Record<string, string> = {
@@ -360,6 +366,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      dispatchAuthRequired();
+    }
     let message = `${response.status} ${response.statusText}`;
     try {
       const payload = (await response.json()) as { error?: string };

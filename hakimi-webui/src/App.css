@@ -2037,3 +2037,213 @@ h3 {
   cursor: not-allowed;
 }
 
+/* ---- Login overlay ---- */
+.login-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background:
+    linear-gradient(90deg, rgba(36, 35, 31, 0.04) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(36, 35, 31, 0.035) 1px, transparent 1px),
+    var(--bg);
+  background-size: 34px 34px;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 360px;
+  padding: 36px 32px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.login-card .brand-mark {
+  margin: 0 auto 4px;
+}
+
+.login-card h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 650;
+}
+
+.login-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.login-card input[type="password"] {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  font-size: 0.9rem;
+}
+
+.login-card input[type="password"]:focus {
+  outline: 2px solid var(--green);
+  outline-offset: -1px;
+}
+
+/* ---- Bindings editor (Instance settings) ---- */
+.bindings-editor {
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.bindings-editor-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.bindings-editor-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  flex: 1;
+  min-width: 140px;
+}
+
+.bindings-editor-row input,
+.bindings-editor-row select {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+.bindings-editor-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 2px;
+}
+
+.bindings-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ---- Persona memory display ---- */
+.persona-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.persona-memory-dir {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.persona-memory-dir code {
+  background: var(--surface-strong);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
+.persona-memory-index small {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.persona-memory-content {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.78rem;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.persona-memory-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.persona-memory-file {
+  font-size: 0.75rem;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* ---- Session source badge ---- */
+.session-source-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(36, 115, 92, 0.12);
+  color: var(--green-strong);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-top: 3px;
+}
+
+/* ---- Delegate progress ---- */
+.delegate-progress {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+.delegate-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.delegate-progress-item {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  color: var(--ink-soft);
+}
+
+.delegate-title {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.delegate-status {
+  flex: 1;
+}
+
+.delegate-time {
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+

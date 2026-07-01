@@ -12,6 +12,8 @@
 .office-floor {
   position: relative;
   margin: 0 auto;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .office-hint {
@@ -27,7 +29,11 @@
   position: absolute;
   width: 180px;
   cursor: pointer;
+  -webkit-transition: transform 0.2s ease, filter 0.2s ease;
   transition: transform 0.2s ease, filter 0.2s ease;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: transform, filter;
 }
 
 .persona-desk:hover {
@@ -83,6 +89,7 @@
 
 .screen-lit {
   fill: #8be0ff;
+  -webkit-animation: deskGlow 1.6s ease-in-out infinite;
   animation: deskGlow 1.6s ease-in-out infinite;
 }
 
@@ -95,6 +102,10 @@
   fill: #26304a;
 }
 
+@-webkit-keyframes deskGlow {
+  0%, 100% { fill: #7fd6f5; }
+  50% { fill: #caf2ff; }
+}
 @keyframes deskGlow {
   0%, 100% { fill: #7fd6f5; }
   50% { fill: #caf2ff; }
@@ -103,28 +114,40 @@
 /* ---- Idle screen blocks ---- */
 
 .game-block {
+  -webkit-animation: deskHop 1s steps(2) infinite;
   animation: deskHop 1s steps(2) infinite;
 }
 
 .game-block.b2 {
+  -webkit-animation-duration: 1.3s;
   animation-duration: 1.3s;
 }
 
+@-webkit-keyframes deskHop {
+  0%, 100% { -webkit-transform: translateY(0); transform: translateY(0); }
+  50% { -webkit-transform: translateY(7px); transform: translateY(7px); }
+}
 @keyframes deskHop {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(7px); }
+  0%, 100% { -webkit-transform: translateY(0); transform: translateY(0); }
+  50% { -webkit-transform: translateY(7px); transform: translateY(7px); }
 }
 
 /* ---- Working screen lines ---- */
 
 .desk-screen-lines rect {
+  -webkit-animation: screenType 2s steps(4) infinite;
   animation: screenType 2s steps(4) infinite;
 }
 
-.desk-screen-lines rect:nth-child(2) { animation-delay: 0.3s; }
-.desk-screen-lines rect:nth-child(3) { animation-delay: 0.6s; }
-.desk-screen-lines rect:nth-child(4) { animation-delay: 0.9s; }
+.desk-screen-lines rect:nth-child(2) { -webkit-animation-delay: 0.3s; animation-delay: 0.3s; }
+.desk-screen-lines rect:nth-child(3) { -webkit-animation-delay: 0.6s; animation-delay: 0.6s; }
+.desk-screen-lines rect:nth-child(4) { -webkit-animation-delay: 0.9s; animation-delay: 0.9s; }
 
+@-webkit-keyframes screenType {
+  0% { opacity: 0; width: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
 @keyframes screenType {
   0% { opacity: 0; width: 0; }
   30% { opacity: 1; }
@@ -134,49 +157,72 @@
 /* ---- Typing arms ---- */
 
 .desk-arms-typing path {
+  -webkit-animation: armBob 0.5s ease-in-out infinite alternate;
   animation: armBob 0.5s ease-in-out infinite alternate;
 }
 
 .desk-arms-typing path:nth-child(2) {
+  -webkit-animation-delay: 0.25s;
   animation-delay: 0.25s;
 }
 
 .desk-arms-typing circle {
+  -webkit-animation: handTap 0.35s ease-in-out infinite alternate;
   animation: handTap 0.35s ease-in-out infinite alternate;
 }
 
 .desk-arms-typing circle:nth-child(4) {
+  -webkit-animation-delay: 0.18s;
   animation-delay: 0.18s;
 }
 
+@-webkit-keyframes armBob {
+  from { -webkit-transform: translateY(0); transform: translateY(0); }
+  to { -webkit-transform: translateY(2px); transform: translateY(2px); }
+}
 @keyframes armBob {
-  from { transform: translateY(0); }
-  to { transform: translateY(2px); }
+  from { -webkit-transform: translateY(0); transform: translateY(0); }
+  to { -webkit-transform: translateY(2px); transform: translateY(2px); }
 }
 
+@-webkit-keyframes handTap {
+  from { -webkit-transform: translateY(0); transform: translateY(0); }
+  to { -webkit-transform: translateY(3px); transform: translateY(3px); }
+}
 @keyframes handTap {
-  from { transform: translateY(0); }
-  to { transform: translateY(3px); }
+  from { -webkit-transform: translateY(0); transform: translateY(0); }
+  to { -webkit-transform: translateY(3px); transform: translateY(3px); }
 }
 
 /* ---- Eyes (look at screen when working) ---- */
 
 .is-working .desk-eyes {
+  -webkit-animation: eyeLook 3s ease-in-out infinite;
   animation: eyeLook 3s ease-in-out infinite;
 }
 
+@-webkit-keyframes eyeLook {
+  0%, 100% { -webkit-transform: translateX(0); transform: translateX(0); }
+  30% { -webkit-transform: translateX(-1px); transform: translateX(-1px); }
+  70% { -webkit-transform: translateX(1px); transform: translateX(1px); }
+}
 @keyframes eyeLook {
-  0%, 100% { transform: translateX(0); }
-  30% { transform: translateX(-1px); }
-  70% { transform: translateX(1px); }
+  0%, 100% { -webkit-transform: translateX(0); transform: translateX(0); }
+  30% { -webkit-transform: translateX(-1px); transform: translateX(-1px); }
+  70% { -webkit-transform: translateX(1px); transform: translateX(1px); }
 }
 
 /* ---- Mouth work animation ---- */
 
 .desk-mouth-work {
+  -webkit-animation: mouthMumble 0.8s ease-in-out infinite;
   animation: mouthMumble 0.8s ease-in-out infinite;
 }
 
+@-webkit-keyframes mouthMumble {
+  0%, 100% { ry: 2; }
+  50% { ry: 1; }
+}
 @keyframes mouthMumble {
   0%, 100% { ry: 2; }
   50% { ry: 1; }
@@ -186,24 +232,34 @@
 
 .delegation-walker {
   position: absolute;
+  -webkit-transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1);
   transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
   pointer-events: none;
   z-index: 3;
+  -webkit-filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
 }
 
 .walker-legs line {
+  -webkit-animation: walkCycle 0.4s ease-in-out infinite alternate;
   animation: walkCycle 0.4s ease-in-out infinite alternate;
 }
 
 .walker-legs line:nth-child(2) {
+  -webkit-animation-delay: 0.2s;
   animation-delay: 0.2s;
 }
 
+@-webkit-keyframes walkCycle {
+  from { -webkit-transform: rotate(-12deg); transform: rotate(-12deg); -webkit-transform-origin: 50% 0%; transform-origin: 50% 0%; }
+  to { -webkit-transform: rotate(12deg); transform: rotate(12deg); -webkit-transform-origin: 50% 0%; transform-origin: 50% 0%; }
+}
 @keyframes walkCycle {
-  from { transform: rotate(-12deg); transform-origin: 50% 0%; }
-  to { transform: rotate(12deg); transform-origin: 50% 0%; }
+  from { -webkit-transform: rotate(-12deg); transform: rotate(-12deg); -webkit-transform-origin: 50% 0%; transform-origin: 50% 0%; }
+  to { -webkit-transform: rotate(12deg); transform: rotate(12deg); -webkit-transform-origin: 50% 0%; transform-origin: 50% 0%; }
 }
 
 /* ---- Delegation connection line ---- */
@@ -213,9 +269,14 @@
 }
 
 .delegation-line-path {
+  -webkit-animation: dashFlow 1.2s linear infinite;
   animation: dashFlow 1.2s linear infinite;
 }
 
+@-webkit-keyframes dashFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -24; }
+}
 @keyframes dashFlow {
   from { stroke-dashoffset: 0; }
   to { stroke-dashoffset: -24; }
@@ -231,12 +292,17 @@
   border-radius: 12px 12px 12px 4px;
   padding: 4px 8px;
   pointer-events: none;
+  -webkit-animation: bubblePop 0.3s ease-out;
   animation: bubblePop 0.3s ease-out;
 }
 
+@-webkit-keyframes bubblePop {
+  from { -webkit-transform: scale(0); transform: scale(0); opacity: 0; }
+  to { -webkit-transform: scale(1); transform: scale(1); opacity: 1; }
+}
 @keyframes bubblePop {
-  from { transform: scale(0); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from { -webkit-transform: scale(0); transform: scale(0); opacity: 0; }
+  to { -webkit-transform: scale(1); transform: scale(1); opacity: 1; }
 }
 
 .talk-dots {
@@ -250,15 +316,20 @@
   height: 5px;
   border-radius: 50%;
   background: var(--accent, #c98a2b);
+  -webkit-animation: dotBounce 1s ease-in-out infinite;
   animation: dotBounce 1s ease-in-out infinite;
 }
 
-.talk-dots .dot:nth-child(2) { animation-delay: 0.15s; }
-.talk-dots .dot:nth-child(3) { animation-delay: 0.3s; }
+.talk-dots .dot:nth-child(2) { -webkit-animation-delay: 0.15s; animation-delay: 0.15s; }
+.talk-dots .dot:nth-child(3) { -webkit-animation-delay: 0.3s; animation-delay: 0.3s; }
 
+@-webkit-keyframes dotBounce {
+  0%, 60%, 100% { -webkit-transform: translateY(0); transform: translateY(0); opacity: 0.4; }
+  30% { -webkit-transform: translateY(-4px); transform: translateY(-4px); opacity: 1; }
+}
 @keyframes dotBounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-4px); opacity: 1; }
+  0%, 60%, 100% { -webkit-transform: translateY(0); transform: translateY(0); opacity: 0.4; }
+  30% { -webkit-transform: translateY(-4px); transform: translateY(-4px); opacity: 1; }
 }
 
 /* ---- Team ring ---- */
