@@ -313,11 +313,16 @@ fi
 
 echo ""
 if [ -t 0 ]; then
-    read -rp "Run setup wizard now? [Y/n] " answer
+    printf "${BOLD}Run setup wizard now to configure Hakimi?${RESET} [Y/n] "
+    read -r answer
     answer="${answer:-Y}"
     if [ "$answer" != "n" ] && [ "$answer" != "N" ]; then
-        "$INSTALL_DIR/hakimi" --setup || true
+        echo ""
+        "$INSTALL_DIR/hakimi" setup || true
+    else
+        echo ""
+        info "You can run 'hakimi setup' anytime to configure your model/API key."
     fi
 else
-    info "Run '$INSTALL_DIR/hakimi --setup' to configure your model/API key."
+    info "Run 'hakimi setup' to configure your model/API key."
 fi
