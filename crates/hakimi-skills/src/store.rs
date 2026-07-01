@@ -6,6 +6,8 @@ use crate::preprocessing::SkillPreprocessOptions;
 use crate::skill::Skill;
 use crate::usage::SkillUsageStore;
 
+const BUILTIN_GUIDE: &str = include_str!("builtin_hakimi_guide.md");
+
 /// Store for managing and loading skills.
 ///
 /// The store owns the skill library and a per-agent runtime working set. The
@@ -133,9 +135,23 @@ impl SkillStore {
 
     /// Render currently active runtime skills for injection into the current
     /// system prompt. This is dynamic and may return fewer or no skills after
-    /// pruning/eviction.
+    /// pruning/eviction. The builtin Hakimi platform guide is always included
+    /// so every agent can answer configuration questions without reading
+    /// source code.
     pub fn render_active_skill_context(&self) -> String {
-        self.working_set.render_context()
+        let working_set_context = self.working_set.render_context();
+        let builtin = format!("## Hakimi Platform Guide\n\n{BUILTIN_GUIDE}");
+
+        if working_set_context.is_empty() {
+            builtin
+        } else {
+            format!("{builtin}\n\n{working_set_context}")
+        }
+    }
+
+    /// Return the raw builtin guide content.
+    pub fn builtin_guide() -> &'static str {
+        BUILTIN_GUIDE
     }
 
     /// Get system prompt additions based on a user message.
