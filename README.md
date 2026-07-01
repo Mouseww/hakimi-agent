@@ -1,6 +1,6 @@
-# Hakimi Agent
+<h1 align="center">Hakimi Agent</h1>
 
-[![Version](https://img.shields.io/badge/version-0.4.7-blue.svg)](https://github.com/Mouseww/hakimi-agent/releases)
+<p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/version-0.4.7-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
