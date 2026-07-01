@@ -5693,6 +5693,7 @@ async fn gateway_persist_session(
         completion_tokens: 0,
         total_tokens: 0,
         cached_tokens: 0,
+        reasoning_tokens: 0,
     };
     let _ = db.update_session_totals(session_id, &usage, 1);
 }
