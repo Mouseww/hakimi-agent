@@ -74,6 +74,9 @@ scraper = "0.22"
 # Random
 rand = "0.9"
 
+# Lazy static initialization
+once_cell = "1"
+
 # Async traits
 async-trait = "0.1"
 

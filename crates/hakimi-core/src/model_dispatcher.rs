@@ -4,7 +4,7 @@ use anyhow::Result;
 use hakimi_common::Message;
 use hakimi_config::{AutoDispatchConfig, ModelTiers, TierConfig};
 
-use crate::complexity_analyzer::ComplexityAnalyzer;
+use crate::complexity_analyzer::analyze_complexity;
 use crate::model_dispatch::{ModelTier, TaskComplexity};
 
 /// Resolves model selection based on task complexity.

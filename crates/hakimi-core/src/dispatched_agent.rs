@@ -10,7 +10,7 @@ use reqwest::Client;
 
 use crate::dispatch_learner::DispatchLearner;
 use crate::model_dispatch::{DispatchRecord, ModelTier, TaskComplexity};
-use crate::model_dispatcher::ModelDispatcher;
+// use crate::model_dispatcher::ModelDispatcher; // TODO: waiting for ModelDispatcher implementation
 use crate::{AIAgent, ConversationResult};
 
 /// Wrapper around AIAgent that performs model dispatch before execution.

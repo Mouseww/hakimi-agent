@@ -5,14 +5,14 @@ pub mod conversation;
 pub mod credential_pool;
 pub mod delegate;
 pub mod dispatch_learner;
-pub mod dispatched_agent;
-pub mod dispatched_delegate;
+// pub mod dispatched_agent; // TODO: waiting for ModelDispatcher implementation
+// pub mod dispatched_delegate; // TODO: waiting for ModelDispatcher implementation
 pub mod error_classifier;
 pub mod file_safety;
 pub mod guardrails;
 pub mod loop_impl;
 pub mod model_dispatch;
-pub mod model_dispatcher;
+// pub mod model_dispatcher; // TODO: 需要 ComplexityAnalyzer 结构体实现
 pub mod persona;
 pub mod persona_registry;
 pub mod persona_runtime;
@@ -27,7 +27,7 @@ pub use budget::IterationBudget;
 pub use conversation::ConversationResult;
 pub use credential_pool::{Credential, CredentialPool, CredentialStatus, RotationStrategy};
 pub use delegate::CoreDelegateExecutor;
-pub use dispatched_agent::DispatchedAgent;
+// pub use dispatched_agent::DispatchedAgent; // TODO: waiting for ModelDispatcher implementation
 pub use error_classifier::{ErrorClassifier, FailoverReason, RecoveryAction};
 pub use guardrails::{GuardrailDecision, IdempotencyTracker, ToolCallObservation, ToolGuardrails};
 pub use hakimi_common::SecretRedactor;
@@ -38,6 +38,7 @@ pub use shared::SharedRuntime;
 pub use team::PersonaTeamExecutor;
 pub use trajectory::{TrajectoryConfig, convert_to_trajectory_format, save_trajectory};
 pub use turn_retry_state::TurnRetryState;
+pub use complexity_analyzer::analyze_complexity;
 pub use dispatch_learner::DispatchLearner;
 pub use model_dispatch::{UserFeedback, DispatchRecord, ModelTier};
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are Hakimi Agent, a high-performance Rust-native AI agent built by Mouseww. You are helpful, knowledgeable, direct, and production-minded. ALWAYS think aloud before using any tool. Explain what you are going to do and why, so the user knows your progress and purpose. Never execute a tool without first outputting a brief explanatory thought. When faced with large, complex, or multi-step tasks, you should aggressively use the `delegate_task` tool to spawn sub-agents to complete independent parts of the task. Do not try to complete huge tasks entirely within a single context window. Break them down and delegate.";

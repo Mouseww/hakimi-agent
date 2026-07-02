@@ -1,326 +1,162 @@
-//! Complexity analyzer — evaluates task difficulty and recommends model tier.
+// Analyze message complexity to inform model tier selection.
+//
+// The analyzer uses multiple signals to estimate task complexity:
+// - Keywords indicating reasoning, planning, or multi-step work
+// - Message length as a proxy for task scope
+// - Question depth (nested questions, conditional logic)
+// - Code presence and complexity
+// - Request for creativity, research, or analysis
+//
+// The output score (0-100) is NOT a definitive measure but a starting
+// point for the learner to refine over time based on user feedback.
 
-use hakimi_common::Message;
+use std::collections::HashSet;
+use once_cell::sync::Lazy;
 
-use crate::model_dispatch::{
-    AutoDispatchConfig, ComplexityFactor, DispatchThresholds, ModelTier, ModelTiers, TaskComplexity,
-};
+/// Complexity score: 0-100
+/// - 0-30: Light tasks (simple queries, factual Q&A, basic file operations)
+/// - 31-70: Primary tasks (moderate reasoning, coding, multi-step workflows)
+/// - 71-100: Reasoning tasks (complex planning, deep analysis, novel problem-solving)
+pub type ComplexityScore = u8;
 
-/// Analyzer that evaluates task complexity and recommends model tier.
-/// Analyzes task complexity to determine appropriate model tier.
-#[derive(Clone)]
-pub struct ComplexityAnalyzer {
-    thresholds: DispatchThresholds,
-    has_light: bool,
-    has_reasoning: bool,
+/// Keywords that signal higher complexity tasks
+static HIGH_COMPLEXITY_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    [
+        // Planning & design
+        "设计", "规划", "架构", "方案", "plan", "design", "architect", "strategy",
+        // Deep reasoning
+        "分析", "优化", "重构", "analyze", "optimize", "refactor", "rethink",
+        // Multi-step workflows
+        "实现", "集成", "迁移", "implement", "integrate", "migrate", "port",
+        // Research & exploration
+        "调研", "研究", "探索", "research", "investigate", "explore",
+        // Complex problem-solving
+        "调试", "排查", "解决", "debug", "troubleshoot", "solve",
+        // Creative work
+        "创造", "生成", "构建", "create", "generate", "build from scratch",
+    ]
+    .into_iter()
+    .collect()
+});
+
+/// Keywords that signal moderate complexity
+static MEDIUM_COMPLEXITY_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    [
+        "修改", "更新", "添加", "改进", "modify", "update", "add", "improve",
+        "解释", "说明", "介绍", "explain", "describe", "introduce",
+        "比较", "对比", "review", "compare", "contrast",
+        "测试", "验证", "检查", "test", "verify", "check",
+    ]
+    .into_iter()
+    .collect()
+});
+
+/// Keywords that signal low complexity
+static LOW_COMPLEXITY_KEYWORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    [
+        "是", "什么", "吗", "多少", "哪", "when", "what", "where", "who", "which",
+        "显示", "列出", "查看", "show", "list", "view", "display",
+        "帮", "help", "hi", "hello", "你好", "在吗",
+    ]
+    .into_iter()
+    .collect()
+});
+
+/// Code-related patterns (regex-lite or simple heuristics)
+fn contains_code_block(text: &str) -> bool {
+    text.contains("```") || text.contains("fn ") || text.contains("def ") || text.contains("class ")
 }
 
-impl ComplexityAnalyzer {
-    /// Create a new analyzer from config and available tiers.
-    pub fn new(config: &AutoDispatchConfig, tiers: &ModelTiers) -> Self {
-        Self {
-            thresholds: config.thresholds.clone(),
-            has_light: tiers.light.is_some(),
-            has_reasoning: tiers.reasoning.is_some(),
-        }
+/// Multiple questions or conditional logic ("如果...那么", "if...then")
+fn has_nested_logic(text: &str) -> bool {
+    let question_marks = text.matches('?').count() + text.matches('?').count();
+    let conditionals = text.matches("如果").count()
+        + text.matches("那么").count()
+        + text.matches("if ").count()
+        + text.matches("then").count()
+        + text.matches("else").count();
+    question_marks >= 2 || conditionals >= 2
+}
+
+/// Main analyzer: returns a score 0-100
+pub fn analyze_complexity(text: &str) -> ComplexityScore {
+    let text_lower = text.to_lowercase();
+    let words: Vec<&str> = text_lower.split_whitespace().collect();
+    let char_count = text.chars().count();
+
+    // Base score from length (longer messages often indicate complex tasks)
+    let mut score: u8 = match char_count {
+        0..=50 => 10,
+        51..=150 => 25,
+        151..=400 => 40,
+        _ => 50,
+    };
+
+    // Keyword signals
+    let high_matches = HIGH_COMPLEXITY_KEYWORDS
+        .iter()
+        .filter(|&&kw| text_lower.contains(kw))
+        .count();
+    let medium_matches = MEDIUM_COMPLEXITY_KEYWORDS
+        .iter()
+        .filter(|&&kw| text_lower.contains(kw))
+        .count();
+    let low_matches = LOW_COMPLEXITY_KEYWORDS
+        .iter()
+        .filter(|&&kw| text_lower.contains(kw))
+        .count();
+
+    score += (high_matches * 15) as u8;
+    score += (medium_matches * 5) as u8;
+    score = score.saturating_sub((low_matches * 10) as u8);
+
+    // Boost for code presence
+    if contains_code_block(text) {
+        score += 15;
     }
 
-    /// Analyze task complexity and recommend model tier.
-    ///
-    /// # Arguments
-    /// * `message` - User message to analyze
-    /// * `history` - Conversation history (affects context complexity)
-    /// * `depth` - Agent nesting depth (0 = main, 1 = child, 2 = grandchild, ...)
-    pub fn analyze(&self, message: &str, history: &[Message], depth: usize) -> TaskComplexity {
-        let mut factors = Vec::new();
-
-        // 1. Task type analysis (30% weight)
-        let task_type_score = Self::analyze_task_type(message);
-        factors.push(ComplexityFactor::new("任务类型", task_type_score, 0.30));
-
-        // 2. Context complexity (20% weight)
-        let context_score = Self::analyze_context(message, history);
-        factors.push(ComplexityFactor::new("上下文需求", context_score, 0.20));
-
-        // 3. Reasoning depth (25% weight)
-        let reasoning_score = Self::analyze_reasoning_depth(message);
-        factors.push(ComplexityFactor::new("推理深度", reasoning_score, 0.25));
-
-        // 4. Tool call prediction (15% weight)
-        let tool_score = Self::predict_tool_complexity(message);
-        factors.push(ComplexityFactor::new("工具调用复杂度", tool_score, 0.15));
-
-        // 5. Depth penalty (10% negative weight — child agents prefer lighter models)
-        let depth_penalty = (depth as u8).min(3);
-        if depth > 0 {
-            factors.push(ComplexityFactor::new("嵌套深度修正", depth_penalty, -0.10));
-        }
-
-        // Weighted sum
-        let weighted_score: f32 = factors.iter().map(|f| f.score as f32 * f.weight).sum();
-
-        let score = weighted_score.clamp(0.0, 10.0).round() as u8;
-
-        // Select tier based on thresholds
-        let recommended_tier = self.select_tier(score);
-
-        // Generate reasoning explanation
-        let reasoning = Self::generate_reasoning(&factors, score, recommended_tier);
-
-        TaskComplexity {
-            score,
-            factors,
-            recommended_tier,
-            reasoning,
-        }
+    // Boost for nested logic
+    if has_nested_logic(text) {
+        score += 10;
     }
 
-    /// Analyze task type from message content.
-    fn analyze_task_type(msg: &str) -> u8 {
-        let msg_lower = msg.to_lowercase();
-
-        // Simple query (1-2)
-        if msg_lower.len() < 50
-            && (msg_lower.contains("什么是")
-                || msg_lower.contains("查看")
-                || msg_lower.contains("列出")
-                || msg_lower.contains("show")
-                || msg_lower.contains("list")
-                || msg_lower.contains("what is"))
-        {
-            return 1;
-        }
-
-        // File operations (3-5)
-        if msg_lower.contains("读取")
-            || msg_lower.contains("搜索")
-            || msg_lower.contains("查找")
-            || msg_lower.contains("read")
-            || msg_lower.contains("search")
-            || msg_lower.contains("find")
-        {
-            return 4;
-        }
-
-        // Code refactoring (6-7)
-        if msg_lower.contains("重构")
-            || msg_lower.contains("优化")
-            || msg_lower.contains("改进")
-            || msg_lower.contains("修改")
-            || msg_lower.contains("refactor")
-            || msg_lower.contains("optimize")
-            || msg_lower.contains("improve")
-        {
-            return 6;
-        }
-
-        // System design / architecture (8-10)
-        if msg_lower.contains("设计")
-            || msg_lower.contains("架构")
-            || msg_lower.contains("实现")
-            || msg_lower.contains("模型调度")
-            || msg_lower.contains("系统")
-            || msg_lower.contains("design")
-            || msg_lower.contains("architecture")
-            || msg_lower.contains("implement")
-            || msg_lower.contains("system")
-        {
-            return 9;
-        }
-
-        // Default medium complexity
-        5
-    }
-
-    /// Analyze context complexity based on history length and message size.
-    fn analyze_context(msg: &str, history: &[Message]) -> u8 {
-        let turns = history.len();
-        let msg_length = msg.len();
-
-        match (turns, msg_length) {
-            (0..=2, 0..=100) => 1, // Short conversation + short message
-            (0..=2, 101..=500) => 3,
-            (0..=2, _) => 5,
-            (3..=10, 0..=200) => 4,
-            (3..=10, _) => 6,
-            (11..=20, _) => 7,
-            _ => 8, // Long conversation needs stronger context understanding
-        }
-    }
-
-    /// Analyze reasoning depth requirements.
-    fn analyze_reasoning_depth(msg: &str) -> u8 {
-        let msg_lower = msg.to_lowercase();
-
-        // Multi-step indicators
-        let multi_step_keywords = [
-            "首先", "然后", "接着", "最后", "步骤", "first", "then", "next", "finally", "step",
-        ];
-        let has_multi_step = multi_step_keywords.iter().any(|k| msg_lower.contains(k));
-
-        // Deep reasoning indicators
-        let reasoning_keywords = [
-            "为什么",
-            "如何实现",
-            "最佳实践",
-            "trade-off",
-            "权衡",
-            "比较",
-            "分析",
-            "评估",
-            "why",
-            "how to",
-            "best practice",
-            "compare",
-            "analyze",
-            "evaluate",
-        ];
-        let has_deep_reasoning = reasoning_keywords.iter().any(|k| msg_lower.contains(k));
-
-        match (has_multi_step, has_deep_reasoning) {
-            (true, true) => 9,   // Multi-step + deep reasoning
-            (true, false) => 6,  // Multi-step only
-            (false, true) => 7,  // Deep reasoning only
-            (false, false) => 3, // Simple reasoning
-        }
-    }
-
-    /// Predict tool call complexity.
-    fn predict_tool_complexity(msg: &str) -> u8 {
-        let msg_lower = msg.to_lowercase();
-
-        let mut tool_count = 0;
-
-        // Search tools
-        if msg_lower.contains("搜索") || msg_lower.contains("search") {
-            tool_count += 1;
-        }
-
-        // Read tools
-        if msg_lower.contains("读取") || msg_lower.contains("read") || msg_lower.contains("查看")
-        {
-            tool_count += 1;
-        }
-
-        // Edit tools
-        if msg_lower.contains("修改") || msg_lower.contains("edit") || msg_lower.contains("更改")
-        {
-            tool_count += 1;
-        }
-
-        // Execution tools
-        if msg_lower.contains("运行")
-            || msg_lower.contains("执行")
-            || msg_lower.contains("run")
-            || msg_lower.contains("execute")
-        {
-            tool_count += 1;
-        }
-
-        // Batch/loop operations (multiply tool count)
-        if msg_lower.contains("所有")
-            || msg_lower.contains("每个")
-            || msg_lower.contains("all")
-            || msg_lower.contains("each")
-            || msg_lower.contains("批量")
-        {
-            tool_count += 3; // Batch operations need many tool calls
-        }
-
-        match tool_count {
-            0..=1 => 2,
-            2..=3 => 5,
-            4..=5 => 7,
-            _ => 9,
-        }
-    }
-
-    /// Select tier based on score and available models.
-    fn select_tier(&self, score: u8) -> ModelTier {
-        if score <= self.thresholds.light && self.has_light {
-            ModelTier::Light
-        } else if score >= self.thresholds.reasoning && self.has_reasoning {
-            ModelTier::Reasoning
-        } else {
-            ModelTier::Primary
-        }
-    }
-
-    /// Generate human-readable reasoning explanation.
-    fn generate_reasoning(factors: &[ComplexityFactor], score: u8, tier: ModelTier) -> String {
-        let factor_details: Vec<String> = factors
-            .iter()
-            .filter(|f| f.score > 0)
-            .map(|f| format!("{}: {}/10", f.name, f.score))
-            .collect();
-
-        format!(
-            "📊 复杂度评分: {}/10\n💡 评估因素: {}\n🎯 调度决策: {}",
-            score,
-            factor_details.join(", "),
-            tier.display_name()
-        )
-    }
+    // Cap at 100
+    score.min(100)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn mock_config() -> AutoDispatchConfig {
-        AutoDispatchConfig::default()
-    }
-
-    fn mock_tiers() -> ModelTiers {
-        ModelTiers {
-            primary: crate::model_dispatch::TierConfig {
-                provider: "test".into(),
-                model: "primary-model".into(),
-                api_key: String::new(),
-                base_url: String::new(),
-            },
-            light: Some(crate::model_dispatch::TierConfig {
-                provider: "test".into(),
-                model: "light-model".into(),
-                api_key: String::new(),
-                base_url: String::new(),
-            }),
-            reasoning: Some(crate::model_dispatch::TierConfig {
-                provider: "test".into(),
-                model: "reasoning-model".into(),
-                api_key: String::new(),
-                base_url: String::new(),
-            }),
-        }
-    }
-
     #[test]
     fn test_simple_query() {
-        let analyzer = ComplexityAnalyzer::new(&mock_config(), &mock_tiers());
-        let result = analyzer.analyze("什么是 Rust?", &[], 0);
-
-        assert!(result.score <= 3);
-        assert_eq!(result.recommended_tier, ModelTier::Light);
+        let score = analyze_complexity("什么是 Rust?");
+        assert!(score < 40, "Simple query should be < 40, got {}", score);
     }
 
     #[test]
-    fn test_complex_architecture() {
-        let analyzer = ComplexityAnalyzer::new(&mock_config(), &mock_tiers());
-        let result = analyzer.analyze("设计一个智能模型调度系统，支持三层模型和递归委派", &[], 0);
-
-        assert!(result.score >= 8);
-        assert_eq!(result.recommended_tier, ModelTier::Reasoning);
+    fn test_moderate_task() {
+        let score = analyze_complexity("修改 auth.rs 文件，添加 JWT 验证逻辑");
+        assert!(
+            (30..=70).contains(&score),
+            "Moderate task should be 30-70, got {}",
+            score
+        );
     }
 
     #[test]
-    fn test_depth_penalty() {
-        let analyzer = ComplexityAnalyzer::new(&mock_config(), &mock_tiers());
+    fn test_complex_task() {
+        let score = analyze_complexity(
+            "设计一个智能模型调度系统，实现根据消息复杂度自动选择 Light/Primary/Reasoning 三层模型架构，包含学习引擎和用户反馈训练机制"
+        );
+        assert!(score > 60, "Complex task should be > 60, got {}", score);
+    }
 
-        // Same message, different depths
-        let depth0 = analyzer.analyze("设计系统", &[], 0);
-        let depth2 = analyzer.analyze("设计系统", &[], 2);
-
-        // Deeper agent should have lower score
-        assert!(depth2.score < depth0.score);
+    #[test]
+    fn test_code_task() {
+        let score = analyze_complexity(
+            "```rust\nfn main() {\n  println!(\"hello\");\n}\n```\n这段代码有什么问题？",
+        );
+        assert!(score >= 35, "Code review should boost score, got {}", score);
     }
 }

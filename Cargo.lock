@@ -1198,6 +1198,7 @@ dependencies = [
  "hakimi-skills",
  "hakimi-tools",
  "hakimi-transports",
+ "once_cell",
  "rand 0.9.4",
  "regex",
  "reqwest",
