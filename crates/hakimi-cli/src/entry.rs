@@ -5817,6 +5817,7 @@ async fn process_gateway_messages_loop(
     config: hakimi_config::HakimiConfig,
     session_db: std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>,
     persona_session_dbs: hakimi_server::server::PersonaSessionDbs,
+    dispatch_learner: std::sync::Arc<tokio::sync::Mutex<hakimi_core::DispatchLearner>>,
 ) -> Result<()> {
     use std::collections::{HashMap, VecDeque};
     // Base team executor: teammates are built from the instance template (the
@@ -5883,52 +5884,49 @@ async fn process_gateway_messages_loop(
         if let Some(callback_data) = &msg.callback_data {
             // Parse callback data format: "dispatch_lighter:uuid" / "dispatch_justright:uuid" / "dispatch_stronger:uuid"
             if let Some((action, dispatch_id)) = callback_data.split_once(':') {
-                match action {
+                let feedback_result = match action {
                     "dispatch_lighter" => {
-                        // User thinks the model choice was too complex for the task
-                        info!(dispatch_id = %dispatch_id, "user feedback: too complex");
-                        // TODO: Call learner.record_feedback(dispatch_id, UserFeedback::TooComplex)
-                        // Send confirmation
-                        let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
-                            platform: platform.clone(),
-                            bot_id: bot_id.clone(),
-                            chat_id: chat_id.clone(),
-                            user_id: msg_user_id.clone(),
-                            text: "✅ 已记录反馈：模型选择太复杂".to_string(),
-                            media: None,
-                            callback_data: None,
-                        }).await;
+                        info!(dispatch_id = %dispatch_id, "user feedback: too complex (need lighter model)");
+                        let mut learner = dispatch_learner.lock().await;
+                        learner.apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::TooHeavy)
                     }
                     "dispatch_justright" => {
                         info!(dispatch_id = %dispatch_id, "user feedback: just right");
-                        // TODO: Call learner.record_feedback(dispatch_id, UserFeedback::Appropriate)
-                        let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
-                            platform: platform.clone(),
-                            bot_id: bot_id.clone(),
-                            chat_id: chat_id.clone(),
-                            user_id: msg_user_id.clone(),
-                            text: "✅ 已记录反馈：模型选择恰当".to_string(),
-                            media: None,
-                            callback_data: None,
-                        }).await;
+                        let mut learner = dispatch_learner.lock().await;
+                        learner.apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::JustRight)
                     }
                     "dispatch_stronger" => {
-                        info!(dispatch_id = %dispatch_id, "user feedback: too simple");
-                        // TODO: Call learner.record_feedback(dispatch_id, UserFeedback::TooComplex)
-                        let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
-                            platform: platform.clone(),
-                            bot_id: bot_id.clone(),
-                            chat_id: chat_id.clone(),
-                            user_id: msg_user_id.clone(),
-                            text: "✅ 已记录反馈：模型选择太简单".to_string(),
-                            media: None,
-                            callback_data: None,
-                        }).await;
+                        info!(dispatch_id = %dispatch_id, "user feedback: too simple (need stronger model)");
+                        let mut learner = dispatch_learner.lock().await;
+                        learner.apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::TooLight)
                     }
                     _ => {
                         warn!(callback_data = %callback_data, "unknown callback action");
+                        false
                     }
-                }
+                };
+
+                // Send confirmation
+                let confirmation_text = if feedback_result {
+                    match action {
+                        "dispatch_lighter" => "✅ 已记录反馈：模型选择太复杂",
+                        "dispatch_justright" => "✅ 已记录反馈：模型选择恰当",
+                        "dispatch_stronger" => "✅ 已记录反馈：模型选择太简单",
+                        _ => "❌ 未知的反馈类型",
+                    }
+                } else {
+                    "⚠️  反馈记录失败（未找到对应的调度记录）"
+                };
+
+                let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
+                    platform: platform.clone(),
+                    bot_id: bot_id.clone(),
+                    chat_id: chat_id.clone(),
+                    user_id: msg_user_id.clone(),
+                    text: confirmation_text.to_string(),
+                    media: None,
+                    callback_data: None,
+                }).await;
             }
             // Skip further processing for callbacks
             continue;
@@ -7264,6 +7262,12 @@ async fn start_gateway(
     let onboarding_config_path = Arc::new(hakimi_config_path(&runtime_home));
     let runtime_home = Arc::new(runtime_home);
 
+    // Initialize DispatchLearner with persistence
+    let learner_path = runtime_home.home().join("dispatch_history.json");
+    let learner = hakimi_core::DispatchLearner::with_persistence(learner_path)
+        .unwrap_or_else(|_| hakimi_core::DispatchLearner::new());
+    let dispatch_learner = Arc::new(Mutex::new(learner));
+
     // Initialize session DB for gateway session persistence.
     let gw_db_path = runtime_home.sessions_db_path();
     let gw_db = tokio::task::spawn_blocking(move || {
@@ -7481,6 +7485,7 @@ async fn start_gateway(
         config,
         session_db,
         persona_session_dbs,
+        dispatch_learner,
     )
     .await?;
 
@@ -7564,6 +7569,12 @@ async fn start_unified_server(
     let onboarding_config_path = Arc::new(hakimi_config_path(&runtime_home));
     let runtime_home_arc = Arc::new(runtime_home);
 
+    // Initialize DispatchLearner with persistence
+    let learner_path = runtime_home_arc.home().join("dispatch_history.json");
+    let learner = hakimi_core::DispatchLearner::with_persistence(learner_path)
+        .unwrap_or_else(|_| hakimi_core::DispatchLearner::new());
+    let dispatch_learner = Arc::new(Mutex::new(learner));
+
     // Persona registry + per-persona base agents for gateway routing. The same
     // registry Arc is shared with the WebUI AppState below so P4 binding edits
     // affect routing live.
@@ -7622,6 +7633,7 @@ async fn start_unified_server(
     let shared_persona_session_dbs: hakimi_server::server::PersonaSessionDbs =
         Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
     let persona_session_dbs_for_msg = shared_persona_session_dbs.clone();
+    let dispatch_learner_for_msg = dispatch_learner.clone();
 
     tokio::spawn(async move {
         let _ = process_gateway_messages_loop(
@@ -7645,6 +7657,7 @@ async fn start_unified_server(
             config_for_msg,
             session_db_for_msg,
             persona_session_dbs_for_msg,
+            dispatch_learner_for_msg,
         )
         .await;
     });
