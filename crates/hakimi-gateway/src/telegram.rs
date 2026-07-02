@@ -358,6 +358,7 @@ impl TelegramAdapter {
                         for update in updates {
                             let update_id = update.update_id;
 
+                            // Handle regular messages
                             if let Some(message) = update.message
                                 && let Some(gw_msg) = convert_message(&bot_id, &message)
                             {
@@ -385,6 +386,54 @@ impl TelegramAdapter {
                                 }
                             }
 
+                            // Handle callback queries (inline button presses)
+                            if let Some(callback_query) = update.callback_query {
+                                if let Some(data) = callback_query.data {
+                                    debug!(
+                                        callback_id = %callback_query.id,
+                                        data = %data,
+                                        "callback query received"
+                                    );
+
+                                    // Extract chat_id and user_id from the callback
+                                    let (chat_id, user_id) = if let Some(msg) = callback_query.message {
+                                        (msg.chat.id.to_string(), callback_query.from.id.to_string())
+                                    } else {
+                                        // Fallback: use user_id as chat_id for inline queries
+                                        let uid = callback_query.from.id.to_string();
+                                        (uid.clone(), uid)
+                                    };
+
+                                    // Create a GatewayMessage with callback_data
+                                    let gw_msg = GatewayMessage {
+                                        platform: "telegram".to_owned(),
+                                        bot_id: bot_id.clone(),
+                                        chat_id,
+                                        user_id,
+                                        text: String::new(),  // Callbacks have no text body
+                                        media: None,
+                                        callback_data: Some(data.clone()),
+                                    };
+
+                                    if msg_tx.send(gw_msg).is_err() {
+                                        error!("message receiver dropped – stopping poll loop");
+                                        return;
+                                    }
+
+                                    // Send acknowledgment to Telegram (answerCallbackQuery)
+                                    // The api_url is like "https://api.telegram.org/bot<token>/getUpdates"
+                                    // We need "https://api.telegram.org/bot<token>/answerCallbackQuery"
+                                    let base_url = api_url.trim_end_matches("/getUpdates");
+                                    let _ = client
+                                        .post(format!("{}/answerCallbackQuery", base_url))
+                                        .json(&serde_json::json!({
+                                            "callback_query_id": callback_query.id
+                                        }))
+                                        .send()
+                                        .await;
+                                }
+                            }
+
                             // Advance offset so we don't see this update again.
                             offset = update_id + 1;
                         }
@@ -396,6 +445,65 @@ impl TelegramAdapter {
                 }
             }
         })
+    }
+
+    /// Send a message with an inline keyboard attached.
+    /// 
+    /// This is a specialized method for sending dispatch feedback buttons.
+    /// The keyboard has three buttons: "💡 太复杂", "✅ 正好", "🚀 太简单"
+    /// 
+    /// # Arguments
+    /// - `chat_id`: Target chat ID
+    /// - `text`: Message text (Markdown supported)
+    /// - `dispatch_id`: Unique identifier for this dispatch decision (embedded in callback data)
+    pub async fn send_message_with_dispatch_feedback(
+        &self,
+        chat_id: &str,
+        text: &str,
+        dispatch_id: &str,
+    ) -> Result<()> {
+        let text = normalize_outbound_text(text);
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": [[
+                    {
+                        "text": "💡 太复杂",
+                        "callback_data": format!("dispatch_lighter:{}", dispatch_id)
+                    },
+                    {
+                        "text": "✅ 正好",
+                        "callback_data": format!("dispatch_justright:{}", dispatch_id)
+                    },
+                    {
+                        "text": "🚀 太简单",
+                        "callback_data": format!("dispatch_stronger:{}", dispatch_id)
+                    }
+                ]]
+            }
+        });
+
+        let resp: TgResponse<serde_json::Value> = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&body)
+            .send()
+            .await
+            .context("failed to send Telegram message with InlineKeyboard")?
+            .json()
+            .await
+            .context("failed to parse sendMessage response")?;
+
+        if !resp.ok {
+            anyhow::bail!(
+                "Telegram sendMessage with InlineKeyboard failed: {}",
+                resp.description.unwrap_or_else(|| "unknown error".into())
+            );
+        }
+
+        Ok(())
     }
 }
 

@@ -599,6 +599,7 @@ async fn deliver_pending_gateway_update_notification(
         user_id: String::new(),
         text: format_gateway_update_notification(&notification),
         media: None,
+        callback_data: None,
     };
     match gateway.route_message(&msg).await {
         Ok(()) => info!(
@@ -2599,6 +2600,7 @@ async fn send_gateway_text(
         user_id: String::new(),
         text: text.into(),
         media: None,
+        callback_data: None,
     };
     let _ = gateway.route_message(&msg).await;
 }
@@ -4054,6 +4056,7 @@ async fn render_gateway_stream_content(
                     user_id: String::new(),
                     text,
                     media: None,
+                    callback_data: None,
                 };
                 *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
                 result.rendered_any = true;
@@ -4084,6 +4087,7 @@ async fn commit_gateway_stream_draft_segment(
         user_id: String::new(),
         text: ui_state.current_text.clone(),
         media: None,
+        callback_data: None,
     };
     *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
     *rendered_content = true;
@@ -5875,6 +5879,61 @@ async fn process_gateway_messages_loop(
 
         info!(platform = %platform, chat_id = %chat_id, has_media = media_id.is_some(), "received message via gateway");
 
+        // Handle callback queries (inline button presses)
+        if let Some(callback_data) = &msg.callback_data {
+            // Parse callback data format: "dispatch_lighter:uuid" / "dispatch_justright:uuid" / "dispatch_stronger:uuid"
+            if let Some((action, dispatch_id)) = callback_data.split_once(':') {
+                match action {
+                    "dispatch_lighter" => {
+                        // User thinks the model choice was too complex for the task
+                        info!(dispatch_id = %dispatch_id, "user feedback: too complex");
+                        // TODO: Call learner.record_feedback(dispatch_id, UserFeedback::TooComplex)
+                        // Send confirmation
+                        let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
+                            platform: platform.clone(),
+                            bot_id: bot_id.clone(),
+                            chat_id: chat_id.clone(),
+                            user_id: msg_user_id.clone(),
+                            text: "✅ 已记录反馈：模型选择太复杂".to_string(),
+                            media: None,
+                            callback_data: None,
+                        }).await;
+                    }
+                    "dispatch_justright" => {
+                        info!(dispatch_id = %dispatch_id, "user feedback: just right");
+                        // TODO: Call learner.record_feedback(dispatch_id, UserFeedback::Appropriate)
+                        let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
+                            platform: platform.clone(),
+                            bot_id: bot_id.clone(),
+                            chat_id: chat_id.clone(),
+                            user_id: msg_user_id.clone(),
+                            text: "✅ 已记录反馈：模型选择恰当".to_string(),
+                            media: None,
+                            callback_data: None,
+                        }).await;
+                    }
+                    "dispatch_stronger" => {
+                        info!(dispatch_id = %dispatch_id, "user feedback: too simple");
+                        // TODO: Call learner.record_feedback(dispatch_id, UserFeedback::TooComplex)
+                        let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
+                            platform: platform.clone(),
+                            bot_id: bot_id.clone(),
+                            chat_id: chat_id.clone(),
+                            user_id: msg_user_id.clone(),
+                            text: "✅ 已记录反馈：模型选择太简单".to_string(),
+                            media: None,
+                            callback_data: None,
+                        }).await;
+                    }
+                    _ => {
+                        warn!(callback_data = %callback_data, "unknown callback action");
+                    }
+                }
+            }
+            // Skip further processing for callbacks
+            continue;
+        }
+
         if text.starts_with('/') {
             match Command::parse(&text) {
                 Some(Command::Stop) => {
@@ -6261,6 +6320,7 @@ Just send a message to chat with me!"
                                 user_id: "".to_string(),
                                 text: "🔄 System is updating and restarting, please hold on...".to_string(),
                                 media: None,
+                                callback_data: None,
                             };
                             let _ = gateway.route_message(&msg).await;
 
@@ -6291,6 +6351,7 @@ Just send a message to chat with me!"
                                     "❌ Hakimi 更新失败，请查看日志。".to_string()
                                 },
                                 media: None,
+                                callback_data: None,
                             };
                             let _ = gateway.route_message(&result_msg).await;
 
@@ -6476,6 +6537,7 @@ Just send a message to chat with me!"
                         user_id: String::new(),
                         text: response,
                         media: None,
+                        callback_data: None,
                     })
                     .await;
                 return;
@@ -6756,6 +6818,7 @@ Just send a message to chat with me!"
                                         user_id: String::new(),
                                         text,
                                         media: None,
+                                        callback_data: None,
                                     };
                                     let _ = gateway_cb.route_message(&msg).await;
                                 }
@@ -6798,6 +6861,7 @@ Just send a message to chat with me!"
                                         user_id: String::new(),
                                         text: String::new(),
                                         media: Some(media),
+                                        callback_data: None,
                                     };
                                     let _ = gateway_cb.route_message(&msg).await;
                                 }
@@ -6852,6 +6916,7 @@ Just send a message to chat with me!"
                                         user_id: String::new(),
                                         text: rendered,
                                         media: None,
+                                        callback_data: None,
                                     };
                                     bubble.message_id =
                                         gateway_cb.route_message_get_id(&msg).await.ok().flatten();
@@ -7093,6 +7158,7 @@ Just send a message to chat with me!"
                         user_id: String::new(),
                         text,
                         media: None,
+                        callback_data: None,
                     };
                     if gateway_clone.route_message(&reply).await.is_ok() {
                         let _ = gateway_clone
@@ -7108,6 +7174,7 @@ Just send a message to chat with me!"
                         user_id: String::new(),
                         text,
                         media: None,
+                        callback_data: None,
                     };
                     let _ = gateway_clone.route_message(&reply).await;
                 }
@@ -7263,6 +7330,7 @@ async fn start_gateway(
                     user_id: String::new(),
                     text: queued.message,
                     media: None,
+                    callback_data: None,
                 };
                 let _ = gateway_queue.route_message(&msg).await;
             }
@@ -7605,6 +7673,7 @@ async fn start_unified_server(
                     user_id: String::new(),
                     text: queued.message,
                     media: None,
+                    callback_data: None,
                 };
                 let _ = gateway_queue.route_message(&msg).await;
             }
@@ -8702,6 +8771,7 @@ mod tests {
             user_id: user_id.to_string(),
             text: "hello".to_string(),
             media: None,
+            callback_data: None,
         }
     }
 
