@@ -1069,7 +1069,13 @@ async fn team_executor_consults_addressable_teammate() {
         None,
     ));
 
-    let exec = hakimi_core::PersonaTeamExecutor::new(registry, template, 128_000).for_lead("lead");
+    let exec = hakimi_core::PersonaTeamExecutor::new(
+        registry,
+        template,
+        hakimi_config::ModelConfig::default(),
+        128_000,
+    )
+    .for_lead("lead");
     let answer = hakimi_common::TeamExecutor::consult(
         &exec,
         hakimi_common::TeamCallContext {
@@ -1108,7 +1114,13 @@ async fn team_consult_publishes_activity_events() {
         hakimi_tools::ToolRegistry::new(),
         None,
     ));
-    let exec = hakimi_core::PersonaTeamExecutor::new(registry, template, 128_000).for_lead("lead");
+    let exec = hakimi_core::PersonaTeamExecutor::new(
+        registry,
+        template,
+        hakimi_config::ModelConfig::default(),
+        128_000,
+    )
+    .for_lead("lead");
     let _ = hakimi_common::TeamExecutor::consult(
         &exec,
         hakimi_common::TeamCallContext {
