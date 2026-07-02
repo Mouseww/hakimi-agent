@@ -196,6 +196,17 @@ impl UserFeedback {
         }
     }
 
+    /// Parse feedback from inline button callback data.
+    /// Used for Telegram inline buttons, Discord components, etc.
+    pub fn from_callback(data: &str) -> Option<Self> {
+        match data {
+            "dispatch_lighter" | "👎" => Some(Self::TooHeavy),
+            "dispatch_stronger" | "💪" => Some(Self::TooLight),
+            "dispatch_justright" | "👍" => Some(Self::JustRight),
+            _ => None,
+        }
+    }
+
     /// Get user-friendly message for this feedback.
     pub fn message(&self) -> &'static str {
         match self {
@@ -203,6 +214,54 @@ impl UserFeedback {
             Self::TooLight => "✅ 已记录：下次类似任务将使用更强的模型",
             Self::JustRight => "✅ 已记录：保持当前调度策略",
         }
+    }
+
+    /// Get emoji representation for this feedback type.
+    pub fn emoji(&self) -> &'static str {
+        match self {
+            Self::TooHeavy => "👎",
+            Self::TooLight => "💪",
+            Self::JustRight => "👍",
+        }
+    }
+
+    /// Get button text for UI rendering.
+    pub fn button_text(&self) -> &'static str {
+        match self {
+            Self::TooHeavy => "太重了",
+            Self::TooLight => "太弱了",
+            Self::JustRight => "刚刚好",
+        }
+    }
+
+    /// Get callback data for inline buttons (Telegram/Discord).
+    pub fn callback_data(&self) -> &'static str {
+        match self {
+            Self::TooHeavy => "dispatch_lighter",
+            Self::TooLight => "dispatch_stronger",
+            Self::JustRight => "dispatch_justright",
+        }
+    }
+
+    /// Generate Telegram inline keyboard markup JSON.
+    /// Returns a serializable structure for teloxide InlineKeyboardMarkup.
+    pub fn telegram_inline_buttons() -> String {
+        r#"{"inline_keyboard":[[
+            {"text":"👍 刚刚好","callback_data":"dispatch_justright"},
+            {"text":"👎 太重了","callback_data":"dispatch_lighter"},
+            {"text":"💪 太弱了","callback_data":"dispatch_stronger"}
+        ]]}"#
+        .to_string()
+    }
+
+    /// Generate Discord message components JSON.
+    pub fn discord_action_row() -> String {
+        r#"{"type":1,"components":[
+            {"type":2,"style":3,"label":"👍 刚刚好","custom_id":"dispatch_justright"},
+            {"type":2,"style":4,"label":"👎 太重了","custom_id":"dispatch_lighter"},
+            {"type":2,"style":1,"label":"💪 太弱了","custom_id":"dispatch_stronger"}
+        ]}"#
+        .to_string()
     }
 }
 
