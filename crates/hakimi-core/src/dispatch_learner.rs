@@ -94,6 +94,26 @@ impl DispatchLearner {
         }
     }
 
+    /// Apply user feedback to a specific dispatch by ID.
+    pub fn apply_feedback_by_id(&mut self, dispatch_id: &str, feedback: UserFeedback) -> bool {
+        for record in self.history.iter_mut().rev() {
+            if record.id == dispatch_id {
+                record.apply_feedback(feedback);
+
+                // Persist change
+                if self.persist_path.is_some() {
+                    let _ = self.save();
+                }
+
+                tracing::info!(dispatch_id = %dispatch_id, feedback = ?feedback, "applied user feedback");
+                return true;
+            }
+        }
+
+        tracing::warn!(dispatch_id = %dispatch_id, "dispatch record not found for feedback");
+        false
+    }
+
     /// Get dispatch statistics.
     pub fn get_stats(&self) -> DispatchStats {
         DispatchStats::from_history(&self.history.iter().cloned().collect::<Vec<_>>())

@@ -118,6 +118,9 @@ impl ComplexityFactor {
 /// Historical dispatch record for learning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DispatchRecord {
+    /// Unique ID for this dispatch (for user feedback).
+    pub id: String,
+
     /// Timestamp of this dispatch.
     pub timestamp: DateTime<Utc>,
 
@@ -159,6 +162,7 @@ impl DispatchRecord {
         depth: usize,
     ) -> Self {
         Self {
+            id: uuid::Uuid::new_v4().to_string(),
             timestamp: Utc::now(),
             input,
             predicted_tier,
