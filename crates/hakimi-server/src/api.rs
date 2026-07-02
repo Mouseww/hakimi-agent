@@ -6186,11 +6186,15 @@ mod tests {
             .build()
             .unwrap();
 
+        let dispatched_agent =
+            hakimi_core::DispatchedAgent::new(agent, hakimi_config::ModelConfig::default(), 0)
+                .unwrap();
+
         let db = SessionDB::new(std::path::Path::new(":memory:")).unwrap();
         db.initialize().unwrap();
 
         AppState {
-            agent: Arc::new(Mutex::new(agent)),
+            agent: Arc::new(Mutex::new(dispatched_agent)),
             config: Arc::new(Mutex::new(hakimi_config::HakimiConfig::default())),
             session_db: Arc::new(Mutex::new(db)),
             response_store: Arc::new(Mutex::new(ResponsesStore::new(100))),
@@ -6222,6 +6226,7 @@ mod tests {
             persona_session_dbs: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            shutdown_tx: None,
         }
     }
 
@@ -6957,7 +6962,8 @@ mod tests {
 
             let mut store = hakimi_skills::SkillStore::from_skills(vec![skill]);
             store.observe("release validation failed");
-            *agent = agent.clone().with_skill_store(Some(store));
+            let base = agent.base_agent_mut();
+            *base = base.clone().with_skill_store(Some(store));
         }
         let app = build_router(state);
 

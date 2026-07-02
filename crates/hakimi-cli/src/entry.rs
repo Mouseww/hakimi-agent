@@ -10477,7 +10477,7 @@ gateways:
         );
         assert_eq!(
             messages[1].content.as_deref(),
-            Some(assistant_text.as_str())
+            Some(_assistant_text.as_str())
         );
         assert_eq!(messages[2].content.as_deref(), Some("plain user text"));
     }
