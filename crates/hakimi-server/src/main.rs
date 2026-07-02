@@ -435,21 +435,34 @@ async fn build_agent(
     agent = agent.with_embedding_provider(embedding_provider);
 
     info!(model = %model, "base agent built successfully");
-    
+
     // Wrap agent with intelligent model dispatch
     let dispatched_agent = hakimi_core::DispatchedAgent::new(
         agent,
         config.model.clone(),
         0, // depth = 0 for main agent
     )?;
-    
+
     if config.model.auto_dispatch.enabled {
-        info!("model dispatch enabled with tiers: light={}, reasoning={}", 
-            config.model.tiers.as_ref().and_then(|t| t.light.as_ref()).map(|l| l.model.as_str()).unwrap_or("none"),
-            config.model.tiers.as_ref().and_then(|t| t.reasoning.as_ref()).map(|r| r.model.as_str()).unwrap_or("none")
+        info!(
+            "model dispatch enabled with tiers: light={}, reasoning={}",
+            config
+                .model
+                .tiers
+                .as_ref()
+                .and_then(|t| t.light.as_ref())
+                .map(|l| l.model.as_str())
+                .unwrap_or("none"),
+            config
+                .model
+                .tiers
+                .as_ref()
+                .and_then(|t| t.reasoning.as_ref())
+                .map(|r| r.model.as_str())
+                .unwrap_or("none")
         );
     }
-    
+
     Ok(dispatched_agent)
 }
 

@@ -16,24 +16,20 @@ use crate::{AIAgent, ConversationResult};
 pub struct DispatchedAgent {
     /// Base agent (will be cloned/reconfigured per dispatch decision).
     base_agent: AIAgent,
-    
+
     /// Model dispatcher (None = single-model mode).
     dispatcher: Option<ModelDispatcher>,
-    
+
     /// Model configuration for rebuilding agents.
     model_config: ModelConfig,
-    
+
     /// Agent nesting depth (0 = main, 1 = child, 2 = grandchild).
     depth: usize,
 }
 
 impl DispatchedAgent {
     /// Create a dispatched agent from base agent and config.
-    pub fn new(
-        base_agent: AIAgent,
-        model_config: ModelConfig,
-        depth: usize,
-    ) -> Result<Self> {
+    pub fn new(base_agent: AIAgent, model_config: ModelConfig, depth: usize) -> Result<Self> {
         let dispatcher = if model_config.auto_dispatch.enabled {
             if let Some(ref tiers) = model_config.tiers {
                 Some(ModelDispatcher::new(
@@ -64,10 +60,8 @@ impl DispatchedAgent {
         };
 
         // Analyze complexity and select model
-        let (tier_config, complexity) = dispatcher.select_model(
-            user_message,
-            &self.base_agent.messages,
-        );
+        let (tier_config, complexity) =
+            dispatcher.select_model(user_message, &self.base_agent.messages);
 
         // Show dispatch decision via streaming callback
         if dispatcher.should_show_decision() {
@@ -101,7 +95,7 @@ impl DispatchedAgent {
     fn create_agent_for_tier(&self, tier_config: &TierConfig) -> Result<AIAgent> {
         // Create transport based on provider
         let transport = self.create_transport_for_tier(tier_config)?;
-        
+
         // Clone base agent structure but replace transport and model
         let mut new_agent = AIAgent::new(
             tier_config.model.clone(),
@@ -109,36 +103,42 @@ impl DispatchedAgent {
             self.base_agent.tool_registry().clone(),
             self.base_agent.skill_store.clone(),
         );
-        
+
         // Preserve important state from base agent
         new_agent.messages = self.base_agent.messages.clone();
         new_agent.streaming_callback = self.base_agent.streaming_callback.clone();
-        
+
         Ok(new_agent)
     }
-    
+
     /// Create a transport from tier configuration with API key fallback.
-    fn create_transport_for_tier(&self, tier_config: &TierConfig) -> Result<Arc<dyn ProviderTransport>> {
+    fn create_transport_for_tier(
+        &self,
+        tier_config: &TierConfig,
+    ) -> Result<Arc<dyn ProviderTransport>> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .build()
-            .map_err(|e| hakimi_common::HakimiError::Config(
-                format!("Failed to create HTTP client: {}", e)
-            ))?;
-        
+            .map_err(|e| {
+                hakimi_common::HakimiError::Config(format!("Failed to create HTTP client: {}", e))
+            })?;
+
         let base_url = if tier_config.base_url.is_empty() {
             // Use default base URLs based on provider
             match tier_config.provider.as_str() {
                 "anthropic" => "https://api.anthropic.com".to_string(),
                 "openai" => "https://api.openai.com".to_string(),
-                _ => return Err(hakimi_common::HakimiError::Config(
-                    format!("Provider '{}' requires explicit base_url", tier_config.provider)
-                )),
+                _ => {
+                    return Err(hakimi_common::HakimiError::Config(format!(
+                        "Provider '{}' requires explicit base_url",
+                        tier_config.provider
+                    )));
+                }
             }
         } else {
             tier_config.base_url.clone()
         };
-        
+
         // Get API key: tier-specific > top-level config > environment variable
         let api_key = if !tier_config.api_key.is_empty() {
             tier_config.api_key.clone()
@@ -151,15 +151,15 @@ impl DispatchedAgent {
                 .or_else(|_| std::env::var("API_KEY"))
                 .unwrap_or_default()
         };
-        
+
         if api_key.is_empty() {
-            return Err(hakimi_common::HakimiError::Config(
-                format!("API key not found for provider '{}'. Set tier-specific api_key in config, or {} env var.", 
-                    tier_config.provider, 
-                    format!("{}_API_KEY", tier_config.provider.to_uppercase()))
-            ));
+            return Err(hakimi_common::HakimiError::Config(format!(
+                "API key not found for provider '{}'. Set tier-specific api_key in config, or {} env var.",
+                tier_config.provider,
+                format!("{}_API_KEY", tier_config.provider.to_uppercase())
+            )));
         }
-        
+
         // Create transport based on provider type
         let transport: Arc<dyn ProviderTransport> = match tier_config.provider.as_str() {
             "anthropic" => Arc::new(AnthropicTransport::new(base_url, api_key, client)),
@@ -168,7 +168,7 @@ impl DispatchedAgent {
                 Arc::new(ChatCompletionsTransport::new(base_url, api_key, client))
             }
         };
-        
+
         Ok(transport)
     }
 
@@ -180,15 +180,16 @@ impl DispatchedAgent {
     ) -> Result<ConversationResult> {
         let Some(ref dispatcher) = self.dispatcher else {
             return Err(hakimi_common::HakimiError::Config(
-                "dispatcher should exist for two-stage execution".into()
+                "dispatcher should exist for two-stage execution".into(),
             ));
         };
 
         // Stage 1: Reasoning agent generates plan
-        let reasoning_tier = dispatcher.reasoning_tier()
-            .ok_or_else(|| hakimi_common::HakimiError::Config(
-                "reasoning tier should exist for two-stage execution".into()
-            ))?;
+        let reasoning_tier = dispatcher.reasoning_tier().ok_or_else(|| {
+            hakimi_common::HakimiError::Config(
+                "reasoning tier should exist for two-stage execution".into(),
+            )
+        })?;
 
         // Stream reasoning stage indicator
         if let Some(ref callback) = self.base_agent.streaming_callback {
@@ -205,8 +206,7 @@ impl DispatchedAgent {
              2. 执行步骤（每一步要做什么、使用什么工具）\\n\\\
              3. 潜在风险和注意事项\\n\\\
              4. 预期结果",
-            user_message,
-            complexity.reasoning
+            user_message, complexity.reasoning
         );
 
         // Create reasoning agent with reasoning tier config
@@ -221,14 +221,18 @@ impl DispatchedAgent {
         }
 
         // Build execution prompt with reasoning output
-        let execution_prompt = if self.model_config.auto_dispatch.two_stage.show_reasoning_to_primary {
+        let execution_prompt = if self
+            .model_config
+            .auto_dispatch
+            .two_stage
+            .show_reasoning_to_primary
+        {
             format!(
                 "基于以下规划，完成用户的任务。\\n\\n\\\
                  原始任务: {}\\n\\n\\\
                  执行计划:\\n{}\\n\\n\\\
                  现在请按计划执行任务，使用必要的工具调用，并给出最终结果。",
-                user_message,
-                reasoning_result.final_response
+                user_message, reasoning_result.final_response
             )
         } else {
             user_message.to_string()
@@ -243,24 +247,24 @@ impl DispatchedAgent {
     pub fn base_agent(&self) -> &AIAgent {
         &self.base_agent
     }
-    
+
     pub fn base_agent_mut(&mut self) -> &mut AIAgent {
         &mut self.base_agent
     }
-    
+
     /// Get the model configuration.
     pub fn model_config(&self) -> &ModelConfig {
         &self.model_config
     }
-    
+
     /// Build a tool context with dispatched delegation support.
     /// This overrides AIAgent's default behavior to inject DispatchedDelegateExecutor.
     pub fn build_dispatched_tool_context(&self) -> hakimi_common::ToolContext {
-        use std::sync::Arc;
         use hakimi_common::ToolContext;
-        
-        let delegate_executor: Option<Arc<dyn hakimi_common::DelegateExecutor>> =
-            Some(Arc::new(crate::dispatched_delegate::DispatchedDelegateExecutor::new(
+        use std::sync::Arc;
+
+        let delegate_executor: Option<Arc<dyn hakimi_common::DelegateExecutor>> = Some(Arc::new(
+            crate::dispatched_delegate::DispatchedDelegateExecutor::new(
                 self.base_agent.shared.transport.clone(),
                 self.base_agent.context_engine.clone(),
                 self.model_config.clone(),
@@ -269,8 +273,9 @@ impl DispatchedAgent {
                 self.base_agent.skill_store.clone(),
                 self.base_agent.streaming_callback.clone(),
                 self.depth,
-            )));
-        
+            ),
+        ));
+
         ToolContext {
             session_id: self.base_agent.session_id.clone(),
             user_id: self.base_agent.user_id.clone(),
@@ -357,15 +362,11 @@ mod tests {
     #[test]
     fn test_dispatcher_creation() {
         let model_config = mock_model_config();
-        
+
         // Auto-dispatch enabled with tiers
         let dispatcher = if model_config.auto_dispatch.enabled {
             model_config.tiers.as_ref().map(|tiers| {
-                ModelDispatcher::new(
-                    tiers.clone(),
-                    model_config.auto_dispatch.clone(),
-                    0,
-                )
+                ModelDispatcher::new(tiers.clone(), model_config.auto_dispatch.clone(), 0)
             })
         } else {
             None
@@ -381,11 +382,7 @@ mod tests {
 
         let dispatcher = if model_config.auto_dispatch.enabled {
             model_config.tiers.as_ref().map(|tiers| {
-                ModelDispatcher::new(
-                    tiers.clone(),
-                    model_config.auto_dispatch.clone(),
-                    0,
-                )
+                ModelDispatcher::new(tiers.clone(), model_config.auto_dispatch.clone(), 0)
             })
         } else {
             None

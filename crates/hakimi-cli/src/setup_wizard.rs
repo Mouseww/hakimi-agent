@@ -531,19 +531,19 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
 /// Setup systemd service for auto-start on boot
 fn setup_systemd_service(mode_cmd: &str, mode_name: &str) -> Result<()> {
     use std::process::Command;
-    
+
     // Detect hakimi binary path
     let hakimi_bin = std::env::current_exe()?;
     let hakimi_path = hakimi_bin.to_string_lossy();
-    
+
     // Get user home directory
-    let home = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Failed to determine home directory"))?;
+    let home =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to determine home directory"))?;
     let home_path = home.to_string_lossy();
-    
+
     // Generate systemd service file content
     let service_content = format!(
-r#"[Unit]
+        r#"[Unit]
 Description=Hakimi Agent ({})
 After=network.target
 
@@ -559,58 +559,55 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 "#,
-        mode_name,
-        hakimi_path,
-        mode_cmd,
-        home_path
+        mode_name, hakimi_path, mode_cmd, home_path
     );
-    
+
     // Write service file to /etc/systemd/system/hakimi.service
     let service_path = "/etc/systemd/system/hakimi.service";
-    
+
     // Check if we have root permissions
     let temp_file = "/tmp/hakimi.service";
     std::fs::write(temp_file, &service_content)?;
-    
+
     // Try to copy with sudo
     let status = Command::new("sudo")
         .args(&["cp", temp_file, service_path])
         .status()?;
-    
+
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to copy service file (need sudo)"));
     }
-    
+
     // Reload systemd daemon
     let status = Command::new("sudo")
         .args(&["systemctl", "daemon-reload"])
         .status()?;
-    
+
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to reload systemd daemon"));
     }
-    
+
     // Enable the service
     let status = Command::new("sudo")
         .args(&["systemctl", "enable", "hakimi"])
         .status()?;
-    
+
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to enable hakimi service"));
     }
-    
+
     // Start the service immediately
     let status = Command::new("sudo")
         .args(&["systemctl", "start", "hakimi"])
         .status()?;
-    
+
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to start hakimi service"));
     }
-    
+
     // Clean up temp file
     let _ = std::fs::remove_file(temp_file);
-    
+
     Ok(())
 }
 
@@ -687,43 +684,55 @@ pub fn run_setup_wizard(non_interactive: bool) -> Result<SetupConfig> {
         println!("  ✓ Configuration saved to ~/.hakimi/config.yaml");
         println!("  ✓ Directory structure created at ~/.hakimi/");
         println!();
-        
+
         // Step 6: Launch mode selection
         println!("━━━ Launch Mode ━━━");
         println!();
-        
+
         let mode_options = &[
             "Gateway only (message platforms like Telegram)",
             "WebUI only (browser interface on localhost:3005)",
             "Unified mode (Gateway + WebUI together)",
         ];
-        
+
         let mode_idx = Select::new()
             .with_prompt("Which mode do you want to run?")
             .items(mode_options)
             .default(2)
             .interact()?;
-        
+
         let (mode_name, mode_cmd, mode_desc) = match mode_idx {
-            0 => ("Gateway", "--gateway", "Telegram/Discord/etc. messaging platforms"),
-            1 => ("WebUI", "--serve --addr 127.0.0.1:3005", "Browser UI at http://127.0.0.1:3005"),
-            2 => ("Unified", "--gateway --serve --addr 127.0.0.1:3005", "Gateway + WebUI (recommended)"),
+            0 => (
+                "Gateway",
+                "--gateway",
+                "Telegram/Discord/etc. messaging platforms",
+            ),
+            1 => (
+                "WebUI",
+                "--serve --addr 127.0.0.1:3005",
+                "Browser UI at http://127.0.0.1:3005",
+            ),
+            2 => (
+                "Unified",
+                "--gateway --serve --addr 127.0.0.1:3005",
+                "Gateway + WebUI (recommended)",
+            ),
             _ => unreachable!(),
         };
-        
+
         println!();
-        
+
         let launch_options = &[
             "Manual launch (run command when needed)",
             "Auto-start on boot (enable systemd service)",
         ];
-        
+
         let launch_idx = Select::new()
             .with_prompt("How would you like to launch Hakimi?")
             .items(launch_options)
             .default(0)
             .interact()?;
-        
+
         match launch_idx {
             0 => {
                 // Manual launch
@@ -743,7 +752,7 @@ pub fn run_setup_wizard(non_interactive: bool) -> Result<SetupConfig> {
                 // Auto-start on boot
                 println!();
                 println!("  Setting up systemd service for auto-start...");
-                
+
                 if let Err(e) = setup_systemd_service(mode_cmd, mode_name) {
                     eprintln!("  ✗ Failed to setup systemd service: {}", e);
                     println!();

@@ -241,7 +241,7 @@ impl TeamExecutor for PersonaTeamExecutor {
             attempt += 1;
             let base_teammate =
                 crate::build_persona_agent(&self.template, &cfg, &skills_dir, self.context_length);
-            
+
             // Wrap teammate in DispatchedAgent to inherit model dispatch config.
             // Use depth+1 to apply nesting penalty.
             let mut teammate = match crate::DispatchedAgent::new(
@@ -256,13 +256,19 @@ impl TeamExecutor for PersonaTeamExecutor {
                     let mut fallback_config = self.model_config.clone();
                     fallback_config.auto_dispatch.enabled = false;
                     crate::DispatchedAgent::new(
-                        crate::build_persona_agent(&self.template, &cfg, &skills_dir, self.context_length),
+                        crate::build_persona_agent(
+                            &self.template,
+                            &cfg,
+                            &skills_dir,
+                            self.context_length,
+                        ),
                         fallback_config,
                         self.depth + 1,
-                    ).expect("dispatch creation cannot fail with disabled auto_dispatch")
+                    )
+                    .expect("dispatch creation cannot fail with disabled auto_dispatch")
                 }
             };
-            
+
             teammate.set_session_id(task_id.clone());
             // Nested consults allowed up to the depth cap, with this teammate in the lineage.
             teammate.set_team_executor(Some(Arc::new(self.descend(&cfg.id))));

@@ -746,16 +746,19 @@ async fn process_tool_calls(
         {
             cb(format!("\u{001e}hakimi_review:{review_notice}"));
         }
-        
+
         // Stream tool result to frontend
         if let Some(ref cb) = agent.streaming_callback {
             if let Some(content) = &res.content {
                 // Send tool result with special prefix
                 let tool_name = res.name.as_deref().unwrap_or("unknown");
-                cb(format!("\u{001e}hakimi_tool_result:{}|{}", tool_name, content));
+                cb(format!(
+                    "\u{001e}hakimi_tool_result:{}|{}",
+                    tool_name, content
+                ));
             }
         }
-        
+
         agent.messages.push(res);
     }
 

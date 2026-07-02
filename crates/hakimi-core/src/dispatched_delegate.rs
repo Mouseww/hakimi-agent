@@ -9,7 +9,7 @@ use hakimi_tools::ToolRegistry;
 use hakimi_transports::ProviderTransport;
 use tokio::sync::RwLock;
 
-use crate::{DispatchedAgent, AIAgent};
+use crate::{AIAgent, DispatchedAgent};
 
 /// Delegate executor that creates DispatchedAgent children instead of plain AIAgent.
 pub struct DispatchedDelegateExecutor {
@@ -74,39 +74,39 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
         tasks: Vec<(String, String, Vec<String>)>,
     ) -> Result<Vec<String>> {
         // Create DispatchedAgent children with inherited model_config and depth+1.
-        use tokio::sync::Semaphore;
         use std::sync::Arc;
-        
+        use tokio::sync::Semaphore;
+
         const MAX_CONCURRENT_DELEGATIONS: usize = 3;
-        
+
         let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_DELEGATIONS));
         let mut futures = Vec::new();
-        
+
         for (goal, context, _toolsets) in tasks {
             let transport = self.transport.clone();
             // TODO: Implement proper toolset filtering (requires async ToolRegistry API refactor)
             let child_registry = self.tool_registry.clone();
-            
+
             let parent_skill_store = self.skill_store.clone();
             let progress_callback = self.progress_callback.clone();
             let semaphore = semaphore.clone();
             let model_config = self.model_config.clone();
             let child_depth = self.parent_depth + 1;
-            
+
             // Generate unique session ID
             let child_session_id = format!("child_{}", uuid::Uuid::new_v4().simple());
-            
+
             let future = async move {
                 let _permit = semaphore.acquire().await.map_err(|e| {
                     HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
                 })?;
-                
+
                 let mut attempts = 0;
                 let max_attempts = 3;
-                
+
                 loop {
                     attempts += 1;
-                    
+
                     // Build system prompt
                     let child_instructions = "You are a sub-agent delegated by a parent agent. You have your own local runtime skill working set seeded from this subtask; use relevant local skills when helpful, but do not dump skill text back to the parent. Return only concise task results in this format:\\nStatus: success | partial | failed\\nSummary:\\nFindings:\\nFiles inspected:\\nCommands run:\\nRisks:\\nRecommendations:";
                     let system_prompt = if context.is_empty() {
@@ -116,7 +116,7 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
                             "{child_instructions}\\n\\nYour task: {goal}\\n\\nContext and constraints:\\n{context}"
                         )
                     };
-                    
+
                     let seed_text = if context.is_empty() {
                         goal.clone()
                     } else {
@@ -125,13 +125,15 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
                     let child_skill_store = parent_skill_store
                         .as_ref()
                         .map(|store| store.fork_for_subtask(&seed_text));
-                    
+
                     // Get base model name from config
                     // The actual model will be selected dynamically by DispatchedAgent
-                    let base_model = model_config.tiers.as_ref()
+                    let base_model = model_config
+                        .tiers
+                        .as_ref()
                         .map(|t| t.primary.model.clone())
                         .unwrap_or_else(|| model_config.default.clone());
-                    
+
                     // Create base AIAgent with parent's transport
                     // DispatchedAgent will create tier-specific agents as needed
                     let mut child_agent = crate::AIAgent::new(
@@ -143,23 +145,20 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
                     child_agent.set_system_prompt(system_prompt);
                     child_agent.set_session_id(child_session_id.clone());
                     if let Some(parent_progress) = progress_callback.clone() {
-                        child_agent.set_streaming_callback(Some(Arc::new(
-                            move |token: String| {
-                                // Forward tool/review notices to parent
-                                if token.starts_with("\\u{001e}hakimi_tool:") || token.starts_with("\\u{001e}hakimi_review:") {
-                                    parent_progress(token);
-                                }
-                            },
-                        )));
+                        child_agent.set_streaming_callback(Some(Arc::new(move |token: String| {
+                            // Forward tool/review notices to parent
+                            if token.starts_with("\\u{001e}hakimi_tool:")
+                                || token.starts_with("\\u{001e}hakimi_review:")
+                            {
+                                parent_progress(token);
+                            }
+                        })));
                     }
-                    
+
                     // Wrap in DispatchedAgent to inherit dispatch config
-                    let mut dispatched_child = DispatchedAgent::new(
-                        child_agent,
-                        model_config.clone(),
-                        child_depth,
-                    )?;
-                    
+                    let mut dispatched_child =
+                        DispatchedAgent::new(child_agent, model_config.clone(), child_depth)?;
+
                     // Execute
                     match dispatched_child.run_conversation(&goal).await {
                         Ok(res) => {
@@ -181,10 +180,10 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
                     }
                 }
             };
-            
+
             futures.push(tokio::spawn(future));
         }
-        
+
         // Wait for all children
         let mut results = Vec::new();
         for join_handle in futures::future::join_all(futures).await {
@@ -194,7 +193,7 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
                 Err(e) => return Err(HakimiError::Tool(format!("Child agent panicked: {e}"))),
             }
         }
-        
+
         Ok(results)
     }
 

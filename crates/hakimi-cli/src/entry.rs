@@ -4239,7 +4239,9 @@ fn long_version() -> &'static str {
         "│                                               │\n",
         "╰───────────────────────────────────────────────╯\n",
         "\n",
-        "Version:        ", env!("CARGO_PKG_VERSION"), "\n",
+        "Version:        ",
+        env!("CARGO_PKG_VERSION"),
+        "\n",
         "Repository:     https://github.com/Mouseww/hakimi-agent\n",
         "Documentation:  https://github.com/Mouseww/hakimi-agent#readme\n"
     );
@@ -4256,7 +4258,7 @@ fn long_version() -> &'static str {
 )]
 pub struct Args {
     /// Your prompt (if provided without --print, acts like --print).
-    /// 
+    ///
     /// When a positional prompt is given without --print flag, hakimi automatically
     /// enters print mode (non-interactive, output and exit).
     #[arg(value_name = "PROMPT")]
@@ -4271,7 +4273,7 @@ pub struct Args {
     pub provider: Option<String>,
 
     /// Print response and exit (useful for pipes). Alias: -p
-    /// 
+    ///
     /// Note: If a positional prompt is provided, --print mode is implicit.
     #[arg(long, short = 'P', visible_alias = "non-interactive")]
     pub print: bool,
@@ -5608,7 +5610,7 @@ async fn build_agent(
 
     // Wrap with DispatchedAgent for model dispatch
     let dispatched = hakimi_core::DispatchedAgent::new(agent, config.model.clone(), 0)?;
-    
+
     Ok(dispatched)
 }
 
@@ -5648,18 +5650,30 @@ fn build_gateway_persona_agents(
     registry: &hakimi_core::PersonaRegistry,
     runtime_home: &hakimi_common::RuntimeHome,
     context_length: usize,
-) -> std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<hakimi_core::DispatchedAgent>>> {
+) -> std::collections::HashMap<
+    String,
+    std::sync::Arc<tokio::sync::Mutex<hakimi_core::DispatchedAgent>>,
+> {
     let mut map = std::collections::HashMap::new();
     for cfg in registry.list() {
         if cfg.id == hakimi_core::DEFAULT_PERSONA_ID {
             continue;
         }
         let skills_dir = runtime_home.persona_dir(&cfg.id).join("skills");
-        let base_agent = hakimi_core::build_persona_agent(template.base_agent(), cfg, &skills_dir, context_length);
-        
+        let base_agent = hakimi_core::build_persona_agent(
+            template.base_agent(),
+            cfg,
+            &skills_dir,
+            context_length,
+        );
+
         // Wrap persona agent with DispatchedAgent (inherit dispatch config from template)
         let model_config = template.model_config().clone();
-        let dispatched = match hakimi_core::DispatchedAgent::new(base_agent.clone(), model_config.clone(), 0) {
+        let dispatched = match hakimi_core::DispatchedAgent::new(
+            base_agent.clone(),
+            model_config.clone(),
+            0,
+        ) {
             Ok(agent) => agent,
             Err(e) => {
                 tracing::warn!(persona = %cfg.id, "failed to wrap persona agent with dispatch: {e}, disabling auto_dispatch");
@@ -5669,7 +5683,7 @@ fn build_gateway_persona_agents(
                     .expect("dispatch creation cannot fail with disabled auto_dispatch")
             }
         };
-        
+
         map.insert(
             cfg.id.clone(),
             std::sync::Arc::new(tokio::sync::Mutex::new(dispatched)),
@@ -5695,7 +5709,10 @@ async fn resolve_gateway_session_db(
     if let Some(db) = persona_session_dbs.read().await.get(persona_id) {
         return Some(db.clone());
     }
-    let path = runtime_home.agents_dir().join(persona_id).join("sessions.db");
+    let path = runtime_home
+        .agents_dir()
+        .join(persona_id)
+        .join("sessions.db");
     let pid = persona_id.to_string();
     let db = match tokio::task::spawn_blocking(move || {
         if let Some(parent) = path.parent() {
@@ -5711,10 +5728,7 @@ async fn resolve_gateway_session_db(
         _ => return None,
     };
     let arc = std::sync::Arc::new(tokio::sync::Mutex::new(db));
-    persona_session_dbs
-        .write()
-        .await
-        .insert(pid, arc.clone());
+    persona_session_dbs.write().await.insert(pid, arc.clone());
     Some(arc)
 }
 
@@ -5737,7 +5751,10 @@ async fn gateway_persist_session(
             t.to_string()
         } else {
             let max_len = 60;
-            let cleaned: String = user_text.split_whitespace().collect::<Vec<&str>>().join(" ");
+            let cleaned: String = user_text
+                .split_whitespace()
+                .collect::<Vec<&str>>()
+                .join(" ");
             if cleaned.chars().count() <= max_len {
                 cleaned
             } else {
@@ -5745,14 +5762,9 @@ async fn gateway_persist_session(
                 format!("{}...", truncated.trim_end())
             }
         };
-        if let Ok(id) = db.create_session_with_id(
-            session_id,
-            source,
-            user_id,
-            Some(model),
-            None,
-            None,
-        ) {
+        if let Ok(id) =
+            db.create_session_with_id(session_id, source, user_id, Some(model), None, None)
+        {
             let _ = db.set_title(&id, &auto_title);
         }
     }
@@ -5993,8 +6005,7 @@ async fn process_gateway_messages_loop(
 
             // Slash commands are always independent -- skip busy_mode
             // checks so they execute immediately even while a task is running.
-            let is_slash_command = text.starts_with('/')
-                && Command::parse(&text).is_some();
+            let is_slash_command = text.starts_with('/') && Command::parse(&text).is_some();
 
             // Check busy input mode configuration
             let busy_mode = config.gateways.busy_input_mode.as_str();
@@ -6995,10 +7006,8 @@ Just send a message to chat with me!"
                         )
                         .await
                         {
-                            let gw_session_id =
-                                format!("gw-{}-{}", platform, chat_id);
-                            let source =
-                                format!("gateway:{}", platform);
+                            let gw_session_id = format!("gw-{}-{}", platform, chat_id);
+                            let source = format!("gateway:{}", platform);
                             let model = turn_agent.model().to_string();
                             gateway_persist_session(
                                 &db,
@@ -7755,7 +7764,7 @@ async fn start_unified_server(
 
     // Create shutdown channel
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
-    
+
     // Share shutdown sender with AppState for /shutdown command and API
     let app_state_with_shutdown = hakimi_server::server::AppState {
         agent: app_state.agent.clone(),
@@ -7775,7 +7784,7 @@ async fn start_unified_server(
     info!(addr = %addr, "starting HTTP API server (unified mode)");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    
+
     // Graceful shutdown handler
     let shutdown_signal = async move {
         tokio::select! {
@@ -7787,7 +7796,7 @@ async fn start_unified_server(
             }
         }
     };
-    
+
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal)
         .await?;
@@ -8492,7 +8501,14 @@ pub async fn run() -> Result<()> {
         return gateway_service_status();
     }
 
-    if !args.serve && args.gateway.is_none() && args.query.is_none() && args.prompt.is_none() && !args.print && !args.r#continue && args.resume.is_none() {
+    if !args.serve
+        && args.gateway.is_none()
+        && args.query.is_none()
+        && args.prompt.is_none()
+        && !args.print
+        && !args.r#continue
+        && args.resume.is_none()
+    {
         maybe_show_startup_onboarding_hints(&mut config, &runtime_home);
     }
 
@@ -8541,7 +8557,7 @@ pub async fn run() -> Result<()> {
     // Handle print mode: --print or positional prompt
     let effective_print_mode = args.print || args.prompt.is_some();
     let query_text = args.prompt.or(args.query);
-    
+
     if let Some(query) = query_text {
         let mut a = agent;
         let user_message = a
@@ -8553,7 +8569,9 @@ pub async fn run() -> Result<()> {
 
     // Handle --continue: continue most recent conversation in current directory
     if args.r#continue {
-        println!("--continue support coming soon: will resume most recent conversation in current directory");
+        println!(
+            "--continue support coming soon: will resume most recent conversation in current directory"
+        );
         return Ok(());
     }
 
@@ -8561,7 +8579,10 @@ pub async fn run() -> Result<()> {
     if let Some(resume_target) = args.resume {
         match resume_target {
             Some(id_or_search) => {
-                println!("--resume support coming soon: will resume session matching '{}'", id_or_search);
+                println!(
+                    "--resume support coming soon: will resume session matching '{}'",
+                    id_or_search
+                );
             }
             None => {
                 println!("--resume support coming soon: will open interactive session picker");

@@ -2274,10 +2274,7 @@ async fn update_gateway_platform(
             let tg = &mut config.gateways.telegram;
             apply_str!(tg.bot_token, "bot_token", req);
             if let Some(users) = req.get("allowed_users").and_then(|v| v.as_array()) {
-                tg.allowed_users = users
-                    .iter()
-                    .filter_map(|v| v.as_i64())
-                    .collect();
+                tg.allowed_users = users.iter().filter_map(|v| v.as_i64()).collect();
             }
         }
         "qqbot" => {
@@ -2480,7 +2477,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/gateway/restart", post(gateway_restart))
         .route("/gateway/shutdown", post(gateway_shutdown))
         .route("/gateways/platforms", get(list_gateway_platforms))
-        .route("/gateways/platforms/{platform}", patch(update_gateway_platform))
+        .route(
+            "/gateways/platforms/{platform}",
+            patch(update_gateway_platform),
+        )
         // Agent-dimension (persona) endpoints
         .route("/agents", get(list_agents))
         .route("/agents", post(create_agent))
@@ -3884,17 +3884,19 @@ async fn build_persona_agent_for(
         .context_length
     };
     let base_agent = hakimi_core::build_persona_agent(&template, cfg, skills_dir, context_length);
-    
+
     // Wrap with dispatch (inherit dispatch config from template)
     let model_config = {
         let config = state.config.lock().await;
         config.model.clone()
     };
-    
+
     match hakimi_core::DispatchedAgent::new(base_agent.clone(), model_config.clone(), 0) {
         Ok(agent) => agent,
         Err(e) => {
-            tracing::warn!("failed to wrap persona agent with dispatch: {e}, disabling auto_dispatch");
+            tracing::warn!(
+                "failed to wrap persona agent with dispatch: {e}, disabling auto_dispatch"
+            );
             // Fallback: disable dispatch for this persona
             let mut fallback_config = model_config;
             fallback_config.auto_dispatch.enabled = false;
@@ -4393,7 +4395,7 @@ async fn agent_chat_stream(
         let base_agent = agent_guard.base_agent().clone();
         let model_config = agent_guard.model_config().clone();
         drop(agent_guard);
-        
+
         let template = std::sync::Arc::new(base_agent);
         let team_base = hakimi_core::PersonaTeamExecutor::new(
             state.persona_registry.clone(),
@@ -5744,7 +5746,7 @@ fn toolset_source(toolset: &str) -> &'static str {
 /// GET /config — return the current configuration (no secrets).
 async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
     let config = state.config.lock().await;
-    
+
     // Convert ModelTiers to DTO (with API keys masked)
     let model_tiers = config.model.tiers.as_ref().map(|tiers| ModelTiersDto {
         primary: TierConfigDto {
@@ -5753,7 +5755,7 @@ async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
             api_key: if tiers.primary.api_key.is_empty() {
                 None
             } else {
-                Some("••••••••".to_string())  // Mask for security
+                Some("••••••••".to_string()) // Mask for security
             },
             base_url: tiers.primary.base_url.clone(),
         },
@@ -5778,7 +5780,7 @@ async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
             base_url: tier.base_url.clone(),
         }),
     });
-    
+
     Json(SanitizedConfig {
         model_default: config.model.default.clone(),
         model_provider: config.model.provider.clone(),
@@ -5904,19 +5906,19 @@ async fn update_config(
         primary: TierConfigDto {
             provider: tiers.primary.provider.clone(),
             model: tiers.primary.model.clone(),
-            api_key: None,  // Redacted for security
+            api_key: None, // Redacted for security
             base_url: tiers.primary.base_url.clone(),
         },
         light: tiers.light.as_ref().map(|tier| TierConfigDto {
             provider: tier.provider.clone(),
             model: tier.model.clone(),
-            api_key: None,  // Redacted for security
+            api_key: None, // Redacted for security
             base_url: tier.base_url.clone(),
         }),
         reasoning: tiers.reasoning.as_ref().map(|tier| TierConfigDto {
             provider: tier.provider.clone(),
             model: tier.model.clone(),
-            api_key: None,  // Redacted for security
+            api_key: None, // Redacted for security
             base_url: tier.base_url.clone(),
         }),
     });
