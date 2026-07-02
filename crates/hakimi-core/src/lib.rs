@@ -4,6 +4,7 @@ pub mod complexity_analyzer;
 pub mod conversation;
 pub mod credential_pool;
 pub mod delegate;
+pub mod dispatch_learner;
 pub mod dispatched_agent;
 pub mod dispatched_delegate;
 pub mod error_classifier;
