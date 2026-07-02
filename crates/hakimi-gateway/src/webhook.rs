@@ -149,6 +149,7 @@ mod tests {
             user_id: "u1".to_string(),
             text: "ping".to_string(),
             media: None,
+            callback_data: None,
         };
         adapter.inject_message(msg);
 
@@ -184,6 +185,7 @@ mod tests {
             user_id: "u2".to_string(),
             text: "test".to_string(),
             media: Some("https://example.com/img.png".to_string()),
+            callback_data: None,
         };
         adapter.inject_message(msg);
     }

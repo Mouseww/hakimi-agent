@@ -958,6 +958,7 @@ mod tests {
             user_id: "user".to_string(),
             text: text.to_string(),
             media: None,
+            callback_data: None,
         }
     }
 
