@@ -323,8 +323,10 @@ pub struct DispatchStats {
 impl DispatchStats {
     /// Calculate statistics from history.
     pub fn from_history(history: &[DispatchRecord]) -> Self {
-        let mut stats = Self::default();
-        stats.total_dispatches = history.len();
+        let mut stats = Self {
+            total_dispatches: history.len(),
+            ..Default::default()
+        };
 
         if history.is_empty() {
             return stats;

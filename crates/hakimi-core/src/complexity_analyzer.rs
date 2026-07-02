@@ -135,7 +135,6 @@ fn has_nested_logic(text: &str) -> bool {
 /// Main analyzer: returns a score 0-100
 pub fn analyze_complexity(text: &str) -> ComplexityScore {
     let text_lower = text.to_lowercase();
-    let words: Vec<&str> = text_lower.split_whitespace().collect();
     let char_count = text.chars().count();
 
     // Base score from length (longer messages often indicate complex tasks)

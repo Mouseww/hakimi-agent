@@ -84,6 +84,7 @@ pub struct PersonaTeamExecutor {
     /// Template agent carrying the instance SharedRuntime; teammates are built from it.
     template: Arc<AIAgent>,
     /// Model configuration for wrapping teammates with DispatchedAgent.
+    #[allow(dead_code)]
     model_config: hakimi_config::ModelConfig,
     context_length: usize,
     depth: usize,
