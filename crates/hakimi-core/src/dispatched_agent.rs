@@ -8,7 +8,8 @@ use hakimi_config::{ModelConfig, TierConfig};
 use hakimi_transports::{AnthropicTransport, ChatCompletionsTransport, ProviderTransport};
 use reqwest::Client;
 
-use crate::model_dispatch::TaskComplexity;
+use crate::dispatch_learner::DispatchLearner;
+use crate::model_dispatch::{DispatchRecord, ModelTier, TaskComplexity};
 use crate::model_dispatcher::ModelDispatcher;
 use crate::{AIAgent, ConversationResult};
 
@@ -20,11 +21,17 @@ pub struct DispatchedAgent {
     /// Model dispatcher (None = single-model mode).
     dispatcher: Option<ModelDispatcher>,
 
+    /// Learning engine for dispatch optimization.
+    learner: Option<DispatchLearner>,
+
     /// Model configuration for rebuilding agents.
     model_config: ModelConfig,
 
     /// Agent nesting depth (0 = main, 1 = child, 2 = grandchild).
     depth: usize,
+
+    /// Current dispatch record being tracked.
+    current_record: Option<DispatchRecord>,
 }
 
 impl DispatchedAgent {
@@ -44,11 +51,33 @@ impl DispatchedAgent {
             None
         };
 
+        // Initialize learner with persistence (only for depth 0 main agent)
+        let learner = if depth == 0 && dispatcher.is_some() {
+            let persist_path = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .ok()
+                .map(|home| {
+                    std::path::PathBuf::from(home)
+                        .join(".hakimi")
+                        .join("dispatch_history.json")
+                });
+
+            if let Some(path) = persist_path {
+                DispatchLearner::with_persistence(path).ok()
+            } else {
+                Some(DispatchLearner::new())
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             base_agent,
             dispatcher,
+            learner,
             model_config,
             depth,
+            current_record: None,
         })
     }
 
@@ -257,6 +286,143 @@ impl DispatchedAgent {
         &self.model_config
     }
 
+    /// Get mutable reference to the learner (if present).
+    pub fn learner_mut(&mut self) -> Option<&mut DispatchLearner> {
+        self.learner.as_mut()
+    }
+
+    /// Start tracking a new dispatch record.
+    fn start_dispatch_record(&mut self, input: String, predicted_tier: ModelTier, complexity_score: u8) {
+        self.current_record = Some(DispatchRecord::new(
+            input,
+            predicted_tier,
+            predicted_tier, // Initially, actual == predicted
+            complexity_score,
+            self.depth,
+        ));
+    }
+
+    /// Record a tier upgrade in the current dispatch.
+    fn record_tier_upgrade(&mut self, to_tier: ModelTier) {
+        if let Some(ref mut record) = self.current_record {
+            record.record_upgrade(to_tier);
+        }
+    }
+
+    /// Complete the current dispatch record and save to learner.
+    fn complete_dispatch_record(&mut self, success: bool, duration_ms: u64) {
+        if let Some(mut record) = self.current_record.take() {
+            if success {
+                record.mark_success(duration_ms);
+            } else {
+                record.mark_failed(duration_ms);
+            }
+
+            // Save to learner
+            if let Some(ref mut learner) = self.learner {
+                learner.record(record);
+                // Persist to disk
+                let _ = learner.save();
+            }
+        }
+    }
+
+    /// Run conversation with automatic tier upgrade on failure.
+    /// This wraps run_conversation with retry/upgrade logic.
+    pub async fn run_conversation_with_auto_upgrade(
+        &mut self,
+        user_message: &str,
+    ) -> Result<ConversationResult> {
+        use std::time::Instant;
+
+        // No dispatcher? Fall back to base agent
+        if self.dispatcher.is_none() {
+            return self.base_agent.run_conversation(user_message).await;
+        }
+
+        let start_time = Instant::now();
+
+        // Analyze complexity and select initial model (clone dispatcher to avoid borrow issues)
+        let (mut tier_config, complexity) = {
+            let dispatcher = self.dispatcher.as_ref().unwrap();
+            dispatcher.select_model(user_message, &self.base_agent.messages)
+        };
+
+        // Start tracking this dispatch
+        let initial_tier = ModelTier::from_config(&tier_config);
+        self.start_dispatch_record(
+            user_message.to_string(),
+            initial_tier,
+            complexity.score,
+        );
+
+        // Show dispatch decision
+        let should_show = self.dispatcher.as_ref().map(|d| d.should_show_decision()).unwrap_or(false);
+        if should_show && let Some(ref callback) = self.base_agent.streaming_callback {
+            let decision = self.dispatcher.as_ref().unwrap().format_decision(&complexity, &tier_config);
+            callback(decision);
+            callback("\n\n".to_string());
+        }
+
+        // Try with initial tier
+        let should_use_two_stage = self.dispatcher.as_ref().map(|d| d.should_use_two_stage(&complexity)).unwrap_or(false);
+        let mut result = if should_use_two_stage {
+            self.run_two_stage(user_message, &complexity).await
+        } else {
+            self.run_single_stage(user_message, &tier_config).await
+        };
+
+        // If failed and auto-upgrade enabled, try upgrading
+        let max_retries = 2; // Light -> Primary -> Reasoning
+        let mut retry_count = 0;
+
+        while result.is_err() && retry_count < max_retries {
+            // Determine next tier to upgrade to
+            let current_tier = ModelTier::from_config(&tier_config);
+            let next_tier = match current_tier {
+                ModelTier::Light => {
+                    // Upgrade to Primary
+                    let primary = self.dispatcher.as_ref().unwrap().primary_tier_config();
+                    Some((ModelTier::Primary, primary.clone()))
+                }
+                ModelTier::Primary => {
+                    // Upgrade to Reasoning
+                    self.dispatcher.as_ref().unwrap().reasoning_tier()
+                        .map(|r| (ModelTier::Reasoning, r.clone()))
+                }
+                ModelTier::Reasoning => None, // Already at max
+            };
+
+            let Some((tier_enum, next_config)) = next_tier else {
+                break; // No higher tier available
+            };
+
+            // Record upgrade
+            self.record_tier_upgrade(tier_enum);
+            tier_config = next_config;
+
+            // Stream upgrade notification
+            if let Some(ref callback) = self.base_agent.streaming_callback {
+                let msg = match tier_enum {
+                    ModelTier::Primary => "⬆️ 升级到主力模型...\n\n".to_string(),
+                    ModelTier::Reasoning => "🧠 升级到高级思考模型...\n\n".to_string(),
+                    _ => String::new(),
+                };
+                callback(msg);
+            }
+
+            // Retry with upgraded tier
+            result = self.run_single_stage(user_message, &tier_config).await;
+            retry_count += 1;
+        }
+
+        // Complete tracking
+        let duration = start_time.elapsed().as_millis() as u64;
+        self.complete_dispatch_record(result.is_ok(), duration);
+
+        result
+    }
+
     /// Build a tool context with dispatched delegation support.
     /// This overrides AIAgent's default behavior to inject DispatchedDelegateExecutor.
     pub fn build_dispatched_tool_context(&self) -> hakimi_common::ToolContext {
@@ -322,8 +488,10 @@ impl Clone for DispatchedAgent {
         Self {
             base_agent: self.base_agent.clone(),
             dispatcher: self.dispatcher.clone(),
+            learner: self.learner.clone(),
             model_config: self.model_config.clone(),
             depth: self.depth,
+            current_record: None, // Don't clone ongoing records
         }
     }
 }

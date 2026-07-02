@@ -157,8 +157,8 @@ impl DispatchLearner {
         }
     }
 
-    /// Save history to disk (if persist_path is set).
-    fn save(&self) -> Result<()> {
+    /// Persist history to disk (if path is set).
+    pub fn save(&self) -> Result<()> {
         if let Some(ref path) = self.persist_path {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;

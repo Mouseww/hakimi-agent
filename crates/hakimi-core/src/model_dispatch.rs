@@ -48,6 +48,28 @@ impl ModelTier {
             Self::Reasoning => "🧠",
         }
     }
+
+    /// Infer tier from a tier config by comparing with known tiers.
+    /// This is a heuristic: we check model names to guess the tier.
+    pub fn from_config(config: &hakimi_config::TierConfig) -> Self {
+        // Simple heuristic: if model contains "light" or has short context, assume Light
+        let model_lower = config.model.to_lowercase();
+        if model_lower.contains("light") || model_lower.contains("mini") || model_lower.contains("小") {
+            return Self::Light;
+        }
+        
+        // If contains "reasoning" or "think" or "pro", assume Reasoning
+        if model_lower.contains("reasoning") 
+            || model_lower.contains("think") 
+            || model_lower.contains("pro")
+            || model_lower.contains("思考")
+        {
+            return Self::Reasoning;
+        }
+        
+        // Default to Primary
+        Self::Primary
+    }
 }
 
 /// Complexity analysis result.

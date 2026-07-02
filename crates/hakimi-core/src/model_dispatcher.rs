@@ -68,6 +68,11 @@ impl ModelDispatcher {
         &self.tiers.primary
     }
 
+    /// Get primary tier config (same as primary_tier, for consistency).
+    pub fn primary_tier_config(&self) -> &TierConfig {
+        &self.tiers.primary
+    }
+
     /// Check if dispatch decision should be shown to user.
     pub fn should_show_decision(&self) -> bool {
         self.config.show_dispatch_decision
@@ -75,9 +80,11 @@ impl ModelDispatcher {
 
     /// Format dispatch decision for user display.
     pub fn format_decision(&self, complexity: &TaskComplexity, tier_config: &TierConfig) -> String {
+        let tier_emoji = complexity.recommended_tier.emoji();
+        let tier_name = complexity.recommended_tier.display_name();
         format!(
-            "🎯 **模型调度决策**\n\n{}\n\n📦 选用模型: `{}/{}`",
-            complexity.reasoning, tier_config.provider, tier_config.model
+            "{} **模型调度决策: {}**\n\n{}\n\n📦 选用模型: `{}/{}`",
+            tier_emoji, tier_name, complexity.reasoning, tier_config.provider, tier_config.model
         )
     }
 }
