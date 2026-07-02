@@ -397,17 +397,13 @@ impl TelegramAdapter {
                                 );
 
                                 // Extract chat_id and user_id from the callback
-                                let (chat_id, user_id) =
-                                    if let Some(msg) = callback_query.message {
-                                        (
-                                            msg.chat.id.to_string(),
-                                            callback_query.from.id.to_string(),
-                                        )
-                                    } else {
-                                        // Fallback: use user_id as chat_id for inline queries
-                                        let uid = callback_query.from.id.to_string();
-                                        (uid.clone(), uid)
-                                    };
+                                let (chat_id, user_id) = if let Some(msg) = callback_query.message {
+                                    (msg.chat.id.to_string(), callback_query.from.id.to_string())
+                                } else {
+                                    // Fallback: use user_id as chat_id for inline queries
+                                    let uid = callback_query.from.id.to_string();
+                                    (uid.clone(), uid)
+                                };
 
                                 // Create a GatewayMessage with callback_data
                                 let gw_msg = GatewayMessage {
