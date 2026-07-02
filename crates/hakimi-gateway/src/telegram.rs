@@ -396,13 +396,17 @@ impl TelegramAdapter {
                                     );
 
                                     // Extract chat_id and user_id from the callback
-                                    let (chat_id, user_id) = if let Some(msg) = callback_query.message {
-                                        (msg.chat.id.to_string(), callback_query.from.id.to_string())
-                                    } else {
-                                        // Fallback: use user_id as chat_id for inline queries
-                                        let uid = callback_query.from.id.to_string();
-                                        (uid.clone(), uid)
-                                    };
+                                    let (chat_id, user_id) =
+                                        if let Some(msg) = callback_query.message {
+                                            (
+                                                msg.chat.id.to_string(),
+                                                callback_query.from.id.to_string(),
+                                            )
+                                        } else {
+                                            // Fallback: use user_id as chat_id for inline queries
+                                            let uid = callback_query.from.id.to_string();
+                                            (uid.clone(), uid)
+                                        };
 
                                     // Create a GatewayMessage with callback_data
                                     let gw_msg = GatewayMessage {
@@ -410,7 +414,7 @@ impl TelegramAdapter {
                                         bot_id: bot_id.clone(),
                                         chat_id,
                                         user_id,
-                                        text: String::new(),  // Callbacks have no text body
+                                        text: String::new(), // Callbacks have no text body
                                         media: None,
                                         callback_data: Some(data.clone()),
                                     };
@@ -448,10 +452,10 @@ impl TelegramAdapter {
     }
 
     /// Send a message with an inline keyboard attached.
-    /// 
+    ///
     /// This is a specialized method for sending dispatch feedback buttons.
     /// The keyboard has three buttons: "💡 太复杂", "✅ 正好", "🚀 太简单"
-    /// 
+    ///
     /// # Arguments
     /// - `chat_id`: Target chat ID
     /// - `text`: Message text (Markdown supported)

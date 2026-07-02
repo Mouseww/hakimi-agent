@@ -5651,22 +5651,15 @@ fn build_gateway_persona_agents(
     registry: &hakimi_core::PersonaRegistry,
     runtime_home: &hakimi_common::RuntimeHome,
     context_length: usize,
-) -> std::collections::HashMap<
-    String,
-    std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
-> {
+) -> std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>> {
     let mut map = std::collections::HashMap::new();
     for cfg in registry.list() {
         if cfg.id == hakimi_core::DEFAULT_PERSONA_ID {
             continue;
         }
         let skills_dir = runtime_home.persona_dir(&cfg.id).join("skills");
-        let base_agent = hakimi_core::build_persona_agent(
-            template,
-            cfg,
-            &skills_dir,
-            context_length,
-        );
+        let base_agent =
+            hakimi_core::build_persona_agent(template, cfg, &skills_dir, context_length);
 
         // TODO: Wrap with ModelDispatcher when smart dispatch is implemented
         map.insert(
@@ -5870,17 +5863,20 @@ async fn process_gateway_messages_loop(
                     "dispatch_lighter" => {
                         info!(dispatch_id = %dispatch_id, "user feedback: too complex (need lighter model)");
                         let mut learner = dispatch_learner.lock().await;
-                        learner.apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::TooHeavy)
+                        learner
+                            .apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::TooHeavy)
                     }
                     "dispatch_justright" => {
                         info!(dispatch_id = %dispatch_id, "user feedback: just right");
                         let mut learner = dispatch_learner.lock().await;
-                        learner.apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::JustRight)
+                        learner
+                            .apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::JustRight)
                     }
                     "dispatch_stronger" => {
                         info!(dispatch_id = %dispatch_id, "user feedback: too simple (need stronger model)");
                         let mut learner = dispatch_learner.lock().await;
-                        learner.apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::TooLight)
+                        learner
+                            .apply_feedback_by_id(dispatch_id, hakimi_core::UserFeedback::TooLight)
                     }
                     _ => {
                         warn!(callback_data = %callback_data, "unknown callback action");
@@ -5900,15 +5896,17 @@ async fn process_gateway_messages_loop(
                     "⚠️  反馈记录失败（未找到对应的调度记录）"
                 };
 
-                let _ = gateway.route_message(&hakimi_gateway::GatewayMessage {
-                    platform: platform.clone(),
-                    bot_id: bot_id.clone(),
-                    chat_id: chat_id.clone(),
-                    user_id: msg_user_id.clone(),
-                    text: confirmation_text.to_string(),
-                    media: None,
-                    callback_data: None,
-                }).await;
+                let _ = gateway
+                    .route_message(&hakimi_gateway::GatewayMessage {
+                        platform: platform.clone(),
+                        bot_id: bot_id.clone(),
+                        chat_id: chat_id.clone(),
+                        user_id: msg_user_id.clone(),
+                        text: confirmation_text.to_string(),
+                        media: None,
+                        callback_data: None,
+                    })
+                    .await;
             }
             // Skip further processing for callbacks
             continue;

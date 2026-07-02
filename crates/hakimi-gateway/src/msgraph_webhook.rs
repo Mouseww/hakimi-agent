@@ -286,7 +286,7 @@ impl MSGraphWebhookState {
             user_id: "msgraph".to_string(),
             text: render_prompt(notification, &self.config.prompt),
             media: None,
-        callback_data: None,
+            callback_data: None,
         }
     }
 }

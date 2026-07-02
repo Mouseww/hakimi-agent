@@ -6181,8 +6181,7 @@ mod tests {
             .unwrap();
 
         let dispatched_agent =
-            hakimi_core::AIAgent::new(agent, hakimi_config::ModelConfig::default(), 0)
-                .unwrap();
+            hakimi_core::AIAgent::new(agent, hakimi_config::ModelConfig::default(), 0).unwrap();
 
         let db = SessionDB::new(std::path::Path::new(":memory:")).unwrap();
         db.initialize().unwrap();

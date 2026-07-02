@@ -54,19 +54,22 @@ impl ModelTier {
     pub fn from_config(config: &hakimi_config::TierConfig) -> Self {
         // Simple heuristic: if model contains "light" or has short context, assume Light
         let model_lower = config.model.to_lowercase();
-        if model_lower.contains("light") || model_lower.contains("mini") || model_lower.contains("小") {
+        if model_lower.contains("light")
+            || model_lower.contains("mini")
+            || model_lower.contains("小")
+        {
             return Self::Light;
         }
-        
+
         // If contains "reasoning" or "think" or "pro", assume Reasoning
-        if model_lower.contains("reasoning") 
-            || model_lower.contains("think") 
+        if model_lower.contains("reasoning")
+            || model_lower.contains("think")
             || model_lower.contains("pro")
             || model_lower.contains("思考")
         {
             return Self::Reasoning;
         }
-        
+
         // Default to Primary
         Self::Primary
     }
@@ -277,7 +280,7 @@ impl UserFeedback {
             {"text":"👎 太重了","callback_data":"dispatch_lighter"},
             {"text":"💪 太弱了","callback_data":"dispatch_stronger"}
         ]]}"#
-        .to_string()
+            .to_string()
     }
 
     /// Generate Discord message components JSON.
@@ -362,10 +365,12 @@ impl DispatchStats {
 
         // Calculate average durations
         if !light_durations.is_empty() {
-            stats.avg_duration_light = light_durations.iter().sum::<u64>() / light_durations.len() as u64;
+            stats.avg_duration_light =
+                light_durations.iter().sum::<u64>() / light_durations.len() as u64;
         }
         if !primary_durations.is_empty() {
-            stats.avg_duration_primary = primary_durations.iter().sum::<u64>() / primary_durations.len() as u64;
+            stats.avg_duration_primary =
+                primary_durations.iter().sum::<u64>() / primary_durations.len() as u64;
         }
         if !reasoning_durations.is_empty() {
             stats.avg_duration_reasoning =
@@ -405,4 +410,3 @@ impl DispatchStats {
         )
     }
 }
-

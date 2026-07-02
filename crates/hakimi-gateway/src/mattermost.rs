@@ -186,7 +186,7 @@ impl MattermostAdapter {
                         user_id: post.user_id.clone(),
                         text: post.message.clone(),
                         media: None,
-        callback_data: None,
+                        callback_data: None,
                     };
 
                     if sender.send(message).is_err() {

@@ -288,7 +288,7 @@ impl SlackAdapter {
                         user_id,
                         text,
                         media: None,
-        callback_data: None,
+                        callback_data: None,
                     };
 
                     if msg_tx.send(gw_msg).is_err() {

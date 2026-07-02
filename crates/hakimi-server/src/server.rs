@@ -23,11 +23,8 @@ use crate::api;
 /// legacy [`AppState::agent`]). In unified mode the gateway loop and the API CRUD
 /// handlers share this Arc, so creating/updating/deleting a persona takes effect
 /// on gateway routing without a restart. Empty in WebUI-only mode.
-pub type GatewayPersonaAgents = Arc<
-    tokio::sync::RwLock<
-        std::collections::HashMap<String, Arc<Mutex<hakimi_core::AIAgent>>>,
-    >,
->;
+pub type GatewayPersonaAgents =
+    Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<hakimi_core::AIAgent>>>>>;
 
 /// Lazily-opened per-persona session databases (`persona_id -> sessions.db`).
 /// The default persona is never present (it uses the instance [`AppState::session_db`]).

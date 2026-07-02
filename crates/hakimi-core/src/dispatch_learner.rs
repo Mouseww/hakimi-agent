@@ -1,9 +1,9 @@
 //! Dispatch learner — learns from history and user feedback to optimize dispatch decisions.
 
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
 
 use crate::model_dispatch::{DispatchRecord, DispatchStats, UserFeedback};
 
@@ -121,11 +121,7 @@ impl DispatchLearner {
 
     /// Get recent history (last N records).
     pub fn recent_history(&self, count: usize) -> Vec<&DispatchRecord> {
-        self.history
-            .iter()
-            .rev()
-            .take(count)
-            .collect()
+        self.history.iter().rev().take(count).collect()
     }
 
     /// Find similar past tasks based on input keywords.
@@ -155,16 +151,11 @@ impl DispatchLearner {
     /// Analyze tier usage trends.
     pub fn analyze_trends(&self) -> TrendAnalysis {
         let stats = self.get_stats();
-        
+
         // Get recent records as owned Vec
-        let recent_records: Vec<DispatchRecord> = self
-            .history
-            .iter()
-            .rev()
-            .take(100)
-            .cloned()
-            .collect();
-        
+        let recent_records: Vec<DispatchRecord> =
+            self.history.iter().rev().take(100).cloned().collect();
+
         let recent_stats = DispatchStats::from_history(&recent_records);
 
         TrendAnalysis {
