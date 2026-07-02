@@ -3867,7 +3867,7 @@ async fn build_persona_agent_for(
     state: &AppState,
     cfg: &hakimi_core::PersonaConfig,
     skills_dir: &std::path::Path,
-) -> hakimi_core::DispatchedAgent {
+) -> hakimi_core::AIAgent {
     let template = state.agent.lock().await.clone();
     let context_length = {
         let config = state.config.lock().await;
@@ -3891,19 +3891,9 @@ async fn build_persona_agent_for(
         config.model.clone()
     };
 
-    match hakimi_core::DispatchedAgent::new(base_agent.clone(), model_config.clone(), 0) {
-        Ok(agent) => agent,
-        Err(e) => {
-            tracing::warn!(
-                "failed to wrap persona agent with dispatch: {e}, disabling auto_dispatch"
-            );
-            // Fallback: disable dispatch for this persona
-            let mut fallback_config = model_config;
-            fallback_config.auto_dispatch.enabled = false;
-            hakimi_core::DispatchedAgent::new(base_agent, fallback_config, 0)
-                .expect("dispatch creation cannot fail with disabled auto_dispatch")
-        }
-    }
+    // TODO: Wrap with DispatchedAgent when ModelDispatcher is implemented.
+    // For now, return base agent directly.
+    base_agent
 }
 
 /// Insert/replace a named persona's gateway agent so routing reflects CRUD
@@ -4390,11 +4380,15 @@ async fn agent_chat_stream(
     };
 
     {
-        // Team executor needs AIAgent, extract from DispatchedAgent
+        // Team executor needs AIAgent directly
         let agent_guard = state.agent.lock().await;
-        let base_agent = agent_guard.base_agent().clone();
-        let model_config = agent_guard.model_config().clone();
+        let base_agent = agent_guard.clone(); // AIAgent already, no unwrap needed
         drop(agent_guard);
+
+        let model_config = {
+            let config = state.config.lock().await;
+            config.model.clone()
+        };
 
         let template = std::sync::Arc::new(base_agent);
         let team_base = hakimi_core::PersonaTeamExecutor::new(
@@ -6187,7 +6181,7 @@ mod tests {
             .unwrap();
 
         let dispatched_agent =
-            hakimi_core::DispatchedAgent::new(agent, hakimi_config::ModelConfig::default(), 0)
+            hakimi_core::AIAgent::new(agent, hakimi_config::ModelConfig::default(), 0)
                 .unwrap();
 
         let db = SessionDB::new(std::path::Path::new(":memory:")).unwrap();
@@ -6962,8 +6956,9 @@ mod tests {
 
             let mut store = hakimi_skills::SkillStore::from_skills(vec![skill]);
             store.observe("release validation failed");
-            let base = agent.base_agent_mut();
-            *base = base.clone().with_skill_store(Some(store));
+            // TODO: restore when DispatchedAgent is implemented
+            // let base = agent.base_agent_mut();
+            // *base = base.clone().with_skill_store(Some(store));
         }
         let app = build_router(state);
 

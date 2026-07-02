@@ -5201,7 +5201,7 @@ async fn build_agent(
     args: &Args,
     config: &hakimi_config::HakimiConfig,
     runtime_home: &hakimi_common::RuntimeHome,
-) -> Result<hakimi_core::DispatchedAgent> {
+) -> Result<hakimi_core::AIAgent> {
     let model = resolve_model(args.model.as_deref(), config);
     let base_url = resolve_base_url(args.base_url.as_deref(), config);
     let api_key = resolve_api_key(args.api_key.as_deref(), config);
@@ -5611,10 +5611,8 @@ async fn build_agent(
         agent.set_system_prompt(config.agent.system_prompt.clone());
     }
 
-    // Wrap with DispatchedAgent for model dispatch
-    let dispatched = hakimi_core::DispatchedAgent::new(agent, config.model.clone(), 0)?;
-
-    Ok(dispatched)
+    // TODO: Wrap with ModelDispatcher when smart dispatch is implemented
+    Ok(agent)
 }
 
 // ---------------------------------------------------------------------------
@@ -5623,7 +5621,7 @@ async fn build_agent(
 
 /// Start the HTTP API server.
 async fn start_server(
-    agent: hakimi_core::DispatchedAgent,
+    agent: hakimi_core::AIAgent,
     addr: &str,
     config: hakimi_config::HakimiConfig,
     runtime_home: &hakimi_common::RuntimeHome,
@@ -5649,13 +5647,13 @@ async fn start_server(
 /// byte-for-byte. Each named persona gets an isolated agent (own model / prompt /
 /// context engine / skills), loading its skills from `<persona_dir>/skills`.
 fn build_gateway_persona_agents(
-    template: &hakimi_core::DispatchedAgent,
+    template: &hakimi_core::AIAgent,
     registry: &hakimi_core::PersonaRegistry,
     runtime_home: &hakimi_common::RuntimeHome,
     context_length: usize,
 ) -> std::collections::HashMap<
     String,
-    std::sync::Arc<tokio::sync::Mutex<hakimi_core::DispatchedAgent>>,
+    std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
 > {
     let mut map = std::collections::HashMap::new();
     for cfg in registry.list() {
@@ -5664,32 +5662,16 @@ fn build_gateway_persona_agents(
         }
         let skills_dir = runtime_home.persona_dir(&cfg.id).join("skills");
         let base_agent = hakimi_core::build_persona_agent(
-            template.base_agent(),
+            template,
             cfg,
             &skills_dir,
             context_length,
         );
 
-        // Wrap persona agent with DispatchedAgent (inherit dispatch config from template)
-        let model_config = template.model_config().clone();
-        let dispatched = match hakimi_core::DispatchedAgent::new(
-            base_agent.clone(),
-            model_config.clone(),
-            0,
-        ) {
-            Ok(agent) => agent,
-            Err(e) => {
-                tracing::warn!(persona = %cfg.id, "failed to wrap persona agent with dispatch: {e}, disabling auto_dispatch");
-                let mut fallback_config = model_config;
-                fallback_config.auto_dispatch.enabled = false;
-                hakimi_core::DispatchedAgent::new(base_agent, fallback_config, 0)
-                    .expect("dispatch creation cannot fail with disabled auto_dispatch")
-            }
-        };
-
+        // TODO: Wrap with ModelDispatcher when smart dispatch is implemented
         map.insert(
             cfg.id.clone(),
-            std::sync::Arc::new(tokio::sync::Mutex::new(dispatched)),
+            std::sync::Arc::new(tokio::sync::Mutex::new(base_agent)),
         );
     }
     map
@@ -5786,7 +5768,7 @@ async fn process_gateway_messages_loop(
     mut messages: tokio::sync::mpsc::UnboundedReceiver<hakimi_gateway::GatewayMessage>,
     gateway: std::sync::Arc<hakimi_gateway::Gateway>,
     _gateway_bot_ids: std::collections::HashMap<String, String>,
-    agent_arc: std::sync::Arc<tokio::sync::Mutex<hakimi_core::DispatchedAgent>>,
+    agent_arc: std::sync::Arc<tokio::sync::Mutex<hakimi_core::AIAgent>>,
     persona_registry: std::sync::Arc<tokio::sync::RwLock<hakimi_core::PersonaRegistry>>,
     persona_agents: hakimi_server::server::GatewayPersonaAgents,
     histories_clone: std::sync::Arc<
@@ -5823,9 +5805,9 @@ async fn process_gateway_messages_loop(
     // Base team executor: teammates are built from the instance template (the
     // default agent carries the shared runtime). Repositioned per message via for_lead.
     let team_base = {
-        let dispatched_template = std::sync::Arc::new(agent_arc.lock().await.clone());
-        let template = std::sync::Arc::new(dispatched_template.base_agent().clone());
-        let model_config = dispatched_template.model_config().clone();
+        let template = std::sync::Arc::new(agent_arc.lock().await.clone());
+        // TODO: Extract model_config properly from agent configuration
+        let model_config = hakimi_config::ModelConfig::default();
         std::sync::Arc::new(hakimi_core::PersonaTeamExecutor::new(
             persona_registry.clone(),
             template,
@@ -7199,7 +7181,7 @@ Just send a message to chat with me!"
 }
 
 async fn start_gateway(
-    agent: hakimi_core::DispatchedAgent,
+    agent: hakimi_core::AIAgent,
     skill_store: hakimi_skills::SkillStore,
     config: hakimi_config::HakimiConfig,
     runtime_home: hakimi_common::RuntimeHome,
@@ -7497,7 +7479,7 @@ async fn start_gateway(
 /// This function combines the WebUI HTTP API server and the Gateway message
 /// handling into a single process, sharing the Agent, SessionDB, and config.
 async fn start_unified_server(
-    agent: hakimi_core::DispatchedAgent,
+    agent: hakimi_core::AIAgent,
     skill_store: hakimi_skills::SkillStore,
     addr: &str,
     config: hakimi_config::HakimiConfig,

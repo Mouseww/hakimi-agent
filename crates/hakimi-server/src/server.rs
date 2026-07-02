@@ -25,7 +25,7 @@ use crate::api;
 /// on gateway routing without a restart. Empty in WebUI-only mode.
 pub type GatewayPersonaAgents = Arc<
     tokio::sync::RwLock<
-        std::collections::HashMap<String, Arc<Mutex<hakimi_core::DispatchedAgent>>>,
+        std::collections::HashMap<String, Arc<Mutex<hakimi_core::AIAgent>>>,
     >,
 >;
 
@@ -38,7 +38,7 @@ pub type PersonaSessionDbs = Arc<
 
 #[derive(Clone)]
 pub struct AppState {
-    pub agent: Arc<Mutex<hakimi_core::DispatchedAgent>>,
+    pub agent: Arc<Mutex<hakimi_core::AIAgent>>,
     pub config: Arc<Mutex<hakimi_config::HakimiConfig>>,
     pub session_db: Arc<Mutex<hakimi_session::SessionDB>>,
     pub response_store: Arc<Mutex<crate::api::ResponsesStore>>,
@@ -75,7 +75,7 @@ impl Server {
     /// The `agent` will be wrapped in shared state accessible by all handlers.
     pub fn new(
         _addr: &str,
-        agent: hakimi_core::DispatchedAgent,
+        agent: hakimi_core::AIAgent,
         config: hakimi_config::HakimiConfig,
         session_db: hakimi_session::SessionDB,
     ) -> Result<Self> {

@@ -133,7 +133,7 @@ fn resolve_optional_base_url(args: &Args, config: &hakimi_config::HakimiConfig) 
 async fn build_agent(
     args: &Args,
     config: &hakimi_config::HakimiConfig,
-) -> Result<hakimi_core::DispatchedAgent> {
+) -> Result<hakimi_core::AIAgent> {
     // Resolve model
     let model = args
         .model
@@ -436,12 +436,8 @@ async fn build_agent(
 
     info!(model = %model, "base agent built successfully");
 
-    // Wrap agent with intelligent model dispatch
-    let dispatched_agent = hakimi_core::DispatchedAgent::new(
-        agent,
-        config.model.clone(),
-        0, // depth = 0 for main agent
-    )?;
+    // TODO: Wrap agent with ModelDispatcher when smart dispatch is fully implemented
+    let dispatched_agent = agent;
 
     if config.model.auto_dispatch.enabled {
         info!(
