@@ -203,9 +203,26 @@ export interface WebhookResponse {
   persistence: string;
 }
 
+export interface TierConfigDto {
+  provider: string;
+  model: string;
+  api_key?: string;  // Optional API key override
+  base_url: string;
+}
+
+export interface ModelTiersDto {
+  primary: TierConfigDto;
+  light?: TierConfigDto;
+  reasoning?: TierConfigDto;
+}
+
 export interface SanitizedConfig {
   model_default: string;
   model_provider: string;
+  model_tiers?: ModelTiersDto;
+  auto_dispatch_enabled: boolean;
+  auto_dispatch_show_decision: boolean;
+  auto_dispatch_two_stage_enabled: boolean;
   agent_max_turns: number;
   agent_verbose: boolean;
   agent_system_prompt: string;
@@ -234,6 +251,10 @@ export interface SanitizedConfig {
 export interface ConfigUpdate {
   model_default?: string;
   model_provider?: string;
+  model_tiers?: ModelTiersDto;
+  auto_dispatch_enabled?: boolean;
+  auto_dispatch_show_decision?: boolean;
+  auto_dispatch_two_stage_enabled?: boolean;
   agent_max_turns?: number;
   agent_verbose?: boolean;
   agent_system_prompt?: string;

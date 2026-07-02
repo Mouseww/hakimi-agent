@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.4.7-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.10-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -26,6 +26,19 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.10)
+
+**WebUI Chat Experience Enhanced:**
+- ✅ **Tool Call Visualization** — Every tool execution now displays prominently in chat history with collapsible results
+- ✅ **Fixed Content Overwrite** — Streaming responses no longer get replaced by final message, preserving complete conversation flow
+- ✅ **Interactive Tool Results** — Click to expand/collapse tool outputs (file reads, searches, API calls) with syntax highlighting
+- ✅ **Real-time Progress** — Live updates as tools execute, with clear visual separation from assistant responses
+- 🎨 **Refined UI** — Smooth animations, better spacing, and improved readability for long conversations
+
+**Example:** When you ask "analyze this codebase", you'll now see each file search, code analysis tool, and their outputs as separate expandable cards — no more mystery about what the agent is doing!
 
 ---
 

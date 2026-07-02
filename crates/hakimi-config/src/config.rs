@@ -2,6 +2,147 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Model Dispatch Types (for intelligent multi-tier model selection)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Three-tier model configuration for intelligent dispatch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelTiers {
+    /// Primary (default) model for most tasks.
+    pub primary: TierConfig,
+
+    /// Optional light model for simple queries and file operations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub light: Option<TierConfig>,
+
+    /// Optional reasoning model for complex planning and architecture tasks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<TierConfig>,
+}
+
+/// Configuration for a single model tier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TierConfig {
+    /// Provider name (e.g. "custom:router", "anthropic").
+    pub provider: String,
+
+    /// Model identifier (e.g. "deepseek-v3", "qwen2.5-32b-instruct").
+    pub model: String,
+
+    /// Optional API key override. If empty, inherits from top-level model.api_key.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub api_key: String,
+
+    /// Optional base URL override.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub base_url: String,
+}
+
+/// Auto-dispatch configuration for model tier selection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoDispatchConfig {
+    /// Global enable/disable switch.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Complexity thresholds for tier selection (0-10 scale).
+    #[serde(default)]
+    pub thresholds: DispatchThresholds,
+
+    /// Whether child agents inherit dispatch configuration.
+    #[serde(default = "default_true")]
+    pub inherit_dispatch: bool,
+
+    /// Show dispatch decision to user via streaming callback.
+    #[serde(default = "default_true")]
+    pub show_dispatch_decision: bool,
+
+    /// Two-stage execution (reasoning → primary) settings.
+    #[serde(default)]
+    pub two_stage: TwoStageConfig,
+}
+
+/// Complexity score thresholds for tier selection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DispatchThresholds {
+    /// Light model threshold: score ≤ this uses light model.
+    #[serde(default = "default_light_threshold")]
+    pub light: u8,
+
+    /// Primary model threshold: score ≤ this uses primary model.
+    #[serde(default = "default_primary_threshold")]
+    pub primary: u8,
+
+    /// Reasoning model threshold: score ≥ this uses two-stage execution.
+    #[serde(default = "default_reasoning_threshold")]
+    pub reasoning: u8,
+}
+
+fn default_light_threshold() -> u8 {
+    3
+}
+
+fn default_primary_threshold() -> u8 {
+    7
+}
+
+fn default_reasoning_threshold() -> u8 {
+    8
+}
+
+impl Default for DispatchThresholds {
+    fn default() -> Self {
+        Self {
+            light: default_light_threshold(),
+            primary: default_primary_threshold(),
+            reasoning: default_reasoning_threshold(),
+        }
+    }
+}
+
+/// Two-stage execution configuration (reasoning planning → primary execution).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwoStageConfig {
+    /// Enable two-stage mode for high-complexity tasks.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Include reasoning output in primary agent's context.
+    #[serde(default = "default_true")]
+    pub show_reasoning_to_primary: bool,
+
+    /// Allow reasoning agent to call tools (usually false, planning only).
+    #[serde(default)]
+    pub allow_tools_in_reasoning: bool,
+}
+
+impl Default for TwoStageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_reasoning_to_primary: true,
+            allow_tools_in_reasoning: false,
+        }
+    }
+}
+
+impl Default for AutoDispatchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            thresholds: DispatchThresholds::default(),
+            inherit_dispatch: true,
+            show_dispatch_decision: true,
+            two_stage: TwoStageConfig::default(),
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Main Configuration Structs
+// ═══════════════════════════════════════════════════════════════════════════
+
 /// Per-credential configuration entry (used in config files).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CredentialConfig {
@@ -57,6 +198,14 @@ pub struct ModelConfig {
     /// API key for this provider.
     #[serde(default)]
     pub api_key: String,
+
+    /// Multi-tier model configuration for intelligent dispatch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiers: Option<ModelTiers>,
+
+    /// Auto-dispatch configuration.
+    #[serde(default)]
+    pub auto_dispatch: AutoDispatchConfig,
 }
 
 fn default_provider() -> String {
@@ -78,6 +227,8 @@ impl Default for ModelConfig {
             base_url: String::new(),
             api_mode: String::new(),
             api_key: String::new(),
+            tiers: None,
+            auto_dispatch: AutoDispatchConfig::default(),
         }
     }
 }

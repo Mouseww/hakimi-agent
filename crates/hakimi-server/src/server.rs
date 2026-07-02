@@ -24,7 +24,7 @@ use crate::api;
 /// handlers share this Arc, so creating/updating/deleting a persona takes effect
 /// on gateway routing without a restart. Empty in WebUI-only mode.
 pub type GatewayPersonaAgents =
-    Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<hakimi_core::AIAgent>>>>>;
+    Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<Mutex<hakimi_core::DispatchedAgent>>>>>;
 
 /// Lazily-opened per-persona session databases (`persona_id -> sessions.db`).
 /// The default persona is never present (it uses the instance [`AppState::session_db`]).
@@ -35,7 +35,7 @@ pub type PersonaSessionDbs = Arc<
 
 #[derive(Clone)]
 pub struct AppState {
-    pub agent: Arc<Mutex<hakimi_core::AIAgent>>,
+    pub agent: Arc<Mutex<hakimi_core::DispatchedAgent>>,
     pub config: Arc<Mutex<hakimi_config::HakimiConfig>>,
     pub session_db: Arc<Mutex<hakimi_session::SessionDB>>,
     pub response_store: Arc<Mutex<crate::api::ResponsesStore>>,
@@ -52,6 +52,9 @@ pub struct AppState {
     pub persona_agents: GatewayPersonaAgents,
     /// Lazily-opened per-persona session databases (named personas only).
     pub persona_session_dbs: PersonaSessionDbs,
+    /// Shutdown signal sender (None in WebUI-only mode, Some in unified/gateway mode).
+    /// Used by /shutdown command and POST /api/gateway/shutdown to trigger graceful shutdown.
+    pub shutdown_tx: Option<tokio::sync::broadcast::Sender<()>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +72,7 @@ impl Server {
     /// The `agent` will be wrapped in shared state accessible by all handlers.
     pub fn new(
         _addr: &str,
-        agent: hakimi_core::AIAgent,
+        agent: hakimi_core::DispatchedAgent,
         config: hakimi_config::HakimiConfig,
         session_db: hakimi_session::SessionDB,
     ) -> Result<Self> {
@@ -100,6 +103,7 @@ impl Server {
             persona_session_dbs: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            shutdown_tx: None, // WebUI-only mode (no shutdown command)
         };
         Ok(Self { state })
     }

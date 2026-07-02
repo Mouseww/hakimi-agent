@@ -77,6 +77,21 @@ try {
         exit 1
     }
 
+    # Install bundled skills if present
+    $SkillsSourceDir = Join-Path $TempExtract "skills"
+    if (Test-Path $SkillsSourceDir) {
+        Write-Host "[INFO]  Installing bundled skills..." -ForegroundColor Blue
+        $SkillsDestDir = Join-Path $env:USERPROFILE ".hakimi\skills"
+        if (-not (Test-Path $SkillsDestDir)) {
+            New-Item -ItemType Directory -Path $SkillsDestDir -Force | Out-Null
+        }
+        Copy-Item -Path "$SkillsSourceDir\*" -Destination $SkillsDestDir -Recurse -Force -ErrorAction SilentlyContinue
+        $SkillCount = (Get-ChildItem -Path $SkillsSourceDir -Filter "SKILL.md" -Recurse).Count
+        if ($SkillCount -gt 0) {
+            Write-Host "[OK]    Installed $SkillCount skill(s) to $SkillsDestDir" -ForegroundColor Green
+        }
+    }
+
     # Add to PATH
     $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     if ($CurrentPath -notlike "*$InstallDir*") {
@@ -98,8 +113,27 @@ try {
     }
 
     Write-Host ""
-    Write-Host "  Hakimi Agent installed successfully!" -ForegroundColor Green
-    Write-Host "  Run 'hakimi --setup' to configure." -ForegroundColor Cyan
+    Write-Host "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+    Write-Host "  ✓ Hakimi Agent installed successfully!" -ForegroundColor Green
+    Write-Host "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  📋 Next steps:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  1. Run setup wizard (guides you through configuration):" -ForegroundColor Yellow
+    Write-Host "     hakimi setup" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  2. Or start directly with:" -ForegroundColor Yellow
+    Write-Host "     hakimi --help                  # Show all commands" -ForegroundColor White
+    Write-Host "     hakimi doctor                 # Diagnose setup" -ForegroundColor White
+    Write-Host "     hakimi --gateway              # Messaging platforms only" -ForegroundColor White
+    Write-Host "     hakimi --serve                # WebUI only (http://127.0.0.1:3005)" -ForegroundColor White
+    Write-Host "     hakimi --gateway --serve      # Both (recommended)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Setup wizard will help you configure:" -ForegroundColor Yellow
+    Write-Host "    • LLM provider and API key" -ForegroundColor Gray
+    Write-Host "    • Model selection (main/light/reasoning)" -ForegroundColor Gray
+    Write-Host "    • Gateway setup (Telegram, Discord, etc.)" -ForegroundColor Gray
+    Write-Host "    • Launch mode preference" -ForegroundColor Gray
     Write-Host ""
 
 } finally {

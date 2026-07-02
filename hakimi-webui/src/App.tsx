@@ -54,6 +54,12 @@ type UiMessage = {
   content: string;
   sessionId?: string;
   createdAt: Date;
+  toolCalls?: Array<{ 
+    name: string; 
+    timestamp: Date;
+    result?: string;  // Tool execution result
+    expanded?: boolean;  // UI state for expand/collapse
+  }>;
 };
 
 type DelegateStatus = {
@@ -361,10 +367,47 @@ function App() {
                   return [...filtered, { taskId, title: parts[1] ?? '', status: parts[2] ?? '', timestamp: parts[3] ?? '' }];
                 });
               } else if (raw.startsWith('hakimi_tool:')) {
+                const toolName = raw.slice('hakimi_tool:'.length);
+                // Record tool call in the message
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === assistantId
+                      ? {
+                          ...message,
+                          toolCalls: [
+                            ...(message.toolCalls ?? []),
+                            { name: toolName, timestamp: new Date(), expanded: false },
+                          ],
+                        }
+                      : message,
+                  ),
+                );
                 setDelegateStatuses((prev) => {
                   const filtered = prev.filter((d) => d.taskId !== '__main__');
-                  return [...filtered, { taskId: '__main__', title: '', status: raw.slice('hakimi_tool:'.length), timestamp: '' }];
+                  return [...filtered, { taskId: '__main__', title: '', status: toolName, timestamp: '' }];
                 });
+              } else if (raw.startsWith('hakimi_tool_result:')) {
+                const body = raw.slice('hakimi_tool_result:'.length);
+                const separatorIndex = body.indexOf('|');
+                if (separatorIndex !== -1) {
+                  const toolName = body.slice(0, separatorIndex);
+                  const result = body.slice(separatorIndex + 1);
+                  // Attach result to the most recent matching tool call
+                  setMessages((current) =>
+                    current.map((message) =>
+                      message.id === assistantId && message.toolCalls
+                        ? {
+                            ...message,
+                            toolCalls: message.toolCalls.map((tc, idx) =>
+                              idx === message.toolCalls!.length - 1 && tc.name === toolName
+                                ? { ...tc, result }
+                                : tc,
+                            ),
+                          }
+                        : message,
+                    ),
+                  );
+                }
               }
               return;
             }
@@ -374,14 +417,26 @@ function App() {
         });
       } else {
         response = await api.chat(text);
+        // For non-streaming mode, set the final content
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId
+              ? { ...message, content: response.response, sessionId: response.session_id }
+              : message,
+          ),
+        );
       }
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId
-            ? { ...message, content: response.response, sessionId: response.session_id }
-            : message,
-        ),
-      );
+      // For streaming mode, content was already set by onToken callback
+      // Only update sessionId if not already set
+      if (activePersonaId) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId && !message.sessionId
+              ? { ...message, sessionId: response.session_id }
+              : message,
+          ),
+        );
+      }
       setSelectedSessionId(response.session_id);
       if (activePersonaId) {
         void loadAgentSessions(activePersonaId);
@@ -429,6 +484,21 @@ function App() {
 
   function deleteMessage(id: string) {
     setMessages((current) => current.filter((message) => message.id !== id));
+  }
+
+  function toggleToolCallExpanded(messageId: string, toolCallIndex: number) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId && message.toolCalls
+          ? {
+              ...message,
+              toolCalls: message.toolCalls.map((tc, idx) =>
+                idx === toolCallIndex ? { ...tc, expanded: !tc.expanded } : tc,
+              ),
+            }
+          : message,
+      ),
+    );
   }
 
   async function handleDeleteSession(sessionId: string) {
@@ -809,6 +879,33 @@ function App() {
                       <span>{message.role}</span>
                       <time>{message.createdAt.toLocaleTimeString()}</time>
                     </header>
+                    {message.toolCalls && message.toolCalls.length > 0 && (
+                      <div className="message-tool-calls">
+                        {message.toolCalls.map((tc, idx) => (
+                          <div key={idx} className={`tool-call-item ${tc.result ? 'has-result' : ''}`}>
+                            <button
+                              type="button"
+                              className="tool-call-header"
+                              onClick={() => tc.result && toggleToolCallExpanded(message.id, idx)}
+                              disabled={!tc.result}
+                            >
+                              <span className="tool-call-icon">⚙️</span>
+                              <span className="tool-call-name">{tc.name}</span>
+                              {tc.result && (
+                                <span className="tool-call-toggle">
+                                  {tc.expanded ? '▼' : '▶'}
+                                </span>
+                              )}
+                            </button>
+                            {tc.result && tc.expanded && (
+                              <div className="tool-call-result">
+                                <MessageContent content={tc.result} />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {message.content ? (
                       <MessageContent content={message.content} />
                     ) : sending ? (

@@ -186,6 +186,18 @@ if [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "403" ] || [ ! -f "$TMPDIR/hakim
             cp "$BUILD_DIR/hakimi-agent/target/release/hakimi" "$INSTALL_DIR/hakimi"
             chmod +x "$INSTALL_DIR/hakimi"
             success "Built from source and installed."
+            
+            # Install bundled skills if present in the repo
+            if [ -d "$BUILD_DIR/hakimi-agent/skills" ]; then
+                info "Installing bundled skills from repository..."
+                SKILLS_DIR="$HOME/.hakimi/skills"
+                mkdir -p "$SKILLS_DIR"
+                cp -r "$BUILD_DIR/hakimi-agent/skills/"* "$SKILLS_DIR/" 2>/dev/null || true
+                SKILL_COUNT=$(find "$BUILD_DIR/hakimi-agent/skills" -name "SKILL.md" -o -name "*.md" | wc -l)
+                if [ "$SKILL_COUNT" -gt 0 ]; then
+                    success "Installed $SKILL_COUNT skill(s) to $SKILLS_DIR"
+                fi
+            fi
         else
             error "Build failed. Binary not found at expected path."
             exit 1
@@ -211,6 +223,21 @@ else
     cp "$TMPDIR/hakimi" "$INSTALL_DIR/hakimi"
     chmod +x "$INSTALL_DIR/hakimi"
     success "Binary installed."
+
+    # Install bundled skills if present in the archive
+    if [ -d "$TMPDIR/skills" ]; then
+        info "Installing bundled skills..."
+        SKILLS_DIR="$HOME/.hakimi/skills"
+        mkdir -p "$SKILLS_DIR"
+        
+        # Copy skills, preserving directory structure
+        cp -r "$TMPDIR/skills/"* "$SKILLS_DIR/" 2>/dev/null || true
+        
+        SKILL_COUNT=$(find "$TMPDIR/skills" -name "SKILL.md" -o -name "*.md" | wc -l)
+        if [ "$SKILL_COUNT" -gt 0 ]; then
+            success "Installed $SKILL_COUNT skill(s) to $SKILLS_DIR"
+        fi
+    fi
 fi
 
 # ── PATH setup ───────────────────────────────────────────────────────────────
@@ -340,8 +367,44 @@ if [ -t 0 ]; then
         "$INSTALL_DIR/hakimi" setup || true
     else
         echo ""
-        info "You can run 'hakimi setup' anytime to configure your model/API key."
+        info "You can run setup wizard later with:"
+        echo ""
+        echo "    ${BOLD}hakimi setup${RESET}"
+        echo ""
+        echo "  This will guide you through:"
+        echo "    • LLM provider and API key configuration"
+        echo "    • Model selection (main/light/reasoning models)"
+        echo "    • Gateway setup (Telegram, Discord, etc.)"
+        echo "    • Launch mode (Gateway/WebUI/Unified)"
+        echo "    • Optional systemd auto-start"
+        echo ""
+        echo "  Quick start commands:"
+        echo ""
+        echo "    ${BOLD}hakimi --help${RESET}                   # Show all available commands"
+        echo "    ${BOLD}hakimi doctor${RESET}                  # Diagnose setup and connectivity"
+        echo "    ${BOLD}hakimi --gateway${RESET}               # Start Gateway (messaging platforms)"
+        echo "    ${BOLD}hakimi --serve${RESET}                 # Start WebUI (http://127.0.0.1:3005)"
+        echo "    ${BOLD}hakimi --gateway --serve${RESET}       # Start both (recommended)"
+        echo ""
     fi
 else
-    info "Run 'hakimi setup' to configure your model/API key."
+    info "Run setup wizard to configure Hakimi:"
+    echo ""
+    echo "    ${BOLD}hakimi setup${RESET}"
+    echo ""
+    echo "  This will guide you through:"
+    echo "    • LLM provider and API key configuration"
+    echo "    • Model selection (main/light/reasoning models)"
+    echo "    • Gateway setup (Telegram, Discord, etc.)"
+    echo "    • Launch mode (Gateway/WebUI/Unified)"
+    echo "    • Optional systemd auto-start"
+    echo ""
+    echo "  Or use quick start commands:"
+    echo ""
+    echo "    ${BOLD}hakimi --help${RESET}                   # Show all available commands"
+    echo "    ${BOLD}hakimi doctor${RESET}                  # Diagnose setup and connectivity"
+    echo "    ${BOLD}hakimi --gateway${RESET}               # Start Gateway (messaging platforms)"
+    echo "    ${BOLD}hakimi --serve${RESET}                 # Start WebUI (http://127.0.0.1:3005)"
+    echo "    ${BOLD}hakimi --gateway --serve${RESET}       # Start both (recommended)"
+    echo ""
 fi

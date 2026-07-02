@@ -529,7 +529,7 @@ fn generate_config_yaml(config: &SetupConfig) -> String {
 // ---------------------------------------------------------------------------
 
 /// Setup systemd service for auto-start on boot
-fn setup_systemd_service() -> Result<()> {
+fn setup_systemd_service(mode_cmd: &str, mode_name: &str) -> Result<()> {
     use std::process::Command;
     
     // Detect hakimi binary path
@@ -544,12 +544,12 @@ fn setup_systemd_service() -> Result<()> {
     // Generate systemd service file content
     let service_content = format!(
 r#"[Unit]
-Description=Hakimi Agent Gateway
+Description=Hakimi Agent ({})
 After=network.target
 
 [Service]
 Type=simple
-ExecStart={} --gateway
+ExecStart={} {}
 WorkingDirectory={}
 Restart=always
 RestartSec=10
@@ -559,7 +559,9 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 "#,
+        mode_name,
         hakimi_path,
+        mode_cmd,
         home_path
     );
     
@@ -690,8 +692,29 @@ pub fn run_setup_wizard(non_interactive: bool) -> Result<SetupConfig> {
         println!("━━━ Launch Mode ━━━");
         println!();
         
+        let mode_options = &[
+            "Gateway only (message platforms like Telegram)",
+            "WebUI only (browser interface on localhost:3005)",
+            "Unified mode (Gateway + WebUI together)",
+        ];
+        
+        let mode_idx = Select::new()
+            .with_prompt("Which mode do you want to run?")
+            .items(mode_options)
+            .default(2)
+            .interact()?;
+        
+        let (mode_name, mode_cmd, mode_desc) = match mode_idx {
+            0 => ("Gateway", "--gateway", "Telegram/Discord/etc. messaging platforms"),
+            1 => ("WebUI", "--serve --addr 127.0.0.1:3005", "Browser UI at http://127.0.0.1:3005"),
+            2 => ("Unified", "--gateway --serve --addr 127.0.0.1:3005", "Gateway + WebUI (recommended)"),
+            _ => unreachable!(),
+        };
+        
+        println!();
+        
         let launch_options = &[
-            "Manual launch (run `hakimi --gateway` when needed)",
+            "Manual launch (run command when needed)",
             "Auto-start on boot (enable systemd service)",
         ];
         
@@ -707,27 +730,37 @@ pub fn run_setup_wizard(non_interactive: bool) -> Result<SetupConfig> {
                 println!();
                 println!("  ✓ Manual launch mode selected.");
                 println!();
-                println!("  To start Hakimi Gateway, run:");
-                println!("    hakimi --gateway");
+                println!("  📋 To start Hakimi {} mode:", mode_name);
+                println!("    hakimi {}", mode_cmd);
+                println!();
+                println!("  ℹ️  This will enable: {}", mode_desc);
+                if mode_idx == 2 {
+                    println!("    • Gateway: Connects to messaging platforms");
+                    println!("    • WebUI: http://127.0.0.1:3005");
+                }
             }
             1 => {
                 // Auto-start on boot
                 println!();
                 println!("  Setting up systemd service for auto-start...");
                 
-                if let Err(e) = setup_systemd_service() {
+                if let Err(e) = setup_systemd_service(mode_cmd, mode_name) {
                     eprintln!("  ✗ Failed to setup systemd service: {}", e);
                     println!();
                     println!("  You can manually start Hakimi with:");
-                    println!("    hakimi --gateway");
+                    println!("    hakimi {}", mode_cmd);
                 } else {
                     println!("  ✓ Systemd service installed and enabled.");
-                    println!("  ✓ Hakimi Gateway is starting now...");
+                    println!("  ✓ Hakimi {} mode is starting now...", mode_name);
                     println!();
-                    println!("  Service status:");
-                    println!("    systemctl status hakimi");
-                    println!("  View logs:");
-                    println!("    journalctl -u hakimi -f");
+                    println!("  📋 Service management:");
+                    println!("    systemctl status hakimi   # Check status");
+                    println!("    systemctl restart hakimi  # Restart service");
+                    println!("    systemctl stop hakimi     # Stop service");
+                    println!();
+                    println!("  📄 View logs:");
+                    println!("    journalctl -u hakimi -f   # Follow live logs");
+                    println!("    journalctl -u hakimi -n 100  # Last 100 lines");
                 }
             }
             _ => {}

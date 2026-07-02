@@ -523,6 +523,11 @@ impl From<hakimi_common::Message> for SessionMessageInfo {
 pub struct SanitizedConfig {
     pub model_default: String,
     pub model_provider: String,
+    // Model tiers for auto-dispatch
+    pub model_tiers: Option<ModelTiersDto>,
+    pub auto_dispatch_enabled: bool,
+    pub auto_dispatch_show_decision: bool,
+    pub auto_dispatch_two_stage_enabled: bool,
     pub agent_max_turns: usize,
     pub agent_verbose: bool,
     pub agent_system_prompt: String,
@@ -546,6 +551,24 @@ pub struct SanitizedConfig {
     pub embedding_batch_size: usize,
     pub embedding_normalize: bool,
     pub mcp_server_count: usize,
+}
+
+/// DTO for model tier configuration (sanitized, no secrets).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TierConfigDto {
+    pub provider: String,
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    pub base_url: String,
+}
+
+/// DTO for model tiers collection.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelTiersDto {
+    pub primary: TierConfigDto,
+    pub light: Option<TierConfigDto>,
+    pub reasoning: Option<TierConfigDto>,
 }
 
 /// Request body for POST /config.
@@ -1961,6 +1984,27 @@ async fn gateway_restart(
     }
 }
 
+async fn gateway_shutdown(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    // Trigger graceful shutdown via broadcast channel
+    if let Some(shutdown_tx) = &state.shutdown_tx {
+        let _ = shutdown_tx.send(());
+        Ok(Json(serde_json::json!({
+            "status": "shutting_down",
+            "message": "Hakimi is shutting down gracefully. All running tasks will be completed."
+        })))
+    } else {
+        // WebUI-only mode doesn't support shutdown command
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Shutdown command is only available in unified or gateway mode".to_string(),
+            }),
+        ))
+    }
+}
+
 /// Mask a secret string for safe display: show first 4 and last 2 chars.
 fn mask_secret(s: &str) -> String {
     if s.is_empty() {
@@ -2434,6 +2478,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/gateway/config", get(gateway_config))
         .route("/gateway/config", patch(gateway_update_config))
         .route("/gateway/restart", post(gateway_restart))
+        .route("/gateway/shutdown", post(gateway_shutdown))
         .route("/gateways/platforms", get(list_gateway_platforms))
         .route("/gateways/platforms/{platform}", patch(update_gateway_platform))
         // Agent-dimension (persona) endpoints
@@ -3822,7 +3867,7 @@ async fn build_persona_agent_for(
     state: &AppState,
     cfg: &hakimi_core::PersonaConfig,
     skills_dir: &std::path::Path,
-) -> hakimi_core::AIAgent {
+) -> hakimi_core::DispatchedAgent {
     let template = state.agent.lock().await.clone();
     let context_length = {
         let config = state.config.lock().await;
@@ -3838,7 +3883,25 @@ async fn build_persona_agent_for(
         )
         .context_length
     };
-    hakimi_core::build_persona_agent(&template, cfg, skills_dir, context_length)
+    let base_agent = hakimi_core::build_persona_agent(&template, cfg, skills_dir, context_length);
+    
+    // Wrap with dispatch (inherit dispatch config from template)
+    let model_config = {
+        let config = state.config.lock().await;
+        config.model.clone()
+    };
+    
+    match hakimi_core::DispatchedAgent::new(base_agent.clone(), model_config.clone(), 0) {
+        Ok(agent) => agent,
+        Err(e) => {
+            tracing::warn!("failed to wrap persona agent with dispatch: {e}, disabling auto_dispatch");
+            // Fallback: disable dispatch for this persona
+            let mut fallback_config = model_config;
+            fallback_config.auto_dispatch.enabled = false;
+            hakimi_core::DispatchedAgent::new(base_agent, fallback_config, 0)
+                .expect("dispatch creation cannot fail with disabled auto_dispatch")
+        }
+    }
 }
 
 /// Insert/replace a named persona's gateway agent so routing reflects CRUD
@@ -4325,10 +4388,17 @@ async fn agent_chat_stream(
     };
 
     {
-        let template = std::sync::Arc::new(state.agent.lock().await.clone());
+        // Team executor needs AIAgent, extract from DispatchedAgent
+        let agent_guard = state.agent.lock().await;
+        let base_agent = agent_guard.base_agent().clone();
+        let model_config = agent_guard.model_config().clone();
+        drop(agent_guard);
+        
+        let template = std::sync::Arc::new(base_agent);
         let team_base = hakimi_core::PersonaTeamExecutor::new(
             state.persona_registry.clone(),
             template,
+            model_config,
             128_000,
         );
         let lead_id = if is_default {
@@ -5674,9 +5744,48 @@ fn toolset_source(toolset: &str) -> &'static str {
 /// GET /config — return the current configuration (no secrets).
 async fn get_config(State(state): State<AppState>) -> Json<SanitizedConfig> {
     let config = state.config.lock().await;
+    
+    // Convert ModelTiers to DTO (with API keys masked)
+    let model_tiers = config.model.tiers.as_ref().map(|tiers| ModelTiersDto {
+        primary: TierConfigDto {
+            provider: tiers.primary.provider.clone(),
+            model: tiers.primary.model.clone(),
+            api_key: if tiers.primary.api_key.is_empty() {
+                None
+            } else {
+                Some("••••••••".to_string())  // Mask for security
+            },
+            base_url: tiers.primary.base_url.clone(),
+        },
+        light: tiers.light.as_ref().map(|tier| TierConfigDto {
+            provider: tier.provider.clone(),
+            model: tier.model.clone(),
+            api_key: if tier.api_key.is_empty() {
+                None
+            } else {
+                Some("••••••••".to_string())
+            },
+            base_url: tier.base_url.clone(),
+        }),
+        reasoning: tiers.reasoning.as_ref().map(|tier| TierConfigDto {
+            provider: tier.provider.clone(),
+            model: tier.model.clone(),
+            api_key: if tier.api_key.is_empty() {
+                None
+            } else {
+                Some("••••••••".to_string())
+            },
+            base_url: tier.base_url.clone(),
+        }),
+    });
+    
     Json(SanitizedConfig {
         model_default: config.model.default.clone(),
         model_provider: config.model.provider.clone(),
+        model_tiers,
+        auto_dispatch_enabled: config.model.auto_dispatch.enabled,
+        auto_dispatch_show_decision: config.model.auto_dispatch.show_dispatch_decision,
+        auto_dispatch_two_stage_enabled: config.model.auto_dispatch.two_stage.enabled,
         agent_max_turns: config.agent.max_turns,
         agent_verbose: config.agent.verbose,
         agent_system_prompt: config.agent.system_prompt.clone(),
@@ -5790,10 +5899,36 @@ async fn update_config(
 
     let config = state.config.lock().await;
 
+    // Convert ModelTiers to DTO (without API keys)
+    let model_tiers = config.model.tiers.as_ref().map(|tiers| ModelTiersDto {
+        primary: TierConfigDto {
+            provider: tiers.primary.provider.clone(),
+            model: tiers.primary.model.clone(),
+            api_key: None,  // Redacted for security
+            base_url: tiers.primary.base_url.clone(),
+        },
+        light: tiers.light.as_ref().map(|tier| TierConfigDto {
+            provider: tier.provider.clone(),
+            model: tier.model.clone(),
+            api_key: None,  // Redacted for security
+            base_url: tier.base_url.clone(),
+        }),
+        reasoning: tiers.reasoning.as_ref().map(|tier| TierConfigDto {
+            provider: tier.provider.clone(),
+            model: tier.model.clone(),
+            api_key: None,  // Redacted for security
+            base_url: tier.base_url.clone(),
+        }),
+    });
+
     // Return the updated config (sanitized).
     let response = SanitizedConfig {
         model_default: config.model.default.clone(),
         model_provider: config.model.provider.clone(),
+        model_tiers,
+        auto_dispatch_enabled: config.model.auto_dispatch.enabled,
+        auto_dispatch_show_decision: config.model.auto_dispatch.show_dispatch_decision,
+        auto_dispatch_two_stage_enabled: config.model.auto_dispatch.two_stage.enabled,
         agent_max_turns: config.agent.max_turns,
         agent_verbose: config.agent.verbose,
         agent_system_prompt: config.agent.system_prompt.clone(),

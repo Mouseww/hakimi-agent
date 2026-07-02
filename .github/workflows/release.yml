@@ -70,15 +70,25 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.artifact }}.tar.gz hakimi
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/hakimi dist/
+          cp -r skills dist/
+          cd dist
+          tar czf ../${{ matrix.artifact }}.tar.gz hakimi skills
+          cd ..
+          rm -rf dist
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          7z a ../../../${{ matrix.artifact }}.zip hakimi.exe
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/hakimi.exe dist/
+          cp -r skills dist/
+          cd dist
+          7z a ../${{ matrix.artifact }}.zip hakimi.exe skills
+          cd ..
+          rm -rf dist
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

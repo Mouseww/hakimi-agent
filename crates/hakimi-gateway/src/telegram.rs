@@ -317,6 +317,12 @@ impl TelegramAdapter {
                  Please wait a moment while the binary is downloaded and the gateway is restarted."
                     .to_string(),
             ),
+            "/shutdown" => Some(
+                "🛑 *Hakimi Shutdown*\n\n\
+                 Initiating graceful shutdown...\n\
+                 All running tasks will be completed before exit."
+                    .to_string(),
+            ),
             _ => None,
         }
     }
