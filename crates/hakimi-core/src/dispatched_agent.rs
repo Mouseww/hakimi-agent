@@ -64,12 +64,12 @@ impl DispatchedAgent {
             dispatcher.select_model(user_message, &self.base_agent.messages);
 
         // Show dispatch decision via streaming callback
-        if dispatcher.should_show_decision() {
-            if let Some(ref callback) = self.base_agent.streaming_callback {
-                let decision = dispatcher.format_decision(&complexity, &tier_config);
-                callback(decision);
-                callback("\n\n".to_string());
-            }
+        if dispatcher.should_show_decision()
+            && let Some(ref callback) = self.base_agent.streaming_callback
+        {
+            let decision = dispatcher.format_decision(&complexity, &tier_config);
+            callback(decision);
+            callback("\n\n".to_string());
         }
 
         // Check if two-stage execution is needed
@@ -153,10 +153,10 @@ impl DispatchedAgent {
         };
 
         if api_key.is_empty() {
+            let env_var = format!("{}_API_KEY", tier_config.provider.to_uppercase());
             return Err(hakimi_common::HakimiError::Config(format!(
                 "API key not found for provider '{}'. Set tier-specific api_key in config, or {} env var.",
-                tier_config.provider,
-                format!("{}_API_KEY", tier_config.provider.to_uppercase())
+                tier_config.provider, env_var
             )));
         }
 

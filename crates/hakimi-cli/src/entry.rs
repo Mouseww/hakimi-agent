@@ -4224,7 +4224,6 @@ pub enum TopLevelCommand {
 
 /// Generate a rich version string for `--version` output
 fn long_version() -> &'static str {
-    const VERSION: &str = env!("CARGO_PKG_VERSION");
     const BUILD_INFO: &str = concat!(
         "\n",
         "╭───────────────────────────────────────────────╮\n",
@@ -5742,7 +5741,7 @@ async fn gateway_persist_session(
     model: &str,
     title: Option<&str>,
     user_text: &str,
-    assistant_text: &str,
+    _assistant_text: &str,
 ) {
     use hakimi_session::SessionOps;
     let db = session_db.lock().await;
@@ -5778,6 +5777,7 @@ async fn gateway_persist_session(
     let _ = db.update_session_totals(session_id, &usage, 1);
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn process_gateway_messages_loop(
     mut messages: tokio::sync::mpsc::UnboundedReceiver<hakimi_gateway::GatewayMessage>,
     gateway: std::sync::Arc<hakimi_gateway::Gateway>,
@@ -7748,6 +7748,10 @@ async fn start_unified_server(
 
     // Reuse the same registry Arc the gateway loop routes against (built above),
     // so WebUI persona/binding edits and gateway routing share one source of truth.
+
+    // Create shutdown channel
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+
     let app_state = hakimi_server::server::AppState {
         agent: agent_arc,
         config: config_arc,
@@ -7760,26 +7764,10 @@ async fn start_unified_server(
         persona_registry,
         persona_agents,
         persona_session_dbs: shared_persona_session_dbs,
+        shutdown_tx: Some(shutdown_tx.clone()),
     };
 
-    // Create shutdown channel
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
-
-    // Share shutdown sender with AppState for /shutdown command and API
-    let app_state_with_shutdown = hakimi_server::server::AppState {
-        agent: app_state.agent.clone(),
-        config: app_state.config.clone(),
-        skill_store: app_state.skill_store.clone(),
-        runtime_home: app_state.runtime_home.clone(),
-        session_db: app_state.session_db.clone(),
-        gateway: app_state.gateway.clone(),
-        persona_registry: app_state.persona_registry.clone(),
-        persona_agents: app_state.persona_agents.clone(),
-        persona_session_dbs: app_state.persona_session_dbs.clone(),
-        shutdown_tx: Some(shutdown_tx),
-    };
-
-    let app = hakimi_server::api::build_router(app_state_with_shutdown);
+    let app = hakimi_server::api::build_router(app_state);
 
     info!(addr = %addr, "starting HTTP API server (unified mode)");
 
@@ -8555,7 +8543,7 @@ pub async fn run() -> Result<()> {
     }
 
     // Handle print mode: --print or positional prompt
-    let effective_print_mode = args.print || args.prompt.is_some();
+    let _effective_print_mode = args.print || args.prompt.is_some();
     let query_text = args.prompt.or(args.query);
 
     if let Some(query) = query_text {
@@ -10482,7 +10470,7 @@ gateways:
 
         restore_voice_history_text(&mut messages);
 
-        let assistant_text = format!("{VOICE_USER_MESSAGE_PREFIX}assistant text is not changed");
+        let _assistant_text = format!("{VOICE_USER_MESSAGE_PREFIX}assistant text is not changed");
         assert_eq!(
             messages[0].content.as_deref(),
             Some("summarize this for me")

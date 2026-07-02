@@ -9,14 +9,16 @@ use hakimi_tools::ToolRegistry;
 use hakimi_transports::ProviderTransport;
 use tokio::sync::RwLock;
 
-use crate::{AIAgent, DispatchedAgent};
+use crate::DispatchedAgent;
 
 /// Delegate executor that creates DispatchedAgent children instead of plain AIAgent.
 pub struct DispatchedDelegateExecutor {
     transport: Arc<dyn ProviderTransport>,
+    #[allow(dead_code)]
     context_engine: Arc<RwLock<dyn hakimi_context::ContextEngine>>,
     model_config: ModelConfig,
     tool_registry: ToolRegistry,
+    #[allow(dead_code)]
     workdir: String,
     skill_store: Option<hakimi_skills::SkillStore>,
     progress_callback: Option<ToolProgressCallback>,
@@ -25,6 +27,7 @@ pub struct DispatchedDelegateExecutor {
 
 impl DispatchedDelegateExecutor {
     /// Create a new dispatched delegate executor.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         transport: Arc<dyn ProviderTransport>,
         context_engine: Arc<RwLock<dyn hakimi_context::ContextEngine>>,
