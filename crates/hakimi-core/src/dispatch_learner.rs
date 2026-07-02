@@ -268,7 +268,7 @@ impl TrendAnalysis {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use crate::ModelTier;
 
     #[test]
     fn test_learner_basic() {
