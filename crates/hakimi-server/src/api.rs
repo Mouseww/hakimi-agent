@@ -3886,7 +3886,7 @@ async fn build_persona_agent_for(
     let base_agent = hakimi_core::build_persona_agent(&template, cfg, skills_dir, context_length);
 
     // Wrap with dispatch (inherit dispatch config from template)
-    let model_config = {
+    let _model_config = {
         let config = state.config.lock().await;
         config.model.clone()
     };
@@ -6180,14 +6180,11 @@ mod tests {
             .build()
             .unwrap();
 
-        let dispatched_agent =
-            hakimi_core::AIAgent::new(agent, hakimi_config::ModelConfig::default(), 0).unwrap();
-
         let db = SessionDB::new(std::path::Path::new(":memory:")).unwrap();
         db.initialize().unwrap();
 
         AppState {
-            agent: Arc::new(Mutex::new(dispatched_agent)),
+            agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(hakimi_config::HakimiConfig::default())),
             session_db: Arc::new(Mutex::new(db)),
             response_store: Arc::new(Mutex::new(ResponsesStore::new(100))),
@@ -6942,7 +6939,7 @@ mod tests {
     async fn test_v1_skills_endpoint_lists_metadata_without_content() {
         let state = test_state();
         {
-            let mut agent = state.agent.lock().await;
+            let _agent = state.agent.lock().await;
             let mut skill = hakimi_skills::Skill::new(
                 "release-check",
                 "# Release checklist\n- Do not expose this body",
