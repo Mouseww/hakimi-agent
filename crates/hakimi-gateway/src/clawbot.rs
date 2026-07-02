@@ -632,6 +632,7 @@ fn notify_ilink_login_qr(
             "请用微信扫描二维码登录 ClawBot。登录完成后会自动保存状态；Telegram gateway 不会被阻塞。\n\nHAKIMI_ROUTE_PLATFORM={platform}"
         ),
         media: Some(qrcode_img_url.to_string()),
+        callback_data: None,
     };
     let _ = msg_tx.send(msg);
 }
@@ -662,6 +663,7 @@ fn notify_ilink_login_complete(
             "✅ ClawBot 微信登录完成，登录态已保存。\n\nHAKIMI_ROUTE_PLATFORM={platform}"
         ),
         media: None,
+        callback_data: None,
     };
     let _ = msg_tx.send(msg);
 }
@@ -737,6 +739,7 @@ fn convert_bridge_message(
         user_id,
         text,
         media,
+        callback_data: None,
     })
 }
 
@@ -918,6 +921,7 @@ fn parse_ilink_updates(platform_name: &str, bot_id: &str, body: &Value) -> Ilink
             user_id: chat_id,
             text,
             media: None,
+            callback_data: None,
         });
     }
     (next_cursor, out, contexts, typing_tickets)

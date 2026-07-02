@@ -287,6 +287,7 @@ impl QQBotAdapter {
                     user_id,
                     text: msg.content,
                     media: None,
+        callback_data: None,
                 };
                 sender.send(gateway_msg)?;
             }
@@ -308,6 +309,7 @@ impl QQBotAdapter {
                     user_id,
                     text: msg.content,
                     media: None,
+        callback_data: None,
                 };
                 sender.send(gateway_msg)?;
             }

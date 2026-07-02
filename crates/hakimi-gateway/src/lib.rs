@@ -144,6 +144,9 @@ pub struct GatewayMessage {
     pub text: String,
     /// Optional media attachment path or URL.
     pub media: Option<String>,
+    /// Optional callback data (for inline button presses).
+    /// Format: "dispatch_lighter", "dispatch_stronger", "dispatch_justright"
+    pub callback_data: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

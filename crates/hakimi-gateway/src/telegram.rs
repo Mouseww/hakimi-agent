@@ -31,6 +31,17 @@ struct TgResponse<T> {
 struct TgUpdate {
     update_id: i64,
     message: Option<TgMessage>,
+    callback_query: Option<TgCallbackQuery>,
+}
+
+/// A callback query from an inline button.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct TgCallbackQuery {
+    id: String,
+    from: TgUser,
+    message: Option<TgMessage>,
+    data: Option<String>,
 }
 
 /// An incoming Telegram message.
@@ -1039,6 +1050,7 @@ fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
         user_id,
         text,
         media,
+        callback_data: None,
     })
 }
 
