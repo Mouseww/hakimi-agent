@@ -49,13 +49,12 @@ impl DispatchLearner {
         learner.persist_path = Some(path.clone());
 
         // Try to load existing history
-        if path.exists() {
-            if let Ok(data) = std::fs::read_to_string(&path) {
-                if let Ok(loaded) = serde_json::from_str::<Self>(&data) {
-                    learner.history = loaded.history;
-                    learner.max_history = loaded.max_history;
-                }
-            }
+        if path.exists()
+            && let Ok(data) = std::fs::read_to_string(&path)
+            && let Ok(loaded) = serde_json::from_str::<Self>(&data)
+        {
+            learner.history = loaded.history;
+            learner.max_history = loaded.max_history;
         }
 
         Ok(learner)

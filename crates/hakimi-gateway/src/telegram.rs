@@ -387,55 +387,55 @@ impl TelegramAdapter {
                             }
 
                             // Handle callback queries (inline button presses)
-                            if let Some(callback_query) = update.callback_query {
-                                if let Some(data) = callback_query.data {
-                                    debug!(
-                                        callback_id = %callback_query.id,
-                                        data = %data,
-                                        "callback query received"
-                                    );
+                            if let Some(callback_query) = update.callback_query
+                                && let Some(data) = callback_query.data
+                            {
+                                debug!(
+                                    callback_id = %callback_query.id,
+                                    data = %data,
+                                    "callback query received"
+                                );
 
-                                    // Extract chat_id and user_id from the callback
-                                    let (chat_id, user_id) =
-                                        if let Some(msg) = callback_query.message {
-                                            (
-                                                msg.chat.id.to_string(),
-                                                callback_query.from.id.to_string(),
-                                            )
-                                        } else {
-                                            // Fallback: use user_id as chat_id for inline queries
-                                            let uid = callback_query.from.id.to_string();
-                                            (uid.clone(), uid)
-                                        };
-
-                                    // Create a GatewayMessage with callback_data
-                                    let gw_msg = GatewayMessage {
-                                        platform: "telegram".to_owned(),
-                                        bot_id: bot_id.clone(),
-                                        chat_id,
-                                        user_id,
-                                        text: String::new(), // Callbacks have no text body
-                                        media: None,
-                                        callback_data: Some(data.clone()),
+                                // Extract chat_id and user_id from the callback
+                                let (chat_id, user_id) =
+                                    if let Some(msg) = callback_query.message {
+                                        (
+                                            msg.chat.id.to_string(),
+                                            callback_query.from.id.to_string(),
+                                        )
+                                    } else {
+                                        // Fallback: use user_id as chat_id for inline queries
+                                        let uid = callback_query.from.id.to_string();
+                                        (uid.clone(), uid)
                                     };
 
-                                    if msg_tx.send(gw_msg).is_err() {
-                                        error!("message receiver dropped – stopping poll loop");
-                                        return;
-                                    }
+                                // Create a GatewayMessage with callback_data
+                                let gw_msg = GatewayMessage {
+                                    platform: "telegram".to_owned(),
+                                    bot_id: bot_id.clone(),
+                                    chat_id,
+                                    user_id,
+                                    text: String::new(), // Callbacks have no text body
+                                    media: None,
+                                    callback_data: Some(data.clone()),
+                                };
 
-                                    // Send acknowledgment to Telegram (answerCallbackQuery)
-                                    // The api_url is like "https://api.telegram.org/bot<token>/getUpdates"
-                                    // We need "https://api.telegram.org/bot<token>/answerCallbackQuery"
-                                    let base_url = api_url.trim_end_matches("/getUpdates");
-                                    let _ = client
-                                        .post(format!("{}/answerCallbackQuery", base_url))
-                                        .json(&serde_json::json!({
-                                            "callback_query_id": callback_query.id
-                                        }))
-                                        .send()
-                                        .await;
+                                if msg_tx.send(gw_msg).is_err() {
+                                    error!("message receiver dropped – stopping poll loop");
+                                    return;
                                 }
+
+                                // Send acknowledgment to Telegram (answerCallbackQuery)
+                                // The api_url is like "https://api.telegram.org/bot<token>/getUpdates"
+                                // We need "https://api.telegram.org/bot<token>/answerCallbackQuery"
+                                let base_url = api_url.trim_end_matches("/getUpdates");
+                                let _ = client
+                                    .post(format!("{}/answerCallbackQuery", base_url))
+                                    .json(&serde_json::json!({
+                                        "callback_query_id": callback_query.id
+                                    }))
+                                    .send()
+                                    .await;
                             }
 
                             // Advance offset so we don't see this update again.
