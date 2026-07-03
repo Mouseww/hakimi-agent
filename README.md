@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.10-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.12-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,9 +29,19 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.10)
+## ✨ Recent Updates (v0.5.12)
 
-**WebUI Chat Experience Enhanced:**
+**Model Tiers & Auto-Dispatch — Intelligent Workload Distribution:**
+- ✅ **Three-Tier Model System** — Configure Light/Primary/Reasoning models for different task complexities
+- ✅ **Automatic Task Routing** — Smart dispatcher analyzes task complexity and routes to appropriate model tier
+- ✅ **WebUI Configuration** — Full control panel in Settings for model tiers and auto-dispatch options
+- ✅ **Cost & Performance Optimization** — Use lighter models for simple tasks, save powerful models for complex work
+- 🎯 **Two-Stage Execution** — Optional mode: plan with reasoning model, execute with primary model
+- 📊 **Dispatch Decision Visibility** — See which tier handles each request and why
+
+**Example:** Simple file reads go to your fast 7B model, standard coding to your 32B model, and complex architecture planning to your reasoning model — all automatically!
+
+**v0.5.11 — WebUI Chat Experience Enhanced:**
 - ✅ **Tool Call Visualization** — Every tool execution now displays prominently in chat history with collapsible results
 - ✅ **Fixed Content Overwrite** — Streaming responses no longer get replaced by final message, preserving complete conversation flow
 - ✅ **Interactive Tool Results** — Click to expand/collapse tool outputs (file reads, searches, API calls) with syntax highlighting
