@@ -163,6 +163,11 @@ function App() {
         content: m.content ?? '',
         sessionId: selectedSessionId ?? undefined,
         createdAt: m.timestamp ? new Date(m.timestamp) : new Date(),
+        toolCalls: m.tool_calls?.map((tc) => ({
+          name: tc.name,
+          timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+          expanded: false,
+        })),
       }));
   }, [messages, sessionMessages, selectedSessionId]);
 
@@ -464,7 +469,21 @@ function App() {
   }
 
   function copyMessage(content: string) {
-    void navigator.clipboard?.writeText(content);
+    navigator.clipboard?.writeText(content).then(() => {
+      // Show brief visual feedback
+      const btn = document.activeElement as HTMLElement;
+      if (btn) {
+        const originalText = btn.title;
+        btn.title = t('chat.copied') || 'Copied!';
+        btn.style.opacity = '0.5';
+        setTimeout(() => {
+          btn.title = originalText;
+          btn.style.opacity = '1';
+        }, 1000);
+      }
+    }).catch((err) => {
+      console.error('Failed to copy:', err);
+    });
   }
 
   function retryMessage(message: UiMessage) {
@@ -881,33 +900,6 @@ function App() {
                       <span>{message.role}</span>
                       <time>{message.createdAt.toLocaleTimeString()}</time>
                     </header>
-                    {message.toolCalls && message.toolCalls.length > 0 && (
-                      <div className="message-tool-calls">
-                        {message.toolCalls.map((tc, idx) => (
-                          <div key={idx} className={`tool-call-item ${tc.result ? 'has-result' : ''}`}>
-                            <button
-                              type="button"
-                              className="tool-call-header"
-                              onClick={() => tc.result && toggleToolCallExpanded(message.id, idx)}
-                              disabled={!tc.result}
-                            >
-                              <span className="tool-call-icon">⚙️</span>
-                              <span className="tool-call-name">{tc.name}</span>
-                              {tc.result && (
-                                <span className="tool-call-toggle">
-                                  {tc.expanded ? '▼' : '▶'}
-                                </span>
-                              )}
-                            </button>
-                            {tc.result && tc.expanded && (
-                              <div className="tool-call-result">
-                                <MessageContent content={tc.result} />
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
                     {message.content ? (
                       <MessageContent content={message.content} />
                     ) : sending ? (
@@ -957,6 +949,33 @@ function App() {
                         </div>
                       );
                     })()}
+                    {message.toolCalls && message.toolCalls.length > 0 && (
+                      <div className="message-tool-calls">
+                        {message.toolCalls.map((tc, idx) => (
+                          <div key={idx} className={`tool-call-item ${tc.result ? 'has-result' : ''}`}>
+                            <button
+                              type="button"
+                              className="tool-call-header"
+                              onClick={() => tc.result && toggleToolCallExpanded(message.id, idx)}
+                              disabled={!tc.result}
+                            >
+                              <span className="tool-call-icon">⚙️</span>
+                              <span className="tool-call-name">{tc.name}</span>
+                              {tc.result && (
+                                <span className="tool-call-toggle">
+                                  {tc.expanded ? '▼' : '▶'}
+                                </span>
+                              )}
+                            </button>
+                            {tc.result && tc.expanded && (
+                              <div className="tool-call-result">
+                                <MessageContent content={tc.result} />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {message.content && (
                       <div className="message-actions">
                         <button

@@ -88,6 +88,10 @@ export interface SessionMessageInfo {
   tool_call_id: string | null;
   name: string | null;
   tool_call_count: number;
+  tool_calls?: Array<{
+    id: string;
+    name: string;
+  }>;
   has_reasoning: boolean;
   token_count: number | null;
   finish_reason: string | null;

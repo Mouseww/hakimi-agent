@@ -53,6 +53,7 @@ const messages = {
   'chat.working': { en: 'Working', zh: '执行中' },
   'chat.parallel': { en: 'parallel', zh: '并行' },
   'chat.copy': { en: 'Copy', zh: '复制' },
+  'chat.copied': { en: 'Copied!', zh: '已复制!' },
   'chat.retry': { en: 'Retry', zh: '重试' },
   'chat.delete': { en: 'Delete', zh: '删除' },
 

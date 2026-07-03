@@ -469,6 +469,13 @@ pub struct SessionMessagesResponse {
     pub messages: Vec<SessionMessageInfo>,
 }
 
+/// Simplified tool call information for session message responses.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolCallInfo {
+    pub id: String,
+    pub name: String,
+}
+
 /// A sanitized message row for dashboard/session inspection.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionMessageInfo {
@@ -478,6 +485,8 @@ pub struct SessionMessageInfo {
     pub tool_call_id: Option<String>,
     pub name: Option<String>,
     pub tool_call_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallInfo>>,
     pub has_reasoning: bool,
     pub token_count: Option<u32>,
     pub finish_reason: Option<String>,
@@ -504,6 +513,15 @@ impl From<hakimi_session::SessionMeta> for SessionInfo {
 impl From<hakimi_common::Message> for SessionMessageInfo {
     fn from(message: hakimi_common::Message) -> Self {
         let tool_call_count = message.tool_calls.as_ref().map_or(0, Vec::len);
+        let tool_calls = message.tool_calls.as_ref().map(|calls| {
+            calls
+                .iter()
+                .map(|tc| ToolCallInfo {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                })
+                .collect()
+        });
         Self {
             role: message.role.to_string(),
             content: message.content,
@@ -511,6 +529,7 @@ impl From<hakimi_common::Message> for SessionMessageInfo {
             tool_call_id: message.tool_call_id,
             name: message.name,
             tool_call_count,
+            tool_calls,
             has_reasoning: message.reasoning.is_some() || message.reasoning_content.is_some(),
             token_count: message.token_count,
             finish_reason: message.finish_reason,
