@@ -160,7 +160,7 @@ pub fn analyze_complexity(text: &str) -> ComplexityScore {
         .count();
 
     score += (high_matches * 15) as u8;
-    score += (medium_matches * 8) as u8;  // Increased from 5 to 8
+    score += (medium_matches * 8) as u8; // Increased from 5 to 8
     score = score.saturating_sub((low_matches * 10) as u8);
 
     // Boost for code presence
