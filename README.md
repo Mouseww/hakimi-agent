@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.14-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.15-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,25 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.14)
+## ✨ Recent Updates (v0.5.15)
+
+**WebUI Config Persistence — Settings Now Survive Restart:**
+- ✅ **Config Auto-Save** — WebUI settings changes automatically persist to `~/.hakimi/config.yaml`
+- ✅ **No More Lost Settings** — Model configs, API keys, and all settings survive restart
+- 🔧 **Smart Persistence** — Only saves in unified mode (default), WebUI-only mode stays memory-only
+- 📝 **Logging** — Success/failure logged for debugging config save operations
+
+**Before v0.5.15:**
+- WebUI settings only stored in memory
+- Restarting hakimi lost all configuration changes
+- Had to manually edit config.yaml
+
+**After v0.5.15:**
+- Change settings in WebUI → Automatically saved to config.yaml
+- Restart preserves all your configuration
+- WebUI becomes the primary config interface
+
+### Previous Updates (v0.5.14)
 
 **Critical WebUI UX Fixes — Three Key Issues Resolved:**
 - ✅ **Copy Message Feedback** — Copy button now shows visual feedback (opacity change) so users know it worked
