@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.16-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.17-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,25 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.16)
+## ✨ Recent Updates (v0.5.17)
+
+**Enhanced Agent Delegation Proactivity — Smarter Team Collaboration:**
+- ✅ **Proactive Tool Description** — Agent now actively considers delegation in 4 explicit scenarios
+- ✅ **Scenario-Based Guidance** — Clear triggers: domain expertise gaps, parallel work, divide-and-conquer, specialized skills
+- 🤝 **Empowered Teammates** — Enhanced collaboration contract emphasizes value and actionable guidance
+- 🎯 **Cultural Shift** — "Delegation is a strength, not a weakness — leverage your team early and often"
+
+**Key Changes:**
+- Rewrote `team` tool description with PROACTIVE framing instead of passive "use when better suited"
+- Enhanced `TEAM_RESULT_CONTRACT` to emphasize teammate expertise and thorough guidance
+- Added explicit encouragement for early and frequent delegation
+
+**Impact:**
+- Agent more likely to use team collaboration proactively
+- Better recognition of when to delegate vs. handle directly
+- Improved multi-agent workflows and specialization
+
+### Previous Updates (v0.5.16)
 
 **UTF-8 Streaming Fix — No More Garbled Chinese Characters:**
 - ✅ **Proper UTF-8 Boundary Handling** — HTTP chunk boundaries no longer split multi-byte characters
