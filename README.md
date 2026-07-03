@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.15-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.16-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,31 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.15)
+## ✨ Recent Updates (v0.5.16)
+
+**UTF-8 Streaming Fix — No More Garbled Chinese Characters:**
+- ✅ **Proper UTF-8 Boundary Handling** — HTTP chunk boundaries no longer split multi-byte characters
+- ✅ **Fixed Garbled Output** — Chinese text like "我来帏查看服务器的息" now displays correctly as "我来查看服务器的信息"
+- 🔧 **Smart Buffer Management** — Incomplete UTF-8 sequences preserved in carry buffer until next chunk arrives
+- 🎯 **Zero Data Loss** — Complete characters always decoded correctly, no replacement characters (�)
+
+**Technical Details:**
+- Implemented `find_last_complete_utf8_boundary()` to detect incomplete multi-byte sequences
+- Handles all UTF-8 character types: 1-byte (ASCII), 2-byte, 3-byte (CJK), 4-byte (emoji)
+- Scans backward from buffer end to find last complete character
+- Carries forward incomplete sequences to next chunk for proper decoding
+
+**Before v0.5.16:**
+- Chinese characters appeared garbled during streaming: "配置信息" → "配帏信息"
+- Replacement characters (�) appeared randomly in CJK text
+- Emoji and special Unicode characters broke into fragments
+
+**After v0.5.16:**
+- All text streams correctly regardless of chunk boundaries
+- Perfect display of Chinese, Japanese, Korean, emoji, and all Unicode
+- Seamless streaming experience with zero character corruption
+
+### Previous Updates (v0.5.15)
 
 **WebUI Config Persistence — Settings Now Survive Restart:**
 - ✅ **Config Auto-Save** — WebUI settings changes automatically persist to `~/.hakimi/config.yaml`
