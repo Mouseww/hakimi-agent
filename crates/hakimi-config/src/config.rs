@@ -2638,8 +2638,7 @@ tools:
 impl HakimiConfig {
     /// Save the configuration to a YAML file.
     pub fn save_to_file<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
-        let yaml = serde_yaml::to_string(self)
-            .map_err(std::io::Error::other)?;
+        let yaml = serde_yaml::to_string(self).map_err(std::io::Error::other)?;
         std::fs::write(path, yaml)
     }
 }
