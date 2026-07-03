@@ -30,7 +30,7 @@ const MAX_CONSULT_ATTEMPTS: usize = 3;
 
 /// How a consulted teammate should frame its answer (prepended to the seed message,
 /// leaving the persona's own system prompt/identity intact).
-const TEAM_RESULT_CONTRACT: &str = "You are being consulted by a teammate agent on a focused sub-task. Use your own skills and knowledge. Return a concise, self-contained answer in this shape:\nStatus: success | partial | failed\nSummary:\nDetails:\nRisks/Assumptions:";
+const TEAM_RESULT_CONTRACT: &str = "You are being consulted by a teammate agent on a focused sub-task. You were chosen for this consultation because of your specialized skills and domain expertise. Provide thorough, actionable guidance that your teammate can directly apply. Use your own skills and knowledge to their full extent. Return a concise, self-contained answer in this shape:\nStatus: success | partial | failed\nSummary:\nDetails:\nRisks/Assumptions:";
 
 /// Validate a consultation request against the registry, depth, and lineage.
 /// Pure (no I/O beyond the already-held registry): returns the teammate config or

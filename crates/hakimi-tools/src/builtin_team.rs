@@ -18,7 +18,7 @@ impl Tool for TeamTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate a focused sub-task to a named teammate persona (each has its own model, skills, and memory). Use action='list' first to discover available teammates, then action='consult' to delegate. Use this when a teammate is better suited to part of the task."
+        "Delegate sub-tasks to specialized teammate personas. Each teammate has its own model, skills, and memory. PROACTIVELY use this tool in these scenarios: (1) Task requires domain expertise you lack (coding, writing, research, data analysis); (2) Parallel workstreams can speed up delivery; (3) Complex task benefits from divide-and-conquer; (4) Teammate's specialized skills outperform your general capabilities. Use action='list' first to discover teammates, then action='consult' to delegate. Delegation is a strength, not a weakness — leverage your team early and often."
     }
 
     fn emoji(&self) -> &str {
