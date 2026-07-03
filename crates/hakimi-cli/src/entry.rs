@@ -5712,6 +5712,7 @@ async fn resolve_gateway_session_db(
 
 /// Persist a gateway turn as a session record. Creates the session on first
 /// contact; updates usage totals after each turn.
+#[allow(clippy::too_many_arguments)]
 async fn gateway_persist_session(
     session_db: &std::sync::Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>,
     session_id: &str,
@@ -6050,33 +6051,33 @@ async fn process_gateway_messages_loop(
                 std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             {
                 let mut active = active_tasks.lock().await;
-                if !is_slash_command {
-                    if let Some(previous) = active.get(&task_key) {
-                        // There's already an active task for this chat
-                        if busy_mode == "queue" {
-                            // Inject the message as guidance into the running task's
-                            // context so the LLM sees it on its next iteration.
-                            if let Ok(mut g) = previous.guidance.lock() {
-                                g.push(text.clone());
-                            }
-
-                            send_gateway_text(
-                                &gateway_clone,
-                                &platform,
-                                &bot_id,
-                                &chat_id,
-                                "💡 已将消息融入当前任务上下文，下次 AI 调用时会参考。",
-                            )
-                            .await;
-                            return;
-                        } else if busy_mode == "interrupt" {
-                            // Interrupt mode: cancel previous task
-                            previous.cancel();
-                            debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
+                if !is_slash_command
+                    && let Some(previous) = active.get(&task_key)
+                {
+                    // There's already an active task for this chat
+                    if busy_mode == "queue" {
+                        // Inject the message as guidance into the running task's
+                        // context so the LLM sees it on its next iteration.
+                        if let Ok(mut g) = previous.guidance.lock() {
+                            g.push(text.clone());
                         }
-                        // Parallel mode (default): let previous task keep running,
-                        // start a new independent task concurrently.
+
+                        send_gateway_text(
+                            &gateway_clone,
+                            &platform,
+                            &bot_id,
+                            &chat_id,
+                            "💡 已将消息融入当前任务上下文，下次 AI 调用时会参考。",
+                        )
+                        .await;
+                        return;
+                    } else if busy_mode == "interrupt" {
+                        // Interrupt mode: cancel previous task
+                        previous.cancel();
+                        debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
                     }
+                    // Parallel mode (default): let previous task keep running,
+                    // start a new independent task concurrently.
                 }
 
                 // Insert the new task with a fresh guidance queue.

@@ -571,7 +571,7 @@ WantedBy=multi-user.target
 
     // Try to copy with sudo
     let status = Command::new("sudo")
-        .args(&["cp", temp_file, service_path])
+        .args(["cp", temp_file, service_path])
         .status()?;
 
     if !status.success() {
@@ -580,7 +580,7 @@ WantedBy=multi-user.target
 
     // Reload systemd daemon
     let status = Command::new("sudo")
-        .args(&["systemctl", "daemon-reload"])
+        .args(["systemctl", "daemon-reload"])
         .status()?;
 
     if !status.success() {
@@ -589,7 +589,7 @@ WantedBy=multi-user.target
 
     // Enable the service
     let status = Command::new("sudo")
-        .args(&["systemctl", "enable", "hakimi"])
+        .args(["systemctl", "enable", "hakimi"])
         .status()?;
 
     if !status.success() {
@@ -598,7 +598,7 @@ WantedBy=multi-user.target
 
     // Start the service immediately
     let status = Command::new("sudo")
-        .args(&["systemctl", "start", "hakimi"])
+        .args(["systemctl", "start", "hakimi"])
         .status()?;
 
     if !status.success() {
