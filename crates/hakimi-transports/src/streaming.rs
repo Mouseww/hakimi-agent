@@ -99,6 +99,61 @@ fn strip_prefix<'a>(line: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
     }
 }
 
+/// Find the last complete UTF-8 character boundary in a byte slice.
+/// Returns the index where the last complete character ends.
+/// Any incomplete multi-byte sequence at the end is excluded.
+fn find_last_complete_utf8_boundary(bytes: &[u8]) -> usize {
+    if bytes.is_empty() {
+        return 0;
+    }
+    
+    // UTF-8 multi-byte character detection:
+    // - Single-byte: 0b0xxxxxxx (0x00-0x7F)
+    // - 2-byte start: 0b110xxxxx (0xC0-0xDF)
+    // - 3-byte start: 0b1110xxxx (0xE0-0xEF)
+    // - 4-byte start: 0b11110xxx (0xF0-0xF7)
+    // - Continuation: 0b10xxxxxx (0x80-0xBF)
+    
+    let len = bytes.len();
+    
+    // Scan backwards from the end to find the start of the last character
+    for i in (0..len).rev() {
+        let byte = bytes[i];
+        
+        if byte & 0b10000000 == 0 {
+            // Single-byte character (0xxxxxxx) — definitely complete
+            return len;
+        } else if byte & 0b11000000 == 0b10000000 {
+            // Continuation byte (10xxxxxx) — keep scanning backwards
+            continue;
+        } else {
+            // Multi-byte start byte (11xxxxxx)
+            let required_bytes = if byte & 0b11100000 == 0b11000000 {
+                2 // 110xxxxx
+            } else if byte & 0b11110000 == 0b11100000 {
+                3 // 1110xxxx
+            } else if byte & 0b11111000 == 0b11110000 {
+                4 // 11110xxx
+            } else {
+                // Invalid start byte — fallback to lossy behavior
+                return len;
+            };
+            
+            let available_bytes = len - i;
+            if available_bytes >= required_bytes {
+                // Complete multi-byte character
+                return len;
+            } else {
+                // Incomplete multi-byte character — exclude it
+                return i;
+            }
+        }
+    }
+    
+    // All bytes are continuation bytes (invalid UTF-8) — keep everything
+    len
+}
+
 // ── OpenAI SSE parsing ──────────────────────────────────────────────────────
 
 /// Parse an OpenAI-format streaming chunk JSON into a list of `StreamEvent`s.
@@ -368,6 +423,9 @@ impl SseFullBuffer {
     }
 
     /// Feed a chunk and return `(event_type, data_payload)` pairs.
+    /// 
+    /// Properly handles UTF-8 boundaries: incomplete multi-byte sequences at the
+    /// end of a chunk are preserved in carry buffer until the next chunk arrives.
     pub fn feed(&mut self, chunk: &[u8]) -> Vec<(Option<String>, String)> {
         let mut combined = Vec::with_capacity(self.carry.len() + chunk.len());
         combined.extend_from_slice(&self.carry);
@@ -400,7 +458,14 @@ impl SseFullBuffer {
             }
         }
 
-        self.carry = combined[last_split..].to_vec();
+        // Preserve incomplete UTF-8 sequences at chunk boundaries.
+        // The remaining bytes after the last newline might contain:
+        // 1. Complete lines without trailing \n (wait for more data)
+        // 2. Incomplete multi-byte UTF-8 sequences (must carry forward)
+        let remaining = &combined[last_split..];
+        let safe_boundary = find_last_complete_utf8_boundary(remaining);
+        self.carry = remaining[..safe_boundary].to_vec();
+        
         results
     }
 }
