@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.17-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.18-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,31 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.17)
+## ✨ Recent Updates (v0.5.18)
+
+**SSE Keepalive Fix — No More WebUI Timeout:**
+- ✅ **15-Second Keepalive** — SSE connection sends keepalive comments every 15 seconds
+- ✅ **Fixed Network Error** — Long-running tasks no longer timeout with "network error"
+- 🔧 **Stable Connections** — Prevents browser and proxy timeout on idle connections
+- 🎯 **Better UX** — Users can send complex requests without worrying about timeout
+
+**Technical Details:**
+- Added `keep_alive()` to `sse_response_from_rx` function
+- Sends `: keepalive\n\n` comments every 15 seconds (SSE standard)
+- Matches pattern from run SSE endpoint but with shorter interval for chat interactivity
+- Compatible with all SSE-supporting browsers and proxies
+
+**Before v0.5.18:**
+- Long agent tasks (team collaboration, complex analysis) would timeout
+- WebUI showed "network error" after ~30-60 seconds of silence
+- Users had to retry or break tasks into smaller pieces
+
+**After v0.5.18:**
+- All tasks complete successfully regardless of duration
+- Stable connection maintained throughout entire agent response
+- Seamless experience for complex multi-step operations
+
+### Previous Updates (v0.5.17)
 
 **Enhanced Agent Delegation Proactivity — Smarter Team Collaboration:**
 - ✅ **Proactive Tool Description** — Agent now actively considers delegation in 4 explicit scenarios
