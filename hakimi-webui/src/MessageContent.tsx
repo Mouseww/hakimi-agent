@@ -18,11 +18,26 @@ function openLinksInNewTab(event: MouseEvent<HTMLDivElement>) {
 }
 
 /**
+ * Strip internal tool markers that may leak into assistant content during streaming.
+ * These markers (hakimi_tool:, hakimi_tool_result:) are protocol-level metadata that
+ * should not be displayed to the user.
+ */
+function stripToolMarkers(text: string): string {
+  return text
+    .replace(/hakimi_tool:.*?(?=\n|$)/g, '')
+    .replace(/hakimi_tool_result:.*?(?=\n|$)/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
  * Renders message text as GitHub-flavored Markdown. Fenced code blocks with a
  * known language are syntax-highlighted via the shared highlight.js instance.
  * react-markdown escapes raw HTML by default (no rehype-raw), so this is XSS-safe.
  */
 export default function MessageContent({ content }: MessageContentProps) {
+  const cleanContent = stripToolMarkers(content);
+
   return (
     <div className="markdown-body" onClick={openLinksInNewTab}>
       <Markdown
@@ -45,7 +60,7 @@ export default function MessageContent({ content }: MessageContentProps) {
           },
         }}
       >
-        {content}
+        {cleanContent}
       </Markdown>
     </div>
   );

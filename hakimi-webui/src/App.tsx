@@ -356,7 +356,9 @@ function App() {
             }
           },
           onToken: (token) => {
-            if (token.startsWith('\x01')) {
+            // Hakimi backend uses \x1e (Record Separator, ASCII 30) for control messages
+            // Legacy \x01 (Start of Heading, ASCII 1) is also supported for compatibility
+            if (token.startsWith('\x1e') || token.startsWith('\x01')) {
               const raw = token.slice(1);
               if (raw.startsWith('hakimi_delegate:')) {
                 const body = raw.slice('hakimi_delegate:'.length);
