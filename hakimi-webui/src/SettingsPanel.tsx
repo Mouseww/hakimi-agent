@@ -1,6 +1,6 @@
-import { Save, Shield, SlidersHorizontal, Terminal } from 'lucide-react';
+import { Layers3, Save, Shield, SlidersHorizontal, Terminal } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api, type ConfigUpdate, type SanitizedConfig } from './api';
+import { api, type ConfigUpdate, type ModelTiersDto, type SanitizedConfig, type TierConfigDto } from './api';
 
 type Notice = {
   text: string;
@@ -56,6 +56,10 @@ export default function SettingsPanel() {
     const payload: ConfigUpdate = {
       model_default: draft.model_default,
       model_provider: draft.model_provider,
+      model_tiers: draft.model_tiers,
+      auto_dispatch_enabled: draft.auto_dispatch_enabled,
+      auto_dispatch_show_decision: draft.auto_dispatch_show_decision,
+      auto_dispatch_two_stage_enabled: draft.auto_dispatch_two_stage_enabled,
       agent_max_turns: toNumber(String(draft.agent_max_turns ?? config.agent_max_turns), config.agent_max_turns),
       agent_verbose: draft.agent_verbose,
       agent_system_prompt: draft.agent_system_prompt,
@@ -176,6 +180,379 @@ export default function SettingsPanel() {
               <option value="high">high</option>
             </select>
           </label>
+        </fieldset>
+
+        <fieldset className="settings-group settings-group-wide">
+          <legend>
+            <Layers3 size={16} aria-hidden="true" />
+            Model Tiers & Auto-Dispatch
+          </legend>
+          <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginBottom: '1rem' }}>
+            Configure model tiers for intelligent workload distribution
+          </p>
+          
+          <label className="switch-row">
+            <span>Enable Auto-Dispatch</span>
+            <input
+              type="checkbox"
+              checked={draft.auto_dispatch_enabled ?? false}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, auto_dispatch_enabled: event.target.checked }))
+              }
+            />
+          </label>
+          <label className="switch-row">
+            <span>Show dispatch decisions</span>
+            <input
+              type="checkbox"
+              checked={draft.auto_dispatch_show_decision ?? false}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, auto_dispatch_show_decision: event.target.checked }))
+              }
+            />
+          </label>
+          <label className="switch-row">
+            <span>Two-stage execution</span>
+            <input
+              type="checkbox"
+              checked={draft.auto_dispatch_two_stage_enabled ?? false}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, auto_dispatch_two_stage_enabled: event.target.checked }))
+              }
+            />
+          </label>
+
+          <div style={{ marginTop: '1.5rem', display: 'grid', gap: '1rem' }}>
+            {/* Primary Tier */}
+            <details open>
+              <summary style={{ fontWeight: '500', cursor: 'pointer', marginBottom: '0.75rem' }}>
+                Primary Tier (Required)
+              </summary>
+              <div style={{ display: 'grid', gap: '0.75rem', paddingLeft: '1rem' }}>
+                <label>
+                  <span>Provider</span>
+                  <input
+                    value={draft.model_tiers?.primary?.provider ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: {
+                              ...currentPrimary,
+                              provider: event.target.value,
+                            },
+                            light: current.model_tiers?.light,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="openai"
+                  />
+                </label>
+                <label>
+                  <span>Model</span>
+                  <input
+                    value={draft.model_tiers?.primary?.model ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: {
+                              ...currentPrimary,
+                              model: event.target.value,
+                            },
+                            light: current.model_tiers?.light,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="gpt-4"
+                  />
+                </label>
+                <label>
+                  <span>Base URL (optional)</span>
+                  <input
+                    value={draft.model_tiers?.primary?.base_url ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: {
+                              ...currentPrimary,
+                              base_url: event.target.value,
+                            },
+                            light: current.model_tiers?.light,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </label>
+                <label>
+                  <span>API Key (leave empty to use default)</span>
+                  <input
+                    type="password"
+                    value={draft.model_tiers?.primary?.api_key ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: {
+                              ...currentPrimary,
+                              api_key: event.target.value,
+                            },
+                            light: current.model_tiers?.light,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="sk-..."
+                  />
+                </label>
+              </div>
+            </details>
+
+            {/* Light Tier */}
+            <details>
+              <summary style={{ fontWeight: '500', cursor: 'pointer', marginBottom: '0.75rem' }}>
+                Light Tier (Optional)
+              </summary>
+              <div style={{ display: 'grid', gap: '0.75rem', paddingLeft: '1rem' }}>
+                <label>
+                  <span>Provider</span>
+                  <input
+                    value={draft.model_tiers?.light?.provider ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: event.target.value
+                              ? {
+                                  ...current.model_tiers?.light,
+                                  provider: event.target.value,
+                                  model: current.model_tiers?.light?.model ?? '',
+                                  base_url: current.model_tiers?.light?.base_url ?? '',
+                                }
+                              : undefined,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="openai"
+                  />
+                </label>
+                <label>
+                  <span>Model</span>
+                  <input
+                    value={draft.model_tiers?.light?.model ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: event.target.value || current.model_tiers?.light?.provider
+                              ? {
+                                  ...current.model_tiers?.light,
+                                  provider: current.model_tiers?.light?.provider ?? '',
+                                  model: event.target.value,
+                                  base_url: current.model_tiers?.light?.base_url ?? '',
+                                }
+                              : undefined,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="gpt-3.5-turbo"
+                  />
+                </label>
+                <label>
+                  <span>Base URL (optional)</span>
+                  <input
+                    value={draft.model_tiers?.light?.base_url ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: current.model_tiers?.light
+                              ? {
+                                  ...current.model_tiers.light,
+                                  base_url: event.target.value,
+                                }
+                              : undefined,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </label>
+                <label>
+                  <span>API Key (leave empty to use default)</span>
+                  <input
+                    type="password"
+                    value={draft.model_tiers?.light?.api_key ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: current.model_tiers?.light
+                              ? {
+                                  ...current.model_tiers.light,
+                                  api_key: event.target.value,
+                                }
+                              : undefined,
+                            reasoning: current.model_tiers?.reasoning,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="sk-..."
+                  />
+                </label>
+              </div>
+            </details>
+
+            {/* Reasoning Tier */}
+            <details>
+              <summary style={{ fontWeight: '500', cursor: 'pointer', marginBottom: '0.75rem' }}>
+                Reasoning Tier (Optional)
+              </summary>
+              <div style={{ display: 'grid', gap: '0.75rem', paddingLeft: '1rem' }}>
+                <label>
+                  <span>Provider</span>
+                  <input
+                    value={draft.model_tiers?.reasoning?.provider ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: current.model_tiers?.light,
+                            reasoning: event.target.value
+                              ? {
+                                  ...current.model_tiers?.reasoning,
+                                  provider: event.target.value,
+                                  model: current.model_tiers?.reasoning?.model ?? '',
+                                  base_url: current.model_tiers?.reasoning?.base_url ?? '',
+                                }
+                              : undefined,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="openai"
+                  />
+                </label>
+                <label>
+                  <span>Model</span>
+                  <input
+                    value={draft.model_tiers?.reasoning?.model ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: current.model_tiers?.light,
+                            reasoning: event.target.value || current.model_tiers?.reasoning?.provider
+                              ? {
+                                  ...current.model_tiers?.reasoning,
+                                  provider: current.model_tiers?.reasoning?.provider ?? '',
+                                  model: event.target.value,
+                                  base_url: current.model_tiers?.reasoning?.base_url ?? '',
+                                }
+                              : undefined,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="o1-preview"
+                  />
+                </label>
+                <label>
+                  <span>Base URL (optional)</span>
+                  <input
+                    value={draft.model_tiers?.reasoning?.base_url ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: current.model_tiers?.light,
+                            reasoning: current.model_tiers?.reasoning
+                              ? {
+                                  ...current.model_tiers.reasoning,
+                                  base_url: event.target.value,
+                                }
+                              : undefined,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </label>
+                <label>
+                  <span>API Key (leave empty to use default)</span>
+                  <input
+                    type="password"
+                    value={draft.model_tiers?.reasoning?.api_key ?? ''}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        const currentPrimary: TierConfigDto = current.model_tiers?.primary ?? { provider: '', model: '', base_url: '' };
+                        return {
+                          ...current,
+                          model_tiers: {
+                            primary: currentPrimary,
+                            light: current.model_tiers?.light,
+                            reasoning: current.model_tiers?.reasoning
+                              ? {
+                                  ...current.model_tiers.reasoning,
+                                  api_key: event.target.value,
+                                }
+                              : undefined,
+                          } as ModelTiersDto,
+                        };
+                      })
+                    }
+                    placeholder="sk-..."
+                  />
+                </label>
+              </div>
+            </details>
+          </div>
         </fieldset>
 
         <fieldset className="settings-group">
