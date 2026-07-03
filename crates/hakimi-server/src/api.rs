@@ -576,6 +576,10 @@ pub struct ModelTiersDto {
 pub struct ConfigUpdate {
     pub model_default: Option<String>,
     pub model_provider: Option<String>,
+    pub model_tiers: Option<ModelTiersDto>,
+    pub auto_dispatch_enabled: Option<bool>,
+    pub auto_dispatch_show_decision: Option<bool>,
+    pub auto_dispatch_two_stage_enabled: Option<bool>,
     pub agent_max_turns: Option<usize>,
     pub agent_verbose: Option<bool>,
     pub agent_system_prompt: Option<String>,
@@ -5820,6 +5824,40 @@ async fn update_config(
     }
     if let Some(v) = update.model_provider {
         config.model.provider = v;
+    }
+    // Update model tiers if provided
+    if let Some(tiers_dto) = update.model_tiers {
+        let tiers = hakimi_config::ModelTiers {
+            primary: hakimi_config::TierConfig {
+                provider: tiers_dto.primary.provider,
+                model: tiers_dto.primary.model,
+                api_key: tiers_dto.primary.api_key.unwrap_or_default(),
+                base_url: tiers_dto.primary.base_url,
+            },
+            light: tiers_dto.light.map(|t| hakimi_config::TierConfig {
+                provider: t.provider,
+                model: t.model,
+                api_key: t.api_key.unwrap_or_default(),
+                base_url: t.base_url,
+            }),
+            reasoning: tiers_dto.reasoning.map(|t| hakimi_config::TierConfig {
+                provider: t.provider,
+                model: t.model,
+                api_key: t.api_key.unwrap_or_default(),
+                base_url: t.base_url,
+            }),
+        };
+        config.model.tiers = Some(tiers);
+    }
+    // Update auto-dispatch settings if provided
+    if let Some(v) = update.auto_dispatch_enabled {
+        config.model.auto_dispatch.enabled = v;
+    }
+    if let Some(v) = update.auto_dispatch_show_decision {
+        config.model.auto_dispatch.show_dispatch_decision = v;
+    }
+    if let Some(v) = update.auto_dispatch_two_stage_enabled {
+        config.model.auto_dispatch.two_stage.enabled = v;
     }
     if let Some(v) = update.agent_max_turns {
         config.agent.max_turns = v;
