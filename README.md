@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.13-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.14-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,9 +29,26 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.13)
+## ✨ Recent Updates (v0.5.14)
 
-**WebUI Tool Call Display Fix — Clean and Structured:**
+**Critical WebUI UX Fixes — Three Key Issues Resolved:**
+- ✅ **Copy Message Feedback** — Copy button now shows visual feedback (opacity change) so users know it worked
+- ✅ **Tool Call Panel Position** — Fixed rendering order: tool calls now appear after message content, not stacked at the top
+- ✅ **Tool Calls Persistence** — Full backend integration: tool calls persist to database and survive page refresh
+- 🎯 **Backend API Enhanced** — Added ToolCallInfo struct and tool_calls field to SessionMessageInfo
+- 🔄 **Frontend Mapping** — Automatic conversion from backend tool_calls to frontend toolCalls format
+
+**Before v0.5.14:**
+- Copy button seemed broken (no feedback)
+- Tool panels stacked messily at message top: `⚙️ read_file ⚙️ terminal [content below]`
+- Refreshing the page lost all tool call history
+
+**After v0.5.14:**
+- Copy gives instant feedback
+- Clean flow: `[content] → [delegate progress] → [tool calls]`
+- Tool calls persist forever, visible in historical sessions
+
+**v0.5.13 — WebUI Tool Call Display Fix:**
 - ✅ **Fixed Protocol Mismatch** — Frontend now correctly detects backend control messages (changed \x01 → \x1e)
 - ✅ **Clean Message Display** — Tool markers no longer leak into assistant responses
 - ✅ **Structured Tool Panels** — Tool calls appear in collapsible cards with clear visual separation
