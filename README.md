@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.12-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.13-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,9 +29,18 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.12)
+## ✨ Recent Updates (v0.5.13)
 
-**Model Tiers & Auto-Dispatch — Intelligent Workload Distribution:**
+**WebUI Tool Call Display Fix — Clean and Structured:**
+- ✅ **Fixed Protocol Mismatch** — Frontend now correctly detects backend control messages (changed \x01 → \x1e)
+- ✅ **Clean Message Display** — Tool markers no longer leak into assistant responses
+- ✅ **Structured Tool Panels** — Tool calls appear in collapsible cards with clear visual separation
+- ✅ **Better Readability** — Long tool results are folded by default, click to expand when needed
+- 🎯 **Double Filter** — stripToolMarkers() provides fallback cleanup for any protocol edge cases
+
+**Example:** Before this fix, you'd see messy raw markers like `hakimi_tool:⚙️ read_file` mixed into the response text. Now tool calls appear as clean, expandable panels while the assistant's prose stays pristine.
+
+**v0.5.12 — Model Tiers & Auto-Dispatch:**
 - ✅ **Three-Tier Model System** — Configure Light/Primary/Reasoning models for different task complexities
 - ✅ **Automatic Task Routing** — Smart dispatcher analyzes task complexity and routes to appropriate model tier
 - ✅ **WebUI Configuration** — Full control panel in Settings for model tiers and auto-dispatch options
