@@ -7818,6 +7818,7 @@ async fn start_unified_server(
     let app_state = hakimi_server::server::AppState {
         agent: agent_arc,
         config: config_arc,
+        config_path: Some(onboarding_config_path.as_ref().clone()),
         session_db,
         response_store: Arc::new(Mutex::new(hakimi_server::api::ResponsesStore::default())),
         run_store: Arc::new(Mutex::new(hakimi_server::api::RunsStore::default())),

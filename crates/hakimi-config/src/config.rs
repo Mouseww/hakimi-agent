@@ -2630,3 +2630,16 @@ tools:
         assert_eq!(clamped.tools.output.max_bytes, 1);
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Config Persistence
+// ═══════════════════════════════════════════════════════════════════════════
+
+impl HakimiConfig {
+    /// Save the configuration to a YAML file.
+    pub fn save_to_file<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+        let yaml_string = serde_yaml::to_string(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        std::fs::write(path, yaml_string)
+    }
+}

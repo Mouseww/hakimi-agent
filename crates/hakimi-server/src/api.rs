@@ -5950,6 +5950,24 @@ async fn update_config(
         *state.webui_password.lock().await = password;
     }
 
+    // Persist config changes to file if config_path is available
+    if let Some(ref config_path) = state.config_path {
+        let config = state.config.lock().await;
+        if let Err(e) = config.save_to_file(config_path) {
+            tracing::warn!(
+                path = %config_path.display(),
+                error = %e,
+                "Failed to persist config changes to file"
+            );
+        } else {
+            tracing::info!(
+                path = %config_path.display(),
+                "Config changes persisted to file"
+            );
+        }
+        drop(config);
+    }
+
     let config = state.config.lock().await;
 
     // Convert ModelTiers to DTO (without API keys)
@@ -6243,13 +6261,14 @@ mod tests {
         AppState {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(hakimi_config::HakimiConfig::default())),
+            config_path: None, // Test state doesn't persist config
             session_db: Arc::new(Mutex::new(db)),
             response_store: Arc::new(Mutex::new(ResponsesStore::new(100))),
             run_store: Arc::new(Mutex::new(RunsStore::default())),
             webui_password: Arc::new(Mutex::new(String::new())),
             knowledge_provider: Arc::new(Mutex::new(hakimi_knowledge::KnowledgeProvider::new(
                 std::env::temp_dir().join(format!(
-                    "hakimi-test-knowledge-{}-{}.json",
+                    "hakimi-test-knowledge-{}-{}. json",
                     std::process::id(),
                     unix_timestamp_millis()
                 )),

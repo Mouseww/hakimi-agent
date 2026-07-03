@@ -37,6 +37,7 @@ pub type PersonaSessionDbs = Arc<
 pub struct AppState {
     pub agent: Arc<Mutex<hakimi_core::AIAgent>>,
     pub config: Arc<Mutex<hakimi_config::HakimiConfig>>,
+    pub config_path: Option<std::path::PathBuf>,
     pub session_db: Arc<Mutex<hakimi_session::SessionDB>>,
     pub response_store: Arc<Mutex<crate::api::ResponsesStore>>,
     pub run_store: Arc<Mutex<crate::api::RunsStore>>,
@@ -92,6 +93,7 @@ impl Server {
         let state = AppState {
             agent: Arc::new(Mutex::new(agent)),
             config: Arc::new(Mutex::new(config)),
+            config_path: None, // WebUI-only mode doesn't persist config changes to file
             session_db: Arc::new(Mutex::new(session_db)),
             response_store: Arc::new(Mutex::new(crate::api::ResponsesStore::default())),
             run_store: Arc::new(Mutex::new(crate::api::RunsStore::default())),
