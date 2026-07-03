@@ -4277,7 +4277,13 @@ fn sse_response_from_rx(rx: tokio::sync::mpsc::Receiver<String>) -> Response {
             }
         })
     });
-    Sse::new(stream).into_response()
+    Sse::new(stream)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(15))
+                .text("keepalive"),
+        )
+        .into_response()
 }
 
 /// Resolve a persona's session database. The default persona uses the instance
