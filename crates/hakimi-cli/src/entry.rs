@@ -6340,9 +6340,11 @@ Just send a message to chat with me!"
                                     .map(|r| r.is_ok())
                                     .unwrap_or(false);
                                 if !restarted {
+                                    // Fallback: kill current process and restart via shell
+                                    // This works even without systemctl/sudo permissions
                                     let _ = std::process::Command::new("bash")
                                         .arg("-c")
-                                        .arg("nohup sh -c 'pkill -f \"hakimi --gateway\"; hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' &")
+                                        .arg("nohup sh -c 'sleep 2; pkill -f \"hakimi --gateway\" || pkill -f \"hakimi --addr\"; sleep 1; exec hakimi --gateway > ~/.hakimi/logs/gateway.log 2>&1' >/dev/null 2>&1 &")
                                         .spawn();
                                 }
                             }
@@ -7866,16 +7868,23 @@ fn restart_gateway_service() -> Result<()> {
 
     let service = gateway_service_name();
 
+    // Try systemctl restart (works if running as root or user has systemd permissions)
     let status = ProcessCommand::new("systemctl")
         .arg("restart")
         .arg(&service)
-        .status()?;
-    if !status.success() {
-        anyhow::bail!("failed to restart gateway service `{service}` (exit status: {status})");
-    }
+        .status();
 
-    println!("✅ Gateway service `{service}` restarted.");
-    Ok(())
+    match status {
+        Ok(s) if s.success() => {
+            println!("✅ Gateway service `{service}` restarted via systemctl.");
+            Ok(())
+        }
+        Ok(_) | Err(_) => {
+            // systemctl failed (insufficient permissions or service not found)
+            // Return error so caller can fall back to process-level restart
+            anyhow::bail!("systemctl restart failed (likely insufficient permissions)")
+        }
+    }
 }
 
 fn gateway_service_exe_path(
