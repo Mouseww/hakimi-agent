@@ -469,21 +469,44 @@ function App() {
   }
 
   function copyMessage(content: string) {
-    navigator.clipboard?.writeText(content).then(() => {
-      // Show brief visual feedback
-      const btn = document.activeElement as HTMLElement;
-      if (btn) {
-        const originalText = btn.title;
-        btn.title = t('chat.copied') || 'Copied!';
-        btn.style.opacity = '0.5';
-        setTimeout(() => {
-          btn.title = originalText;
-          btn.style.opacity = '1';
-        }, 1000);
-      }
-    }).catch((err) => {
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(content).then(() => {
+        showCopyFeedback();
+      }).catch(() => {
+        fallbackCopy(content);
+      });
+    } else {
+      fallbackCopy(content);
+    }
+  }
+
+  function fallbackCopy(text: string) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      showCopyFeedback();
+    } catch (err) {
       console.error('Failed to copy:', err);
-    });
+    }
+    document.body.removeChild(textarea);
+  }
+
+  function showCopyFeedback() {
+    const btn = document.activeElement as HTMLElement;
+    if (btn && btn.classList.contains('message-action')) {
+      const originalOpacity = btn.style.opacity || '1';
+      btn.style.opacity = '0.5';
+      btn.style.transition = 'opacity 0.2s';
+      setTimeout(() => {
+        btn.style.opacity = originalOpacity;
+      }, 500);
+    }
   }
 
   function retryMessage(message: UiMessage) {
@@ -959,7 +982,6 @@ function App() {
                               onClick={() => tc.result && toggleToolCallExpanded(message.id, idx)}
                               disabled={!tc.result}
                             >
-                              <span className="tool-call-icon">⚙️</span>
                               <span className="tool-call-name">{tc.name}</span>
                               {tc.result && (
                                 <span className="tool-call-toggle">
