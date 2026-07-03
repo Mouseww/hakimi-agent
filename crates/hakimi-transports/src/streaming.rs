@@ -106,20 +106,20 @@ fn find_last_complete_utf8_boundary(bytes: &[u8]) -> usize {
     if bytes.is_empty() {
         return 0;
     }
-    
+
     // UTF-8 multi-byte character detection:
     // - Single-byte: 0b0xxxxxxx (0x00-0x7F)
     // - 2-byte start: 0b110xxxxx (0xC0-0xDF)
     // - 3-byte start: 0b1110xxxx (0xE0-0xEF)
     // - 4-byte start: 0b11110xxx (0xF0-0xF7)
     // - Continuation: 0b10xxxxxx (0x80-0xBF)
-    
+
     let len = bytes.len();
-    
+
     // Scan backwards from the end to find the start of the last character
     for i in (0..len).rev() {
         let byte = bytes[i];
-        
+
         if byte & 0b10000000 == 0 {
             // Single-byte character (0xxxxxxx) — definitely complete
             return len;
@@ -138,7 +138,7 @@ fn find_last_complete_utf8_boundary(bytes: &[u8]) -> usize {
                 // Invalid start byte — fallback to lossy behavior
                 return len;
             };
-            
+
             let available_bytes = len - i;
             if available_bytes >= required_bytes {
                 // Complete multi-byte character
@@ -149,7 +149,7 @@ fn find_last_complete_utf8_boundary(bytes: &[u8]) -> usize {
             }
         }
     }
-    
+
     // All bytes are continuation bytes (invalid UTF-8) — keep everything
     len
 }
@@ -423,7 +423,7 @@ impl SseFullBuffer {
     }
 
     /// Feed a chunk and return `(event_type, data_payload)` pairs.
-    /// 
+    ///
     /// Properly handles UTF-8 boundaries: incomplete multi-byte sequences at the
     /// end of a chunk are preserved in carry buffer until the next chunk arrives.
     pub fn feed(&mut self, chunk: &[u8]) -> Vec<(Option<String>, String)> {
@@ -465,7 +465,7 @@ impl SseFullBuffer {
         let remaining = &combined[last_split..];
         let safe_boundary = find_last_complete_utf8_boundary(remaining);
         self.carry = remaining[..safe_boundary].to_vec();
-        
+
         results
     }
 }
