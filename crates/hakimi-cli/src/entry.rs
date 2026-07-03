@@ -6051,9 +6051,7 @@ async fn process_gateway_messages_loop(
                 std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             {
                 let mut active = active_tasks.lock().await;
-                if !is_slash_command
-                    && let Some(previous) = active.get(&task_key)
-                {
+                if !is_slash_command && let Some(previous) = active.get(&task_key) {
                     // There's already an active task for this chat
                     if busy_mode == "queue" {
                         // Inject the message as guidance into the running task's
