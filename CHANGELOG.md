@@ -2,6 +2,14 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.21] - 2026-07-04
+
+### Fixed
+- **Team 协作流式输出**：修复委托子 agent 时无法看到执行过程的问题
+  - 现在可以实时看到子 agent 的思考过程、工具调用和文本输出
+  - 不再只显示"开始"和"结束"，中间所有流式内容都会转发
+  - 改进 `PersonaTeamExecutor` 的 streaming callback，转发所有非控制字符的文本块
+
 ## [0.5.20] - 2026-07-04
 
 ### Added
