@@ -112,8 +112,13 @@ impl Tool for TeamTool {
                 });
             }
             let teammate_ids: Vec<String> = calls.iter().map(|c| c.teammate_id.clone()).collect();
-            let task_titles: Vec<String> = tasks_array.iter()
-                .filter_map(|t| t.get("task").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            let task_titles: Vec<String> = tasks_array
+                .iter()
+                .filter_map(|t| {
+                    t.get("task")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
                 .collect();
             let answers = executor.consult_many(calls).await?;
             if answers.len() != teammate_ids.len() {
