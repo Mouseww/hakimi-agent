@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.18-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.19-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,38 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.18)
+## ✨ Recent Updates (v0.5.19)
+
+**Team Task Division — Smart Multi-Agent Collaboration:**
+- ✅ **Individual Task Assignment** — Each teammate now receives a **different sub-task** tailored to their expertise
+- ✅ **New `tasks` Parameter** — Structured task division: `[{teammate: "researcher", task: "Search solutions"}, {teammate: "coder", task: "Implement fix"}]`
+- 🔧 **Deprecation Warning** — Old `teammates` array (same task for all) marked as DEPRECATED
+- 🎯 **True Division of Labor** — No more duplicate work — agents collaborate with proper specialization
+
+**Before v0.5.19:**
+```json
+{
+  "teammates": ["researcher", "coder"],
+  "task": "Complete this PR"  // ❌ Both receive the same task
+}
+```
+
+**After v0.5.19:**
+```json
+{
+  "tasks": [
+    {"teammate": "researcher", "task": "Find best practices", "context": "Focus on security"},
+    {"teammate": "coder", "task": "Implement the changes", "context": "Use TypeScript"}
+  ]
+}
+```
+
+**Impact:**
+- Agent orchestrator can divide complex tasks into specialized sub-tasks
+- Each teammate works on what they're best at, no redundant effort
+- Better parallel collaboration and faster delivery
+
+### Previous Updates (v0.5.18)
 
 **SSE Keepalive Fix — No More WebUI Timeout:**
 - ✅ **15-Second Keepalive** — SSE connection sends keepalive comments every 15 seconds
