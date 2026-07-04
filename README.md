@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.19-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.20-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,46 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.19)
+## ✨ Recent Updates (v0.5.20)
+
+**Team Execution Modes — Sequential & Staged Collaboration:**
+- ✅ **Sequential Mode** — Tasks run one after another, each receiving previous results as context (`mode: "sequential"`)
+- ✅ **Stages Mode** — Multi-phase workflows: parallel execution within each stage, sequential between stages (`stages` parameter)
+- ✅ **Parallel Mode** — Existing concurrent behavior preserved as default (`mode: "parallel"`)
+- 🎯 **Dependency Support** — Agent can now orchestrate complex workflows with task dependencies
+
+**Before v0.5.20:**
+```json
+{
+  "tasks": [...]  // ❌ All tasks always run in parallel, no dependency support
+}
+```
+
+**After v0.5.20:**
+```json
+// Sequential: later tasks depend on earlier results
+{"mode": "sequential", "tasks": [
+  {"teammate": "researcher", "task": "Find solution"},
+  {"teammate": "coder", "task": "Implement based on research"}
+]}
+
+// Stages: mixed parallel/sequential
+{"stages": [
+  {"tasks": [{"teammate": "researcher", "task": "Research"}]},
+  {"tasks": [  // These run in parallel
+    {"teammate": "backend", "task": "Backend"},
+    {"teammate": "frontend", "task": "Frontend"}
+  ]},
+  {"tasks": [{"teammate": "reviewer", "task": "Review all"}]}
+]}
+```
+
+**Impact:**
+- Agent can handle complex dependency chains (research → implement → test)
+- Mixed workflows supported (parallel development after sequential planning)
+- Previous results automatically injected as context for dependent tasks
+
+### Previous Updates (v0.5.19)
 
 **Team Task Division — Smart Multi-Agent Collaboration:**
 - ✅ **Individual Task Assignment** — Each teammate now receives a **different sub-task** tailored to their expertise

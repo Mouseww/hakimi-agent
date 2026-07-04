@@ -2,6 +2,36 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.20] - 2026-07-04
+
+### Added
+- **Team 工具执行模式增强**：支持串行、并行和分阶段执行，解决任务依赖问题
+  - **Sequential Mode**：任务串行执行，每个任务接收前序结果作为上下文（`mode: "sequential"`）
+  - **Stages Mode**：分阶段执行，每个 stage 内并行，stage 之间串行（`stages` 参数）
+  - **Parallel Mode**：保持原有并发行为（默认，`mode: "parallel"`）
+  
+**使用示例**：
+```json
+// 串行模式（有依赖）
+{"mode": "sequential", "tasks": [
+  {"teammate": "researcher", "task": "搜索方案"},
+  {"teammate": "coder", "task": "基于研究实现"}
+]}
+
+// 分阶段模式（混合）
+{"stages": [
+  {"tasks": [{"teammate": "researcher", "task": "研究"}]},
+  {"tasks": [  // 并行
+    {"teammate": "backend", "task": "后端"},
+    {"teammate": "frontend", "task": "前端"}
+  ]},
+  {"tasks": [{"teammate": "reviewer", "task": "审查"}]}
+]}
+```
+
+### Fixed
+- 解决多 agent 协作时无法处理任务依赖关系的问题
+
 ## [0.5.19] - 2026-07-04
 
 ### Added

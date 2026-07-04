@@ -18,7 +18,7 @@ impl Tool for TeamTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate sub-tasks to specialized teammate personas. Each teammate has its own model, skills, and memory. PROACTIVELY use this tool in these scenarios: (1) Task requires domain expertise you lack (coding, writing, research, data analysis); (2) Parallel workstreams can speed up delivery; (3) Complex task benefits from divide-and-conquer; (4) Teammate's specialized skills outperform your general capabilities. Use action='list' first to discover teammates, then action='consult' to delegate. IMPORTANT: When delegating to multiple teammates, use the 'tasks' parameter to assign DIFFERENT sub-tasks to each teammate based on their specialization — this enables proper task division and parallel collaboration. Delegation is a strength, not a weakness — leverage your team early and often."
+        "Delegate sub-tasks to specialized teammate personas. Each teammate has its own model, skills, and memory. PROACTIVELY use this tool in these scenarios: (1) Task requires domain expertise you lack (coding, writing, research, data analysis); (2) Parallel workstreams can speed up delivery; (3) Complex task benefits from divide-and-conquer; (4) Teammate's specialized skills outperform your general capabilities. Use action='list' first to discover teammates, then action='consult' to delegate. IMPORTANT: When delegating to multiple teammates, use the 'tasks' parameter to assign DIFFERENT sub-tasks to each teammate based on their specialization. Control execution with 'mode': 'parallel' (default, all run concurrently) or 'sequential' (run one after another with previous results as context for dependency chains). For complex workflows with mixed parallel/sequential needs, use 'stages' to group tasks into sequential phases where each phase's tasks run in parallel. Delegation is a strength, not a weakness — leverage your team early and often."
     }
 
     fn emoji(&self) -> &str {
@@ -42,9 +42,26 @@ impl Tool for TeamTool {
                         "context": { "type": "string", "description": "Optional context for this specific task" }
                     },
                     "required": ["teammate", "task"]
-                }, "description": "PREFERRED: Array of distinct sub-tasks, each assigned to a specific teammate. Enables proper task division and parallel collaboration." },
-                "task": { "type": "string", "description": "The sub-task or question. Required for single/teammates modes, ignored if 'tasks' is provided." },
-                "context": { "type": "string", "description": "Optional shared context. Ignored if 'tasks' is provided (each task can have its own context)." }
+                }, "description": "PREFERRED: Array of distinct sub-tasks, each assigned to a specific teammate. By default executes in parallel. Use 'mode' to control execution order." },
+                "mode": { "type": "string", "enum": ["parallel", "sequential"],
+                    "description": "Execution mode for 'tasks'. 'parallel' (default) = all tasks run concurrently. 'sequential' = tasks run one after another, each receiving the previous task's result as context. Use sequential when later tasks depend on earlier results." },
+                "stages": { "type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "tasks": { "type": "array", "items": {
+                            "type": "object",
+                            "properties": {
+                                "teammate": { "type": "string" },
+                                "task": { "type": "string" },
+                                "context": { "type": "string" }
+                            },
+                            "required": ["teammate", "task"]
+                        }}
+                    },
+                    "required": ["tasks"]
+                }, "description": "ADVANCED: Multi-stage execution. Each stage's tasks run in parallel, but stages execute sequentially. Each stage receives all previous stages' results. Use for complex workflows with mixed parallel/sequential needs." },
+                "task": { "type": "string", "description": "The sub-task or question. Required for single/teammates modes, ignored if 'tasks' or 'stages' is provided." },
+                "context": { "type": "string", "description": "Optional shared context. Ignored if 'tasks' or 'stages' is provided (each task can have its own context)." }
             },
             "required": []
         })
@@ -80,11 +97,128 @@ impl Tool for TeamTool {
 
         let progress = ctx.progress_callback.clone();
 
+        // ADVANCED: Multi-stage execution
+        if let Some(stages_array) = args.get("stages").and_then(|v| v.as_array()) {
+            if stages_array.is_empty() {
+                return Err(HakimiError::Tool("'stages' array must not be empty".into()));
+            }
+            let mut all_results = Vec::new();
+            let mut accumulated_context = String::new();
+
+            for (stage_idx, stage_obj) in stages_array.iter().enumerate() {
+                let stage_tasks = stage_obj
+                    .get("tasks")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| {
+                        HakimiError::Tool(format!("stages[{stage_idx}] missing 'tasks'"))
+                    })?;
+
+                if stage_tasks.is_empty() {
+                    return Err(HakimiError::Tool(format!(
+                        "stages[{stage_idx}].tasks must not be empty"
+                    )));
+                }
+
+                let mut calls = Vec::new();
+                for (idx, task_obj) in stage_tasks.iter().enumerate() {
+                    let teammate = task_obj
+                        .get("teammate")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .ok_or_else(|| {
+                            HakimiError::Tool(format!(
+                                "stages[{stage_idx}].tasks[{idx}] missing 'teammate'"
+                            ))
+                        })?;
+                    let task = task_obj
+                        .get("task")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .ok_or_else(|| {
+                            HakimiError::Tool(format!(
+                                "stages[{stage_idx}].tasks[{idx}] missing 'task'"
+                            ))
+                        })?;
+                    let mut context = task_obj
+                        .get("context")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    // Inject previous stages' results as context
+                    if !accumulated_context.is_empty() {
+                        context = if context.is_empty() {
+                            format!("Previous stages' results:\n{}", accumulated_context)
+                        } else {
+                            format!(
+                                "{}\n\nPrevious stages' results:\n{}",
+                                context, accumulated_context
+                            )
+                        };
+                    }
+
+                    calls.push(TeamCallContext {
+                        teammate_id: teammate.to_string(),
+                        task: task.to_string(),
+                        context,
+                        progress: progress.clone(),
+                    });
+                }
+
+                let teammate_ids: Vec<String> =
+                    calls.iter().map(|c| c.teammate_id.clone()).collect();
+                let task_titles: Vec<String> = stage_tasks
+                    .iter()
+                    .filter_map(|t| {
+                        t.get("task")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect();
+
+                // Execute this stage in parallel
+                let answers = executor.consult_many(calls).await?;
+
+                // Build stage results
+                let stage_results: Vec<String> = teammate_ids
+                    .iter()
+                    .zip(task_titles.iter())
+                    .zip(answers.iter())
+                    .map(|((id, task), answer)| {
+                        format!(
+                            "### Stage {} - {} - {}\n{}",
+                            stage_idx + 1,
+                            id,
+                            task,
+                            answer
+                        )
+                    })
+                    .collect();
+
+                // Accumulate for next stage
+                for (i, answer) in answers.iter().enumerate() {
+                    accumulated_context.push_str(&format!("\n[{}]: {}\n", teammate_ids[i], answer));
+                }
+
+                all_results.extend(stage_results);
+            }
+
+            return Ok(all_results.join("\n\n"));
+        }
+
         // NEW: Structured tasks array - each teammate gets a different task
         if let Some(tasks_array) = args.get("tasks").and_then(|v| v.as_array()) {
             if tasks_array.is_empty() {
                 return Err(HakimiError::Tool("'tasks' array must not be empty".into()));
             }
+
+            let mode = args
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("parallel");
+
             let mut calls = Vec::new();
             for (idx, task_obj) in tasks_array.iter().enumerate() {
                 let teammate = task_obj
@@ -111,6 +245,7 @@ impl Tool for TeamTool {
                     progress: progress.clone(),
                 });
             }
+
             let teammate_ids: Vec<String> = calls.iter().map(|c| c.teammate_id.clone()).collect();
             let task_titles: Vec<String> = tasks_array
                 .iter()
@@ -120,21 +255,53 @@ impl Tool for TeamTool {
                         .map(|s| s.to_string())
                 })
                 .collect();
-            let answers = executor.consult_many(calls).await?;
-            if answers.len() != teammate_ids.len() {
-                return Err(HakimiError::Tool(format!(
-                    "team consult_many returned {} answers for {} requests",
-                    answers.len(),
-                    teammate_ids.len()
-                )));
+
+            if mode == "sequential" {
+                // Sequential execution: each task gets previous results as context
+                let mut results = Vec::new();
+                let mut accumulated_context = String::new();
+
+                for (i, mut call) in calls.into_iter().enumerate() {
+                    // Inject previous results as context
+                    if !accumulated_context.is_empty() {
+                        call.context = if call.context.is_empty() {
+                            format!("Previous tasks' results:\n{}", accumulated_context)
+                        } else {
+                            format!(
+                                "{}\n\nPrevious tasks' results:\n{}",
+                                call.context, accumulated_context
+                            )
+                        };
+                    }
+
+                    let answer = executor.consult(call).await?;
+                    accumulated_context.push_str(&format!("\n[{}]: {}\n", teammate_ids[i], answer));
+                    results.push((teammate_ids[i].clone(), task_titles[i].clone(), answer));
+                }
+
+                let sections: Vec<String> = results
+                    .iter()
+                    .map(|(id, task, answer)| format!("## {} - {}\n{}", id, task, answer))
+                    .collect();
+                return Ok(sections.join("\n\n"));
+            } else {
+                // Parallel execution (default)
+                let answers = executor.consult_many(calls).await?;
+                if answers.len() != teammate_ids.len() {
+                    return Err(HakimiError::Tool(format!(
+                        "team consult_many returned {} answers for {} requests",
+                        answers.len(),
+                        teammate_ids.len()
+                    )));
+                }
+                let sections: Vec<String> = teammate_ids
+                    .iter()
+                    .zip(task_titles.iter())
+                    .zip(answers.iter())
+                    .map(|((id, task), answer)| format!("## {} - {}\n{}", id, task, answer))
+                    .collect();
+                return Ok(sections.join("\n\n"));
             }
-            let sections: Vec<String> = teammate_ids
-                .iter()
-                .zip(task_titles.iter())
-                .zip(answers.iter())
-                .map(|((id, task), answer)| format!("## {} - {}\n{}", id, task, answer))
-                .collect();
-            return Ok(sections.join("\n\n"));
         }
 
         // Legacy: shared task + context
