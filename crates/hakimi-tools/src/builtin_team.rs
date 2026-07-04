@@ -18,7 +18,7 @@ impl Tool for TeamTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate sub-tasks to specialized teammate personas. Each teammate has its own model, skills, and memory. PROACTIVELY use this tool in these scenarios: (1) Task requires domain expertise you lack (coding, writing, research, data analysis); (2) Parallel workstreams can speed up delivery; (3) Complex task benefits from divide-and-conquer; (4) Teammate's specialized skills outperform your general capabilities. Use action='list' first to discover teammates, then action='consult' to delegate. Delegation is a strength, not a weakness — leverage your team early and often."
+        "Delegate sub-tasks to specialized teammate personas. Each teammate has its own model, skills, and memory. PROACTIVELY use this tool in these scenarios: (1) Task requires domain expertise you lack (coding, writing, research, data analysis); (2) Parallel workstreams can speed up delivery; (3) Complex task benefits from divide-and-conquer; (4) Teammate's specialized skills outperform your general capabilities. Use action='list' first to discover teammates, then action='consult' to delegate. IMPORTANT: When delegating to multiple teammates, use the 'tasks' parameter to assign DIFFERENT sub-tasks to each teammate based on their specialization — this enables proper task division and parallel collaboration. Delegation is a strength, not a weakness — leverage your team early and often."
     }
 
     fn emoji(&self) -> &str {
@@ -33,9 +33,18 @@ impl Tool for TeamTool {
                     "description": "'list' = show available teammates; 'consult' = delegate to teammate(s). Omit to default to 'consult'." },
                 "teammate": { "type": "string", "description": "Target teammate persona id (single consult)." },
                 "teammates": { "type": "array", "items": {"type": "string"},
-                    "description": "Multiple teammate persona ids for a parallel consult. Use instead of 'teammate'; if both are provided, 'teammates' takes precedence." },
-                "task": { "type": "string", "description": "The sub-task or question for the teammate(s)." },
-                "context": { "type": "string", "description": "Optional shared context and constraints." }
+                    "description": "DEPRECATED: Multiple teammate persona ids receiving the SAME task. Use 'tasks' instead for proper task division." },
+                "tasks": { "type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "teammate": { "type": "string", "description": "Teammate persona id" },
+                        "task": { "type": "string", "description": "Specific sub-task for this teammate" },
+                        "context": { "type": "string", "description": "Optional context for this specific task" }
+                    },
+                    "required": ["teammate", "task"]
+                }, "description": "PREFERRED: Array of distinct sub-tasks, each assigned to a specific teammate. Enables proper task division and parallel collaboration." },
+                "task": { "type": "string", "description": "The sub-task or question. Required for single/teammates modes, ignored if 'tasks' is provided." },
+                "context": { "type": "string", "description": "Optional shared context. Ignored if 'tasks' is provided (each task can have its own context)." }
             },
             "required": []
         })
@@ -69,6 +78,61 @@ impl Tool for TeamTool {
             )));
         }
 
+        let progress = ctx.progress_callback.clone();
+
+        // NEW: Structured tasks array - each teammate gets a different task
+        if let Some(tasks_array) = args.get("tasks").and_then(|v| v.as_array()) {
+            if tasks_array.is_empty() {
+                return Err(HakimiError::Tool("'tasks' array must not be empty".into()));
+            }
+            let mut calls = Vec::new();
+            for (idx, task_obj) in tasks_array.iter().enumerate() {
+                let teammate = task_obj
+                    .get("teammate")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| HakimiError::Tool(format!("tasks[{idx}] missing 'teammate'")))?;
+                let task = task_obj
+                    .get("task")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| HakimiError::Tool(format!("tasks[{idx}] missing 'task'")))?;
+                let context = task_obj
+                    .get("context")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                calls.push(TeamCallContext {
+                    teammate_id: teammate.to_string(),
+                    task: task.to_string(),
+                    context,
+                    progress: progress.clone(),
+                });
+            }
+            let teammate_ids: Vec<String> = calls.iter().map(|c| c.teammate_id.clone()).collect();
+            let task_titles: Vec<String> = tasks_array.iter()
+                .filter_map(|t| t.get("task").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .collect();
+            let answers = executor.consult_many(calls).await?;
+            if answers.len() != teammate_ids.len() {
+                return Err(HakimiError::Tool(format!(
+                    "team consult_many returned {} answers for {} requests",
+                    answers.len(),
+                    teammate_ids.len()
+                )));
+            }
+            let sections: Vec<String> = teammate_ids
+                .iter()
+                .zip(task_titles.iter())
+                .zip(answers.iter())
+                .map(|((id, task), answer)| format!("## {} - {}\n{}", id, task, answer))
+                .collect();
+            return Ok(sections.join("\n\n"));
+        }
+
+        // Legacy: shared task + context
         let task = args
             .get("task")
             .and_then(|v| v.as_str())
@@ -80,9 +144,8 @@ impl Tool for TeamTool {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let progress = ctx.progress_callback.clone();
 
-        // Multiple teammates -> parallel fan-out.
+        // Multiple teammates -> parallel fan-out (DEPRECATED: same task for all).
         if let Some(teammates) = args.get("teammates").and_then(|v| v.as_array()) {
             let ids: Vec<String> = teammates
                 .iter()
