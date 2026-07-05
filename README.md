@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.22-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.23-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,14 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.22)
+## ✨ Recent Updates (v0.5.23)
+
+**Team Tool Output Cleanup:**
+- 🎯 **Suppressed Verbose Results** — Team tool now returns compact completion confirmations instead of full agent responses
+- ✨ **Clean Main Chat** — Tool results show "✓ teammate completed: task" format, preventing response duplication in chat
+- 🔧 **Combined with v0.5.22** — Task boxes show minimal progress + main chat no longer cluttered with full teammate outputs
+
+**Previous Updates (v0.5.22):**
 
 **Team Collaboration UI Optimization:**
 - 🎯 **Clean Task Box Display** — Teammate agent task boxes now show only start/tool calls/completion, suppressing verbose text output

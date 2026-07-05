@@ -185,14 +185,12 @@ impl Tool for TeamTool {
                 let stage_results: Vec<String> = teammate_ids
                     .iter()
                     .zip(task_titles.iter())
-                    .zip(answers.iter())
-                    .map(|((id, task), answer)| {
+                    .map(|(id, task)| {
                         format!(
-                            "### Stage {} - {} - {}\n{}",
+                            "✓ Stage {} - {} completed: {}",
                             stage_idx + 1,
                             id,
-                            task,
-                            answer
+                            task
                         )
                     })
                     .collect();
@@ -205,7 +203,7 @@ impl Tool for TeamTool {
                 all_results.extend(stage_results);
             }
 
-            return Ok(all_results.join("\n\n"));
+            return Ok(format!("Multi-stage collaboration completed ({} stages):\n{}", stages_array.len(), all_results.join("\n")));
         }
 
         // NEW: Structured tasks array - each teammate gets a different task
@@ -281,9 +279,9 @@ impl Tool for TeamTool {
 
                 let sections: Vec<String> = results
                     .iter()
-                    .map(|(id, task, answer)| format!("## {} - {}\n{}", id, task, answer))
+                    .map(|(id, task, _answer)| format!("✓ {} completed: {}", id, task))
                     .collect();
-                return Ok(sections.join("\n\n"));
+                return Ok(format!("Sequential collaboration completed:\n{}", sections.join("\n")));
             } else {
                 // Parallel execution (default)
                 let answers = executor.consult_many(calls).await?;
@@ -297,10 +295,9 @@ impl Tool for TeamTool {
                 let sections: Vec<String> = teammate_ids
                     .iter()
                     .zip(task_titles.iter())
-                    .zip(answers.iter())
-                    .map(|((id, task), answer)| format!("## {} - {}\n{}", id, task, answer))
+                    .map(|(id, task)| format!("✓ {} completed: {}", id, task))
                     .collect();
-                return Ok(sections.join("\n\n"));
+                return Ok(format!("Parallel collaboration completed:\n{}", sections.join("\n")));
             }
         }
 
@@ -349,10 +346,9 @@ impl Tool for TeamTool {
             }
             let sections: Vec<String> = ids
                 .iter()
-                .zip(answers.iter())
-                .map(|(id, answer)| format!("## {id}\n{answer}"))
+                .map(|id| format!("✓ {} completed", id))
                 .collect();
-            return Ok(sections.join("\n\n"));
+            return Ok(format!("Team collaboration completed:\n{}", sections.join("\n")));
         }
 
         // Single teammate.
@@ -365,14 +361,16 @@ impl Tool for TeamTool {
                 HakimiError::Tool("provide 'teammate' (single) or 'teammates' (array)".into())
             })?;
 
-        executor
+        let result = executor
             .consult(TeamCallContext {
                 teammate_id: teammate.to_string(),
                 task: task.to_string(),
                 context,
                 progress,
             })
-            .await
+            .await?;
+        
+        Ok(format!("✓ {} completed task", teammate))
     }
 }
 
