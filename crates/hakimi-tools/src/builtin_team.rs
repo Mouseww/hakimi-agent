@@ -186,12 +186,7 @@ impl Tool for TeamTool {
                     .iter()
                     .zip(task_titles.iter())
                     .map(|(id, task)| {
-                        format!(
-                            "✓ Stage {} - {} completed: {}",
-                            stage_idx + 1,
-                            id,
-                            task
-                        )
+                        format!("✓ Stage {} - {} completed: {}", stage_idx + 1, id, task)
                     })
                     .collect();
 
@@ -203,7 +198,11 @@ impl Tool for TeamTool {
                 all_results.extend(stage_results);
             }
 
-            return Ok(format!("Multi-stage collaboration completed ({} stages):\n{}", stages_array.len(), all_results.join("\n")));
+            return Ok(format!(
+                "Multi-stage collaboration completed ({} stages):\n{}",
+                stages_array.len(),
+                all_results.join("\n")
+            ));
         }
 
         // NEW: Structured tasks array - each teammate gets a different task
@@ -281,7 +280,10 @@ impl Tool for TeamTool {
                     .iter()
                     .map(|(id, task, _answer)| format!("✓ {} completed: {}", id, task))
                     .collect();
-                return Ok(format!("Sequential collaboration completed:\n{}", sections.join("\n")));
+                return Ok(format!(
+                    "Sequential collaboration completed:\n{}",
+                    sections.join("\n")
+                ));
             } else {
                 // Parallel execution (default)
                 let answers = executor.consult_many(calls).await?;
@@ -297,7 +299,10 @@ impl Tool for TeamTool {
                     .zip(task_titles.iter())
                     .map(|(id, task)| format!("✓ {} completed: {}", id, task))
                     .collect();
-                return Ok(format!("Parallel collaboration completed:\n{}", sections.join("\n")));
+                return Ok(format!(
+                    "Parallel collaboration completed:\n{}",
+                    sections.join("\n")
+                ));
             }
         }
 
@@ -344,11 +349,12 @@ impl Tool for TeamTool {
                     ids.len()
                 )));
             }
-            let sections: Vec<String> = ids
-                .iter()
-                .map(|id| format!("✓ {} completed", id))
-                .collect();
-            return Ok(format!("Team collaboration completed:\n{}", sections.join("\n")));
+            let sections: Vec<String> =
+                ids.iter().map(|id| format!("✓ {} completed", id)).collect();
+            return Ok(format!(
+                "Team collaboration completed:\n{}",
+                sections.join("\n")
+            ));
         }
 
         // Single teammate.
@@ -369,7 +375,7 @@ impl Tool for TeamTool {
                 progress,
             })
             .await?;
-        
+
         Ok(format!("✓ {} completed task", teammate))
     }
 }
