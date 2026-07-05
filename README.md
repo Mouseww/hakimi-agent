@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.24-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.25-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,17 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.24)
+## ✨ Recent Updates (v0.5.25)
+
+**🧠 Advanced Context Compression System:**
+- 🎯 **Three-Phase Compression** — Tool output pruning → Boundary protection → LLM structured summarization (inspired by Hermes Agent)
+- ✨ **Smart Boundaries** — Protects head (system prompt + first N messages) + dynamic tail (token budget-based)
+- 🔧 **Tool Call Integrity** — Aligns boundaries to avoid splitting tool call/result pairs
+- 📊 **Anti-Thrashing** — Skips compression if last 2 attempts saved <10% each
+- 🏗️ **Iterative Summary** — Updates previous summaries instead of starting from scratch
+- 🚀 **Foundation for Progressive Compression** — Ready for multi-level (40%/60%/80%) thresholds and intelligent routing
+
+**Previous Updates (v0.5.24):**
 
 **Critical `/stop` Command Fix:**
 - 🐛 **Fixed Non-Functional /stop** — `/stop` command now correctly cancels the active running task
