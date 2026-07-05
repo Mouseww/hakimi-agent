@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.21-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.22-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,14 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.20)
+## ✨ Recent Updates (v0.5.22)
+
+**Team Collaboration UI Optimization:**
+- 🎯 **Clean Task Box Display** — Teammate agent task boxes now show only start/tool calls/completion, suppressing verbose text output
+- ✨ **Focused Progress Updates** — Task boxes display essential progress markers without cluttering the chat with full agent responses
+- 🔧 **Improved Multi-Agent UX** — Cleaner delegation visualization keeps the main conversation readable during complex workflows
+
+**Previous Updates (v0.5.20):**
 
 **Team Execution Modes — Sequential & Staged Collaboration:**
 - ✅ **Sequential Mode** — Tasks run one after another, each receiving previous results as context (`mode: "sequential"`)

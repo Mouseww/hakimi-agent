@@ -251,7 +251,7 @@ impl TeamExecutor for PersonaTeamExecutor {
             // Nested consults allowed up to the depth cap, with this teammate in the lineage.
             teammate.set_team_executor(Some(Arc::new(self.descend(&cfg.id))));
 
-            // Forward all teammate streaming output (tool markers, review notices, AND text chunks).
+            // Forward only tool markers and review notices; suppress text chunks to keep the task box clean.
             if let Some(parent) = call.progress.clone() {
                 let (tid, ttitle) = (task_id.clone(), title.clone());
                 teammate.set_streaming_callback(Some(Arc::new(move |token: String| {
@@ -265,10 +265,9 @@ impl TeamExecutor for PersonaTeamExecutor {
                             &ttitle,
                             review_notice.trim(),
                         );
-                    } else if !token.starts_with('\u{001e}') {
-                        // Forward text chunks (anything not starting with RS separator)
-                        emit_team_progress(&Some(parent.clone()), &tid, &ttitle, &token);
                     }
+                    // Text chunks are intentionally not forwarded: the task box shows only
+                    // tool invocations and the final result, not the teammate's full output.
                 })));
             }
 
