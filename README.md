@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.23-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.24-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.23)
+## ✨ Recent Updates (v0.5.24)
+
+**Critical `/stop` Command Fix:**
+- 🐛 **Fixed Non-Functional /stop** — `/stop` command now correctly cancels the active running task
+- 🎯 **Root Cause** — Previous implementation cancelled its own token instead of the running task's token
+- ✅ **New Behavior** — Finds and cancels the active task from `active_tasks` registry, shows status feedback
+- 💡 **User Feedback** — Now shows "⏹️ 已停止当前任务。" or "ℹ️ 当前没有正在运行的任务。" depending on state
+
+**Previous Updates (v0.5.23):**
 
 **Team Tool Output Cleanup:**
 - 🎯 **Suppressed Verbose Results** — Team tool now returns compact completion confirmations instead of full agent responses

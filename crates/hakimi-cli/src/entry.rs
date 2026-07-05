@@ -6195,8 +6195,21 @@ Just send a message to chat with me!"
                             .to_string()
                     }
                     Some(Command::Stop) => {
-                        cancellation.cancel();
-                        "⏹️ 已停止当前任务。".to_string()
+                        // Find and cancel the active task for this chat (if any)
+                        let cancelled = {
+                            let active = active_tasks.lock().await;
+                            if let Some(control) = active.get(&task_key) {
+                                control.cancel();
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if cancelled {
+                            "⏹️ 已停止当前任务。".to_string()
+                        } else {
+                            "ℹ️ 当前没有正在运行的任务。".to_string()
+                        }
                     }
                     Some(Command::Clear) => {
                         // Clear conversation history and usage for this chat only
