@@ -251,34 +251,28 @@ impl TeamExecutor for PersonaTeamExecutor {
             // Nested consults allowed up to the depth cap, with this teammate in the lineage.
             teammate.set_team_executor(Some(Arc::new(self.descend(&cfg.id))));
 
-            // Forward only tool markers and review notices; suppress text chunks to keep the task box clean.
-            if let Some(parent) = call.progress.clone() {
-                let (tid, ttitle) = (task_id.clone(), title.clone());
+            // Track tool usage for final summary; suppress all intermediate output to keep the task box clean.
+            let tool_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            if call.progress.is_some() {
+                let counter = tool_count.clone();
                 teammate.set_streaming_callback(Some(Arc::new(move |token: String| {
-                    if let Some(notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
-                        emit_team_progress(&Some(parent.clone()), &tid, &ttitle, notice.trim());
-                    } else if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:")
-                    {
-                        emit_team_progress(
-                            &Some(parent.clone()),
-                            &tid,
-                            &ttitle,
-                            review_notice.trim(),
-                        );
+                    if token.strip_prefix("\u{001e}hakimi_tool:").is_some() {
+                        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
-                    // Text chunks are intentionally not forwarded: the task box shows only
-                    // tool invocations and the final result, not the teammate's full output.
+                    // All intermediate output (tool markers, text chunks, review notices) is suppressed.
+                    // The task box shows only: start, tool summary, and completion.
                 })));
             }
 
             match teammate.run_conversation(&seed).await {
                 Ok(res) => {
-                    emit_team_progress(
-                        &call.progress,
-                        &task_id,
-                        &title,
-                        "\u{5b8c}\u{6210}，\u{8fd4}\u{56de}\u{7ed3}\u{679c}",
-                    );
+                    let tool_usage = tool_count.load(std::sync::atomic::Ordering::Relaxed);
+                    let summary = if tool_usage > 0 {
+                        format!("完成，返回结果（使用了 {} 个工具）", tool_usage)
+                    } else {
+                        "完成，返回结果".to_string()
+                    };
+                    emit_team_progress(&call.progress, &task_id, &title, summary);
                     hakimi_common::publish(hakimi_common::ActivityEvent::ConsultEnded {
                         from_id: from_id.clone(),
                         to_id: cfg.id.clone(),
