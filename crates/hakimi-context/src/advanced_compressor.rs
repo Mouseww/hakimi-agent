@@ -44,15 +44,11 @@ const SUMMARY_TOKENS_CEILING: usize = 12_000;
 /// Ratio of compressed content to allocate for summary
 const SUMMARY_RATIO: f64 = 0.20;
 
-/// Placeholder for pruned tool results
-const PRUNED_TOOL_PLACEHOLDER: &str = "[Old tool output cleared to save context space]";
-
 /// Chars per token rough estimate
 const CHARS_PER_TOKEN: usize = 4;
 
 /// Image token estimate (flat cost per attached image)
 const IMAGE_TOKEN_ESTIMATE: usize = 1600;
-const IMAGE_CHAR_EQUIVALENT: usize = IMAGE_TOKEN_ESTIMATE * CHARS_PER_TOKEN;
 
 /// Summary failure cooldown (seconds)
 const SUMMARY_FAILURE_COOLDOWN_SECONDS: u64 = 600;
@@ -67,9 +63,6 @@ USER.md) in the system prompt is ALWAYS authoritative and active — never ignor
 memory content due to this compaction note. Respond ONLY to the latest user message that appears \
 AFTER this summary. The current session state (files, config, etc.) may reflect work described \
 here — avoid repeating it:";
-
-/// Legacy summary prefix (for compatibility)
-const LEGACY_SUMMARY_PREFIX: &str = "[CONTEXT SUMMARY]:";
 
 // ---------------------------------------------------------------------------
 // Compression Configuration
@@ -271,7 +264,7 @@ impl AdvancedCompressor {
     fn estimate_messages_tokens(messages: &[Message]) -> usize {
         messages
             .iter()
-            .map(|m| Self::estimate_message_tokens(m))
+            .map(Self::estimate_message_tokens)
             .sum()
     }
 
@@ -282,7 +275,7 @@ impl AdvancedCompressor {
     /// Prune old tool results to save tokens before LLM summarization
     fn prune_old_tool_results(
         &self,
-        messages: &mut Vec<Message>,
+        messages: &mut [Message],
         protect_tail_count: usize,
     ) -> usize {
         let total = messages.len();
@@ -296,19 +289,16 @@ impl AdvancedCompressor {
         // Build tool call ID -> (tool_name, arguments) index
         let mut call_id_to_tool: HashMap<String, (String, String)> = HashMap::new();
         for msg in messages.iter() {
-            if msg.role == MessageRole::Assistant {
-                if let Some(ref tool_calls) = msg.tool_calls {
+            if msg.role == MessageRole::Assistant && let Some(ref tool_calls) = msg.tool_calls {
                     for tc in tool_calls {
                         call_id_to_tool
                             .insert(tc.id.clone(), (tc.name.clone(), tc.arguments.clone()));
                     }
                 }
-            }
         }
 
         // Prune tool results outside the protected tail
-        for i in 0..prune_boundary {
-            let msg = &mut messages[i];
+        for msg in &mut messages[..prune_boundary] {
             if msg.role != MessageRole::Tool {
                 continue;
             }
@@ -476,17 +466,14 @@ impl AdvancedCompressor {
         focus_topic: Option<&str>,
     ) -> Result<Option<String>> {
         // Check cooldown
-        if let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-            if let Ok(cooldown) = self
+        if let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            && let Ok(cooldown) = self
                 .summary_failure_cooldown_until
                 .duration_since(std::time::UNIX_EPOCH)
-            {
-                if now.as_secs() < cooldown.as_secs() {
+                && now.as_secs() < cooldown.as_secs() {
                     debug!("Skipping summary during cooldown");
                     return Ok(None);
                 }
-            }
-        }
 
         let transport = match &self.llm_transport {
             Some(t) => t.clone(),
@@ -519,9 +506,11 @@ impl AdvancedCompressor {
             finish_reason: None,
         }];
 
-        let mut params = RequestParams::default();
-        params.max_tokens = Some((summary_budget as f64 * 1.3) as u32);
-        params.temperature = Some(0.3); // deterministic summarization
+        let params = RequestParams {
+            max_tokens: Some((summary_budget as f64 * 1.3) as u32),
+            temperature: Some(0.3),
+            ..Default::default()
+        };
 
         match transport
             .execute(summary_model, &messages, &[], &params)
@@ -597,8 +586,9 @@ impl AdvancedCompressor {
             let mut line = format!("[{role}]: {content}");
 
             // Add tool calls info
-            if let Some(ref tool_calls) = msg.tool_calls {
-                if !tool_calls.is_empty() {
+            if let Some(ref tool_calls) = msg.tool_calls
+                && !tool_calls.is_empty()
+            {
                     line.push_str("\n[Tool calls:");
                     for tc in tool_calls {
                         line.push_str(&format!(
@@ -613,7 +603,6 @@ impl AdvancedCompressor {
                     }
                     line.push_str("\n]");
                 }
-            }
 
             parts.push(line);
         }
@@ -802,8 +791,8 @@ impl ContextEngine for AdvancedCompressor {
         let mut compressed = Vec::new();
 
         // Add head messages
-        for i in 0..compress_start {
-            compressed.push(messages[i].clone());
+        for msg in messages.iter().take(compress_start) {
+            compressed.push(msg.clone());
         }
 
         // Add summary (or fallback)
@@ -865,10 +854,10 @@ impl ContextEngine for AdvancedCompressor {
         }
 
         // Add tail messages
-        for i in compress_end..n_messages {
-            let mut msg = messages[i].clone();
+        for (idx, msg) in messages.iter().enumerate().skip(compress_end) {
+            let mut msg = msg.clone();
 
-            if merge_summary_into_tail && i == compress_end {
+            if merge_summary_into_tail && idx == compress_end {
                 // Prepend summary to first tail message
                 let merged_prefix = format!(
                     "{summary_content}\n\n                     --- END OF CONTEXT SUMMARY — respond to the message below, not the summary above ---\n\n"
@@ -914,7 +903,7 @@ impl ContextEngine for AdvancedCompressor {
         // Update stats
         if let Ok(mut stats) = self.stats.lock() {
             stats.compression_count += 1;
-            stats.total_tokens_saved += saved_tokens as usize;
+            stats.total_tokens_saved += saved_tokens;
         }
 
         info!(

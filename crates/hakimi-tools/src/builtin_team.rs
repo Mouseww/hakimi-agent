@@ -367,7 +367,7 @@ impl Tool for TeamTool {
                 HakimiError::Tool("provide 'teammate' (single) or 'teammates' (array)".into())
             })?;
 
-        let result = executor
+        let _result = executor
             .consult(TeamCallContext {
                 teammate_id: teammate.to_string(),
                 task: task.to_string(),
