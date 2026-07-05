@@ -519,10 +519,9 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(output.contains("## coder"), "output: {output}");
-        assert!(output.contains("## writer"), "output: {output}");
-        assert!(output.contains("answer for coder"), "output: {output}");
-        assert!(output.contains("answer for writer"), "output: {output}");
+        // After v0.5.23, tool returns compact completion markers instead of full answers
+        assert!(output.contains("✓ coder completed"), "output: {output}");
+        assert!(output.contains("✓ writer completed"), "output: {output}");
     }
 
     #[tokio::test]
@@ -543,8 +542,9 @@ mod tests {
             )
             .await
             .unwrap();
+        // After v0.5.23, tool returns compact completion marker instead of full answer
         assert!(
-            output.contains("Here is my expert answer."),
+            output.contains("✓ writer completed task"),
             "output: {output}"
         );
     }
