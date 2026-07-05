@@ -262,10 +262,7 @@ impl AdvancedCompressor {
 
     /// Estimate total tokens for messages
     fn estimate_messages_tokens(messages: &[Message]) -> usize {
-        messages
-            .iter()
-            .map(Self::estimate_message_tokens)
-            .sum()
+        messages.iter().map(Self::estimate_message_tokens).sum()
     }
 
     // -----------------------------------------------------------------
@@ -273,11 +270,7 @@ impl AdvancedCompressor {
     // -----------------------------------------------------------------
 
     /// Prune old tool results to save tokens before LLM summarization
-    fn prune_old_tool_results(
-        &self,
-        messages: &mut [Message],
-        protect_tail_count: usize,
-    ) -> usize {
+    fn prune_old_tool_results(&self, messages: &mut [Message], protect_tail_count: usize) -> usize {
         let total = messages.len();
         if total <= protect_tail_count {
             return 0;
@@ -289,12 +282,13 @@ impl AdvancedCompressor {
         // Build tool call ID -> (tool_name, arguments) index
         let mut call_id_to_tool: HashMap<String, (String, String)> = HashMap::new();
         for msg in messages.iter() {
-            if msg.role == MessageRole::Assistant && let Some(ref tool_calls) = msg.tool_calls {
-                    for tc in tool_calls {
-                        call_id_to_tool
-                            .insert(tc.id.clone(), (tc.name.clone(), tc.arguments.clone()));
-                    }
+            if msg.role == MessageRole::Assistant
+                && let Some(ref tool_calls) = msg.tool_calls
+            {
+                for tc in tool_calls {
+                    call_id_to_tool.insert(tc.id.clone(), (tc.name.clone(), tc.arguments.clone()));
                 }
+            }
         }
 
         // Prune tool results outside the protected tail
@@ -470,10 +464,11 @@ impl AdvancedCompressor {
             && let Ok(cooldown) = self
                 .summary_failure_cooldown_until
                 .duration_since(std::time::UNIX_EPOCH)
-                && now.as_secs() < cooldown.as_secs() {
-                    debug!("Skipping summary during cooldown");
-                    return Ok(None);
-                }
+            && now.as_secs() < cooldown.as_secs()
+        {
+            debug!("Skipping summary during cooldown");
+            return Ok(None);
+        }
 
         let transport = match &self.llm_transport {
             Some(t) => t.clone(),
@@ -589,20 +584,20 @@ impl AdvancedCompressor {
             if let Some(ref tool_calls) = msg.tool_calls
                 && !tool_calls.is_empty()
             {
-                    line.push_str("\n[Tool calls:");
-                    for tc in tool_calls {
-                        line.push_str(&format!(
-                            "\n  {}({})",
-                            tc.name,
-                            if tc.arguments.len() > 100 {
-                                format!("{}...", &tc.arguments[..100])
-                            } else {
-                                tc.arguments.clone()
-                            }
-                        ));
-                    }
-                    line.push_str("\n]");
+                line.push_str("\n[Tool calls:");
+                for tc in tool_calls {
+                    line.push_str(&format!(
+                        "\n  {}({})",
+                        tc.name,
+                        if tc.arguments.len() > 100 {
+                            format!("{}...", &tc.arguments[..100])
+                        } else {
+                            tc.arguments.clone()
+                        }
+                    ));
                 }
+                line.push_str("\n]");
+            }
 
             parts.push(line);
         }
