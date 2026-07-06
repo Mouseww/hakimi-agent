@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.47-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.48-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,16 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.47)
+## ✨ Recent Updates (v0.5.48)
+
+**📊 子 Agent 工具调用记录折叠显示：**
+- ✅ **折叠块内部显示工具列表** — 子 agent 完成时，在 Telegram 的折叠块（spoiler）内显示逐行的工具调用记录
+- 🛠️ **收集工具调用历史** — 在 delegate.rs 中使用 `Arc<Mutex<Vec<String>>>` 收集所有工具调用
+- 📋 **格式化协作消息** — 识别 `[工具调用详情]` 标记，自动转换为 Telegram 的 `||spoiler||` 语法
+- 🎯 **实时进度 + 最终汇总** — 保留实时工具通知，同时在完成时提供完整工具列表
+- 🚀 **用户体验优化** — 不再只显示空折叠块，而是在折叠内容中显示所有工具调用详情
+
+**Previous Updates (v0.5.47):**
 
 **🔧 子 Agent 工具调用可见性修复：**
 - ✅ **显示工具计数** — 子 agent 完成时显示"完成，返回结果（使用了 N 个工具）"

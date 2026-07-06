@@ -570,7 +570,8 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> Result<()> {
-        let text = sanitize_for_markdown(&normalize_outbound_text(text));
+        let text = format_collaboration_message(&normalize_outbound_text(text));
+        let text = sanitize_for_markdown(&text);
         // Split messages longer than 4096 characters into multiple sends.
         let chunks = split_message(&text, MAX_MESSAGE_LENGTH);
 
@@ -862,6 +863,18 @@ async fn poll_once(client: &reqwest::Client, api_url: &str, offset: i64) -> Resu
 
 fn normalize_outbound_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// Format collaboration message with collapsible tool call details.
+/// Converts `[工具调用详情]\n...` into Telegram spoiler syntax `||...||`.
+fn format_collaboration_message(text: &str) -> String {
+    if let Some((summary, details)) = text.split_once("[工具调用详情]\n") {
+        let details_trimmed = details.trim();
+        if !details_trimmed.is_empty() {
+            return format!("{}\n\n||{}||", summary.trim(), details_trimmed);
+        }
+    }
+    text.to_string()
 }
 
 /// Sanitize text for stable Telegram Markdown rendering.

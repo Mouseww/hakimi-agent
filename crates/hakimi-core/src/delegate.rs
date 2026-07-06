@@ -274,16 +274,23 @@ impl DelegateExecutor for CoreDelegateExecutor {
 
                     // Track tool usage for final summary
                     let tool_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+                    let tool_calls =
+                        std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
                     if let Some(parent_progress) = progress_callback.clone() {
                         let child_progress_task_id = progress_task_id.clone();
                         let child_progress_title = progress_title.clone();
                         let counter = tool_count.clone();
+                        let calls = tool_calls.clone();
                         child_agent.set_streaming_callback(Some(std::sync::Arc::new(
                             move |token: String| {
                                 if let Some(tool_notice) =
                                     token.strip_prefix("\u{001e}hakimi_tool:")
                                 {
                                     counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    if let Ok(mut list) = calls.try_lock() {
+                                        list.push(tool_notice.trim().to_string());
+                                    }
+                                    // Still emit real-time progress for immediate visibility
                                     emit_delegate_progress(
                                         &Some(parent_progress.clone()),
                                         &child_progress_task_id,
@@ -309,11 +316,22 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     match child_agent.run_conversation(&goal).await {
                         Ok(res) => {
                             let tool_usage = tool_count.load(std::sync::atomic::Ordering::Relaxed);
-                            let summary = if tool_usage > 0 {
+                            let calls = tool_calls.lock().await;
+                            let mut summary = if tool_usage > 0 {
                                 format!("完成，返回结果（使用了 {} 个工具）", tool_usage)
                             } else {
                                 "完成，返回结果".to_string()
                             };
+
+                            // Append tool call details for collapsible rendering
+                            if !calls.is_empty() {
+                                summary.push_str("\n[工具调用详情]\n");
+                                for call in calls.iter() {
+                                    summary.push_str(call);
+                                    summary.push('\n');
+                                }
+                            }
+
                             emit_delegate_progress(
                                 &progress_callback,
                                 &progress_task_id,
