@@ -870,15 +870,64 @@ fn sanitize_for_markdown(text: &str) -> String {
     // Remove table separators (| causes parsing errors)
     let text = text.replace('|', "│");
 
-    // Smart escaping: preserve Markdown syntax while escaping isolated characters
-    let mut result = String::with_capacity(text.len());
+    // Step 1: Identify all code regions (inline ` and block ```)
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();
-
+    let mut code_regions = Vec::new();
+    
     let mut i = 0;
     while i < len {
-        let ch = chars[i];
+        // Check for code block (```)
+        if i + 2 < len && chars[i] == '`' && chars[i+1] == '`' && chars[i+2] == '`' {
+            let start = i;
+            i += 3;
+            // Find closing ```
+            while i + 2 < len {
+                if chars[i] == '`' && chars[i+1] == '`' && chars[i+2] == '`' {
+                    code_regions.push((start, i + 3));
+                    i += 3;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        // Check for inline code (`)
+        if chars[i] == '`' {
+            let start = i;
+            i += 1;
+            // Find closing `
+            while i < len {
+                if chars[i] == '`' {
+                    code_regions.push((start, i + 1));
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        i += 1;
+    }
 
+    // Step 2: Smart escaping - preserve Markdown syntax while escaping isolated characters
+    let mut result = String::with_capacity(text.len());
+    let mut i = 0;
+    
+    while i < len {
+        let ch = chars[i];
+        
+        // Check if we're inside a code region
+        let in_code = code_regions.iter().any(|&(start, end)| i >= start && i < end);
+        
+        if in_code {
+            // Inside code block/inline: keep everything as-is
+            result.push(ch);
+            i += 1;
+            continue;
+        }
+
+        // Outside code: apply smart escaping
         match ch {
             '[' => {
                 // Look ahead for ](url) pattern (Markdown link)
