@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.27-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.28-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.27)
+## ✨ Recent Updates (v0.5.28)
+
+**🎮 QQ Bot & ClawBot (WeChat) Support:**
+- 🤖 **QQ Bot Integration** — Added QQ Bot to setup wizard, requires AppID + Token from QQ Open Platform
+- 💬 **ClawBot (WeChat) Support** — Added WeChat integration via ClawBot server (endpoint + optional token)
+- 🔧 **Multi-Platform Setup** — Expanded platform adapter options from 3 to 5 (Telegram, QQ, ClawBot, Discord, Slack)
+- ✨ **Better User Experience** — Interactive prompts guide users through QQ AppID/Token and ClawBot endpoint configuration
+
+**Previous Updates (v0.5.27):**
 
 **💎 Stable Telegram Markdown UI:**
 - 🎨 **Automatic Markdown Escaping** — All outbound text now escapes special characters (`_`, `*`, `[`, `]`, `(`, `)`, `` ` ``) to prevent Telegram parse errors

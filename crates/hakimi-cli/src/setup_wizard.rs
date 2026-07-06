@@ -281,6 +281,8 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
 
     let platform_options = &[
         "Telegram — requires a bot token from @BotFather",
+        "QQ Bot — requires bot AppID + Token from QQ Open Platform",
+        "ClawBot (WeChat) — requires ClawBot server endpoint + token",
         "Discord — requires bot token + channel ID",
         "Slack — requires bot token + channel ID",
         "Skip — don't configure any platforms now",
@@ -289,7 +291,7 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
     let selections = MultiSelect::new()
         .with_prompt("Select platform adapters to configure (Space to toggle, Enter to confirm)")
         .items(platform_options)
-        .defaults(&[false, false, false, true])
+        .defaults(&[false, false, false, false, false, true])
         .interact()?;
 
     let mut platforms = Vec::new();
@@ -309,6 +311,38 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
                 });
             }
             1 => {
+                // QQ Bot
+                println!();
+                let app_id: String = Input::new()
+                    .with_prompt("QQ Bot AppID")
+                    .interact_text()?;
+                let token: String = Password::new()
+                    .with_prompt("QQ Bot Token")
+                    .interact()?;
+                // QQ uses channel_id to store AppID, token remains in token field
+                platforms.push(PlatformConfig {
+                    platform: "qqbot".to_string(),
+                    token: format!("{}:{}", app_id, token),
+                    channel_id: None,
+                });
+            }
+            2 => {
+                // ClawBot (WeChat)
+                println!();
+                let endpoint: String = Input::new()
+                    .with_prompt("ClawBot server endpoint (e.g., http://localhost:2531)")
+                    .interact_text()?;
+                let token: String = Password::new()
+                    .with_prompt("ClawBot auth token (optional)")
+                    .allow_empty_password(true)
+                    .interact()?;
+                platforms.push(PlatformConfig {
+                    platform: "clawbot".to_string(),
+                    token: if token.is_empty() { endpoint } else { format!("{}|{}", endpoint, token) },
+                    channel_id: None,
+                });
+            }
+            3 => {
                 // Discord
                 println!();
                 let token: String = Password::new()
@@ -323,7 +357,7 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
                     channel_id: Some(channel),
                 });
             }
-            2 => {
+            4 => {
                 // Slack
                 println!();
                 let token: String = Password::new().with_prompt("Slack bot token").interact()?;
@@ -336,7 +370,7 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
                     channel_id: Some(channel),
                 });
             }
-            3 => {
+            5 => {
                 // Skip
             }
             _ => {}
