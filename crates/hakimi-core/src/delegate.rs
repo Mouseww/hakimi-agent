@@ -271,14 +271,19 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     );
                     child_agent.set_system_prompt(system_prompt);
                     child_agent.set_session_id(child_session_id.clone());
+                    
+                    // Track tool usage for final summary
+                    let tool_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
                     if let Some(parent_progress) = progress_callback.clone() {
                         let child_progress_task_id = progress_task_id.clone();
                         let child_progress_title = progress_title.clone();
+                        let counter = tool_count.clone();
                         child_agent.set_streaming_callback(Some(std::sync::Arc::new(
                             move |token: String| {
                                 if let Some(tool_notice) =
                                     token.strip_prefix("\u{001e}hakimi_tool:")
                                 {
+                                    counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                     emit_delegate_progress(
                                         &Some(parent_progress.clone()),
                                         &child_progress_task_id,
@@ -303,11 +308,17 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     // Execute
                     match child_agent.run_conversation(&goal).await {
                         Ok(res) => {
+                            let tool_usage = tool_count.load(std::sync::atomic::Ordering::Relaxed);
+                            let summary = if tool_usage > 0 {
+                                format!("完成，返回结果（使用了 {} 个工具）", tool_usage)
+                            } else {
+                                "完成，返回结果".to_string()
+                            };
                             emit_delegate_progress(
                                 &progress_callback,
                                 &progress_task_id,
                                 &progress_title,
-                                "完成，返回结果",
+                                summary,
                             );
                             return Ok(res.final_response);
                         }

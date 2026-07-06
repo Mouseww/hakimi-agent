@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.46-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.47-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.46)
+## ✨ Recent Updates (v0.5.47)
+
+**🔧 子 Agent 工具调用可见性修复：**
+- ✅ **显示工具计数** — 子 agent 完成时显示"完成，返回结果（使用了 N 个工具）"
+- 🛠️ **工具调用追踪** — 在 delegate.rs 中添加 AtomicUsize 计数器，与 team.rs 保持一致
+- 📊 **实时工具通知** — 子 agent 执行工具时通过 streaming callback 转发 `\u{001e}hakimi_tool:` 事件
+- 🎯 **对齐 Persona Team 行为** — delegate_task 和 persona 团队协作现在使用相同的进度报告机制
+
+**Previous Updates (v0.5.46):**
 
 **🎯 Telegram 流式输出格式稳定性修复：**
 - ✅ **智能未闭合语法检测** — 新增 `sanitize_for_streaming()` 函数，实时检测并移除未闭合的 Markdown 语法
