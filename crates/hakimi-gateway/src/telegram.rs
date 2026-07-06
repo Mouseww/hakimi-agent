@@ -570,7 +570,7 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> Result<()> {
-        let text = normalize_outbound_text(text);
+        let text = escape_markdown(&normalize_outbound_text(text));
         // Split messages longer than 4096 characters into multiple sends.
         let chunks = split_message(&text, MAX_MESSAGE_LENGTH);
 
@@ -593,34 +593,10 @@ impl PlatformAdapter for TelegramAdapter {
                 .context("failed to parse sendMessage response")?;
 
             if !resp.ok {
-                // If markdown parse fails, retry without parse_mode.
-                warn!(
-                    chat_id = %chat_id,
-                    error = resp.description.as_deref().unwrap_or("unknown"),
-                    "sendMessage with Markdown failed, retrying as plain text"
+                anyhow::bail!(
+                    "Telegram sendMessage failed: {}",
+                    resp.description.unwrap_or_else(|| "unknown error".into())
                 );
-                let plain_body = serde_json::json!({
-                    "chat_id": chat_id,
-                    "text": chunk,
-                });
-
-                let resp: TgResponse<serde_json::Value> = self
-                    .client
-                    .post(self.api_url("sendMessage"))
-                    .json(&plain_body)
-                    .send()
-                    .await
-                    .context("failed to send Telegram message (plain)")?
-                    .json()
-                    .await
-                    .context("failed to parse sendMessage response (plain)")?;
-
-                if !resp.ok {
-                    anyhow::bail!(
-                        "Telegram sendMessage failed: {}",
-                        resp.description.unwrap_or_else(|| "unknown error".into())
-                    );
-                }
             }
         }
 
@@ -716,7 +692,7 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_message_get_id(&self, chat_id: &str, text: &str) -> Result<Option<i64>> {
-        let text = normalize_outbound_text(text);
+        let text = escape_markdown(&normalize_outbound_text(text));
         let body = serde_json::json!({
             "chat_id": chat_id,
             "text": text,
@@ -732,36 +708,17 @@ impl PlatformAdapter for TelegramAdapter {
             .json()
             .await
             .context("failed to parse sendMessage response")?;
-        if resp.ok
-            && let Some(result) = &resp.result
-        {
-            return Ok(result.get("message_id").and_then(|v| v.as_i64()));
-        }
-        // Fallback: retry plain text
-        let plain_body = serde_json::json!({
-            "chat_id": chat_id,
-            "text": text,
-        });
-        let resp: TgResponse<serde_json::Value> = self
-            .client
-            .post(self.api_url("sendMessage"))
-            .json(&plain_body)
-            .send()
-            .await
-            .context("failed to send Telegram message (plain)")?
-            .json()
-            .await
-            .context("failed to parse sendMessage response (plain)")?;
-        if resp.ok
-            && let Some(result) = &resp.result
-        {
-            return Ok(result.get("message_id").and_then(|v| v.as_i64()));
+        
+        if resp.ok {
+            if let Some(result) = &resp.result {
+                return Ok(result.get("message_id").and_then(|v| v.as_i64()));
+            }
         }
         Ok(None)
     }
 
     async fn edit_message(&self, chat_id: &str, message_id: i64, text: &str) -> Result<()> {
-        let text = normalize_outbound_text(text);
+        let text = escape_markdown(&normalize_outbound_text(text));
         let body = serde_json::json!({
             "chat_id": chat_id,
             "message_id": message_id,
@@ -778,19 +735,14 @@ impl PlatformAdapter for TelegramAdapter {
             .json()
             .await
             .context("failed to parse editMessageText response")?;
+        
         if !resp.ok {
-            // Retry plain text
-            let plain_body = serde_json::json!({
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-            });
-            let _ = self
-                .client
-                .post(self.api_url("editMessageText"))
-                .json(&plain_body)
-                .send()
-                .await;
+            // Silent handling for "message is not modified"
+            if let Some(desc) = &resp.description {
+                if !desc.contains("message is not modified") {
+                    warn!(error = %desc, "editMessageText failed");
+                }
+            }
         }
         Ok(())
     }
@@ -912,6 +864,18 @@ fn normalize_outbound_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+/// Escape special characters for Telegram Markdown (v1).
+/// Escapes: _ * [ ] ( ) `
+fn escape_markdown(text: &str) -> String {
+    text.replace('_', "\\_")
+        .replace('*', "\\*")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
+        .replace('(', "\\(")
+        .replace(')', "\\)")
+        .replace('`', "\\`")
+}
+
 fn truncate_draft_text(text: &str) -> String {
     text.chars().take(MAX_MESSAGE_LENGTH).collect()
 }
@@ -991,11 +955,12 @@ async fn send_remote_media(
     caption: &str,
     kind: TelegramMediaKind,
 ) -> Result<()> {
+    let escaped_caption = escape_markdown(caption);
     let field_name = media_field_name(kind);
     let body = serde_json::json!({
         "chat_id": chat_id,
         field_name: media,
-        "caption": caption,
+        "caption": escaped_caption,
         "parse_mode": "Markdown",
     });
     let response: TgResponse<serde_json::Value> = client
@@ -1007,38 +972,12 @@ async fn send_remote_media(
         .json()
         .await
         .with_context(|| format!("failed to parse {} response", method_name(kind)))?;
-    if response.ok {
-        return Ok(());
-    }
-
-    warn!(
-        chat_id = %chat_id,
-        error = response.description.as_deref().unwrap_or("unknown"),
-        method = method_name(kind),
-        "media send with Markdown failed, retrying without parse_mode"
-    );
-
-    let plain_body = serde_json::json!({
-        "chat_id": chat_id,
-        field_name: media,
-        "caption": caption,
-    });
-    let response: TgResponse<serde_json::Value> = client
-        .post(api_url)
-        .json(&plain_body)
-        .send()
-        .await
-        .with_context(|| format!("failed to send Telegram {} (plain)", method_name(kind)))?
-        .json()
-        .await
-        .with_context(|| format!("failed to parse {} response (plain)", method_name(kind)))?;
+    
     if !response.ok {
         anyhow::bail!(
             "Telegram {} failed: {}",
             method_name(kind),
-            response
-                .description
-                .unwrap_or_else(|| "unknown error".into())
+            response.description.unwrap_or_else(|| "unknown error".into())
         );
     }
     Ok(())
@@ -1052,6 +991,7 @@ async fn send_local_media(
     caption: &str,
     kind: TelegramMediaKind,
 ) -> Result<()> {
+    let escaped_caption = escape_markdown(caption);
     let bytes = std::fs::read(media)
         .with_context(|| format!("failed to read local media file: {media}"))?;
     let field_name = media_field_name(kind);
@@ -1064,7 +1004,7 @@ async fn send_local_media(
 
     let form = Form::new()
         .text("chat_id", chat_id.to_string())
-        .text("caption", caption.to_string())
+        .text("caption", escaped_caption)
         .text("parse_mode", "Markdown".to_string())
         .part(field_name.to_string(), part);
     let response: TgResponse<serde_json::Value> = client
@@ -1076,48 +1016,12 @@ async fn send_local_media(
         .json()
         .await
         .with_context(|| format!("failed to parse {} upload response", method_name(kind)))?;
-    if response.ok {
-        return Ok(());
-    }
-
-    warn!(
-        chat_id = %chat_id,
-        error = response.description.as_deref().unwrap_or("unknown"),
-        method = method_name(kind),
-        "local media upload with Markdown failed, retrying without parse_mode"
-    );
-
-    let bytes = std::fs::read(media)
-        .with_context(|| format!("failed to reread local media file: {media}"))?;
-    let part = Part::bytes(bytes)
-        .file_name(file_name_or_default(media, kind))
-        .mime_str(mime_for_kind(kind, media))
-        .context("failed to set multipart MIME type")?;
-    let form = Form::new()
-        .text("chat_id", chat_id.to_string())
-        .text("caption", caption.to_string())
-        .part(field_name.to_string(), part);
-    let response: TgResponse<serde_json::Value> = client
-        .post(api_url)
-        .multipart(form)
-        .send()
-        .await
-        .with_context(|| format!("failed to upload Telegram {} (plain)", method_name(kind)))?
-        .json()
-        .await
-        .with_context(|| {
-            format!(
-                "failed to parse {} upload response (plain)",
-                method_name(kind)
-            )
-        })?;
+    
     if !response.ok {
         anyhow::bail!(
             "Telegram {} failed: {}",
             method_name(kind),
-            response
-                .description
-                .unwrap_or_else(|| "unknown error".into())
+            response.description.unwrap_or_else(|| "unknown error".into())
         );
     }
     Ok(())
