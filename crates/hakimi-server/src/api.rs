@@ -6094,18 +6094,24 @@ async fn teams_webhook_inbound(
         config.gateways.teams_webhook.streaming.clone()
     };
 
-    // Return minimal acknowledgment card immediately
+    // Return minimal acknowledgment card immediately (Teams message format with attachments)
     let ack_card = json!({
-        "type": "AdaptiveCard",
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-        "version": "1.4",
-        "body": [
-            {
-                "type": "TextBlock",
-                "text": "💭",
-                "size": "Medium"
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "version": "1.4",
+                "body": [
+                    {
+                        "type": "TextBlock",
+                        "text": "💭 正在思考...",
+                        "wrap": true
+                    }
+                ]
             }
-        ]
+        }]
     });
 
     // Spawn async task to process message (non-blocking)
