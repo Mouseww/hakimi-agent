@@ -488,7 +488,10 @@ mod tests {
             std::env::remove_var("HAKIMI_IMAGE_GEN_OUTPUT_DIR");
         }
         let dir = get_output_dir(None);
-        assert!(dir.ends_with(".hakimi/image_cache"));
+        // Platform-agnostic check: ensure path contains .hakimi and image_cache components
+        let path_str = dir.to_string_lossy();
+        assert!(path_str.contains(".hakimi"), "Expected .hakimi in path: {}", path_str);
+        assert!(path_str.contains("image_cache"), "Expected image_cache in path: {}", path_str);
     }
 
     #[test]
