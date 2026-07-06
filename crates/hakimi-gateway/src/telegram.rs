@@ -709,10 +709,8 @@ impl PlatformAdapter for TelegramAdapter {
             .await
             .context("failed to parse sendMessage response")?;
 
-        if resp.ok {
-            if let Some(result) = &resp.result {
-                return Ok(result.get("message_id").and_then(|v| v.as_i64()));
-            }
+        if resp.ok && let Some(result) = &resp.result {
+            return Ok(result.get("message_id").and_then(|v| v.as_i64()));
         }
         Ok(None)
     }
@@ -738,10 +736,10 @@ impl PlatformAdapter for TelegramAdapter {
 
         if !resp.ok {
             // Silent handling for "message is not modified"
-            if let Some(desc) = &resp.description {
-                if !desc.contains("message is not modified") {
-                    warn!(error = %desc, "editMessageText failed");
-                }
+            if let Some(desc) = &resp.description
+                && !desc.contains("message is not modified")
+            {
+                warn!(error = %desc, "editMessageText failed");
             }
         }
         Ok(())
@@ -968,9 +966,9 @@ fn sanitize_for_markdown(text: &str) -> String {
             ')' => {
                 // Check if we're inside a Markdown link by looking back
                 // Simple heuristic: if there's a recent '](' pattern, we're in a link
-                let is_in_link = result.rfind("](").map_or(false, |pos| {
+                let is_in_link = result.rfind("](").is_some_and(|pos| {
                     // Check if there's a closing ')' after that position
-                    !result[pos..].contains(')')
+                    result[pos..].find(')').is_none()
                 });
                 if is_in_link {
                     // Part of Markdown link, keep as-is
