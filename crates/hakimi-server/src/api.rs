@@ -6187,18 +6187,26 @@ fn create_progress_aware_streaming_callback(
                     let _task_id = parts[0];
                     let title = parts[1];
                     let line = parts[2];
-                    info!("[{}] Delegation: {} - {}", platform, title, line);
-                    let msg = hakimi_gateway::GatewayMessage {
-                        platform,
-                        bot_id,
-                        chat_id,
-                        user_id: "agent".to_string(),
-                        text: format!("🤝 {} · {}", title, line),
-                        media: None,
-                        callback_data: None,
-                    };
-                    if let Err(e) = gateway.route_message(&msg).await {
-                        warn!("Failed to send delegation progress: {}", e);
+
+                    // Filter out terminal/completion messages that shouldn't be shown to users
+                    let should_skip = line.starts_with("完成，返回结果")
+                        || line.starts_with("失败:")
+                        || line.contains("准备委派任务");
+
+                    if !should_skip {
+                        info!("[{}] Delegation: {} - {}", platform, title, line);
+                        let msg = hakimi_gateway::GatewayMessage {
+                            platform,
+                            bot_id,
+                            chat_id,
+                            user_id: "agent".to_string(),
+                            text: format!("🤝 {} · {}", title, line),
+                            media: None,
+                            callback_data: None,
+                        };
+                        if let Err(e) = gateway.route_message(&msg).await {
+                            warn!("Failed to send delegation progress: {}", e);
+                        }
                     }
                 }
                 return;
