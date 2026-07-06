@@ -832,6 +832,8 @@ pub struct GatewaysConfig {
     pub wecom: WeComGatewayConfig,
     #[serde(default)]
     pub feishu: FeishuGatewayConfig,
+    #[serde(default)]
+    pub teams_webhook: TeamsWebhookGatewayConfig,
 }
 
 fn default_gateway_filter_silence_narration() -> bool {
@@ -869,6 +871,7 @@ impl Default for GatewaysConfig {
             dingtalk: DingTalkGatewayConfig::default(),
             wecom: WeComGatewayConfig::default(),
             feishu: FeishuGatewayConfig::default(),
+            teams_webhook: TeamsWebhookGatewayConfig::default(),
         }
     }
 }
@@ -1492,6 +1495,34 @@ impl Default for FeishuGatewayConfig {
             receive_id_type: default_feishu_receive_id_type(),
             domain: default_feishu_domain(),
             base_url: String::new(),
+        }
+    }
+}
+
+/// Microsoft Teams Webhook gateway configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamsWebhookGatewayConfig {
+    #[serde(default = "default_teams_webhook_bot_id")]
+    pub bot_id: String,
+    #[serde(default)]
+    pub hmac_secret: String,
+    #[serde(default)]
+    pub default_workflow_url: String,
+    #[serde(default)]
+    pub channel_workflows: std::collections::HashMap<String, String>,
+}
+
+fn default_teams_webhook_bot_id() -> String {
+    "teams-agent".to_string()
+}
+
+impl Default for TeamsWebhookGatewayConfig {
+    fn default() -> Self {
+        Self {
+            bot_id: default_teams_webhook_bot_id(),
+            hmac_secret: String::new(),
+            default_workflow_url: String::new(),
+            channel_workflows: std::collections::HashMap::new(),
         }
     }
 }
