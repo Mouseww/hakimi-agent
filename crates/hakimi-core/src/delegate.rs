@@ -271,7 +271,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     );
                     child_agent.set_system_prompt(system_prompt);
                     child_agent.set_session_id(child_session_id.clone());
-                    
+
                     // Track tool usage for final summary
                     let tool_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
                     if let Some(parent_progress) = progress_callback.clone() {
