@@ -203,6 +203,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             &tool_defs,
             &params,
             agent.streaming_callback.clone(),
+            agent.event_callback.clone(),
             &mut api_call_count,
         )
         .await
@@ -338,6 +339,7 @@ async fn fetch_response(
     tool_defs: &[ToolDefinition],
     params: &RequestParams,
     callback: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
+    event_callback: Option<std::sync::Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>,
     api_call_count: &mut usize,
 ) -> Result<NormalizedResponse> {
     // Maximum retry attempts per fetch.
@@ -355,6 +357,7 @@ async fn fetch_response(
                 tool_defs,
                 &effective_params,
                 callback.clone(),
+                event_callback.clone(),
             )
             .await
         } else {
@@ -431,6 +434,7 @@ async fn fetch_streaming_response(
     tool_defs: &[ToolDefinition],
     params: &RequestParams,
     callback: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
+    event_callback: Option<std::sync::Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>,
 ) -> Result<NormalizedResponse> {
     let mut stream = transport
         .execute_streaming(model, send_messages, tool_defs, params)
@@ -447,6 +451,12 @@ async fn fetch_streaming_response(
                 if matches!(event, StreamEvent::Done | StreamEvent::Finished(_)) {
                     saw_terminal_event = true;
                 }
+                
+                // Call event_callback for ALL events (including ToolCallDelta)
+                if let Some(ref ecb) = event_callback {
+                    ecb(event.clone());
+                }
+                
                 // Print content deltas to stdout in real-time.
                 if let StreamEvent::ContentDelta(text) = event {
                     let mut s = scrubber.lock().await;

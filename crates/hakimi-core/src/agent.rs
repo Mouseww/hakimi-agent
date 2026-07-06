@@ -34,6 +34,8 @@ pub struct AIAgent {
     pub(crate) system_prompt: Option<String>,
     pub(crate) streaming: bool,
     pub(crate) streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    /// Optional callback invoked for every StreamEvent (including ToolCallDelta).
+    pub(crate) event_callback: Option<Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>,
     pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
     pub(crate) tts_provider: Option<String>,
     pub(crate) tts_model: Option<String>,
@@ -69,6 +71,7 @@ impl Clone for AIAgent {
             system_prompt: self.system_prompt.clone(),
             streaming: self.streaming,
             streaming_callback: self.streaming_callback.clone(),
+            event_callback: self.event_callback.clone(),
             skill_store: self.skill_store.clone(),
             tts_provider: self.tts_provider.clone(),
             tts_model: self.tts_model.clone(),
@@ -432,6 +435,7 @@ impl AIAgentBuilder {
             system_prompt: self.system_prompt,
             streaming: self.streaming.unwrap_or(false),
             streaming_callback: self.streaming_callback,
+            event_callback: None,
             skill_store: Some(
                 self.skill_store
                     .unwrap_or_else(hakimi_skills::SkillStore::empty),
@@ -576,6 +580,11 @@ impl AIAgent {
     /// Dynamically set the streaming callback for this agent instance.
     pub fn set_streaming_callback(&mut self, callback: Option<Arc<dyn Fn(String) + Send + Sync>>) {
         self.streaming_callback = callback;
+    }
+
+    /// Set the event callback to receive all StreamEvents (including ToolCallDelta).
+    pub fn set_event_callback(&mut self, callback: Option<Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>) {
+        self.event_callback = callback;
     }
 
     /// Enable or disable streaming for subsequent conversation turns.

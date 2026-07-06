@@ -6190,6 +6190,69 @@ async fn teams_webhook_inbound(
                 });
             }
         })));
+        
+        // Set event callback to detect tool calls
+        cloned_agent.set_event_callback(Some(Arc::new({
+            let buffer = buffer.clone();
+            let gateway = gateway_clone.clone();
+            let chat_id = chat_id_clone.clone();
+            
+            move |event: hakimi_transports::StreamEvent| {
+                use hakimi_transports::StreamEvent;
+                
+                let buffer = buffer.clone();
+                let gateway = gateway.clone();
+                let chat_id = chat_id.clone();
+                
+                tokio::spawn(async move {
+                    match event {
+                        StreamEvent::ToolCallDelta { index, id, name, .. } => {
+                            // First tool call: flush accumulated text and send tool notification
+                            if index == 0 && id.is_some() {
+                                let mut buf = buffer.lock().await;
+                                if !buf.is_empty() {
+                                    // Send accumulated text before tool
+                                    info!("Tool call detected, sending accumulated text: {} chars", buf.len());
+                                    let msg = hakimi_gateway::GatewayMessage {
+                                        platform: "teams_webhook".to_string(),
+                                        bot_id: "teams-agent".to_string(),
+                                        chat_id: chat_id.clone(),
+                                        user_id: "agent".to_string(),
+                                        text: buf.clone(),
+                                        media: None,
+                                        callback_data: None,
+                                    };
+                                    buf.clear();
+                                    
+                                    if let Err(e) = gateway.route_message(&msg).await {
+                                        warn!("Failed to send text before tool: {}", e);
+                                    }
+                                }
+                                
+                                // Send tool notification
+                                if let Some(tool_name) = name {
+                                    info!("Sending tool notification: {}", tool_name);
+                                    let tool_msg = hakimi_gateway::GatewayMessage {
+                                        platform: "teams_webhook".to_string(),
+                                        bot_id: "teams-agent".to_string(),
+                                        chat_id: chat_id,
+                                        user_id: "agent".to_string(),
+                                        text: format!("🔧 调用工具: {}", tool_name),
+                                        media: None,
+                                        callback_data: None,
+                                    };
+                                    
+                                    if let Err(e) = gateway.route_message(&tool_msg).await {
+                                        warn!("Failed to send tool notification: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                });
+            }
+        })));
 
         // Run the conversation
         match cloned_agent.chat(&message_text).await {
