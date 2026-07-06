@@ -6063,7 +6063,7 @@ pub struct TeamsWebhookInbound {
 async fn teams_webhook_inbound(
     State(state): State<AppState>,
     request: axum::http::Request<axum::body::Body>,
-) -> Result<Json<JsonValue>, StatusCode> {
+) -> Result<Response, StatusCode> {
     
     // Read the raw body for HMAC verification
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
@@ -6086,47 +6086,51 @@ async fn teams_webhook_inbound(
         return Err(StatusCode::BAD_REQUEST);
     }
     
-    // Get user info for immediate response
-    let user_name = payload
-        .from
-        .as_ref()
-        .and_then(|f| f.get("name"))
-        .and_then(|n| n.as_str())
-        .unwrap_or("User")
-        .to_string();
-    
     let channel_id = payload.channel_id.clone();
-    let service_url = payload.service_url.clone();
+    let _service_url = payload.service_url.clone();
+    
+    // Get streaming config
+    let streaming_config = {
+        let config = state.config.lock().await;
+        config.gateways.teams_webhook.streaming.clone()
+    };
     
     // Spawn async task to process message (non-blocking)
     tokio::spawn(async move {
         info!("Processing Teams message in background: {}", message_text);
         
-        // Process message in background
-        let response = {
-            let mut agent = state.agent.lock().await;
-            match agent.chat(&message_text).await {
-                Ok(resp) => resp,
-                Err(e) => {
-                    warn!("Agent error processing Teams message: {}", e);
-                    "抱歉，处理您的消息时遇到错误。".to_string()
-                }
+        let gateway = match state.gateway.as_ref() {
+            Some(g) => g,
+            None => {
+                warn!("Teams webhook received but Gateway is not configured (WebUI-only mode)");
+                return;
             }
         };
         
-        info!("Teams message processed, response ready: {} chars", response.len());
+        let chat_id = channel_id.as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("unknown");
+        let chat_id_formatted = format!("teams_{}", chat_id);
         
-        // Send response back via Gateway
-        if let Some(ref gateway) = state.gateway {
-            let chat_id = channel_id.as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("unknown");
-            let chat_id = format!("teams_{}", chat_id); // Match adapter's chat_id format
+        if !streaming_config.enabled {
+            // Non-streaming path (original behavior)
+            let response = {
+                let mut agent = state.agent.lock().await;
+                match agent.chat(&message_text).await {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        warn!("Agent error processing Teams message: {}", e);
+                        "抱歉，处理您的消息时遇到错误。".to_string()
+                    }
+                }
+            };
+            
+            info!("Teams message processed, response ready: {} chars", response.len());
             
             let msg = hakimi_gateway::GatewayMessage {
                 platform: "teams_webhook".to_string(),
-                bot_id: "teams-agent".to_string(), // Match TeamsWebhookConfig default
-                chat_id,
+                bot_id: "teams-agent".to_string(),
+                chat_id: chat_id_formatted,
                 user_id: "agent".to_string(),
                 text: response.clone(),
                 media: None,
@@ -6134,52 +6138,150 @@ async fn teams_webhook_inbound(
             };
             
             match gateway.route_message(&msg).await {
-                Ok(()) => {
-                    info!("Teams response sent successfully via Gateway");
-                }
-                Err(e) => {
-                    warn!("Failed to send Teams response via Gateway: {}", e);
-                    // Fallback: log the response for debugging
-                    info!("Teams response (failed to send, channel {:?}, service_url {:?}):\n{}", 
-                          channel_id, service_url, response);
-                }
+                Ok(()) => info!("Teams response sent successfully via Gateway"),
+                Err(e) => warn!("Failed to send Teams response via Gateway: {}", e),
             }
-        } else {
-            // WebUI-only mode (no gateway), just log
-            warn!("Teams webhook received but Gateway is not configured (WebUI-only mode)");
-            info!("Teams response (no Gateway, channel {:?}, service_url {:?}):\n{}", 
-                  channel_id, service_url, response);
+            return;
+        }
+        
+        // Streaming path: accumulate tokens and send in intelligent chunks
+        let buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
+        let first_chunk_sent = Arc::new(tokio::sync::Mutex::new(false));
+        let gateway_clone = gateway.clone();
+        let chat_id_clone = chat_id_formatted.clone();
+        let first_size = streaming_config.first_chunk_size;
+        let later_size = streaming_config.later_chunk_size;
+        let natural_break = streaming_config.natural_break;
+        
+        // Clone agent and set streaming callback
+        let mut cloned_agent = {
+            let agent = state.agent.lock().await;
+            agent.clone()
+        };
+        
+        cloned_agent.set_streaming(true);
+        cloned_agent.set_streaming_callback(Some(Arc::new({
+            let buffer = buffer.clone();
+            let first_chunk_sent = first_chunk_sent.clone();
+            let gateway = gateway_clone.clone();
+            let chat_id = chat_id_clone.clone();
+            
+            move |token: String| {
+                let buffer = buffer.clone();
+                let first_chunk_sent = first_chunk_sent.clone();
+                let gateway = gateway.clone();
+                let chat_id = chat_id.clone();
+                
+                tokio::spawn(async move {
+                    let mut buf = buffer.lock().await;
+                    buf.push_str(&token);
+                    
+                    let mut first_sent = first_chunk_sent.lock().await;
+                    let should_send = if !*first_sent {
+                        // Send first chunk when we have enough characters
+                        buf.len() >= first_size
+                    } else {
+                        // Send later chunks based on size and natural breaks
+                        if natural_break {
+                            // Look for paragraph break
+                            if buf.contains("\n\n") {
+                                true
+                            } else {
+                                buf.len() >= later_size
+                            }
+                        } else {
+                            buf.len() >= later_size
+                        }
+                    };
+                    
+                    if should_send {
+                        let chunk = if natural_break && buf.contains("\n\n") {
+                            // Split at last paragraph break
+                            let last_break = buf.rfind("\n\n").unwrap();
+                            let chunk = buf[..last_break + 2].to_string();
+                            *buf = buf[last_break + 2..].to_string();
+                            chunk
+                        } else {
+                            // Send entire buffer
+                            let chunk = buf.clone();
+                            buf.clear();
+                            chunk
+                        };
+                        
+                        if !*first_sent {
+                            info!("Sending first Teams chunk: {} chars", chunk.len());
+                            *first_sent = true;
+                        } else {
+                            info!("Sending Teams chunk: {} chars", chunk.len());
+                        }
+                        
+                        let msg = hakimi_gateway::GatewayMessage {
+                            platform: "teams_webhook".to_string(),
+                            bot_id: "teams-agent".to_string(),
+                            chat_id: chat_id.clone(),
+                            user_id: "agent".to_string(),
+                            text: chunk,
+                            media: None,
+                            callback_data: None,
+                        };
+                        
+                        if let Err(e) = gateway.route_message(&msg).await {
+                            warn!("Failed to send Teams chunk: {}", e);
+                        }
+                    }
+                });
+            }
+        })));
+        
+        // Run the conversation
+        match cloned_agent.chat(&message_text).await {
+            Ok(_) => {
+                // Send any remaining buffer content
+                let remaining = {
+                    let buf = buffer.lock().await;
+                    buf.clone()
+                };
+                
+                if !remaining.is_empty() {
+                    info!("Sending final Teams chunk: {} chars", remaining.len());
+                    let msg = hakimi_gateway::GatewayMessage {
+                        platform: "teams_webhook".to_string(),
+                        bot_id: "teams-agent".to_string(),
+                        chat_id: chat_id_formatted,
+                        user_id: "agent".to_string(),
+                        text: remaining,
+                        media: None,
+                        callback_data: None,
+                    };
+                    
+                    if let Err(e) = gateway.route_message(&msg).await {
+                        warn!("Failed to send final Teams chunk: {}", e);
+                    }
+                }
+                
+                info!("Teams streaming response complete");
+            }
+            Err(e) => {
+                warn!("Agent error processing Teams message: {}", e);
+                let error_msg = hakimi_gateway::GatewayMessage {
+                    platform: "teams_webhook".to_string(),
+                    bot_id: "teams-agent".to_string(),
+                    chat_id: chat_id_formatted,
+                    user_id: "agent".to_string(),
+                    text: "抱歉，处理您的消息时遇到错误。".to_string(),
+                    media: None,
+                    callback_data: None,
+                };
+                let _ = gateway.route_message(&error_msg).await;
+            }
         }
     });
     
-    // Return immediate acknowledgment card
-    let ack_card = json!({
-        "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": [
-                    {
-                        "type": "TextBlock",
-                        "text": format!("✅ 收到消息，{}", user_name),
-                        "weight": "bolder",
-                        "size": "medium"
-                    },
-                    {
-                        "type": "TextBlock",
-                        "text": "正在处理您的请求，请稍候...",
-                        "wrap": true,
-                        "color": "accent"
-                    }
-                ]
-            }
-        }]
-    });
-    
-    Ok(Json(ack_card))
+    // Return empty 200 response (no confirmation card)
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .body(axum::body::Body::empty())
+        .unwrap())
 }
 
 /// Health check for Teams Webhook endpoint.

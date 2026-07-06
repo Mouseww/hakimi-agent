@@ -1510,6 +1510,48 @@ pub struct TeamsWebhookGatewayConfig {
     pub default_workflow_url: String,
     #[serde(default)]
     pub channel_workflows: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub streaming: TeamsWebhookStreamingConfig,
+}
+
+/// Teams Webhook streaming configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamsWebhookStreamingConfig {
+    /// Enable streaming output (split into multiple messages).
+    #[serde(default)]
+    pub enabled: bool,
+    /// First chunk size (characters) - sent quickly to show initial response.
+    #[serde(default = "default_teams_first_chunk_size")]
+    pub first_chunk_size: usize,
+    /// Later chunk size (characters) - subsequent messages.
+    #[serde(default = "default_teams_later_chunk_size")]
+    pub later_chunk_size: usize,
+    /// Prefer splitting at natural paragraph breaks (\n\n).
+    #[serde(default = "default_teams_natural_break")]
+    pub natural_break: bool,
+}
+
+fn default_teams_first_chunk_size() -> usize {
+    100
+}
+
+fn default_teams_later_chunk_size() -> usize {
+    300
+}
+
+fn default_teams_natural_break() -> bool {
+    true
+}
+
+impl Default for TeamsWebhookStreamingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            first_chunk_size: default_teams_first_chunk_size(),
+            later_chunk_size: default_teams_later_chunk_size(),
+            natural_break: default_teams_natural_break(),
+        }
+    }
 }
 
 fn default_teams_webhook_bot_id() -> String {
@@ -1523,6 +1565,7 @@ impl Default for TeamsWebhookGatewayConfig {
             hmac_secret: String::new(),
             default_workflow_url: String::new(),
             channel_workflows: std::collections::HashMap::new(),
+            streaming: TeamsWebhookStreamingConfig::default(),
         }
     }
 }
