@@ -6054,6 +6054,83 @@ pub struct TeamsWebhookInbound {
     pub service_url: Option<String>,
 }
 
+/// Set up tool separation callback for all streaming agents.
+///
+/// This attaches an `event_callback` to the agent that monitors `ToolCallDelta` events.
+/// When a tool call is detected:
+/// 1. The accumulated text buffer is flushed and sent as a separate message
+/// 2. A tool notification message ("🔧 调用工具: {name}") is sent
+///
+/// This ensures tool calls appear as distinct messages, improving UX across all gateways.
+fn setup_tool_separation_callback(
+    agent: &mut hakimi_core::AIAgent,
+    platform: String,
+    bot_id: String,
+    chat_id: String,
+    buffer: Arc<tokio::sync::Mutex<String>>,
+    gateway: Arc<hakimi_gateway::Gateway>,
+) {
+    agent.set_event_callback(Some(Arc::new({
+        move |event: hakimi_transports::StreamEvent| {
+            use hakimi_transports::StreamEvent;
+            
+            let buffer = buffer.clone();
+            let gateway = gateway.clone();
+            let chat_id = chat_id.clone();
+            let platform = platform.clone();
+            let bot_id = bot_id.clone();
+            
+            tokio::spawn(async move {
+                match event {
+                    StreamEvent::ToolCallDelta { index, id, name, .. } => {
+                        // First tool call: flush accumulated text and send tool notification
+                        if index == 0 && id.is_some() {
+                            let mut buf = buffer.lock().await;
+                            if !buf.is_empty() {
+                                // Send accumulated text before tool
+                                info!("[{}] Tool call detected, sending accumulated text: {} chars", platform, buf.len());
+                                let msg = hakimi_gateway::GatewayMessage {
+                                    platform: platform.clone(),
+                                    bot_id: bot_id.clone(),
+                                    chat_id: chat_id.clone(),
+                                    user_id: "agent".to_string(),
+                                    text: buf.clone(),
+                                    media: None,
+                                    callback_data: None,
+                                };
+                                buf.clear();
+                                
+                                if let Err(e) = gateway.route_message(&msg).await {
+                                    warn!("[{}] Failed to send text before tool: {}", platform, e);
+                                }
+                            }
+                            
+                            // Send tool notification
+                            if let Some(tool_name) = name {
+                                info!("[{}] Sending tool notification: {}", platform, tool_name);
+                                let tool_msg = hakimi_gateway::GatewayMessage {
+                                    platform,
+                                    bot_id,
+                                    chat_id,
+                                    user_id: "agent".to_string(),
+                                    text: format!("🔧 调用工具: {}", tool_name),
+                                    media: None,
+                                    callback_data: None,
+                                };
+                                
+                                if let Err(e) = gateway.route_message(&tool_msg).await {
+                                    warn!("Failed to send tool notification: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            });
+        }
+    })));
+}
+
 /// Handle incoming Teams Outgoing Webhook messages.
 ///
 /// Endpoint: POST /webhooks/teams/inbound
