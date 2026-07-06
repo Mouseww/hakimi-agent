@@ -709,7 +709,9 @@ impl PlatformAdapter for TelegramAdapter {
             .await
             .context("failed to parse sendMessage response")?;
 
-        if resp.ok && let Some(result) = &resp.result {
+        if resp.ok
+            && let Some(result) = &resp.result
+        {
             return Ok(result.get("message_id").and_then(|v| v.as_i64()));
         }
         Ok(None)
