@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.35-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.36-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.35)
+## ✨ Recent Updates (v0.5.36)
+
+**🔌 Teams Webhook Gateway 注册修复：**
+- ✅ **自动注册 Adapter** — 在统一模式启动时自动注册 TeamsWebhookAdapter 到 Gateway
+- 🎯 **配置驱动** — 读取 `config.yaml` 中的 `gateways.teams_webhook.hmac_secret` 和 `default_workflow_url`
+- 🔧 **完整双向通信** — Teams webhook 收到消息后可以正常通过 Gateway 发送 AI 回复
+- 💡 **统一架构** — Teams Webhook 与 Telegram、Discord、Slack 等平台一致的 Gateway adapter 架构
+
+**Previous Updates (v0.5.35):**
 
 **🎨 Telegram Markdown 稳定渲染修复：**
 - ✅ **智能清理 sanitize_for_markdown()** — 替代 v0.5.27 过度激进的 `escape_markdown()`

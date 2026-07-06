@@ -3018,6 +3018,22 @@ fn register_configured_gateway_adapters(
         }
     }
 
+    // Teams Webhook adapter
+    if let Some(hmac_secret) = optional_config_value(&config.gateways.teams_webhook.hmac_secret) {
+        if let Some(default_workflow_url) = optional_config_value(&config.gateways.teams_webhook.default_workflow_url) {
+            let teams_webhook = hakimi_gateway::TeamsWebhookAdapter::new(hakimi_gateway::TeamsWebhookConfig {
+                bot_id: "teams-agent".to_string(),
+                hmac_secret,
+                default_workflow_url,
+            });
+            gateway.add_adapter(Box::new(teams_webhook));
+            bot_ids.insert("teams_webhook".to_string(), "teams-agent".to_string());
+            info!("teams_webhook gateway registered");
+        } else {
+            warn!("teams_webhook hmac_secret configured but missing default_workflow_url");
+        }
+    }
+
     if config.gateways.mattermost.enabled {
         let server_url =
             env_or_config_value("MATTERMOST_URL", &config.gateways.mattermost.server_url);
