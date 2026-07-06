@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.28-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.29-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,18 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.28)
+## ✨ Recent Updates (v0.5.29)
+
+**🏢 Microsoft Teams Webhook Integration:**
+- 🔌 **No Azure Bot Required** — Direct integration via Teams Outgoing Webhooks + Power Automate Workflows
+- 🔒 **HMAC Signature Verification** — Secure inbound message authentication with SHA-256 HMAC
+- 🎨 **Adaptive Card Builder** — Rich card formatting with titles, facts, buttons, and custom layouts
+- ⚡ **10-Second Response** — Async task processing with immediate receipt acknowledgment
+- 📡 **Bidirectional Channels** — Inbound via HTTP POST `/teams/inbound`, outbound via Workflows webhook URLs
+- 🗺️ **Multi-Channel Routing** — Channel ID → Workflows URL mapping for project-specific notifications
+- 📚 **Complete Documentation** — Full setup guide at `docs/integrations/teams-webhook.md`
+
+**Previous Updates (v0.5.28):**
 
 **🎮 QQ Bot & ClawBot (WeChat) Support:**
 - 🤖 **QQ Bot Integration** — Added QQ Bot to setup wizard, requires AppID + Token from QQ Open Platform
