@@ -30,11 +30,11 @@
 //! ```
 
 use axum::{
+    Json, Router,
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::post,
-    Json, Router,
 };
 use serde_json::json;
 use std::net::SocketAddr;
@@ -129,7 +129,7 @@ async fn teams_inbound_handler(
     // Return immediate receipt (must be within 10 seconds)
     Json(json!({
         "type": "message",
-        "text": format!("Received your request: {}. Processing in the background...", 
+        "text": format!("Received your request: {}. Processing in the background...",
                         &gateway_msg.text[..gateway_msg.text.len().min(40)])
     }))
     .into_response()

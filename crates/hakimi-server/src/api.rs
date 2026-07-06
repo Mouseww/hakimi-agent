@@ -6063,42 +6063,55 @@ pub struct TeamsWebhookInbound {
 async fn teams_webhook_inbound(
     State(state): State<AppState>,
     request: axum::http::Request<axum::body::Body>,
-) -> Result<Response, StatusCode> {
-    
+) -> Result<Json<JsonValue>, StatusCode> {
     // Read the raw body for HMAC verification
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
         Ok(b) => b,
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
-    
+
     // Parse the JSON payload
     let payload: TeamsWebhookInbound = match serde_json::from_slice(&body_bytes) {
         Ok(p) => p,
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
-    
+
     // TODO: Extract HMAC secret from config and verify signature
     // For now we trust the request (should be behind reverse proxy with IP filtering)
-    
+
     // Extract message text
     let message_text = payload.text.unwrap_or_default();
     if message_text.trim().is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    
+
     let channel_id = payload.channel_id.clone();
     let _service_url = payload.service_url.clone();
-    
+
     // Get streaming config
     let streaming_config = {
         let config = state.config.lock().await;
         config.gateways.teams_webhook.streaming.clone()
     };
-    
+
+    // Return minimal acknowledgment card immediately
+    let ack_card = json!({
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.4",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": "💭",
+                "size": "Medium"
+            }
+        ]
+    });
+
     // Spawn async task to process message (non-blocking)
     tokio::spawn(async move {
         info!("Processing Teams message in background: {}", message_text);
-        
+
         let gateway = match state.gateway.as_ref() {
             Some(g) => g,
             None => {
@@ -6106,12 +6119,10 @@ async fn teams_webhook_inbound(
                 return;
             }
         };
-        
-        let chat_id = channel_id.as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or("unknown");
+
+        let chat_id = channel_id.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
         let chat_id_formatted = format!("teams_{}", chat_id);
-        
+
         if !streaming_config.enabled {
             // Non-streaming path (original behavior)
             let response = {
@@ -6124,9 +6135,12 @@ async fn teams_webhook_inbound(
                     }
                 }
             };
-            
-            info!("Teams message processed, response ready: {} chars", response.len());
-            
+
+            info!(
+                "Teams message processed, response ready: {} chars",
+                response.len()
+            );
+
             let msg = hakimi_gateway::GatewayMessage {
                 platform: "teams_webhook".to_string(),
                 bot_id: "teams-agent".to_string(),
@@ -6136,14 +6150,14 @@ async fn teams_webhook_inbound(
                 media: None,
                 callback_data: None,
             };
-            
+
             match gateway.route_message(&msg).await {
                 Ok(()) => info!("Teams response sent successfully via Gateway"),
                 Err(e) => warn!("Failed to send Teams response via Gateway: {}", e),
             }
             return;
         }
-        
+
         // Streaming path: accumulate tokens and send in intelligent chunks
         let buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
         let first_chunk_sent = Arc::new(tokio::sync::Mutex::new(false));
@@ -6152,69 +6166,73 @@ async fn teams_webhook_inbound(
         let first_size = streaming_config.first_chunk_size;
         let later_size = streaming_config.later_chunk_size;
         let natural_break = streaming_config.natural_break;
-        
+
         // Clone agent and set streaming callback
         let mut cloned_agent = {
             let agent = state.agent.lock().await;
             agent.clone()
         };
-        
+
         cloned_agent.set_streaming(true);
         cloned_agent.set_streaming_callback(Some(Arc::new({
             let buffer = buffer.clone();
             let first_chunk_sent = first_chunk_sent.clone();
             let gateway = gateway_clone.clone();
             let chat_id = chat_id_clone.clone();
-            
+
             move |token: String| {
                 let buffer = buffer.clone();
                 let first_chunk_sent = first_chunk_sent.clone();
                 let gateway = gateway.clone();
                 let chat_id = chat_id.clone();
-                
+
                 tokio::spawn(async move {
                     let mut buf = buffer.lock().await;
                     buf.push_str(&token);
-                    
+
                     let mut first_sent = first_chunk_sent.lock().await;
                     let should_send = if !*first_sent {
-                        // Send first chunk when we have enough characters
+                        // Send first chunk after 300 chars
                         buf.len() >= first_size
                     } else {
-                        // Send later chunks based on size and natural breaks
+                        // Send later chunks at 800-1000 chars or paragraph breaks
                         if natural_break {
-                            // Look for paragraph break
-                            if buf.contains("\n\n") {
+                            // Check for paragraph break after 800 chars
+                            if buf.len() >= later_size && buf.contains("\n\n") {
+                                true
+                            } else if buf.len() >= later_size + 200 {
+                                // Force send at 1000 chars even without paragraph break
                                 true
                             } else {
-                                buf.len() >= later_size
+                                false
                             }
                         } else {
                             buf.len() >= later_size
                         }
                     };
-                    
+
                     if should_send {
-                        let chunk = if natural_break && buf.contains("\n\n") {
-                            // Split at last paragraph break
-                            let last_break = buf.rfind("\n\n").unwrap();
-                            let chunk = buf[..last_break + 2].to_string();
-                            *buf = buf[last_break + 2..].to_string();
-                            chunk
-                        } else {
-                            // Send entire buffer
-                            let chunk = buf.clone();
-                            buf.clear();
-                            chunk
-                        };
-                        
+                        let chunk =
+                            if natural_break && buf.contains("\n\n") && buf.len() >= later_size {
+                                // Split at last paragraph break after later_size chars
+                                let last_break = buf.rfind("\n\n").unwrap();
+                                let chunk = buf[..last_break + 2].to_string();
+                                *buf = buf[last_break + 2..].to_string();
+                                chunk
+                            } else {
+                                // Send entire buffer
+                                let chunk = buf.clone();
+                                buf.clear();
+                                chunk
+                            };
+
                         if !*first_sent {
                             info!("Sending first Teams chunk: {} chars", chunk.len());
                             *first_sent = true;
                         } else {
                             info!("Sending Teams chunk: {} chars", chunk.len());
                         }
-                        
+
                         let msg = hakimi_gateway::GatewayMessage {
                             platform: "teams_webhook".to_string(),
                             bot_id: "teams-agent".to_string(),
@@ -6224,7 +6242,7 @@ async fn teams_webhook_inbound(
                             media: None,
                             callback_data: None,
                         };
-                        
+
                         if let Err(e) = gateway.route_message(&msg).await {
                             warn!("Failed to send Teams chunk: {}", e);
                         }
@@ -6232,7 +6250,7 @@ async fn teams_webhook_inbound(
                 });
             }
         })));
-        
+
         // Run the conversation
         match cloned_agent.chat(&message_text).await {
             Ok(_) => {
@@ -6241,7 +6259,7 @@ async fn teams_webhook_inbound(
                     let buf = buffer.lock().await;
                     buf.clone()
                 };
-                
+
                 if !remaining.is_empty() {
                     info!("Sending final Teams chunk: {} chars", remaining.len());
                     let msg = hakimi_gateway::GatewayMessage {
@@ -6253,12 +6271,12 @@ async fn teams_webhook_inbound(
                         media: None,
                         callback_data: None,
                     };
-                    
+
                     if let Err(e) = gateway.route_message(&msg).await {
                         warn!("Failed to send final Teams chunk: {}", e);
                     }
                 }
-                
+
                 info!("Teams streaming response complete");
             }
             Err(e) => {
@@ -6276,12 +6294,9 @@ async fn teams_webhook_inbound(
             }
         }
     });
-    
-    // Return empty 200 response (no confirmation card)
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .body(axum::body::Body::empty())
-        .unwrap())
+
+    // Return minimal acknowledgment card immediately
+    Ok(Json(ack_card))
 }
 
 /// Health check for Teams Webhook endpoint.

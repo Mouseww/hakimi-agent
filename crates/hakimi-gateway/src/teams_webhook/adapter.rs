@@ -8,12 +8,12 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
 
 use crate::{GatewayMessage, PlatformAdapter};
@@ -27,17 +27,17 @@ use crate::{GatewayMessage, PlatformAdapter};
 pub struct TeamsWebhookConfig {
     /// HMAC secret token from Teams Outgoing Webhook (base64 string).
     pub hmac_secret: String,
-    
+
     /// Default Power Automate Workflows webhook URL (fallback).
     #[serde(default)]
     pub default_workflow_url: String,
-    
+
     /// Channel ID -> Workflows URL mapping.
     /// Key: Teams channel ID (e.g., "19:abc...@thread.tacv2")
     /// Value: Power Automate Workflows webhook URL
     #[serde(default)]
     pub channel_workflows: HashMap<String, String>,
-    
+
     /// Bot identifier (for internal routing).
     #[serde(default = "default_bot_id")]
     pub bot_id: String,
@@ -139,23 +139,24 @@ impl AdaptiveCardBuilder {
     }
 
     pub fn build(&self) -> serde_json::Value {
-        let mut body = vec![
-            json!({
-                "type": "TextBlock",
-                "size": "Medium",
-                "weight": "Bolder",
-                "text": self.title
-            })
-        ];
+        let mut body = vec![json!({
+            "type": "TextBlock",
+            "size": "Medium",
+            "weight": "Bolder",
+            "text": self.title
+        })];
 
         // Group facts into FactSet
-        let facts: Vec<_> = self.body_parts
+        let facts: Vec<_> = self
+            .body_parts
             .iter()
             .filter(|p| p.get("_type").and_then(|t| t.as_str()) == Some("fact"))
-            .map(|f| json!({
-                "title": f["title"],
-                "value": f["value"]
-            }))
+            .map(|f| {
+                json!({
+                    "title": f["title"],
+                    "value": f["value"]
+                })
+            })
             .collect();
 
         if !facts.is_empty() {
@@ -211,7 +212,7 @@ impl TeamsWebhookAdapter {
     pub fn new(config: TeamsWebhookConfig) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
         let bot_id = config.bot_id.clone();
-        
+
         Self {
             config,
             bot_id,
@@ -235,7 +236,7 @@ impl TeamsWebhookAdapter {
         }
 
         let provided = &auth_header[5..]; // Strip "HMAC " prefix
-        
+
         // Decode the secret from base64
         let key = match BASE64.decode(&self.config.hmac_secret) {
             Ok(k) => k,
@@ -246,8 +247,7 @@ impl TeamsWebhookAdapter {
         };
 
         // Compute HMAC-SHA256
-        let mut mac = Hmac::<Sha256>::new_from_slice(&key)
-            .expect("HMAC key size should be valid");
+        let mut mac = Hmac::<Sha256>::new_from_slice(&key).expect("HMAC key size should be valid");
         mac.update(raw_body);
         let result = mac.finalize();
         let expected = BASE64.encode(result.into_bytes());
@@ -259,19 +259,23 @@ impl TeamsWebhookAdapter {
     /// Process inbound Teams activity and convert to GatewayMessage.
     pub fn process_inbound(&self, activity: TeamsInboundActivity) -> Option<GatewayMessage> {
         let text = activity.text.as_ref()?.clone();
-        
+
         // Strip HTML tags and @mentions from text
         let clean_text = strip_html_tags(&text).trim().to_string();
-        
+
         if clean_text.is_empty() {
             return None;
         }
 
-        let user_id = activity.from.as_ref()
+        let user_id = activity
+            .from
+            .as_ref()
             .and_then(|f| f.aad_object_id.clone())
             .unwrap_or_else(|| "unknown".to_string());
 
-        let channel_id = activity.channel_data.as_ref()
+        let channel_id = activity
+            .channel_data
+            .as_ref()
             .and_then(|cd| cd.teams_channel_id.clone())
             .unwrap_or_else(|| "default".to_string());
 
@@ -346,7 +350,8 @@ impl PlatformAdapter for TeamsWebhookAdapter {
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> Result<()> {
-        let url = self.get_workflow_url(chat_id)
+        let url = self
+            .get_workflow_url(chat_id)
             .await
             .context("No Workflows URL configured for this channel")?;
 
@@ -362,7 +367,8 @@ impl PlatformAdapter for TeamsWebhookAdapter {
             "Sending card to Teams Workflows"
         );
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&url)
             .json(&card)
             .send()
@@ -423,7 +429,7 @@ mod tests {
         let mut builder = AdaptiveCardBuilder::new("Test Card");
         builder.add_text("This is a test");
         builder.add_button("Click me", "https://example.com");
-        
+
         let card = builder.build();
         assert_eq!(card["type"], "message");
         assert!(card["attachments"][0]["content"]["body"].is_array());
@@ -436,7 +442,7 @@ mod tests {
             default_workflow_url: "https://example.com/webhook".to_string(),
             ..Default::default()
         };
-        
+
         let adapter = TeamsWebhookAdapter::new(config);
         assert_eq!(adapter.name(), "teams_webhook");
     }

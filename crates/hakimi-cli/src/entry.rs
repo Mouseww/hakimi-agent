@@ -3020,14 +3020,17 @@ fn register_configured_gateway_adapters(
 
     // Teams Webhook adapter
     if let Some(hmac_secret) = optional_config_value(&config.gateways.teams_webhook.hmac_secret) {
-        if let Some(default_workflow_url) = optional_config_value(&config.gateways.teams_webhook.default_workflow_url) {
+        if let Some(default_workflow_url) =
+            optional_config_value(&config.gateways.teams_webhook.default_workflow_url)
+        {
             let bot_id = config.gateways.teams_webhook.bot_id.clone();
-            let teams_webhook = hakimi_gateway::TeamsWebhookAdapter::new(hakimi_gateway::TeamsWebhookConfig {
-                bot_id: bot_id.clone(),
-                hmac_secret,
-                default_workflow_url,
-                channel_workflows: config.gateways.teams_webhook.channel_workflows.clone(),
-            });
+            let teams_webhook =
+                hakimi_gateway::TeamsWebhookAdapter::new(hakimi_gateway::TeamsWebhookConfig {
+                    bot_id: bot_id.clone(),
+                    hmac_secret,
+                    default_workflow_url,
+                    channel_workflows: config.gateways.teams_webhook.channel_workflows.clone(),
+                });
             gateway.add_adapter(Box::new(teams_webhook));
             bot_ids.insert("teams_webhook".to_string(), bot_id);
             info!("teams_webhook gateway registered");

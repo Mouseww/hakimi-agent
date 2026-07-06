@@ -313,12 +313,8 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
             1 => {
                 // QQ Bot
                 println!();
-                let app_id: String = Input::new()
-                    .with_prompt("QQ Bot AppID")
-                    .interact_text()?;
-                let token: String = Password::new()
-                    .with_prompt("QQ Bot Token")
-                    .interact()?;
+                let app_id: String = Input::new().with_prompt("QQ Bot AppID").interact_text()?;
+                let token: String = Password::new().with_prompt("QQ Bot Token").interact()?;
                 // QQ uses channel_id to store AppID, token remains in token field
                 platforms.push(PlatformConfig {
                     platform: "qqbot".to_string(),
@@ -338,7 +334,11 @@ fn step_platform_adapters() -> Result<Vec<PlatformConfig>> {
                     .interact()?;
                 platforms.push(PlatformConfig {
                     platform: "clawbot".to_string(),
-                    token: if token.is_empty() { endpoint } else { format!("{}|{}", endpoint, token) },
+                    token: if token.is_empty() {
+                        endpoint
+                    } else {
+                        format!("{}|{}", endpoint, token)
+                    },
                     channel_id: None,
                 });
             }

@@ -8,7 +8,7 @@ mod adapter;
 mod server;
 
 pub use adapter::{
-    AdaptiveCardBuilder, TeamsChannelData, TeamsFrom, TeamsInboundActivity,
-    TeamsWebhookAdapter, TeamsWebhookConfig,
+    AdaptiveCardBuilder, TeamsChannelData, TeamsFrom, TeamsInboundActivity, TeamsWebhookAdapter,
+    TeamsWebhookConfig,
 };
 pub use server::TeamsWebhookServer;

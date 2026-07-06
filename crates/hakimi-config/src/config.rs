@@ -1532,11 +1532,11 @@ pub struct TeamsWebhookStreamingConfig {
 }
 
 fn default_teams_first_chunk_size() -> usize {
-    100
+    300
 }
 
 fn default_teams_later_chunk_size() -> usize {
-    300
+    800
 }
 
 fn default_teams_natural_break() -> bool {

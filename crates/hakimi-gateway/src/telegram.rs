@@ -708,7 +708,7 @@ impl PlatformAdapter for TelegramAdapter {
             .json()
             .await
             .context("failed to parse sendMessage response")?;
-        
+
         if resp.ok {
             if let Some(result) = &resp.result {
                 return Ok(result.get("message_id").and_then(|v| v.as_i64()));
@@ -735,7 +735,7 @@ impl PlatformAdapter for TelegramAdapter {
             .json()
             .await
             .context("failed to parse editMessageText response")?;
-        
+
         if !resp.ok {
             // Silent handling for "message is not modified"
             if let Some(desc) = &resp.description {
@@ -869,7 +869,7 @@ fn normalize_outbound_text(text: &str) -> String {
 fn sanitize_for_markdown(text: &str) -> String {
     text
         // Remove table separators (| causes parsing errors)
-        .replace('|', "│")  // Use box-drawing character instead
+        .replace('|', "│") // Use box-drawing character instead
         // Escape isolated parentheses (common in text like "99% (79G/80G)")
         .replace("(", "\\(")
         .replace(")", "\\)")
@@ -974,12 +974,14 @@ async fn send_remote_media(
         .json()
         .await
         .with_context(|| format!("failed to parse {} response", method_name(kind)))?;
-    
+
     if !response.ok {
         anyhow::bail!(
             "Telegram {} failed: {}",
             method_name(kind),
-            response.description.unwrap_or_else(|| "unknown error".into())
+            response
+                .description
+                .unwrap_or_else(|| "unknown error".into())
         );
     }
     Ok(())
@@ -1018,12 +1020,14 @@ async fn send_local_media(
         .json()
         .await
         .with_context(|| format!("failed to parse {} upload response", method_name(kind)))?;
-    
+
     if !response.ok {
         anyhow::bail!(
             "Telegram {} failed: {}",
             method_name(kind),
-            response.description.unwrap_or_else(|| "unknown error".into())
+            response
+                .description
+                .unwrap_or_else(|| "unknown error".into())
         );
     }
     Ok(())

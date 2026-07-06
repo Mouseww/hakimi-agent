@@ -40,7 +40,7 @@ pub use qqbot::{QQBotAdapter, QQBotAdapterConfig};
 pub use signal::{SignalAdapter, SignalAdapterConfig};
 pub use slack::{SlackAdapter, SlackAdapterConfig, SlackBlock, SlackTextObject};
 pub use sms::{SmsAdapter, SmsAdapterConfig};
-pub use teams_webhook::{TeamsWebhookAdapter, TeamsWebhookConfig, AdaptiveCardBuilder};
+pub use teams_webhook::{AdaptiveCardBuilder, TeamsWebhookAdapter, TeamsWebhookConfig};
 pub use telegram::TelegramAdapter;
 pub use webhook::{WebhookAdapter, WebhookAdapterConfig};
 pub use wecom::{WeComAdapter, WeComAdapterConfig};
