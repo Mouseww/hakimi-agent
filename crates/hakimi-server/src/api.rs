@@ -6081,56 +6081,54 @@ fn setup_tool_separation_callback(
             let bot_id = bot_id.clone();
 
             tokio::spawn(async move {
-                match event {
-                    StreamEvent::ToolCallDelta {
-                        index, id, name, ..
-                    } => {
-                        // First tool call: flush accumulated text and send tool notification
-                        if index == 0 && id.is_some() {
-                            let mut buf = buffer.lock().await;
-                            if !buf.is_empty() {
-                                // Send accumulated text before tool
-                                info!(
-                                    "[{}] Tool call detected, sending accumulated text: {} chars",
-                                    platform,
-                                    buf.len()
-                                );
-                                let msg = hakimi_gateway::GatewayMessage {
-                                    platform: platform.clone(),
-                                    bot_id: bot_id.clone(),
-                                    chat_id: chat_id.clone(),
-                                    user_id: "agent".to_string(),
-                                    text: buf.clone(),
-                                    media: None,
-                                    callback_data: None,
-                                };
-                                buf.clear();
+                if let StreamEvent::ToolCallDelta {
+                    index, id, name, ..
+                } = event
+                {
+                    // First tool call: flush accumulated text and send tool notification
+                    if index == 0 && id.is_some() {
+                        let mut buf = buffer.lock().await;
+                        if !buf.is_empty() {
+                            // Send accumulated text before tool
+                            info!(
+                                "[{}] Tool call detected, sending accumulated text: {} chars",
+                                platform,
+                                buf.len()
+                            );
+                            let msg = hakimi_gateway::GatewayMessage {
+                                platform: platform.clone(),
+                                bot_id: bot_id.clone(),
+                                chat_id: chat_id.clone(),
+                                user_id: "agent".to_string(),
+                                text: buf.clone(),
+                                media: None,
+                                callback_data: None,
+                            };
+                            buf.clear();
 
-                                if let Err(e) = gateway.route_message(&msg).await {
-                                    warn!("[{}] Failed to send text before tool: {}", platform, e);
-                                }
+                            if let Err(e) = gateway.route_message(&msg).await {
+                                warn!("[{}] Failed to send text before tool: {}", platform, e);
                             }
+                        }
 
-                            // Send tool notification
-                            if let Some(tool_name) = name {
-                                info!("[{}] Sending tool notification: {}", platform, tool_name);
-                                let tool_msg = hakimi_gateway::GatewayMessage {
-                                    platform,
-                                    bot_id,
-                                    chat_id,
-                                    user_id: "agent".to_string(),
-                                    text: format!("🔧 调用工具: {}", tool_name),
-                                    media: None,
-                                    callback_data: None,
-                                };
+                        // Send tool notification
+                        if let Some(tool_name) = name {
+                            info!("[{}] Sending tool notification: {}", platform, tool_name);
+                            let tool_msg = hakimi_gateway::GatewayMessage {
+                                platform,
+                                bot_id,
+                                chat_id,
+                                user_id: "agent".to_string(),
+                                text: format!("🔧 调用工具: {}", tool_name),
+                                media: None,
+                                callback_data: None,
+                            };
 
-                                if let Err(e) = gateway.route_message(&tool_msg).await {
-                                    warn!("Failed to send tool notification: {}", e);
-                                }
+                            if let Err(e) = gateway.route_message(&tool_msg).await {
+                                warn!("Failed to send tool notification: {}", e);
                             }
                         }
                     }
-                    _ => {}
                 }
             });
         }
@@ -6285,7 +6283,7 @@ async fn teams_webhook_inbound(
             }
         };
 
-        let chat_id = channel_id.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
+        let chat_id = channel_id.as_deref().unwrap_or("unknown");
         let chat_id_formatted = format!("teams_{}", chat_id);
 
         if !streaming_config.enabled {
