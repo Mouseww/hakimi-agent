@@ -994,7 +994,7 @@ fn sanitize_for_markdown(text: &str) -> String {
 fn sanitize_for_streaming(text: &str) -> String {
     // First apply standard sanitization
     let text = sanitize_for_markdown(text);
-    
+
     // Count Markdown delimiters to detect unclosed syntax
     let bold_count = text.matches("**").count();
     let total_stars = text.matches('*').count();
@@ -1002,23 +1002,26 @@ fn sanitize_for_streaming(text: &str) -> String {
     let backtick_single = text.matches('`').count();
     let backtick_triple = text.matches("```").count();
     let inline_backticks = backtick_single.saturating_sub(backtick_triple * 6);
-    
+
     // If all Markdown syntax is properly closed, return as-is
-    if bold_count % 2 == 0 && italic_count % 2 == 0 && 
-       inline_backticks % 2 == 0 && backtick_triple % 2 == 0 {
+    if bold_count % 2 == 0
+        && italic_count % 2 == 0
+        && inline_backticks % 2 == 0
+        && backtick_triple % 2 == 0
+    {
         return text;
     }
-    
+
     // Otherwise, strip trailing unclosed Markdown syntax
     let mut result = text.clone();
-    
+
     // Remove trailing unclosed code blocks
     if backtick_triple % 2 != 0 {
         if let Some(pos) = result.rfind("```") {
             result.truncate(pos);
         }
     }
-    
+
     // Remove trailing unclosed inline code
     let remaining_backticks = result.matches('`').count();
     if remaining_backticks % 2 != 0 {
@@ -1026,7 +1029,7 @@ fn sanitize_for_streaming(text: &str) -> String {
             result.truncate(pos);
         }
     }
-    
+
     // Remove trailing unclosed bold
     let remaining_bold = result.matches("**").count();
     if remaining_bold % 2 != 0 {
@@ -1034,7 +1037,7 @@ fn sanitize_for_streaming(text: &str) -> String {
             result.truncate(pos);
         }
     }
-    
+
     // Remove trailing unclosed italic
     let remaining_italic = result.matches('*').count() - (result.matches("**").count() * 2);
     if remaining_italic % 2 != 0 {
@@ -1042,7 +1045,7 @@ fn sanitize_for_streaming(text: &str) -> String {
             result.truncate(pos);
         }
     }
-    
+
     result
 }
 
@@ -1471,27 +1474,21 @@ mod tests {
     #[test]
     fn sanitize_for_streaming_removes_unclosed_markdown() {
         // Unclosed bold
-        assert_eq!(
-            sanitize_for_streaming("完整文本 **未闭合粗体"),
-            "完整文本 "
-        );
-        
+        assert_eq!(sanitize_for_streaming("完整文本 **未闭合粗体"), "完整文本 ");
+
         // Unclosed inline code
-        assert_eq!(
-            sanitize_for_streaming("完整文本 `未闭合代码"),
-            "完整文本 "
-        );
-        
+        assert_eq!(sanitize_for_streaming("完整文本 `未闭合代码"), "完整文本 ");
+
         // Unclosed code block
         assert_eq!(
             sanitize_for_streaming("完整文本\n```rust\nfn main() {"),
             "完整文本\n"
         );
-        
+
         // Closed Markdown (should remain unchanged)
         let closed = "**粗体** 和 `代码` 正常";
         assert_eq!(sanitize_for_streaming(closed), closed);
-        
+
         // Mixed: closed bold + unclosed italic
         assert_eq!(
             sanitize_for_streaming("**完整粗体** 和 *未闭合斜体"),
