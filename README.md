@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.30-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.31-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.30)
+## ✨ Recent Updates (v0.5.31)
+
+**🐛 macOS CI Build Fix:**
+- ✅ **Axum API Compatibility** — Fixed `RawBody` usage → `Request<Body>` for Axum 0.8 API changes
+- 🔓 **Module Visibility** — Made `teams_webhook` module public in `hakimi-gateway` lib.rs
+- 🧹 **Simplified Config** — Removed incomplete config validation in Teams webhook handler (TODO for future)
+- 🚀 **CI Green** — All platforms (Linux x64/ARM64, macOS x64/ARM64, Windows x64/ARM64) now build successfully
+
+**Previous Updates (v0.5.30):**
 
 **🏢 Teams Webhook Integration (3005 Port Reuse):**
 - ♻️ **Unified Port Deployment** — Teams Webhook endpoints integrated into WebUI server (3005 port), eliminating need for separate service

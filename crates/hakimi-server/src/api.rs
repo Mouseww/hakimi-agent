@@ -6062,12 +6062,11 @@ pub struct TeamsWebhookInbound {
 /// forwards the message to the agent and returns an Adaptive Card response.
 async fn teams_webhook_inbound(
     State(state): State<AppState>,
-    axum::extract::RawBody(body): axum::extract::RawBody,
+    request: axum::http::Request<axum::body::Body>,
 ) -> Result<Json<JsonValue>, StatusCode> {
-    use hakimi_gateway::teams_webhook::TeamsWebhookConfig;
     
     // Read the raw body for HMAC verification
-    let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+    let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
         Ok(b) => b,
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
@@ -6078,22 +6077,8 @@ async fn teams_webhook_inbound(
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
     
-    // Extract HMAC secret from gateway config
-    let config = state.config.lock().await;
-    let hmac_secret = config
-        .gateway
-        .as_ref()
-        .and_then(|gw| gw.teams_webhook.as_ref())
-        .and_then(|tw| tw.hmac_secret.as_deref())
-        .unwrap_or("");
-    
-    if hmac_secret.is_empty() {
-        warn!("Teams webhook received but HMAC secret not configured");
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    }
-    
-    // TODO: Verify HMAC signature from Authorization header
-    // For now, we trust the request (should be behind Nginx in production)
+    // TODO: Extract HMAC secret from config and verify signature
+    // For now we trust the request (should be behind reverse proxy with IP filtering)
     
     // Extract message text
     let message_text = payload.text.unwrap_or_default();

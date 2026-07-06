@@ -19,7 +19,7 @@ mod qqbot;
 mod signal;
 mod slack;
 mod sms;
-mod teams_webhook;
+pub mod teams_webhook;
 mod telegram;
 mod webhook;
 mod wecom;
