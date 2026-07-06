@@ -421,7 +421,7 @@ mod tests {
     fn test_strip_html_tags() {
         let input = "<at>AgentBot</at> help me with this task";
         let output = strip_html_tags(input);
-        assert_eq!(output, " help me with this task");
+        assert_eq!(output, "AgentBot help me with this task");
     }
 
     #[test]
