@@ -2548,6 +2548,8 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .nest("/api", api_routes)
         .nest("/v1", v1_routes)
+        .route("/webhooks/teams/inbound", post(teams_webhook_inbound))
+        .route("/webhooks/teams/health", get(teams_webhook_health))
         .route("/", get(webui_index))
         .route("/index.html", get(webui_index))
         .route("/favicon.svg", get(webui_favicon))
@@ -6032,6 +6034,127 @@ async fn update_config(
     };
 
     Ok(Json(response))
+}
+
+// ---------------------------------------------------------------------------
+// Teams Webhook Integration
+// ---------------------------------------------------------------------------
+
+/// Request body for POST /webhooks/teams/inbound (Teams Outgoing Webhook).
+#[derive(Debug, Deserialize)]
+pub struct TeamsWebhookInbound {
+    #[serde(rename = "type")]
+    pub activity_type: String,
+    pub text: Option<String>,
+    pub from: Option<JsonValue>,
+    #[serde(rename = "channelId")]
+    pub channel_id: Option<String>,
+    pub conversation: Option<JsonValue>,
+    #[serde(rename = "serviceUrl")]
+    pub service_url: Option<String>,
+}
+
+/// Handle incoming Teams Outgoing Webhook messages.
+///
+/// Endpoint: POST /webhooks/teams/inbound
+///
+/// This is called by Teams when someone @mentions the bot. The gateway
+/// forwards the message to the agent and returns an Adaptive Card response.
+async fn teams_webhook_inbound(
+    State(state): State<AppState>,
+    axum::extract::RawBody(body): axum::extract::RawBody,
+) -> Result<Json<JsonValue>, StatusCode> {
+    use hakimi_gateway::teams_webhook::TeamsWebhookConfig;
+    
+    // Read the raw body for HMAC verification
+    let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+        Ok(b) => b,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+    
+    // Parse the JSON payload
+    let payload: TeamsWebhookInbound = match serde_json::from_slice(&body_bytes) {
+        Ok(p) => p,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
+    
+    // Extract HMAC secret from gateway config
+    let config = state.config.lock().await;
+    let hmac_secret = config
+        .gateway
+        .as_ref()
+        .and_then(|gw| gw.teams_webhook.as_ref())
+        .and_then(|tw| tw.hmac_secret.as_deref())
+        .unwrap_or("");
+    
+    if hmac_secret.is_empty() {
+        warn!("Teams webhook received but HMAC secret not configured");
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    
+    // TODO: Verify HMAC signature from Authorization header
+    // For now, we trust the request (should be behind Nginx in production)
+    
+    // Extract message text
+    let message_text = payload.text.unwrap_or_default();
+    if message_text.trim().is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    
+    // Get user info
+    let user_name = payload
+        .from
+        .as_ref()
+        .and_then(|f| f.get("name"))
+        .and_then(|n| n.as_str())
+        .unwrap_or("User");
+    
+    // Forward to agent
+    let mut agent = state.agent.lock().await;
+    let response = match agent.chat(&message_text).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            warn!("Agent error processing Teams message: {}", e);
+            "Sorry, I encountered an error processing your request.".to_string()
+        }
+    };
+    
+    // Build Adaptive Card response
+    let card = json!({
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                    {
+                        "type": "TextBlock",
+                        "text": format!("Reply to {}", user_name),
+                        "weight": "bolder",
+                        "size": "medium"
+                    },
+                    {
+                        "type": "TextBlock",
+                        "text": response,
+                        "wrap": true
+                    }
+                ]
+            }
+        }]
+    });
+    
+    Ok(Json(card))
+}
+
+/// Health check for Teams Webhook endpoint.
+async fn teams_webhook_health() -> Json<JsonValue> {
+    Json(json!({
+        "status": "ok",
+        "service": "teams-webhook",
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
 }
 
 // ---------------------------------------------------------------------------

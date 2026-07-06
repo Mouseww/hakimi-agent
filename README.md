@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.29-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.30-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,17 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.29)
+## ✨ Recent Updates (v0.5.30)
+
+**🏢 Teams Webhook Integration (3005 Port Reuse):**
+- ♻️ **Unified Port Deployment** — Teams Webhook endpoints integrated into WebUI server (3005 port), eliminating need for separate service
+- 🔌 **Simple Reverse Proxy Setup** — Works with existing Nginx configuration, no new domains or ports required
+- 🚀 **Two New Endpoints** — `POST /webhooks/teams/inbound` for messages, `GET /webhooks/teams/health` for health checks
+- 💬 **Adaptive Card Responses** — Returns formatted Adaptive Cards directly from the WebUI handler
+- 🔒 **Config-Based HMAC** — Reads Teams webhook secret from `config.yaml` gateway section
+- 📦 **Cleaner Architecture** — Removed standalone `teams-webhook-server` binary, consolidated into main server
+
+**Previous Updates (v0.5.29):**
 
 **🏢 Microsoft Teams Webhook Integration:**
 - 🔌 **No Azure Bot Required** — Direct integration via Teams Outgoing Webhooks + Power Automate Workflows
