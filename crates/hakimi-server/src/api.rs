@@ -6063,7 +6063,7 @@ pub struct TeamsWebhookInbound {
 async fn teams_webhook_inbound(
     State(state): State<AppState>,
     request: axum::http::Request<axum::body::Body>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<Json<JsonValue>, StatusCode> {
     
     // Read the raw body for HMAC verification
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
@@ -6086,7 +6086,7 @@ async fn teams_webhook_inbound(
         return Err(StatusCode::BAD_REQUEST);
     }
     
-    // Get user info and channel info for callback
+    // Get user info for immediate response
     let user_name = payload
         .from
         .as_ref()
@@ -6096,9 +6096,12 @@ async fn teams_webhook_inbound(
         .to_string();
     
     let channel_id = payload.channel_id.clone();
+    let service_url = payload.service_url.clone();
     
     // Spawn async task to process message (non-blocking)
     tokio::spawn(async move {
+        info!("Processing Teams message in background: {}", message_text);
+        
         // Process message in background
         let response = {
             let mut agent = state.agent.lock().await;
@@ -6106,45 +6109,49 @@ async fn teams_webhook_inbound(
                 Ok(resp) => resp,
                 Err(e) => {
                     warn!("Agent error processing Teams message: {}", e);
-                    "Sorry, I encountered an error processing your request.".to_string()
+                    "抱歉，处理您的消息时遇到错误。".to_string()
                 }
             }
         };
         
-        // Build Adaptive Card response
-        let card = json!({
-            "type": "message",
-            "attachments": [{
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                    "type": "AdaptiveCard",
-                    "version": "1.4",
-                    "body": [
-                        {
-                            "type": "TextBlock",
-                            "text": format!("Reply to {}", user_name),
-                            "weight": "bolder",
-                            "size": "medium"
-                        },
-                        {
-                            "type": "TextBlock",
-                            "text": response,
-                            "wrap": true
-                        }
-                    ]
-                }
-            }]
-        });
+        info!("Teams message processed, response ready: {} chars", response.len());
         
-        // Send response back via webhook URL (if configured)
-        // TODO: Read webhook URL from config and POST card to it
-        // For now just log the response
-        info!("Teams webhook response ready for channel {:?}: {} chars", channel_id, response.len());
+        // TODO: Send response back via Teams service URL or Power Automate webhook
+        // For now we just log it - Teams integration requires either:
+        // 1. Bot Framework API (POST to service_url/v3/conversations/{id}/activities)
+        // 2. Power Automate Workflow webhook URL (configured per channel)
+        info!("Teams response (channel {:?}, service_url {:?}):\n{}", 
+              channel_id, service_url, response);
     });
     
-    // Return 202 Accepted immediately (non-blocking)
-    Ok(StatusCode::ACCEPTED)
+    // Return immediate acknowledgment card
+    let ack_card = json!({
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                    {
+                        "type": "TextBlock",
+                        "text": format!("✅ 收到消息，{}", user_name),
+                        "weight": "bolder",
+                        "size": "medium"
+                    },
+                    {
+                        "type": "TextBlock",
+                        "text": "正在处理您的请求，请稍候...",
+                        "wrap": true,
+                        "color": "accent"
+                    }
+                ]
+            }
+        }]
+    });
+    
+    Ok(Json(ack_card))
 }
 
 /// Health check for Teams Webhook endpoint.

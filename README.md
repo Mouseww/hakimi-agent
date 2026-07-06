@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.32-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.33-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.32)
+## ✨ Recent Updates (v0.5.33)
+
+**💬 Teams Webhook 友好即时响应 + 日志增强：**
+- 🎨 **立即返回 Adaptive Card** — 不再返回空 202，而是返回友好的"✅ 收到消息，正在处理..."卡片
+- 📝 **详细后台日志** — 后台任务处理开始/完成/结果都记录 info 日志，方便排查问题
+- 🌐 **提取 service_url** — 为后续实现 Bot Framework API 回复做准备（当前先记录日志）
+- 🔧 **TODO 标记** — 明确标记了两种回复方式：Bot Framework API 或 Power Automate Webhook
+
+**Previous Updates (v0.5.32):**
 
 **⚡ Teams Webhook 异步非阻塞修复：**
 - 🚀 **立即返回 202 Accepted** — Teams webhook 处理改为异步模式，收到请求后立即返回，彻底解决 10 秒超时问题
