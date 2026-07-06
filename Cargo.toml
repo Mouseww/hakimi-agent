@@ -24,7 +24,12 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.45"
+version = "0.5.46"
+edition = "2024"
+
+[package]
+name = "hakimi-agent"
+version = "0.5.46"
 edition = "2024"
 
 [workspace.dependencies]

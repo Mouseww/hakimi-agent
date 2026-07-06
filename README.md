@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.45-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.46-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,16 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.36)
+## ✨ Recent Updates (v0.5.46)
+
+**🎯 Telegram 流式输出格式稳定性修复：**
+- ✅ **智能未闭合语法检测** — 新增 `sanitize_for_streaming()` 函数，实时检测并移除未闭合的 Markdown 语法
+- 🔧 **消除 UI 闪烁** — 流式更新时自动截断未完成的 `**粗体**`、`` `代码` ``、`` ```代码块``` `` 等语法，防止 Telegram 解析失败
+- 📊 **渐进式渲染** — 已完成的 Markdown 格式正常显示，未完成部分作为纯文本，输出完成后格式完整
+- 🚀 **用户体验优化** — 彻底解决流式输出过程中"有格式 ↔ 无格式"反复切换导致的视觉不稳定问题
+- ⚡ **零性能损耗** — 使用 `saturating_sub()` 避免整数溢出，逻辑高效且安全
+
+**Previous Updates (v0.5.36):**
 
 **🔌 Teams Webhook Gateway 注册修复：**
 - ✅ **自动注册 Adapter** — 在统一模式启动时自动注册 TeamsWebhookAdapter 到 Gateway
