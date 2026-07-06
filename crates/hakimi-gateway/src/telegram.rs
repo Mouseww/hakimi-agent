@@ -1004,10 +1004,10 @@ fn sanitize_for_streaming(text: &str) -> String {
     let inline_backticks = backtick_single.saturating_sub(backtick_triple * 6);
 
     // If all Markdown syntax is properly closed, return as-is
-    if bold_count % 2 == 0
-        && italic_count % 2 == 0
-        && inline_backticks % 2 == 0
-        && backtick_triple % 2 == 0
+    if bold_count.is_multiple_of(2)
+        && italic_count.is_multiple_of(2)
+        && inline_backticks.is_multiple_of(2)
+        && backtick_triple.is_multiple_of(2)
     {
         return text;
     }
@@ -1016,34 +1016,34 @@ fn sanitize_for_streaming(text: &str) -> String {
     let mut result = text.clone();
 
     // Remove trailing unclosed code blocks
-    if backtick_triple % 2 != 0 {
-        if let Some(pos) = result.rfind("```") {
-            result.truncate(pos);
-        }
+    if !backtick_triple.is_multiple_of(2)
+        && let Some(pos) = result.rfind("```")
+    {
+        result.truncate(pos);
     }
 
     // Remove trailing unclosed inline code
     let remaining_backticks = result.matches('`').count();
-    if remaining_backticks % 2 != 0 {
-        if let Some(pos) = result.rfind('`') {
-            result.truncate(pos);
-        }
+    if !remaining_backticks.is_multiple_of(2)
+        && let Some(pos) = result.rfind('`')
+    {
+        result.truncate(pos);
     }
 
     // Remove trailing unclosed bold
     let remaining_bold = result.matches("**").count();
-    if remaining_bold % 2 != 0 {
-        if let Some(pos) = result.rfind("**") {
-            result.truncate(pos);
-        }
+    if !remaining_bold.is_multiple_of(2)
+        && let Some(pos) = result.rfind("**")
+    {
+        result.truncate(pos);
     }
 
     // Remove trailing unclosed italic
     let remaining_italic = result.matches('*').count() - (result.matches("**").count() * 2);
-    if remaining_italic % 2 != 0 {
-        if let Some(pos) = result.rfind('*') {
-            result.truncate(pos);
-        }
+    if !remaining_italic.is_multiple_of(2)
+        && let Some(pos) = result.rfind('*')
+    {
+        result.truncate(pos);
     }
 
     result
