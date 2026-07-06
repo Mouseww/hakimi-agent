@@ -6073,22 +6073,28 @@ fn setup_tool_separation_callback(
     agent.set_event_callback(Some(Arc::new({
         move |event: hakimi_transports::StreamEvent| {
             use hakimi_transports::StreamEvent;
-            
+
             let buffer = buffer.clone();
             let gateway = gateway.clone();
             let chat_id = chat_id.clone();
             let platform = platform.clone();
             let bot_id = bot_id.clone();
-            
+
             tokio::spawn(async move {
                 match event {
-                    StreamEvent::ToolCallDelta { index, id, name, .. } => {
+                    StreamEvent::ToolCallDelta {
+                        index, id, name, ..
+                    } => {
                         // First tool call: flush accumulated text and send tool notification
                         if index == 0 && id.is_some() {
                             let mut buf = buffer.lock().await;
                             if !buf.is_empty() {
                                 // Send accumulated text before tool
-                                info!("[{}] Tool call detected, sending accumulated text: {} chars", platform, buf.len());
+                                info!(
+                                    "[{}] Tool call detected, sending accumulated text: {} chars",
+                                    platform,
+                                    buf.len()
+                                );
                                 let msg = hakimi_gateway::GatewayMessage {
                                     platform: platform.clone(),
                                     bot_id: bot_id.clone(),
@@ -6099,12 +6105,12 @@ fn setup_tool_separation_callback(
                                     callback_data: None,
                                 };
                                 buf.clear();
-                                
+
                                 if let Err(e) = gateway.route_message(&msg).await {
                                     warn!("[{}] Failed to send text before tool: {}", platform, e);
                                 }
                             }
-                            
+
                             // Send tool notification
                             if let Some(tool_name) = name {
                                 info!("[{}] Sending tool notification: {}", platform, tool_name);
@@ -6117,7 +6123,7 @@ fn setup_tool_separation_callback(
                                     media: None,
                                     callback_data: None,
                                 };
-                                
+
                                 if let Err(e) = gateway.route_message(&tool_msg).await {
                                     warn!("Failed to send tool notification: {}", e);
                                 }
@@ -6155,7 +6161,7 @@ fn create_progress_aware_streaming_callback(
         let platform = platform.clone();
         let bot_id = bot_id.clone();
         let chat_id = chat_id.clone();
-        
+
         tokio::spawn(async move {
             // Check for tool execution marker
             if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
@@ -6174,7 +6180,7 @@ fn create_progress_aware_streaming_callback(
                 }
                 return;
             }
-            
+
             // Check for delegation progress marker
             if let Some(delegate_notice) = token.strip_prefix("\u{001e}hakimi_delegate:") {
                 // Format: task_id|title|line|timestamp
@@ -6199,7 +6205,7 @@ fn create_progress_aware_streaming_callback(
                 }
                 return;
             }
-            
+
             // Regular token: accumulate in buffer
             let mut buf = buffer.lock().await;
             buf.push_str(&token);
@@ -6337,7 +6343,7 @@ async fn teams_webhook_inbound(
             "teams-agent".to_string(),
             chat_id_clone.clone(),
         )));
-        
+
         // Set up tool separation callback for this agent
         setup_tool_separation_callback(
             &mut cloned_agent,

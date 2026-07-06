@@ -874,16 +874,16 @@ fn sanitize_for_markdown(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();
     let mut code_regions = Vec::new();
-    
+
     let mut i = 0;
     while i < len {
         // Check for code block (```)
-        if i + 2 < len && chars[i] == '`' && chars[i+1] == '`' && chars[i+2] == '`' {
+        if i + 2 < len && chars[i] == '`' && chars[i + 1] == '`' && chars[i + 2] == '`' {
             let start = i;
             i += 3;
             // Find closing ```
             while i + 2 < len {
-                if chars[i] == '`' && chars[i+1] == '`' && chars[i+2] == '`' {
+                if chars[i] == '`' && chars[i + 1] == '`' && chars[i + 2] == '`' {
                     code_regions.push((start, i + 3));
                     i += 3;
                     break;
@@ -913,13 +913,15 @@ fn sanitize_for_markdown(text: &str) -> String {
     // Step 2: Smart escaping - preserve Markdown syntax while escaping isolated characters
     let mut result = String::with_capacity(text.len());
     let mut i = 0;
-    
+
     while i < len {
         let ch = chars[i];
-        
+
         // Check if we're inside a code region
-        let in_code = code_regions.iter().any(|&(start, end)| i >= start && i < end);
-        
+        let in_code = code_regions
+            .iter()
+            .any(|&(start, end)| i >= start && i < end);
+
         if in_code {
             // Inside code block/inline: keep everything as-is
             result.push(ch);

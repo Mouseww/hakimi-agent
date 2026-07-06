@@ -451,12 +451,12 @@ async fn fetch_streaming_response(
                 if matches!(event, StreamEvent::Done | StreamEvent::Finished(_)) {
                     saw_terminal_event = true;
                 }
-                
+
                 // Call event_callback for ALL events (including ToolCallDelta)
                 if let Some(ref ecb) = event_callback {
                     ecb(event.clone());
                 }
-                
+
                 // Print content deltas to stdout in real-time.
                 if let StreamEvent::ContentDelta(text) = event {
                     let mut s = scrubber.lock().await;

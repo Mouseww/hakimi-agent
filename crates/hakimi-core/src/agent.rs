@@ -583,7 +583,10 @@ impl AIAgent {
     }
 
     /// Set the event callback to receive all StreamEvents (including ToolCallDelta).
-    pub fn set_event_callback(&mut self, callback: Option<Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>) {
+    pub fn set_event_callback(
+        &mut self,
+        callback: Option<Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>,
+    ) {
         self.event_callback = callback;
     }
 
