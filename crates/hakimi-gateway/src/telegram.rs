@@ -570,7 +570,7 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_message(&self, chat_id: &str, text: &str) -> Result<()> {
-        let text = escape_markdown(&normalize_outbound_text(text));
+        let text = sanitize_for_markdown(&normalize_outbound_text(text));
         // Split messages longer than 4096 characters into multiple sends.
         let chunks = split_message(&text, MAX_MESSAGE_LENGTH);
 
@@ -692,7 +692,7 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_message_get_id(&self, chat_id: &str, text: &str) -> Result<Option<i64>> {
-        let text = escape_markdown(&normalize_outbound_text(text));
+        let text = sanitize_for_markdown(&normalize_outbound_text(text));
         let body = serde_json::json!({
             "chat_id": chat_id,
             "text": text,
@@ -718,7 +718,7 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn edit_message(&self, chat_id: &str, message_id: i64, text: &str) -> Result<()> {
-        let text = escape_markdown(&normalize_outbound_text(text));
+        let text = sanitize_for_markdown(&normalize_outbound_text(text));
         let body = serde_json::json!({
             "chat_id": chat_id,
             "message_id": message_id,
@@ -864,16 +864,18 @@ fn normalize_outbound_text(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// Escape special characters for Telegram Markdown (v1).
-/// Escapes: _ * [ ] ( ) `
-fn escape_markdown(text: &str) -> String {
-    text.replace('_', "\\_")
-        .replace('*', "\\*")
-        .replace('[', "\\[")
-        .replace(']', "\\]")
-        .replace('(', "\\(")
-        .replace(')', "\\)")
-        .replace('`', "\\`")
+/// Sanitize text for stable Telegram Markdown rendering.
+/// Removes problematic characters that cause parsing errors.
+fn sanitize_for_markdown(text: &str) -> String {
+    text
+        // Remove table separators (| causes parsing errors)
+        .replace('|', "│")  // Use box-drawing character instead
+        // Escape isolated parentheses (common in text like "99% (79G/80G)")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        // Escape brackets that might be mistaken for links
+        .replace("[", "\\[")
+        .replace("]", "\\]")
 }
 
 fn truncate_draft_text(text: &str) -> String {
@@ -955,7 +957,7 @@ async fn send_remote_media(
     caption: &str,
     kind: TelegramMediaKind,
 ) -> Result<()> {
-    let escaped_caption = escape_markdown(caption);
+    let escaped_caption = sanitize_for_markdown(caption);
     let field_name = media_field_name(kind);
     let body = serde_json::json!({
         "chat_id": chat_id,
@@ -991,7 +993,7 @@ async fn send_local_media(
     caption: &str,
     kind: TelegramMediaKind,
 ) -> Result<()> {
-    let escaped_caption = escape_markdown(caption);
+    let escaped_caption = sanitize_for_markdown(caption);
     let bytes = std::fs::read(media)
         .with_context(|| format!("failed to read local media file: {media}"))?;
     let field_name = media_field_name(kind);

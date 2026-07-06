@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.34-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.35-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,16 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.34)
+## ✨ Recent Updates (v0.5.35)
+
+**🎨 Telegram Markdown 稳定渲染修复：**
+- ✅ **智能清理 sanitize_for_markdown()** — 替代 v0.5.27 过度激进的 `escape_markdown()`
+- 🔧 **选择性转义** — 只转义会导致解析错误的字符（括号、方括号、表格分隔符），保留格式化标记（`*`、`` ` ``、`**`）
+- 📊 **表格支持** — 将 `|` 替换为 Unicode 盒绘字符 `│`，避免解析错误同时保持表格视觉效果
+- 🎯 **解决 UI 闪烁** — 彻底消除流式输出过程中"格式化 ↔ 纯文本"反复切换的问题
+- 💎 **保留所有格式** — 粗体、斜体、代码块、链接等 Markdown 功能完全可用
+
+**Previous Updates (v0.5.34):**
 
 **🔄 Teams Webhook 完整回复功能：**
 - ✅ **Gateway 路由集成** — 后台任务通过 Gateway.route_message() 发送回复到 Teams
