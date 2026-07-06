@@ -6116,12 +6116,40 @@ async fn teams_webhook_inbound(
         
         info!("Teams message processed, response ready: {} chars", response.len());
         
-        // TODO: Send response back via Teams service URL or Power Automate webhook
-        // For now we just log it - Teams integration requires either:
-        // 1. Bot Framework API (POST to service_url/v3/conversations/{id}/activities)
-        // 2. Power Automate Workflow webhook URL (configured per channel)
-        info!("Teams response (channel {:?}, service_url {:?}):\n{}", 
-              channel_id, service_url, response);
+        // Send response back via Gateway
+        if let Some(ref gateway) = state.gateway {
+            let chat_id = channel_id.as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("unknown");
+            let chat_id = format!("teams_{}", chat_id); // Match adapter's chat_id format
+            
+            let msg = hakimi_gateway::GatewayMessage {
+                platform: "teams_webhook".to_string(),
+                bot_id: "teams-agent".to_string(), // Match TeamsWebhookConfig default
+                chat_id,
+                user_id: "agent".to_string(),
+                text: response.clone(),
+                media: None,
+                callback_data: None,
+            };
+            
+            match gateway.route_message(&msg).await {
+                Ok(()) => {
+                    info!("Teams response sent successfully via Gateway");
+                }
+                Err(e) => {
+                    warn!("Failed to send Teams response via Gateway: {}", e);
+                    // Fallback: log the response for debugging
+                    info!("Teams response (failed to send, channel {:?}, service_url {:?}):\n{}", 
+                          channel_id, service_url, response);
+                }
+            }
+        } else {
+            // WebUI-only mode (no gateway), just log
+            warn!("Teams webhook received but Gateway is not configured (WebUI-only mode)");
+            info!("Teams response (no Gateway, channel {:?}, service_url {:?}):\n{}", 
+                  channel_id, service_url, response);
+        }
     });
     
     // Return immediate acknowledgment card

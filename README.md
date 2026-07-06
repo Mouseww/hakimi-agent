@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.33-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.34-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,16 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.33)
+## ✨ Recent Updates (v0.5.34)
+
+**🔄 Teams Webhook 完整回复功能：**
+- ✅ **Gateway 路由集成** — 后台任务通过 Gateway.route_message() 发送回复到 Teams
+- 🎯 **自动匹配 chat_id** — 后台任务构造 `teams_{channel_id}` 格式的 chat_id，匹配 adapter 的映射
+- 🔧 **优雅降级** — Gateway 不可用时（WebUI-only 模式）记录详细日志，不会崩溃
+- 📝 **完整日志追踪** — 发送成功/失败都记录 info/warn 日志，方便排查问题
+- 🏗️ **统一架构** — 统一模式下，Teams webhook 和其他平台使用相同的 Gateway 路由机制
+
+**Previous Updates (v0.5.33):**
 
 **💬 Teams Webhook 友好即时响应 + 日志增强：**
 - 🎨 **立即返回 Adaptive Card** — 不再返回空 202，而是返回友好的"✅ 收到消息，正在处理..."卡片
