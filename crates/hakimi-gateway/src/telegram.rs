@@ -867,15 +867,75 @@ fn normalize_outbound_text(text: &str) -> String {
 /// Sanitize text for stable Telegram Markdown rendering.
 /// Removes problematic characters that cause parsing errors.
 fn sanitize_for_markdown(text: &str) -> String {
-    text
-        // Remove table separators (| causes parsing errors)
-        .replace('|', "│") // Use box-drawing character instead
-        // Escape isolated parentheses (common in text like "99% (79G/80G)")
-        .replace("(", "\\(")
-        .replace(")", "\\)")
-        // Escape brackets that might be mistaken for links
-        .replace("[", "\\[")
-        .replace("]", "\\]")
+    // Remove table separators (| causes parsing errors)
+    let text = text.replace('|', "│");
+
+    // Smart escaping: preserve Markdown syntax while escaping isolated characters
+    let mut result = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+
+    let mut i = 0;
+    while i < len {
+        let ch = chars[i];
+
+        match ch {
+            '[' => {
+                // Look ahead for ](url) pattern (Markdown link)
+                if let Some(close_pos) = chars[i..].iter().position(|&c| c == ']') {
+                    let after_close = i + close_pos + 1;
+                    if after_close < len && chars[after_close] == '(' {
+                        // Valid Markdown link pattern, keep as-is
+                        result.push(ch);
+                        i += 1;
+                        continue;
+                    }
+                }
+                // Isolated bracket, escape it
+                result.push_str("\\[");
+            }
+            ']' => {
+                // Check if it's followed by '(' (part of Markdown link)
+                if i + 1 < len && chars[i + 1] == '(' {
+                    // Part of Markdown link, keep as-is
+                    result.push(ch);
+                } else {
+                    // Isolated bracket, escape it
+                    result.push_str("\\]");
+                }
+            }
+            '(' => {
+                // Check if it's preceded by ] (part of Markdown link)
+                if i > 0 && chars[i - 1] == ']' {
+                    // Part of Markdown link, keep as-is
+                    result.push(ch);
+                } else {
+                    // Isolated parenthesis, escape it
+                    result.push_str("\\(");
+                }
+            }
+            ')' => {
+                // Check if we're inside a Markdown link by looking back
+                // Simple heuristic: if there's a recent '](' pattern, we're in a link
+                let is_in_link = result.rfind("](").map_or(false, |pos| {
+                    // Check if there's a closing ')' after that position
+                    !result[pos..].contains(')')
+                });
+                if is_in_link {
+                    // Part of Markdown link, keep as-is
+                    result.push(ch);
+                } else {
+                    // Isolated parenthesis, escape it
+                    result.push_str("\\)");
+                }
+            }
+            _ => result.push(ch),
+        }
+
+        i += 1;
+    }
+
+    result
 }
 
 fn truncate_draft_text(text: &str) -> String {
