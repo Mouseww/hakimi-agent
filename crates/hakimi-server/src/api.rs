@@ -6063,7 +6063,7 @@ pub struct TeamsWebhookInbound {
 async fn teams_webhook_inbound(
     State(state): State<AppState>,
     request: axum::http::Request<axum::body::Body>,
-) -> Result<Json<JsonValue>, StatusCode> {
+) -> Result<StatusCode, StatusCode> {
     
     // Read the raw body for HMAC verification
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
@@ -6086,51 +6086,65 @@ async fn teams_webhook_inbound(
         return Err(StatusCode::BAD_REQUEST);
     }
     
-    // Get user info
+    // Get user info and channel info for callback
     let user_name = payload
         .from
         .as_ref()
         .and_then(|f| f.get("name"))
         .and_then(|n| n.as_str())
-        .unwrap_or("User");
+        .unwrap_or("User")
+        .to_string();
     
-    // Forward to agent
-    let mut agent = state.agent.lock().await;
-    let response = match agent.chat(&message_text).await {
-        Ok(resp) => resp,
-        Err(e) => {
-            warn!("Agent error processing Teams message: {}", e);
-            "Sorry, I encountered an error processing your request.".to_string()
-        }
-    };
+    let channel_id = payload.channel_id.clone();
     
-    // Build Adaptive Card response
-    let card = json!({
-        "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": [
-                    {
-                        "type": "TextBlock",
-                        "text": format!("Reply to {}", user_name),
-                        "weight": "bolder",
-                        "size": "medium"
-                    },
-                    {
-                        "type": "TextBlock",
-                        "text": response,
-                        "wrap": true
-                    }
-                ]
+    // Spawn async task to process message (non-blocking)
+    tokio::spawn(async move {
+        // Process message in background
+        let response = {
+            let mut agent = state.agent.lock().await;
+            match agent.chat(&message_text).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    warn!("Agent error processing Teams message: {}", e);
+                    "Sorry, I encountered an error processing your request.".to_string()
+                }
             }
-        }]
+        };
+        
+        // Build Adaptive Card response
+        let card = json!({
+            "type": "message",
+            "attachments": [{
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                        {
+                            "type": "TextBlock",
+                            "text": format!("Reply to {}", user_name),
+                            "weight": "bolder",
+                            "size": "medium"
+                        },
+                        {
+                            "type": "TextBlock",
+                            "text": response,
+                            "wrap": true
+                        }
+                    ]
+                }
+            }]
+        });
+        
+        // Send response back via webhook URL (if configured)
+        // TODO: Read webhook URL from config and POST card to it
+        // For now just log the response
+        info!("Teams webhook response ready for channel {:?}: {} chars", channel_id, response.len());
     });
     
-    Ok(Json(card))
+    // Return 202 Accepted immediately (non-blocking)
+    Ok(StatusCode::ACCEPTED)
 }
 
 /// Health check for Teams Webhook endpoint.

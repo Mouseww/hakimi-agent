@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.31-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.32-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.31)
+## ✨ Recent Updates (v0.5.32)
+
+**⚡ Teams Webhook 异步非阻塞修复：**
+- 🚀 **立即返回 202 Accepted** — Teams webhook 处理改为异步模式，收到请求后立即返回，彻底解决 10 秒超时问题
+- 🔄 **后台任务处理** — 用 `tokio::spawn` 创建独立任务处理 AI 消息，不阻塞事件循环
+- 🎯 **并发友好** — Agent 处理其他任务时，新 Teams 请求不再等待锁释放
+- 📝 **回复机制 TODO** — 标记了 Power Automate Workflow URL 回调实现（下个版本完成）
+
+**Previous Updates (v0.5.31):**
 
 **🐛 macOS CI Build Fix:**
 - ✅ **Axum API Compatibility** — Fixed `RawBody` usage → `Request<Body>` for Axum 0.8 API changes
