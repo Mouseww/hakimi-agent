@@ -490,8 +490,16 @@ mod tests {
         let dir = get_output_dir(None);
         // Platform-agnostic check: ensure path contains .hakimi and image_cache components
         let path_str = dir.to_string_lossy();
-        assert!(path_str.contains(".hakimi"), "Expected .hakimi in path: {}", path_str);
-        assert!(path_str.contains("image_cache"), "Expected image_cache in path: {}", path_str);
+        assert!(
+            path_str.contains(".hakimi"),
+            "Expected .hakimi in path: {}",
+            path_str
+        );
+        assert!(
+            path_str.contains("image_cache"),
+            "Expected image_cache in path: {}",
+            path_str
+        );
     }
 
     #[test]
