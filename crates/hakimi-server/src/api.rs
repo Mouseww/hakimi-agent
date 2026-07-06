@@ -6131,6 +6131,82 @@ fn setup_tool_separation_callback(
     })));
 }
 
+/// Create a streaming callback that monitors tool execution and delegation progress.
+///
+/// Monitors special markers in the token stream:
+/// - `\u{001e}hakimi_tool:` — Tool execution notifications (sent by loop_impl.rs during tool dispatch)
+/// - `\u{001e}hakimi_delegate:` — Sub-agent delegation progress (sent by delegate.rs)
+///
+/// These markers are stripped from the text buffer and sent as separate progress notifications.
+/// Regular tokens are accumulated in the buffer for later display.
+///
+/// This enables real-time visibility into what tools are running and what sub-agents are doing,
+/// similar to Hermes Agent's delegation UX.
+fn create_progress_aware_streaming_callback(
+    buffer: Arc<tokio::sync::Mutex<String>>,
+    gateway: Arc<hakimi_gateway::Gateway>,
+    platform: String,
+    bot_id: String,
+    chat_id: String,
+) -> Arc<dyn Fn(String) + Send + Sync> {
+    Arc::new(move |token: String| {
+        let buffer = buffer.clone();
+        let gateway = gateway.clone();
+        let platform = platform.clone();
+        let bot_id = bot_id.clone();
+        let chat_id = chat_id.clone();
+        
+        tokio::spawn(async move {
+            // Check for tool execution marker
+            if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
+                info!("[{}] Tool execution: {}", platform, tool_notice.trim());
+                let msg = hakimi_gateway::GatewayMessage {
+                    platform,
+                    bot_id,
+                    chat_id,
+                    user_id: "agent".to_string(),
+                    text: tool_notice.trim().to_string(),
+                    media: None,
+                    callback_data: None,
+                };
+                if let Err(e) = gateway.route_message(&msg).await {
+                    warn!("Failed to send tool progress: {}", e);
+                }
+                return;
+            }
+            
+            // Check for delegation progress marker
+            if let Some(delegate_notice) = token.strip_prefix("\u{001e}hakimi_delegate:") {
+                // Format: task_id|title|line|timestamp
+                let parts: Vec<&str> = delegate_notice.split('|').collect();
+                if parts.len() >= 3 {
+                    let _task_id = parts[0];
+                    let title = parts[1];
+                    let line = parts[2];
+                    info!("[{}] Delegation: {} - {}", platform, title, line);
+                    let msg = hakimi_gateway::GatewayMessage {
+                        platform,
+                        bot_id,
+                        chat_id,
+                        user_id: "agent".to_string(),
+                        text: format!("🤝 {} · {}", title, line),
+                        media: None,
+                        callback_data: None,
+                    };
+                    if let Err(e) = gateway.route_message(&msg).await {
+                        warn!("Failed to send delegation progress: {}", e);
+                    }
+                }
+                return;
+            }
+            
+            // Regular token: accumulate in buffer
+            let mut buf = buffer.lock().await;
+            buf.push_str(&token);
+        });
+    })
+}
+
 /// Handle incoming Teams Outgoing Webhook messages.
 ///
 /// Endpoint: POST /webhooks/teams/inbound
@@ -6247,26 +6323,20 @@ async fn teams_webhook_inbound(
         let gateway_clone = gateway.clone();
         let chat_id_clone = chat_id_formatted.clone();
 
-        // Clone agent and set streaming callback to accumulate tokens
+        // Clone agent and set progress-aware streaming callback
         let mut cloned_agent = {
             let agent = state.agent.lock().await;
             agent.clone()
         };
 
         cloned_agent.set_streaming(true);
-        cloned_agent.set_streaming_callback(Some(Arc::new({
-            let buffer = buffer.clone();
-
-            move |token: String| {
-                let buffer = buffer.clone();
-
-                tokio::spawn(async move {
-                    let mut buf = buffer.lock().await;
-                    buf.push_str(&token);
-                    // No mid-stream sending — accumulate everything
-                });
-            }
-        })));
+        cloned_agent.set_streaming_callback(Some(create_progress_aware_streaming_callback(
+            buffer.clone(),
+            gateway_clone.clone(),
+            "teams_webhook".to_string(),
+            "teams-agent".to_string(),
+            chat_id_clone.clone(),
+        )));
         
         // Set up tool separation callback for this agent
         setup_tool_separation_callback(
