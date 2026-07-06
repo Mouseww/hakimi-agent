@@ -6164,16 +6164,13 @@ async fn teams_webhook_inbound(
             return;
         }
 
-        // Streaming path: accumulate tokens and send in intelligent chunks
+        // Streaming path: accumulate all content and send once at the end
+        // (no mid-stream chunking to preserve message integrity)
         let buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
-        let first_chunk_sent = Arc::new(tokio::sync::Mutex::new(false));
         let gateway_clone = gateway.clone();
         let chat_id_clone = chat_id_formatted.clone();
-        let first_size = streaming_config.first_chunk_size;
-        let later_size = streaming_config.later_chunk_size;
-        let natural_break = streaming_config.natural_break;
 
-        // Clone agent and set streaming callback
+        // Clone agent and set streaming callback to accumulate tokens
         let mut cloned_agent = {
             let agent = state.agent.lock().await;
             agent.clone()
@@ -6182,77 +6179,14 @@ async fn teams_webhook_inbound(
         cloned_agent.set_streaming(true);
         cloned_agent.set_streaming_callback(Some(Arc::new({
             let buffer = buffer.clone();
-            let first_chunk_sent = first_chunk_sent.clone();
-            let gateway = gateway_clone.clone();
-            let chat_id = chat_id_clone.clone();
 
             move |token: String| {
                 let buffer = buffer.clone();
-                let first_chunk_sent = first_chunk_sent.clone();
-                let gateway = gateway.clone();
-                let chat_id = chat_id.clone();
 
                 tokio::spawn(async move {
                     let mut buf = buffer.lock().await;
                     buf.push_str(&token);
-
-                    let mut first_sent = first_chunk_sent.lock().await;
-                    let should_send = if !*first_sent {
-                        // Send first chunk after 300 chars
-                        buf.len() >= first_size
-                    } else {
-                        // Send later chunks at 800-1000 chars or paragraph breaks
-                        if natural_break {
-                            // Check for paragraph break after 800 chars
-                            if buf.len() >= later_size && buf.contains("\n\n") {
-                                true
-                            } else if buf.len() >= later_size + 200 {
-                                // Force send at 1000 chars even without paragraph break
-                                true
-                            } else {
-                                false
-                            }
-                        } else {
-                            buf.len() >= later_size
-                        }
-                    };
-
-                    if should_send {
-                        let chunk =
-                            if natural_break && buf.contains("\n\n") && buf.len() >= later_size {
-                                // Split at last paragraph break after later_size chars
-                                let last_break = buf.rfind("\n\n").unwrap();
-                                let chunk = buf[..last_break + 2].to_string();
-                                *buf = buf[last_break + 2..].to_string();
-                                chunk
-                            } else {
-                                // Send entire buffer
-                                let chunk = buf.clone();
-                                buf.clear();
-                                chunk
-                            };
-
-                        if !*first_sent {
-                            info!("Sending first Teams chunk: {} chars", chunk.len());
-                            *first_sent = true;
-                        } else {
-                            info!("Sending Teams chunk: {} chars", chunk.len());
-                        }
-
-                        let msg = hakimi_gateway::GatewayMessage {
-                            platform: "teams_webhook".to_string(),
-                            bot_id: "teams-agent".to_string(),
-                            chat_id: chat_id.clone(),
-                            user_id: "agent".to_string(),
-                            text: chunk,
-                            media: None,
-                            callback_data: None,
-                        };
-
-                        if let Err(e) = gateway.route_message(&msg).await {
-                            warn!("Failed to send Teams chunk: {}", e);
-                        }
-                    }
+                    // No mid-stream sending — accumulate everything
                 });
             }
         })));
