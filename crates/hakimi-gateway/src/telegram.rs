@@ -862,7 +862,19 @@ async fn poll_once(client: &reqwest::Client, api_url: &str, offset: i64) -> Resu
 }
 
 fn normalize_outbound_text(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n")
+    let text = text.replace("\r\n", "\n").replace('\r', "\n");
+
+    // Filter out team tool results — they're for the agent's context, not user display
+    let lines: Vec<&str> = text.lines().collect();
+    let filtered: Vec<&str> = lines
+        .into_iter()
+        .filter(|line| {
+            // Skip lines like: "\u{001e}hakimi_tool_result:team│✓ helpdesk completed"
+            !line.contains("\u{001e}hakimi_tool_result:team")
+        })
+        .collect();
+
+    filtered.join("\n")
 }
 
 /// Format collaboration message with collapsible tool call details.
