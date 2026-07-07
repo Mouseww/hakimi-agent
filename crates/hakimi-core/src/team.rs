@@ -253,11 +253,16 @@ impl TeamExecutor for PersonaTeamExecutor {
 
             // Track tool usage for final summary; suppress all intermediate output to keep the task box clean.
             let tool_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let tool_calls = Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
             if call.progress.is_some() {
                 let counter = tool_count.clone();
+                let calls = tool_calls.clone();
                 teammate.set_streaming_callback(Some(Arc::new(move |token: String| {
-                    if token.strip_prefix("\u{001e}hakimi_tool:").is_some() {
+                    if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
                         counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if let Ok(mut list) = calls.try_lock() {
+                            list.push(tool_notice.trim().to_string());
+                        }
                     }
                     // All intermediate output (tool markers, text chunks, review notices) is suppressed.
                     // The task box shows only: start, tool summary, and completion.
@@ -267,11 +272,22 @@ impl TeamExecutor for PersonaTeamExecutor {
             match teammate.run_conversation(&seed).await {
                 Ok(res) => {
                     let tool_usage = tool_count.load(std::sync::atomic::Ordering::Relaxed);
-                    let summary = if tool_usage > 0 {
+                    let calls = tool_calls.lock().await;
+                    let mut summary = if tool_usage > 0 {
                         format!("完成，返回结果（使用了 {} 个工具）", tool_usage)
                     } else {
                         "完成，返回结果".to_string()
                     };
+
+                    // Append tool call details for collapsible rendering
+                    if !calls.is_empty() {
+                        summary.push_str("\n[工具调用详情]\n");
+                        for call in calls.iter() {
+                            summary.push_str(call);
+                            summary.push('\n');
+                        }
+                    }
+
                     emit_team_progress(&call.progress, &task_id, &title, summary);
                     hakimi_common::publish(hakimi_common::ActivityEvent::ConsultEnded {
                         from_id: from_id.clone(),
