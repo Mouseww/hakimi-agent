@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.48-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.49-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.48)
+## ✨ Recent Updates (v0.5.49)
+
+**🎯 Team 工具返回优化：**
+- ✅ **直接返回结果** — team 工具调用返回 teammate 的实际输出，而不是简单的"✓ completed task"
+- 🔧 **消除冗余** — Agent 不再需要调用 read_file 查看结果文件，减少工具调用
+- 📊 **更好的上下文** — 主 Agent 能立即看到子任务的完整结果，无需额外步骤
+- 🚀 **用户体验改进** — 聊天记录更清晰，减少无意义的"已完成"消息
+
+**Previous Updates (v0.5.48):**
 
 **📊 子 Agent 工具调用记录折叠显示：**
 - ✅ **折叠块内部显示工具列表** — 子 agent 完成时，在 Telegram 的折叠块（spoiler）内显示逐行的工具调用记录

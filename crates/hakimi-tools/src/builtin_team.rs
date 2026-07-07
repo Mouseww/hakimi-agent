@@ -367,7 +367,7 @@ impl Tool for TeamTool {
                 HakimiError::Tool("provide 'teammate' (single) or 'teammates' (array)".into())
             })?;
 
-        let _result = executor
+        let result = executor
             .consult(TeamCallContext {
                 teammate_id: teammate.to_string(),
                 task: task.to_string(),
@@ -376,7 +376,9 @@ impl Tool for TeamTool {
             })
             .await?;
 
-        Ok(format!("✓ {} completed task", teammate))
+        // Return the actual result instead of just "✓ completed task"
+        // so the agent doesn't need to read a result file
+        Ok(result)
     }
 }
 
@@ -542,10 +544,7 @@ mod tests {
             )
             .await
             .unwrap();
-        // After v0.5.23, tool returns compact completion marker instead of full answer
-        assert!(
-            output.contains("✓ writer completed task"),
-            "output: {output}"
-        );
+        // After v0.5.48, tool returns the actual result instead of "✓ completed task"
+        assert_eq!(output, "Here is my expert answer.");
     }
 }
