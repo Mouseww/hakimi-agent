@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.49-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.50-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.49)
+## ✨ Recent Updates (v0.5.50)
+
+**🎯 Team 工具返回优化（完整版）：**
+- ✅ **直接返回结果** — team 工具调用返回 teammate 的实际输出，Agent 不再需要 read_file
+- 🔧 **过滤用户展示** — Gateway 层自动过滤 `hakimi_tool_result:team` 消息，用户不会看到冗余的工具结果
+- 📊 **简洁折叠块** — 工具调用列表以折叠块形式显示，自动去除 `[工具调用详情]` 标题行
+- 🚀 **用户体验优化** — 聊天记录清晰紧凑：开始 → 工具列表（折叠） → 完成，工具结果留给 Agent 内部使用
+
+**Previous Updates (v0.5.49):**
 
 **🎯 Team 工具返回优化：**
 - ✅ **直接返回结果** — team 工具调用返回 teammate 的实际输出，Agent 不再需要 read_file
