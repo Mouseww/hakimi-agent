@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.52-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.53-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,14 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.52)
+## ✨ Recent Updates (v0.5.53)
+
+**📱 Telegram 显示体验优化：**
+- ✅ **分隔符优化** — 工具调用结果分隔符从 `│` 改为 ` — `，解决字符挤压问题
+- 🎨 **可读性提升** — `hakimitoolresult:terminal — STDOUT:` 格式更清晰，视觉间距更舒适
+- 🐛 **修复显示异常** — 解决 Telegram 中工具输出紧凑难读的问题
+
+**Previous Updates (v0.5.52):**
 
 **🧠 智能上下文管理 - Gateway 多轮对话记忆增强：**
 - ✅ **智能历史压缩** — 新增 `context_manager` 模块，实现三重压缩策略

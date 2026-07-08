@@ -869,7 +869,7 @@ fn normalize_outbound_text(text: &str) -> String {
     let filtered: Vec<&str> = lines
         .into_iter()
         .filter(|line| {
-            // Skip lines like: "\u{001e}hakimi_tool_result:team│✓ helpdesk completed"
+            // Skip lines like: "\u{001e}hakimi_tool_result:team — ✓ helpdesk completed"
             !line.contains("\u{001e}hakimi_tool_result:team")
         })
         .collect();
@@ -892,8 +892,8 @@ fn format_collaboration_message(text: &str) -> String {
 /// Sanitize text for stable Telegram Markdown rendering.
 /// Removes problematic characters that cause parsing errors.
 fn sanitize_for_markdown(text: &str) -> String {
-    // Remove table separators (| causes parsing errors)
-    let text = text.replace('|', "│");
+    // Replace table separators: | with spaced — for better readability
+    let text = text.replace('|', " — ");
 
     // Step 1: Identify all code regions (inline ` and block ```)
     let chars: Vec<char> = text.chars().collect();
