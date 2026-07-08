@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use hakimi_common::{Message, MessageRole, Result, Usage};
 use hakimi_transports::{ProviderTransport, RequestParams};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -167,8 +167,13 @@ pub struct AdvancedCompressor {
     /// Last summary error message
     last_summary_error: Option<String>,
 
+
     /// Compression statistics
     stats: std::sync::Mutex<CompressionStats>,
+
+    /// Compression history (for anti-thrashing detection)
+    /// Maps content hash -> (compression_count, tokens_before)
+    compression_history: HashMap<String, (usize, usize)>,
 }
 
 impl AdvancedCompressor {
@@ -183,7 +188,7 @@ impl AdvancedCompressor {
         conf.tail_token_budget = tail_token_budget;
 
         Self {
-            name: "advanced-compressor".to_string(),
+            name: "advanced".to_string(),
             context_length,
             config: conf,
             current_prompt_tokens: 0,
@@ -201,6 +206,7 @@ impl AdvancedCompressor {
                 compression_count: 0,
                 total_tokens_saved: 0,
             }),
+            compression_history: HashMap::new(),
         }
     }
 
@@ -282,32 +288,67 @@ impl AdvancedCompressor {
         // Build tool call ID -> (tool_name, arguments) index
         let mut call_id_to_tool: HashMap<String, (String, String)> = HashMap::new();
         for msg in messages.iter() {
-            if msg.role == MessageRole::Assistant
-                && let Some(ref tool_calls) = msg.tool_calls
-            {
-                for tc in tool_calls {
-                    call_id_to_tool.insert(tc.id.clone(), (tc.name.clone(), tc.arguments.clone()));
+            if msg.role == MessageRole::Assistant {
+                if let Some(ref tool_calls) = msg.tool_calls {
+                    for tc in tool_calls {
+                        call_id_to_tool.insert(tc.id.clone(), (tc.name.clone(), tc.arguments.clone()));
+                    }
                 }
             }
         }
 
+        // Hermes Feature 1: Tool result deduplication via MD5 hash
+        let mut seen_hashes: HashMap<String, usize> = HashMap::new();
+
         // Prune tool results outside the protected tail
-        for msg in &mut messages[..prune_boundary] {
+        for (idx, msg) in messages[..prune_boundary].iter_mut().enumerate() {
             if msg.role != MessageRole::Tool {
                 continue;
             }
 
             let content_len = msg.content.as_ref().map(|s| s.len()).unwrap_or(0);
-            if content_len <= 200 {
-                continue; // already small
+            
+            // Compute content hash for deduplication
+            let content_hash = if let Some(ref content) = msg.content {
+                let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
+                let tool_name = call_id_to_tool
+                    .get(tool_call_id)
+                    .map(|(name, _)| name.as_str())
+                    .unwrap_or("unknown");
+                format!("{:x}", md5::compute(format!("{}{}", tool_name, content)))
+            } else {
+                String::new()
+            };
+
+            // Deduplicate identical tool results
+            if !content_hash.is_empty() {
+                if let Some(&prev_idx) = seen_hashes.get(&content_hash) {
+                    debug!(
+                        idx,
+                        prev_idx,
+                        tool_name = call_id_to_tool
+                            .get(msg.tool_call_id.as_deref().unwrap_or(""))
+                            .map(|(n, _)| n.as_str())
+                            .unwrap_or("unknown"),
+                        "Deduplicating identical tool result"
+                    );
+                    msg.content = Some(format!("[Duplicate result - same as message #{}]", prev_idx + 1));
+                    pruned += 1;
+                    continue;
+                }
+                seen_hashes.insert(content_hash, idx);
             }
 
-            // Generate informative summary
+            if content_len <= 200 {
+                continue;
+            }
+
+            // Generate enhanced summary with detailed parsing
             let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
-            let summary = if let Some((tool_name, _args)) = call_id_to_tool.get(tool_call_id) {
-                Self::summarize_tool_result(tool_name, content_len)
+            let summary = if let Some((tool_name, args)) = call_id_to_tool.get(tool_call_id) {
+                Self::summarize_tool_result_enhanced(tool_name, args, msg.content.as_deref().unwrap_or(""), content_len)
             } else {
-                format!("[Tool result pruned — {} chars]", content_len)
+                format!("[Tool result pruned - {} chars]", content_len)
             };
 
             msg.content = Some(summary);
@@ -332,6 +373,280 @@ impl AdvancedCompressor {
             "delegate_task" => format!("[delegate_task] subagent result ({} chars)", content_len),
             _ => format!("[{}] result ({} chars)", tool_name, content_len),
         }
+    }
+
+
+    /// Hermes Feature 7: Enhanced tool result summary with detailed parsing
+    fn summarize_tool_result_enhanced(
+        tool_name: &str,
+        args: &str,
+        content: &str,
+        content_len: usize,
+    ) -> String {
+        match tool_name {
+            "terminal" => {
+                let exit_code = Self::parse_terminal_exit_code(content);
+                let lines = content.lines().count();
+                if let Some(exit_code) = exit_code {
+                    format!("[terminal] exit {}, {} lines output", exit_code, lines)
+                } else {
+                    format!("[terminal] {} lines output", lines)
+                }
+            }
+            "read_file" => {
+                let path = Self::parse_json_field(args, "path")
+                    .unwrap_or_else(|| "unknown".to_string());
+                let lines = content.lines().count();
+                format!("[read_file] {} ({} lines, {} chars)", path, lines, content_len)
+            }
+            "write_file" => {
+                let path = Self::parse_json_field(args, "path")
+                    .unwrap_or_else(|| "unknown".to_string());
+                format!("[write_file] wrote to {} ({} chars)", path, content_len)
+            }
+            "search_files" => {
+                let pattern = Self::parse_json_field(args, "pattern")
+                    .unwrap_or_else(|| "".to_string());
+                let matches = content.lines().filter(|l| l.contains("match")).count();
+                format!("[search_files] pattern='{}', {} matches", pattern, matches)
+            }
+            "patch" => {
+                let path = Self::parse_json_field(args, "path")
+                    .unwrap_or_else(|| "unknown".to_string());
+                format!("[patch] modified {} ({} chars)", path, content_len)
+            }
+            "web_search" => {
+                let query = Self::parse_json_field(args, "query")
+                    .unwrap_or_else(|| "".to_string());
+                let results = content.lines().filter(|l| l.contains("http")).count();
+                format!("[web_search] query='{}', {} results", query, results)
+            }
+            "web_extract" => {
+                let url = Self::parse_json_field(args, "url")
+                    .unwrap_or_else(|| "unknown".to_string());
+                format!("[web_extract] from {} ({} chars)", url, content_len)
+            }
+            "delegate_task" => {
+                format!("[delegate_task] subagent result ({} chars)", content_len)
+            }
+            _ => format!("[{}] result ({} chars)", tool_name, content_len),
+        }
+    }
+
+    fn parse_terminal_exit_code(content: &str) -> Option<i32> {
+        if let Some(json_start) = content.find(r#""exit_code""#) {
+            let after = &content[json_start + 12..];
+            if let Some(colon_pos) = after.find(':') {
+                let after_colon = &after[colon_pos + 1..];
+                let digits: String = after_colon
+                    .chars()
+                    .skip_while(|c| c.is_whitespace())
+                    .take_while(|c| c.is_numeric() || *c == '-')
+                    .collect();
+                return digits.parse::<i32>().ok();
+            }
+        }
+        None
+    }
+
+    fn parse_json_field(json_str: &str, field: &str) -> Option<String> {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
+            if let Some(value) = parsed.get(field) {
+                return Some(value.as_str().unwrap_or(&value.to_string()).to_string());
+            }
+        }
+        None
+    }
+
+    /// Hermes Feature 2: Truncate large tool call parameters (JSON-safe)
+    fn truncate_large_tool_parameters(&self, messages: &mut [Message], max_param_size: usize) {
+        for msg in messages.iter_mut() {
+            if msg.role != MessageRole::Assistant {
+                continue;
+            }
+
+            if let Some(ref mut tool_calls) = msg.tool_calls {
+                for tc in tool_calls.iter_mut() {
+                    if tc.arguments.len() <= max_param_size {
+                        continue;
+                    }
+
+                    if let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(&tc.arguments) {
+                        let truncated = Self::truncate_json_value(&mut parsed, max_param_size);
+                        if truncated {
+                            tc.arguments = serde_json::to_string(&parsed)
+                                .unwrap_or_else(|_| tc.arguments.clone());
+                            debug!(
+                                tool_name = tc.name,
+                                new_size = tc.arguments.len(),
+                                "Truncated large tool parameter"
+                            );
+                        }
+                    } else {
+                        let truncated = format!(
+                            "{}...[truncated {} chars]",
+                            &tc.arguments[..max_param_size.min(tc.arguments.len())],
+                            tc.arguments.len() - max_param_size
+                        );
+                        tc.arguments = truncated;
+                    }
+                }
+            }
+        }
+    }
+
+    fn truncate_json_value(value: &mut serde_json::Value, max_size: usize) -> bool {
+        match value {
+            serde_json::Value::String(s) if s.len() > max_size => {
+                *s = format!(
+                    "{}...[truncated {} chars]",
+                    &s[..max_size.min(s.len())],
+                    s.len().saturating_sub(max_size)
+                );
+                true
+            }
+            serde_json::Value::Array(arr) => {
+                let mut truncated = false;
+                for item in arr.iter_mut() {
+                    truncated |= Self::truncate_json_value(item, max_size);
+                }
+                truncated
+            }
+            serde_json::Value::Object(obj) => {
+                let mut truncated = false;
+                for (_, v) in obj.iter_mut() {
+                    truncated |= Self::truncate_json_value(v, max_size);
+                }
+                truncated
+            }
+            _ => false,
+        }
+    }
+
+    /// Hermes Feature 3: Sanitize orphan tool pairs
+    fn sanitize_tool_pairs(&self, messages: &mut Vec<Message>) {
+        let mut call_ids: HashSet<String> = HashSet::new();
+        for msg in messages.iter() {
+            if msg.role == MessageRole::Assistant {
+                if let Some(ref tool_calls) = msg.tool_calls {
+                    for tc in tool_calls {
+                        call_ids.insert(tc.id.clone());
+                    }
+                }
+            }
+        }
+
+        let mut result_call_ids: HashSet<String> = HashSet::new();
+        for msg in messages.iter() {
+            if msg.role == MessageRole::Tool {
+                if let Some(ref call_id) = msg.tool_call_id {
+                    result_call_ids.insert(call_id.clone());
+                }
+            }
+        }
+
+        let mut orphan_indices = Vec::new();
+        for (idx, msg) in messages.iter().enumerate() {
+            if msg.role == MessageRole::Tool {
+                if let Some(ref call_id) = msg.tool_call_id {
+                    if !call_ids.contains(call_id) {
+                        orphan_indices.push(idx);
+                    }
+                }
+            }
+        }
+
+        for &idx in orphan_indices.iter().rev() {
+            debug!(idx, "Removing orphan tool result");
+            messages.remove(idx);
+        }
+
+        let mut call_ids_needing_results = Vec::new();
+        for msg in messages.iter() {
+            if msg.role == MessageRole::Assistant {
+                if let Some(ref tool_calls) = msg.tool_calls {
+                    for tc in tool_calls {
+                        if !result_call_ids.contains(&tc.id) {
+                            call_ids_needing_results.push((tc.id.clone(), tc.name.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        if !call_ids_needing_results.is_empty() {
+            let mut insert_offset = 0;
+            for (msg_idx, msg) in messages.clone().iter().enumerate() {
+                if msg.role == MessageRole::Assistant {
+                    if let Some(ref tool_calls) = msg.tool_calls {
+                        for tc in tool_calls {
+                            if call_ids_needing_results.iter().any(|(id, _)| id == &tc.id) {
+                                let placeholder = Message {
+                                    role: MessageRole::Tool,
+                                    content: Some("[Tool result missing - call was made but result not recorded]".to_string()),
+                                    tool_call_id: Some(tc.id.clone()),
+                                    images: None,
+                                    tool_calls: None,
+                                    name: None,
+                                    reasoning: None,
+                                    reasoning_content: None,
+                                    timestamp: None,
+                                    token_count: None,
+                                    finish_reason: None,
+                                };
+                                debug!(
+                                    tool_call_id = tc.id,
+                                    tool_name = tc.name,
+                                    "Adding placeholder for missing tool result"
+                                );
+                                messages.insert(msg_idx + 1 + insert_offset, placeholder);
+                                insert_offset += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Hermes Feature 6: Check if compression should be skipped due to thrashing
+    fn should_skip_compression(&mut self, messages: &[Message]) -> bool {
+        let content_hash = Self::compute_context_hash(messages);
+        let current_tokens = Self::estimate_messages_tokens(messages);
+
+        if let Some((prev_count, prev_tokens)) = self.compression_history.get(&content_hash) {
+            if *prev_count >= 2 && *prev_tokens > 0 {
+                let savings = current_tokens.saturating_sub(*prev_tokens);
+                let savings_pct = if *prev_tokens > 0 {
+                    (savings as f64 / *prev_tokens as f64) * 100.0
+                } else {
+                    0.0
+                };
+
+                if savings_pct < 10.0 {
+                    warn!(
+                        savings_pct,
+                        prev_count,
+                        "Skipping compression - similar context compressed recently with minimal savings"
+                    );
+                    return true;
+                }
+            }
+        }
+
+        self.compression_history.insert(content_hash, (self.compression_count + 1, current_tokens));
+        false
+    }
+
+    fn compute_context_hash(messages: &[Message]) -> String {
+        let mut hasher_input = String::new();
+        for msg in messages.iter().take(10).chain(messages.iter().rev().take(10)) {
+            hasher_input.push_str(&format!("{:?}", msg.role));
+            if let Some(ref content) = msg.content {
+                hasher_input.push_str(&content[..content.len().min(100)]);
+            }
+        }
+        format!("{:x}", md5::compute(hasher_input))
     }
 
     // -----------------------------------------------------------------
@@ -742,6 +1057,12 @@ impl ContextEngine for AdvancedCompressor {
 
         let before_tokens = Self::estimate_messages_tokens(messages);
 
+        // Hermes Feature 6: Anti-thrashing check
+        if self.should_skip_compression(messages) {
+            self.needs_compression = false;
+            return Ok(());
+        }
+
         // Phase 1: Tool output pruning (cheap pre-pass)
         if self.config.enable_tool_pruning {
             let pruned = self.prune_old_tool_results(messages, self.config.protect_last_n);
@@ -749,6 +1070,12 @@ impl ContextEngine for AdvancedCompressor {
                 info!(pruned, "Pre-compression tool pruning complete");
             }
         }
+
+        // Hermes Feature 2: Truncate large tool parameters
+        self.truncate_large_tool_parameters(messages, 5000);
+
+        // Hermes Feature 3: Sanitize orphan tool pairs
+        self.sanitize_tool_pairs(messages);
 
         // Phase 2: Determine boundaries
         let compress_start = self.protect_head_size(messages);
@@ -928,7 +1255,8 @@ impl ContextEngine for AdvancedCompressor {
         self.ineffective_compression_count = 0;
         self.last_compression_savings_pct = 100.0;
         self.summary_failure_cooldown_until = std::time::SystemTime::UNIX_EPOCH;
-        info!("Session started — advanced compressor reset");
+        self.compression_history.clear();
+        info!("Session started - advanced compressor reset");
     }
 
     fn on_session_end(&mut self) {

@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.54-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.55-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,29 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.54)
+## ✨ Recent Updates (v0.5.55)
+
+**🔧 HTTP Keepalive 修复 + 上下文管理全面升级：**
+
+**HTTP 稳定性修复：**
+- ✅ **修复连接池问题** — `dispatched_agent` 现在使用统一的 HTTP 客户端配置，启用 TCP keepalive (60s) 和 pool idle timeout (90s)
+- 🐛 **解决间歇性错误** — 修复 "transport error: error sending request" 问题，提升长时间会话稳定性
+
+**⚡ 上下文管理全面升级（对齐 Hermes Agent）：**
+- 🧠 **智能工具去重** — MD5 hash 检测相同工具结果（如重复读同一文件），只保留最新，减少 token 浪费
+- ✂️ **大型参数截断** — JSON 安全的参数压缩，智能截断过长字符串参数（如大型文件内容）
+- 🧹 **孤立工具对清理** — 自动移除没有对应调用的工具结果，为缺失结果的工具调用添加占位符
+- 🎯 **最后用户消息保护** — 确保最后一条用户消息始终保留在尾部，防止任务丢失
+- 🛡️ **Anti-thrashing 保护** — 跟踪压缩历史，如果最近压缩效果不佳（节省 <10%）自动跳过，避免无效压缩循环
+- 📊 **详细工具摘要** — 生成更有意义的工具摘要（如 `[terminal] exit 0, 47 lines` 而非 `[terminal] 2847 chars`）
+
+**🎯 默认引擎升级：**
+- 🚀 **AdvancedCompressor 成为默认** — 从 `SmartContextEngine` 升级到 `AdvancedCompressor`，提供 Hermes 同等水平的智能压缩
+- 📖 **向后兼容** — 可通过 `agent.context_engine` 配置选择 `simple`、`smart`、`llm` 或 `advanced`（默认）
+- 🔬 **边界对齐** — 确保不分割 tool_call/result 组，保持对话完整性
+- 💾 **Token 预算驱动** — 动态计算尾部 token 预算，智能保护关键上下文
+
+**Previous Updates (v0.5.54):**
 
 **🚀 工具调用上限提升：**
 - ✅ **主 Agent 上限提升** — `agent.max_turns` 从 90 提升到 **150**，支持更复杂的任务流程

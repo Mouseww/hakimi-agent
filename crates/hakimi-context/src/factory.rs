@@ -2,7 +2,7 @@ use hakimi_transports::ProviderTransport;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::{ContextEngine, LlmCompressor, SimpleContextEngine, SmartContextEngine};
+use crate::{AdvancedCompressor, ContextEngine, LlmCompressor, SimpleContextEngine, SmartContextEngine};
 
 fn normalize_engine_name(engine: &str) -> String {
     engine.trim().to_ascii_lowercase().replace('-', "_")
@@ -21,6 +21,7 @@ fn optional_model(model: Option<&str>) -> Option<String> {
 /// - `simple`: truncation-only context compression.
 /// - `smart`: three-tier local compression.
 /// - `llm`: Hermes-style LLM-backed summarization with local fallback.
+/// - `advanced` (default): Hermes-inspired three-phase compressor with all features.
 pub fn build_context_engine(
     engine: &str,
     context_length: usize,
@@ -29,6 +30,10 @@ pub fn build_context_engine(
 ) -> Arc<RwLock<dyn ContextEngine>> {
     match normalize_engine_name(engine).as_str() {
         "simple" => Arc::new(RwLock::new(SimpleContextEngine::new(context_length))),
+        "smart" => Arc::new(RwLock::new(SmartContextEngine::new(
+            context_length,
+            optional_model(compression_model),
+        ))),
         "llm" | "llm_compressor" => {
             let compressor = LlmCompressor::new(context_length);
             let compressor = match (transport, optional_model(compression_model)) {
@@ -37,10 +42,15 @@ pub fn build_context_engine(
             };
             Arc::new(RwLock::new(compressor))
         }
-        _ => Arc::new(RwLock::new(SmartContextEngine::new(
-            context_length,
-            optional_model(compression_model),
-        ))),
+        // Default to AdvancedCompressor (Hermes-inspired) for unknown names and "advanced"
+        "advanced" | _ => {
+            let model = optional_model(compression_model).unwrap_or_else(|| "".to_string());
+            let mut compressor = AdvancedCompressor::new(context_length, model);
+            if let Some(transport) = transport {
+                compressor = compressor.with_llm(transport);
+            }
+            Arc::new(RwLock::new(compressor))
+        }
     }
 }
 
@@ -49,11 +59,11 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn build_context_engine_defaults_unknown_names_to_smart() {
+    async fn build_context_engine_defaults_unknown_names_to_advanced() {
         let engine = build_context_engine("unknown", 4096, None, None);
         let engine = engine.read().await;
 
-        assert_eq!(engine.name(), "smart");
+        assert_eq!(engine.name(), "advanced");
         assert_eq!(engine.context_length(), 4096);
     }
 

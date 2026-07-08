@@ -14,3 +14,4 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 regex = { workspace = true }
 chrono = { workspace = true }
+md5 = "0.7"

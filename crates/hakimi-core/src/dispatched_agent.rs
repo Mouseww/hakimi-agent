@@ -5,8 +5,7 @@ use std::sync::Arc;
 
 use hakimi_common::Result;
 use hakimi_config::{ModelConfig, TierConfig};
-use hakimi_transports::{AnthropicTransport, ChatCompletionsTransport, ProviderTransport};
-use reqwest::Client;
+use hakimi_transports::{build_llm_http_client, AnthropicTransport, ChatCompletionsTransport, ProviderTransport};
 
 use crate::dispatch_learner::DispatchLearner;
 use crate::model_dispatch::{DispatchRecord, ModelTier, TaskComplexity};
@@ -145,9 +144,7 @@ impl DispatchedAgent {
         &self,
         tier_config: &TierConfig,
     ) -> Result<Arc<dyn ProviderTransport>> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
-            .build()
+        let client = hakimi_transports::build_llm_http_client()
             .map_err(|e| {
                 hakimi_common::HakimiError::Config(format!("Failed to create HTTP client: {}", e))
             })?;
