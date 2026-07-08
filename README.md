@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.50-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.51-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.50)
+## ✨ Recent Updates (v0.5.51)
+
+**🔧 HTTP 连接稳定性修复：**
+- ✅ **TCP Keepalive** — 启用 60 秒 TCP keepalive 探测，防止连接被中间网络设备断开
+- 🔄 **连接池管理** — 空闲连接 90 秒后自动关闭，避免复用已失效的连接
+- 🚀 **可靠性提升** — 修复偶发的 "error sending request" 传输错误
+- 📊 **资源优化** — 每个域名最多保留 10 个空闲连接，避免资源浪费
+
+**Previous Updates (v0.5.50):**
 
 **🎯 实时工具调用显示：**
 - ✅ **实时转发** — 子 agent 调用工具时立即显示，不再等到完成后批量展示

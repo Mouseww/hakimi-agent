@@ -16,5 +16,8 @@ pub fn build_llm_http_client() -> reqwest::Result<Client> {
     Client::builder()
         .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
         .read_timeout(DEFAULT_READ_TIMEOUT)
+        .tcp_keepalive(Duration::from_secs(60))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .pool_max_idle_per_host(10)
         .build()
 }
