@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.51-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.52-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,17 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.51)
+## ✨ Recent Updates (v0.5.52)
+
+**🧠 智能上下文管理 - Gateway 多轮对话记忆增强：**
+- ✅ **智能历史压缩** — 新增 `context_manager` 模块，实现三重压缩策略
+- 🎯 **保留关键上下文** — 最近 20 条消息完整保留（用户选择、最新对话）
+- 🗜️ **工具消息压缩** — 工具调用序列保留首尾，折叠中间冗余输出
+- 📏 **滑动窗口** — 总消息数限制为 100 条，防止无限累积导致的内存爆炸
+- 🔧 **修复丢失上下文** — 解决 Gateway 模式在长对话中遗忘用户选择的问题
+- 🚀 **性能优化** — 大幅降低内存占用和 Token 消耗，提升响应速度
+
+**Previous Updates (v0.5.51):**
 
 **🔧 HTTP 连接稳定性修复：**
 - ✅ **TCP Keepalive** — 启用 60 秒 TCP keepalive 探测，防止连接被中间网络设备断开
