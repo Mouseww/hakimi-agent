@@ -4436,7 +4436,7 @@ terminal:
 
 delegation:
   # Max iterations per sub-agent
-  max_iterations: 45
+  max_iterations: 90
   # Sub-agent model (empty = inherit parent)
   model: ""
   # Sub-agent API key

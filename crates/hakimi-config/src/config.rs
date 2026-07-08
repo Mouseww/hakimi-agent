@@ -327,7 +327,7 @@ pub struct AgentConfig {
 }
 
 fn default_max_turns() -> usize {
-    90
+    150
 }
 
 impl Default for AgentConfig {
@@ -471,13 +471,13 @@ pub struct DelegationConfig {
 }
 
 fn default_max_iterations() -> usize {
-    45
+    90
 }
 
 impl Default for DelegationConfig {
     fn default() -> Self {
         Self {
-            max_iterations: 45,
+            max_iterations: default_max_iterations(),
             model: String::new(),
             provider: String::new(),
             base_url: String::new(),
@@ -1978,7 +1978,7 @@ mod tests {
         let config = HakimiConfig::default();
         assert_eq!(config.model.provider, "auto");
         assert_eq!(config.model.context_length, 0);
-        assert_eq!(config.agent.max_turns, 90);
+        assert_eq!(config.agent.max_turns, 150);
         assert!(!config.agent.save_trajectories);
         assert_eq!(config.agent.trajectory_dir, "");
         assert_eq!(config.terminal.env_type, "local");
@@ -1994,7 +1994,7 @@ mod tests {
         assert!(config.display.streaming);
         assert_eq!(config.display.language, "en");
         assert_eq!(config.display.skin, "default");
-        assert_eq!(config.delegation.max_iterations, 45);
+        assert_eq!(config.delegation.max_iterations, 90);
         assert!(config.mcp_servers.is_empty());
         assert!(config.credential_pools.is_empty());
         assert!(config.onboarding.seen.is_empty());
@@ -2069,7 +2069,7 @@ mod tests {
     fn test_deserialize_empty_yaml() {
         let config: HakimiConfig = serde_yaml::from_str("").unwrap();
         assert_eq!(config.model.provider, "auto");
-        assert_eq!(config.agent.max_turns, 90);
+        assert_eq!(config.agent.max_turns, 150);
     }
 
     #[test]
@@ -2094,7 +2094,7 @@ agent:
         assert_eq!(config.agent.trajectory_dir, "./trajectories");
         // Defaults for unset fields
         assert_eq!(config.terminal.env_type, "local");
-        assert_eq!(config.delegation.max_iterations, 45);
+        assert_eq!(config.delegation.max_iterations, 90);
     }
 
     #[test]

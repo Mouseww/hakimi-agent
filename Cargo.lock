@@ -1067,7 +1067,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "hakimi-agent"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "hakimi-cli",
@@ -1076,7 +1076,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-batch"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1093,7 +1093,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cli"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "axum",
@@ -1138,7 +1138,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-common"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1155,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-config"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1169,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-context"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1185,7 +1185,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-core"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-cron"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-gateway"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1254,7 +1254,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-i18n"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "serde",
@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-knowledge"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-mcp"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-plugin"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1323,7 +1323,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-server"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1358,7 +1358,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-session"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-skills"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1389,7 +1389,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tools"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1418,7 +1418,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-transports"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1441,7 +1441,7 @@ dependencies = [
 
 [[package]]
 name = "hakimi-tui"
-version = "0.5.52"
+version = "0.5.53"
 dependencies = [
  "anyhow",
  "base64",

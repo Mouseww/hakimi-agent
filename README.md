@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.53-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.54-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,15 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.53)
+## ✨ Recent Updates (v0.5.54)
+
+**🚀 工具调用上限提升：**
+- ✅ **主 Agent 上限提升** — `agent.max_turns` 从 90 提升到 **150**，支持更复杂的任务流程
+- 🔄 **子 Agent 上限翻倍** — `delegation.max_iterations` 从 45 提升到 **90**，与旧版主 agent 一致
+- 📈 **更强的任务执行能力** — 支持需要大量工具调用的复杂任务（如大型代码库重构、多轮数据分析）
+- ⚙️ **可配置** — 可通过 `~/.hakimi/config.yaml` 自定义调整上限
+
+**Previous Updates (v0.5.53):**
 
 **📱 Telegram 显示体验优化：**
 - ✅ **分隔符优化** — 工具调用结果分隔符从 `│` 改为 ` — `，解决字符挤压问题
