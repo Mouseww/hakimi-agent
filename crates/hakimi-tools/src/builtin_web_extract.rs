@@ -56,7 +56,7 @@ impl Tool for WebExtractTool {
         let url = args
             .get("url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: url".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: url".into()))?;
 
         let max_length = args
             .get("max_length")
@@ -73,17 +73,17 @@ impl Tool for WebExtractTool {
             .timeout(std::time::Duration::from_secs(30))
             .redirect(safe_http_redirect_policy(5))
             .build()
-            .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))?;
 
         let response = client
             .get(url)
             .send()
             .await
-            .map_err(|e| HakimiError::Tool(format!("fetch failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("fetch failed: {e}")))?;
 
         let status = response.status();
         if !status.is_success() {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "HTTP request failed with status: {}",
                 status
             )));
@@ -99,7 +99,7 @@ impl Tool for WebExtractTool {
         let body = response
             .text()
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to read response body: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to read response body: {e}")))?;
 
         // Detect if this is plain text or JSON
         if content_type.contains("text/plain") {

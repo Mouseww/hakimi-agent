@@ -318,7 +318,7 @@ fn normalize_send_target(target: &str) -> Result<String> {
         let platform = platform.trim().to_ascii_lowercase();
         let raw_ref = raw_ref.trim();
         if platform.is_empty() {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "send_message target has an empty platform".into(),
             ));
         }
@@ -326,7 +326,7 @@ fn normalize_send_target(target: &str) -> Result<String> {
             return Ok(format!("{platform}:{resolved}"));
         }
         if raw_ref.is_empty() {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "no home target cached for '{platform}'. Use send_message(action='list') or pass an explicit platform:chat_id target."
             )));
         }
@@ -335,21 +335,21 @@ fn normalize_send_target(target: &str) -> Result<String> {
         {
             return Ok(format!("{platform}:{raw_ref}"));
         }
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "could not resolve '{raw_ref}' on {platform}. Use send_message(action='list') to see available targets or pass an explicit platform chat ID."
         )));
     }
 
     let platform = target.to_ascii_lowercase();
     if platform.is_empty() {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "send_message target cannot be empty".into(),
         ));
     }
     resolve_channel_target(&platform, None)
         .map(|chat_id| format!("{platform}:{chat_id}"))
         .ok_or_else(|| {
-            HakimiError::Tool(format!(
+            HakimiError::ToolSimple(format!(
                 "no home target cached for '{platform}'. Use send_message(action='list') or pass an explicit platform:chat_id target."
             ))
         })
@@ -410,7 +410,7 @@ impl Tool for SendMessageTool {
             .to_string());
         }
         if action != "send" {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "unsupported send_message action '{action}'. Expected 'send' or 'list'."
             )));
         }
@@ -418,12 +418,12 @@ impl Tool for SendMessageTool {
         let target = args
             .get("target")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: target".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: target".into()))?;
 
         let message = args
             .get("message")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: message".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: message".into()))?;
 
         let target = normalize_send_target(target)?;
 
@@ -445,7 +445,7 @@ impl Tool for SendMessageTool {
 
         let mut queue = MESSAGE_QUEUE
             .lock()
-            .map_err(|e| HakimiError::Tool(format!("failed to lock message queue: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to lock message queue: {e}")))?;
 
         let queue_size = queue.len();
         queue.push_back(queued);

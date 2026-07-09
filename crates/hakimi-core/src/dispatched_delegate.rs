@@ -69,7 +69,7 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
         results
             .into_iter()
             .next()
-            .ok_or_else(|| HakimiError::Tool("No result returned from delegation".to_string()))
+            .ok_or_else(|| HakimiError::ToolSimple("No result returned from delegation".to_string()))
     }
 
     async fn execute_batch_delegation(
@@ -101,7 +101,7 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
 
             let future = async move {
                 let _permit = semaphore.acquire().await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
+                    HakimiError::ToolSimple(format!("failed to acquire delegation permit: {e}"))
                 })?;
 
                 let mut attempts = 0;
@@ -169,7 +169,7 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
                         }
                         Err(e) => {
                             if attempts >= max_attempts {
-                                return Err(HakimiError::Tool(format!(
+                                return Err(HakimiError::ToolSimple(format!(
                                     "Child agent failed after {max_attempts} attempts: {e}"
                                 )));
                             }
@@ -193,7 +193,7 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
             match join_handle {
                 Ok(Ok(result)) => results.push(result),
                 Ok(Err(e)) => return Err(e),
-                Err(e) => return Err(HakimiError::Tool(format!("Child agent panicked: {e}"))),
+                Err(e) => return Err(HakimiError::ToolSimple(format!("Child agent panicked: {e}"))),
             }
         }
 
@@ -201,7 +201,7 @@ impl DelegateExecutor for DispatchedDelegateExecutor {
     }
 
     async fn enqueue_task(&self, _goal: &str, _priority: u32) -> Result<String> {
-        Err(HakimiError::Tool(
+        Err(HakimiError::ToolSimple(
             "Task queueing is not yet implemented".into(),
         ))
     }

@@ -77,7 +77,7 @@ impl Tool for TerminalTool {
         let command = args
             .get("command")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: command".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: command".into()))?;
 
         // -----------------------------------------------------------------------
         // HEAVY TASK DETECTION (Anti-Deadlock)
@@ -120,7 +120,7 @@ impl Tool for TerminalTool {
         if let Some(ShellHookOutcome::Block(message)) =
             run_configured_shell_hook("pre_tool_call", args, ctx, workdir, None).await
         {
-            return Err(HakimiError::Tool(redact_sensitive_text(&message)));
+            return Err(HakimiError::ToolSimple(redact_sensitive_text(&message)));
         }
 
         let is_heavy = heavy_patterns.iter().any(|p| command.contains(p));
@@ -153,7 +153,7 @@ impl Tool for TerminalTool {
                 .unwrap_or_default();
             let log_path = log_dir.join(format!("{}.log", proc_session_id));
             let log_file = std::fs::File::create(&log_path)
-                .map_err(|e| HakimiError::Tool(format!("failed to create log file: {e}")))?;
+                .map_err(|e| HakimiError::ToolSimple(format!("failed to create log file: {e}")))?;
 
             let mut spawn_command = Command::new(bash_program());
             apply_stable_path(&mut spawn_command);
@@ -165,7 +165,7 @@ impl Tool for TerminalTool {
                 .stderr(Stdio::from(log_file))
                 .spawn()
                 .map_err(|e| {
-                    HakimiError::Tool(format!("failed to spawn background process: {e}"))
+                    HakimiError::ToolSimple(format!("failed to spawn background process: {e}"))
                 })?;
 
             let info = crate::builtin_process::ProcessInfo {
@@ -239,13 +239,13 @@ impl Tool for TerminalTool {
         .await
         .map_err(|_| {
             debug!(command = %command, timeout = timeout_secs, "command timed out");
-            HakimiError::Tool(format!(
+            HakimiError::ToolSimple(format!(
                 "command timed out after {timeout_secs}s: {command}"
             ))
         })?
         .map_err(|e| {
             debug!(command = %command, error = %e, "failed to spawn command");
-            HakimiError::Tool(format!("failed to execute command: {e}"))
+            HakimiError::ToolSimple(format!("failed to execute command: {e}"))
         })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);

@@ -10,7 +10,7 @@ use tracing::{debug, instrument, warn};
 use crate::db::SessionDB;
 use crate::session_ops::generate_session_title;
 use hakimi_common::{Message, MessageRole};
-use hakimi_metrics::{global as metrics, MetricsRecorder};
+use hakimi_metrics::{MetricsRecorder, global as metrics};
 
 /// A full-text search result.
 #[derive(Debug, Clone, Serialize, Deserialize)]

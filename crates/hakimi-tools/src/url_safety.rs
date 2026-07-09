@@ -19,17 +19,17 @@ pub(crate) fn assert_safe_http_url(raw_url: &str) -> Result<()> {
 
 fn assert_safe_http_url_with_private_override(raw_url: &str, allow_private: bool) -> Result<()> {
     let url = reqwest::Url::parse(raw_url)
-        .map_err(|err| HakimiError::Tool(format!("Invalid URL '{raw_url}': {err}")))?;
+        .map_err(|err| HakimiError::ToolSimple(format!("Invalid URL '{raw_url}': {err}")))?;
     let scheme = url.scheme();
     if scheme != "http" && scheme != "https" {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "URL must start with http:// or https://".into(),
         ));
     }
 
     let host = url
         .host_str()
-        .ok_or_else(|| HakimiError::Tool(format!("URL '{raw_url}' has no hostname")))?;
+        .ok_or_else(|| HakimiError::ToolSimple(format!("URL '{raw_url}' has no hostname")))?;
     assert_safe_host(
         host,
         url.port_or_known_default().unwrap_or(443),
@@ -55,10 +55,10 @@ fn assert_safe_host(host: &str, port: u16, allow_private: bool) -> Result<()> {
         normalized = normalized[1..normalized.len() - 1].to_string();
     }
     if normalized.is_empty() {
-        return Err(HakimiError::Tool("URL hostname cannot be empty".into()));
+        return Err(HakimiError::ToolSimple("URL hostname cannot be empty".into()));
     }
     if BLOCKED_HOSTNAMES.contains(&normalized.as_str()) {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Blocked internal metadata hostname: {host}"
         )));
     }
@@ -74,7 +74,7 @@ fn assert_safe_host(host: &str, port: u16, allow_private: bool) -> Result<()> {
     let addrs = (normalized.as_str(), port)
         .to_socket_addrs()
         .map_err(|err| {
-            HakimiError::Tool(format!(
+            HakimiError::ToolSimple(format!(
                 "Could not resolve URL hostname '{host}' for safety check: {err}"
             ))
         })?;
@@ -93,7 +93,7 @@ fn assert_safe_ip(ip: IpAddr, host: &str, allow_private: bool) -> Result<()> {
             if let Some(mapped) = ipv4_mapped(ipv6) {
                 assert_safe_ipv4(mapped, host, allow_private)
             } else if is_always_blocked_ipv6(ipv6) {
-                Err(HakimiError::Tool(format!(
+                Err(HakimiError::ToolSimple(format!(
                     "Blocked cloud metadata address: {host}"
                 )))
             } else if allow_private {
@@ -109,7 +109,7 @@ fn assert_safe_ip(ip: IpAddr, host: &str, allow_private: bool) -> Result<()> {
 
 fn assert_safe_ipv4(ip: Ipv4Addr, host: &str, allow_private: bool) -> Result<()> {
     if is_always_blocked_ipv4(ip) {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Blocked cloud metadata address: {host}"
         )));
     }
@@ -180,7 +180,7 @@ fn allow_private_urls() -> bool {
 }
 
 fn private_url_error(host: &str) -> Result<()> {
-    Err(HakimiError::Tool(format!(
+    Err(HakimiError::ToolSimple(format!(
         "Blocked private/internal URL target: {host}. Set HAKIMI_ALLOW_PRIVATE_URLS=true only for trusted local deployments."
     )))
 }

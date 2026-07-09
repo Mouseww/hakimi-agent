@@ -73,7 +73,7 @@ impl Tool for ProcessTool {
         let action = args
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: action".into()))?;
 
         debug!(action = %action, "process operation");
 
@@ -83,7 +83,7 @@ impl Tool for ProcessTool {
                     .get("command")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| {
-                        HakimiError::Tool("'command' is required for 'start' action".into())
+                        HakimiError::ToolSimple("'command' is required for 'start' action".into())
                     })?;
 
                 assert_command_safe(command)?;
@@ -98,7 +98,7 @@ impl Tool for ProcessTool {
                     .stderr(std::process::Stdio::piped())
                     .spawn()
                     .map_err(|e| {
-                        HakimiError::Tool(format!("failed to spawn background process: {e}"))
+                        HakimiError::ToolSimple(format!("failed to spawn background process: {e}"))
                     })?;
 
                 // Generate a unique session id
@@ -124,12 +124,12 @@ impl Tool for ProcessTool {
                     args.get("session_id")
                         .and_then(|v| v.as_str())
                         .ok_or_else(|| {
-                            HakimiError::Tool("'session_id' is required for 'status' action".into())
+                            HakimiError::ToolSimple("'session_id' is required for 'status' action".into())
                         })?;
 
                 let mut processes = PROCESSES.lock().await;
                 let info = processes.get_mut(session_id).ok_or_else(|| {
-                    HakimiError::Tool(format!(
+                    HakimiError::ToolSimple(format!(
                         "no background process found with session_id '{}'",
                         session_id
                     ))
@@ -154,12 +154,12 @@ impl Tool for ProcessTool {
                     args.get("session_id")
                         .and_then(|v| v.as_str())
                         .ok_or_else(|| {
-                            HakimiError::Tool("'session_id' is required for 'log' action".into())
+                            HakimiError::ToolSimple("'session_id' is required for 'log' action".into())
                         })?;
 
                 let mut processes = PROCESSES.lock().await;
                 let info = processes.get_mut(session_id).ok_or_else(|| {
-                    HakimiError::Tool(format!(
+                    HakimiError::ToolSimple(format!(
                         "no background process found with session_id '{}'",
                         session_id
                     ))
@@ -220,12 +220,12 @@ impl Tool for ProcessTool {
                     args.get("session_id")
                         .and_then(|v| v.as_str())
                         .ok_or_else(|| {
-                            HakimiError::Tool("'session_id' is required for 'kill' action".into())
+                            HakimiError::ToolSimple("'session_id' is required for 'kill' action".into())
                         })?;
 
                 let mut processes = PROCESSES.lock().await;
                 let mut info = processes.remove(session_id).ok_or_else(|| {
-                    HakimiError::Tool(format!(
+                    HakimiError::ToolSimple(format!(
                         "no background process found with session_id '{}'",
                         session_id
                     ))
@@ -235,7 +235,7 @@ impl Tool for ProcessTool {
                     child
                         .kill()
                         .await
-                        .map_err(|e| HakimiError::Tool(format!("failed to kill process: {e}")))?;
+                        .map_err(|e| HakimiError::ToolSimple(format!("failed to kill process: {e}")))?;
                     Ok(format!("Process '{}' killed.", session_id))
                 } else {
                     Ok(format!(
@@ -283,7 +283,7 @@ impl Tool for ProcessTool {
 
                 Ok(result)
             }
-            _ => Err(HakimiError::Tool(format!(
+            _ => Err(HakimiError::ToolSimple(format!(
                 "invalid action '{}'. Must be 'start', 'status', 'log', 'kill', or 'list'.",
                 action
             ))),

@@ -88,10 +88,10 @@ impl Tool for MixtureOfAgentsTool {
             .and_then(|v| v.as_str())
             .map(str::trim)
             .filter(|s| s.len() >= MIN_PROMPT_CHARS)
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: user_prompt".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: user_prompt".into()))?;
 
         let api_key = openrouter_api_key().ok_or_else(|| {
-            HakimiError::Tool(
+            HakimiError::ToolSimple(
                 "OPENROUTER_API_KEY environment variable not set; mixture_of_agents requires OpenRouter."
                     .into(),
             )
@@ -116,7 +116,7 @@ impl Tool for MixtureOfAgentsTool {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(180))
             .build()
-            .map_err(|e| HakimiError::Tool(format!("failed to create MoA HTTP client: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create MoA HTTP client: {e}")))?;
 
         debug!(
             references = reference_models.len(),
@@ -238,7 +238,7 @@ fn parse_reference_models(args: &JsonValue) -> Result<Vec<String>> {
         });
 
     if models.is_empty() {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "reference_models must contain at least one model".into(),
         ));
     }
@@ -320,28 +320,28 @@ async fn run_chat_completion(
         .json(&body)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("MoA API request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("MoA API request failed: {e}")))?;
 
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read MoA API response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read MoA API response: {e}")))?;
     if !status.is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "MoA API returned status {status}: {}",
             redact_sensitive_text(&text)
         )));
     }
 
     let parsed: ChatCompletionResponse = serde_json::from_str(&text)
-        .map_err(|e| HakimiError::Tool(format!("failed to parse MoA response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse MoA response: {e}")))?;
     let choice = parsed
         .choices
         .first()
-        .ok_or_else(|| HakimiError::Tool("MoA response contained no choices".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("MoA response contained no choices".into()))?;
     let content = extract_content_or_reasoning(&choice.message).ok_or_else(|| {
-        HakimiError::Tool(format!(
+        HakimiError::ToolSimple(format!(
             "MoA model '{}' returned empty content",
             request.model
         ))

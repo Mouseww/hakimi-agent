@@ -80,10 +80,10 @@ impl Tool for ImageGenerateTool {
         let prompt = args
             .get("prompt")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: prompt".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: prompt".into()))?;
 
         if prompt.trim().is_empty() {
-            return Err(HakimiError::Tool("prompt parameter cannot be empty".into()));
+            return Err(HakimiError::ToolSimple("prompt parameter cannot be empty".into()));
         }
 
         // Determine provider
@@ -122,7 +122,7 @@ impl Tool for ImageGenerateTool {
                 generate_openai_image(prompt, aspect_ratio, model.as_deref(), output_path).await?
             }
             _ => {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "unsupported image generation provider: '{provider}'. Use 'fal' or 'openai'."
                 )));
             }
@@ -195,7 +195,7 @@ async fn generate_fal_image(
     output_path: Option<PathBuf>,
 ) -> Result<PathBuf> {
     let api_key = std::env::var("HAKIMI_IMAGE_GEN_API_KEY").map_err(|_| {
-        HakimiError::Tool(
+        HakimiError::ToolSimple(
             "HAKIMI_IMAGE_GEN_API_KEY environment variable not set. \
              Set it to your FAL.ai API key, or use provider='openai' for OpenAI."
                 .into(),
@@ -213,7 +213,7 @@ async fn generate_fal_image(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))?;
 
     let (width, height) = aspect_ratio_to_dimensions(aspect_ratio);
 
@@ -234,12 +234,12 @@ async fn generate_fal_image(
         .json(&body)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("FAL.ai API request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("FAL.ai API request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
         let error_body = response.text().await.unwrap_or_default();
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "FAL.ai API returned status {status}: {error_body}"
         )));
     }
@@ -247,7 +247,7 @@ async fn generate_fal_image(
     let response_json: JsonValue = response
         .json()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to parse FAL.ai response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse FAL.ai response: {e}")))?;
 
     // FAL.ai returns image URLs in the response
     let image_url = response_json
@@ -262,7 +262,7 @@ async fn generate_fal_image(
         })
         .or_else(|| response_json.get("url").and_then(|v| v.as_str()))
         .ok_or_else(|| {
-            HakimiError::Tool(format!(
+            HakimiError::ToolSimple(format!(
                 "FAL.ai returned no image URL in response: {}",
                 serde_json::to_string(&response_json).unwrap_or_default()
             ))
@@ -273,13 +273,13 @@ async fn generate_fal_image(
         .get(image_url)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to download generated image: {e}")))?
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to download generated image: {e}")))?
         .bytes()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read image data: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read image data: {e}")))?;
 
     if image_bytes.is_empty() {
-        return Err(HakimiError::Tool("downloaded image is empty".into()));
+        return Err(HakimiError::ToolSimple("downloaded image is empty".into()));
     }
 
     // Determine output path
@@ -292,11 +292,11 @@ async fn generate_fal_image(
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::Tool(format!("failed to create output directory: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
     }
 
     std::fs::write(&out_path, &image_bytes)
-        .map_err(|e| HakimiError::Tool(format!("failed to write image file: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to write image file: {e}")))?;
 
     Ok(out_path)
 }
@@ -309,7 +309,7 @@ async fn generate_openai_image(
     output_path: Option<PathBuf>,
 ) -> Result<PathBuf> {
     let api_key = std::env::var("HAKIMI_IMAGE_GEN_API_KEY").map_err(|_| {
-        HakimiError::Tool(
+        HakimiError::ToolSimple(
             "HAKIMI_IMAGE_GEN_API_KEY environment variable not set. \
              Set it to your OpenAI API key."
                 .into(),
@@ -329,7 +329,7 @@ async fn generate_openai_image(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))?;
 
     let body = json!({
         "model": model,
@@ -346,12 +346,12 @@ async fn generate_openai_image(
         .json(&body)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("OpenAI API request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("OpenAI API request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
         let error_body = response.text().await.unwrap_or_default();
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "OpenAI image API returned status {status}: {error_body}"
         )));
     }
@@ -359,7 +359,7 @@ async fn generate_openai_image(
     let response_json: JsonValue = response
         .json()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to parse OpenAI response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse OpenAI response: {e}")))?;
 
     let image_url = response_json
         .get("data")
@@ -367,7 +367,7 @@ async fn generate_openai_image(
         .and_then(|arr| arr.first())
         .and_then(|item| item.get("url").and_then(|v| v.as_str()))
         .ok_or_else(|| {
-            HakimiError::Tool(format!(
+            HakimiError::ToolSimple(format!(
                 "OpenAI returned no image URL in response: {}",
                 serde_json::to_string(&response_json).unwrap_or_default()
             ))
@@ -378,13 +378,13 @@ async fn generate_openai_image(
         .get(image_url)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to download generated image: {e}")))?
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to download generated image: {e}")))?
         .bytes()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read image data: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read image data: {e}")))?;
 
     if image_bytes.is_empty() {
-        return Err(HakimiError::Tool("downloaded image is empty".into()));
+        return Err(HakimiError::ToolSimple("downloaded image is empty".into()));
     }
 
     // Determine output path
@@ -397,11 +397,11 @@ async fn generate_openai_image(
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::Tool(format!("failed to create output directory: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
     }
 
     std::fs::write(&out_path, &image_bytes)
-        .map_err(|e| HakimiError::Tool(format!("failed to write image file: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to write image file: {e}")))?;
 
     Ok(out_path)
 }

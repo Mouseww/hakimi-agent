@@ -229,7 +229,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     "等待并发执行许可",
                 );
                 let _permit = semaphore.acquire().await.map_err(|e| {
-                    HakimiError::Tool(format!("failed to acquire delegation permit: {e}"))
+                    HakimiError::ToolSimple(format!("failed to acquire delegation permit: {e}"))
                 })?;
 
                 let mut attempts = 0;
@@ -332,7 +332,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
                                     &progress_title,
                                     format!("失败: {e}"),
                                 );
-                                return Err(HakimiError::Tool(format!(
+                                return Err(HakimiError::ToolSimple(format!(
                                     "Child agent failed after {max_attempts} attempts: {e}"
                                 )));
                             }
@@ -371,7 +371,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
     }
 
     async fn enqueue_task(&self, _goal: &str, _priority: u32) -> Result<String> {
-        Err(HakimiError::Tool(
+        Err(HakimiError::ToolSimple(
             "Task queueing is not yet implemented".into(),
         ))
     }

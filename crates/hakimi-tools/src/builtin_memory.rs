@@ -43,7 +43,7 @@ impl MemoryTool {
             "memory" => Ok(dir.join("memory.md")),
             "user" => Ok(dir.join("user.md")),
             "working_memory" | "working" => Ok(dir.join("working_memory.md")),
-            _ => Err(HakimiError::Tool(format!(
+            _ => Err(HakimiError::ToolSimple(format!(
                 "invalid target '{}'. Must be 'memory', 'user', or 'working_memory'.",
                 target
             ))),
@@ -106,12 +106,12 @@ impl Tool for MemoryTool {
         let action = args
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: action".into()))?;
 
         let target = args
             .get("target")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: target".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: target".into()))?;
 
         let content = args.get("content").and_then(|v| v.as_str());
         let old_text = args.get("old_text").and_then(|v| v.as_str());
@@ -128,7 +128,7 @@ impl Tool for MemoryTool {
         // Ensure memory directory exists
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent).await.map_err(|e| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "failed to create memory directory '{}': {e}",
                     parent.display()
                 ))
@@ -138,7 +138,7 @@ impl Tool for MemoryTool {
         match action {
             "add" => {
                 let content = content.ok_or_else(|| {
-                    HakimiError::Tool("'content' is required for the 'add' action".into())
+                    HakimiError::ToolSimple("'content' is required for the 'add' action".into())
                 })?;
 
                 // Read existing content or start fresh
@@ -152,7 +152,7 @@ impl Tool for MemoryTool {
 
                 fs::write(&file_path, &new_content)
                     .await
-                    .map_err(|e| HakimiError::Tool(format!("failed to write memory file: {e}")))?;
+                    .map_err(|e| HakimiError::ToolSimple(format!("failed to write memory file: {e}")))?;
 
                 Ok(format!(
                     "Added content to {target} memory ({}).",
@@ -161,12 +161,12 @@ impl Tool for MemoryTool {
             }
             "replace" => {
                 let content = content.ok_or_else(|| {
-                    HakimiError::Tool("'content' is required for the 'replace' action".into())
+                    HakimiError::ToolSimple("'content' is required for the 'replace' action".into())
                 })?;
 
                 fs::write(&file_path, format!("{content}\n"))
                     .await
-                    .map_err(|e| HakimiError::Tool(format!("failed to write memory file: {e}")))?;
+                    .map_err(|e| HakimiError::ToolSimple(format!("failed to write memory file: {e}")))?;
 
                 Ok(format!(
                     "Replaced {target} memory content ({}).",
@@ -175,22 +175,22 @@ impl Tool for MemoryTool {
             }
             "remove" => {
                 let old_text = old_text.ok_or_else(|| {
-                    HakimiError::Tool("'old_text' is required for the 'remove' action".into())
+                    HakimiError::ToolSimple("'old_text' is required for the 'remove' action".into())
                 })?;
 
                 let existing = fs::read_to_string(&file_path).await.map_err(|e| {
                     if e.kind() == std::io::ErrorKind::NotFound {
-                        HakimiError::Tool(format!(
+                        HakimiError::ToolSimple(format!(
                             "{target} memory file does not exist yet ({}).",
                             file_path.display()
                         ))
                     } else {
-                        HakimiError::Tool(format!("failed to read memory file: {e}"))
+                        HakimiError::ToolSimple(format!("failed to read memory file: {e}"))
                     }
                 })?;
 
                 if !existing.contains(old_text) {
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "old_text not found in {target} memory."
                     )));
                 }
@@ -198,14 +198,14 @@ impl Tool for MemoryTool {
                 let new_content = existing.replace(old_text, "");
                 fs::write(&file_path, &new_content)
                     .await
-                    .map_err(|e| HakimiError::Tool(format!("failed to write memory file: {e}")))?;
+                    .map_err(|e| HakimiError::ToolSimple(format!("failed to write memory file: {e}")))?;
 
                 Ok(format!(
                     "Removed matching text from {target} memory ({}).",
                     file_path.display()
                 ))
             }
-            _ => Err(HakimiError::Tool(format!(
+            _ => Err(HakimiError::ToolSimple(format!(
                 "invalid action '{}'. Must be 'add', 'replace', or 'remove'.",
                 action
             ))),

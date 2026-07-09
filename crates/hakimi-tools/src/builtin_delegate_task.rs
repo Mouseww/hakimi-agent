@@ -74,7 +74,7 @@ impl Tool for DelegateTaskTool {
                     .unwrap_or("")
                     .to_string();
                 if goal.is_empty() {
-                    return Err(HakimiError::Tool(
+                    return Err(HakimiError::ToolSimple(
                         "Each item in 'tasks' must have a 'goal'".into(),
                     ));
                 }
@@ -98,7 +98,7 @@ impl Tool for DelegateTaskTool {
             let goal = args
                 .get("goal")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| HakimiError::Tool("missing 'goal' or 'tasks' argument".into()))?
+                .ok_or_else(|| HakimiError::ToolSimple("missing 'goal' or 'tasks' argument".into()))?
                 .to_string();
             let context = args
                 .get("context")
@@ -145,7 +145,7 @@ impl Tool for DelegateTaskTool {
                 Ok(json!(results).to_string())
             }
         } else {
-            Err(HakimiError::Tool(
+            Err(HakimiError::ToolSimple(
                 "Delegation executor not available in current context".into(),
             ))
         }

@@ -179,7 +179,7 @@ impl Tool for ComputerUseTool {
                 "next_step": "Install or implement a cua-driver-compatible backend before enabling click/type/key/scroll/focus actions."
             })
             .to_string()),
-            _ => Err(HakimiError::Tool(format!(
+            _ => Err(HakimiError::ToolSimple(format!(
                 "unsupported computer_use action: {action}"
             ))),
         }
@@ -192,12 +192,12 @@ fn parse_action(args: &JsonValue) -> Result<&str> {
         .and_then(JsonValue::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: action".into()))?;
 
     if ACTIONS.contains(&action) {
         Ok(action)
     } else {
-        Err(HakimiError::Tool(format!(
+        Err(HakimiError::ToolSimple(format!(
             "unsupported computer_use action: {action}"
         )))
     }
@@ -207,7 +207,7 @@ fn validate_safety(action: &str, args: &JsonValue) -> Result<()> {
     if action == "type" {
         let text = args.get("text").and_then(JsonValue::as_str).unwrap_or("");
         if let Some(reason) = blocked_type_reason(text) {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "blocked unsafe computer_use type text: {reason}"
             )));
         }
@@ -216,7 +216,7 @@ fn validate_safety(action: &str, args: &JsonValue) -> Result<()> {
     if action == "key" {
         let keys = args.get("keys").and_then(JsonValue::as_str).unwrap_or("");
         if let Some(reason) = blocked_key_reason(keys) {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "blocked unsafe computer_use key combo: {reason}"
             )));
         }
@@ -327,7 +327,7 @@ async fn capture_action(args: &JsonValue) -> Result<String> {
         .filter(|parent| !parent.as_os_str().is_empty())
     {
         std::fs::create_dir_all(parent).map_err(|err| {
-            HakimiError::Tool(format!(
+            HakimiError::ToolSimple(format!(
                 "failed to create computer_use capture directory '{}': {err}",
                 parent.display()
             ))
@@ -339,7 +339,7 @@ async fn capture_action(args: &JsonValue) -> Result<String> {
         .arg(&output_path)
         .output()
         .await
-        .map_err(|err| HakimiError::Tool(format!("failed to start screencapture: {err}")))?;
+        .map_err(|err| HakimiError::ToolSimple(format!("failed to start screencapture: {err}")))?;
 
     if !output.status.success() {
         return Ok(json!({
@@ -374,7 +374,7 @@ async fn list_apps_action() -> Result<String> {
         .arg("tell application \"System Events\" to get name of every process whose background only is false")
         .output()
         .await
-        .map_err(|err| HakimiError::Tool(format!("failed to start osascript: {err}")))?;
+        .map_err(|err| HakimiError::ToolSimple(format!("failed to start osascript: {err}")))?;
 
     if !output.status.success() {
         return Ok(json!({
@@ -417,7 +417,7 @@ fn capture_output_path(args: &JsonValue) -> Result<PathBuf> {
         .unwrap_or_default()
         .as_millis();
     let home = dirs::home_dir()
-        .ok_or_else(|| HakimiError::Tool("failed to resolve home directory".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("failed to resolve home directory".into()))?;
     Ok(home
         .join(".hakimi")
         .join("computer-use")

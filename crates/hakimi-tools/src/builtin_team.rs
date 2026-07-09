@@ -90,7 +90,7 @@ impl Tool for TeamTool {
         }
 
         if action != "consult" {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "unsupported team action '{action}'. Expected 'consult' or 'list'."
             )));
         }
@@ -100,7 +100,7 @@ impl Tool for TeamTool {
         // ADVANCED: Multi-stage execution
         if let Some(stages_array) = args.get("stages").and_then(|v| v.as_array()) {
             if stages_array.is_empty() {
-                return Err(HakimiError::Tool("'stages' array must not be empty".into()));
+                return Err(HakimiError::ToolSimple("'stages' array must not be empty".into()));
             }
             let mut all_results = Vec::new();
             let mut accumulated_context = String::new();
@@ -110,11 +110,11 @@ impl Tool for TeamTool {
                     .get("tasks")
                     .and_then(|v| v.as_array())
                     .ok_or_else(|| {
-                        HakimiError::Tool(format!("stages[{stage_idx}] missing 'tasks'"))
+                        HakimiError::ToolSimple(format!("stages[{stage_idx}] missing 'tasks'"))
                     })?;
 
                 if stage_tasks.is_empty() {
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "stages[{stage_idx}].tasks must not be empty"
                     )));
                 }
@@ -127,7 +127,7 @@ impl Tool for TeamTool {
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                         .ok_or_else(|| {
-                            HakimiError::Tool(format!(
+                            HakimiError::ToolSimple(format!(
                                 "stages[{stage_idx}].tasks[{idx}] missing 'teammate'"
                             ))
                         })?;
@@ -137,7 +137,7 @@ impl Tool for TeamTool {
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                         .ok_or_else(|| {
-                            HakimiError::Tool(format!(
+                            HakimiError::ToolSimple(format!(
                                 "stages[{stage_idx}].tasks[{idx}] missing 'task'"
                             ))
                         })?;
@@ -208,7 +208,7 @@ impl Tool for TeamTool {
         // NEW: Structured tasks array - each teammate gets a different task
         if let Some(tasks_array) = args.get("tasks").and_then(|v| v.as_array()) {
             if tasks_array.is_empty() {
-                return Err(HakimiError::Tool("'tasks' array must not be empty".into()));
+                return Err(HakimiError::ToolSimple("'tasks' array must not be empty".into()));
             }
 
             let mode = args
@@ -223,13 +223,13 @@ impl Tool for TeamTool {
                     .and_then(|v| v.as_str())
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
-                    .ok_or_else(|| HakimiError::Tool(format!("tasks[{idx}] missing 'teammate'")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("tasks[{idx}] missing 'teammate'")))?;
                 let task = task_obj
                     .get("task")
                     .and_then(|v| v.as_str())
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
-                    .ok_or_else(|| HakimiError::Tool(format!("tasks[{idx}] missing 'task'")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("tasks[{idx}] missing 'task'")))?;
                 let context = task_obj
                     .get("context")
                     .and_then(|v| v.as_str())
@@ -288,7 +288,7 @@ impl Tool for TeamTool {
                 // Parallel execution (default)
                 let answers = executor.consult_many(calls).await?;
                 if answers.len() != teammate_ids.len() {
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "team consult_many returned {} answers for {} requests",
                         answers.len(),
                         teammate_ids.len()
@@ -312,7 +312,7 @@ impl Tool for TeamTool {
             .and_then(|v| v.as_str())
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: task".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: task".into()))?;
         let context = args
             .get("context")
             .and_then(|v| v.as_str())
@@ -328,7 +328,7 @@ impl Tool for TeamTool {
                 .filter(|s| !s.is_empty())
                 .collect();
             if ids.is_empty() {
-                return Err(HakimiError::Tool(
+                return Err(HakimiError::ToolSimple(
                     "'teammates' must contain at least one id".into(),
                 ));
             }
@@ -343,7 +343,7 @@ impl Tool for TeamTool {
                 .collect();
             let answers = executor.consult_many(calls).await?;
             if answers.len() != ids.len() {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "team consult_many returned {} answers for {} requests",
                     answers.len(),
                     ids.len()
@@ -364,7 +364,7 @@ impl Tool for TeamTool {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                HakimiError::Tool("provide 'teammate' (single) or 'teammates' (array)".into())
+                HakimiError::ToolSimple("provide 'teammate' (single) or 'teammates' (array)".into())
             })?;
 
         let result = executor

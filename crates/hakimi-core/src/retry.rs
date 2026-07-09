@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_should_not_retry_tool_error() {
-        let err = HakimiError::Tool("bad tool".into());
+        let err = HakimiError::ToolSimple("bad tool".into());
         assert!(!should_retry(&err, 0, 3));
         assert!(!should_retry(&err, 1, 3));
     }

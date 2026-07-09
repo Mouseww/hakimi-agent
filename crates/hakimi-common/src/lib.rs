@@ -1,7 +1,7 @@
 mod account_usage;
 mod activity;
 mod config_ref;
-mod error;
+pub mod error;
 mod file_safety;
 mod message;
 mod model_metadata;

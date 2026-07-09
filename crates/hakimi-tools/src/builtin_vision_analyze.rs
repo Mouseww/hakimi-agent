@@ -55,7 +55,7 @@ impl Tool for VisionAnalyzeTool {
         let image_url = args
             .get("image_url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: image_url".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: image_url".into()))?;
 
         let question = args
             .get("question")
@@ -110,16 +110,16 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String)> {
         .timeout(std::time::Duration::from_secs(30))
         .redirect(safe_http_redirect_policy(5))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("Failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Failed to create HTTP client: {e}")))?;
 
     let response = client
         .get(url)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Failed to download image: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Failed to download image: {e}")))?;
 
     if !response.status().is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Failed to download image: HTTP {}",
             response.status()
         )));
@@ -141,7 +141,7 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String)> {
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Failed to read image bytes: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Failed to read image bytes: {e}")))?;
 
     Ok((bytes.to_vec(), mime_type))
 }
@@ -149,7 +149,7 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String)> {
 /// Load a local image file and return (bytes, mime_type).
 fn load_local_image(path: &str) -> Result<(Vec<u8>, String)> {
     let bytes = std::fs::read(path)
-        .map_err(|e| HakimiError::Tool(format!("Failed to read local image file '{path}': {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Failed to read local image file '{path}': {e}")))?;
 
     let mime_type = guess_mime_type(path);
     Ok((bytes, mime_type))

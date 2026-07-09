@@ -48,7 +48,7 @@ impl Tool for FtsSearchTool {
         let query = args
             .get("query")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing 'query' argument".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing 'query' argument".into()))?;
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
         info!(query = %query, limit = limit, "Executing knowledge search");

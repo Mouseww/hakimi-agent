@@ -116,7 +116,7 @@ impl Tool for HttpTool {
             "DELETE" => self.client.delete(&url),
             "PATCH" => self.client.patch(&url),
             other => {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "unsupported HTTP method: {other}"
                 )));
             }
@@ -144,16 +144,16 @@ impl Tool for HttpTool {
         let response = builder
             .send()
             .await
-            .map_err(|e| HakimiError::Tool(format!("HTTP request failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("HTTP request failed: {e}")))?;
 
         let status = response.status();
         let body = response
             .text()
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to read HTTP response: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to read HTTP response: {e}")))?;
 
         if !status.is_success() {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "HTTP {} {}: status {status}: {body}",
                 self.config.method, self.config.endpoint,
             )));

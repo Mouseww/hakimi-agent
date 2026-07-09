@@ -8839,7 +8839,7 @@ mod tests {
             .await
             .unwrap();
         let config: SanitizedConfig = serde_json::from_slice(&body).unwrap();
-        assert_eq!(config.agent_max_turns, 90);
+        assert_eq!(config.agent_max_turns, 150);
         assert!(!config.agent_save_trajectories);
         assert_eq!(config.agent_trajectory_dir, "");
         assert_eq!(config.compression_engine, "smart");

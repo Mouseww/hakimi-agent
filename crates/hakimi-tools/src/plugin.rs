@@ -168,7 +168,7 @@ impl Tool for CommandPluginTool {
         let timeout = std::time::Duration::from_secs(self.manifest.timeout);
 
         let mut child = cmd.spawn().map_err(|e| {
-            HakimiError::Tool(format!(
+            HakimiError::ToolSimple(format!(
                 "failed to spawn plugin '{}': {}",
                 self.manifest.name, e
             ))
@@ -180,7 +180,7 @@ impl Tool for CommandPluginTool {
             stdin
                 .write_all(args_json.as_bytes())
                 .await
-                .map_err(|e| HakimiError::Tool(format!("failed to write to plugin stdin: {e}")))?;
+                .map_err(|e| HakimiError::ToolSimple(format!("failed to write to plugin stdin: {e}")))?;
             // Close stdin to signal end of input.
             drop(child.stdin.take());
         }
@@ -189,13 +189,13 @@ impl Tool for CommandPluginTool {
         let output = tokio::time::timeout(timeout, child.wait_with_output())
             .await
             .map_err(|_| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "plugin '{}' timed out after {}s",
                     self.manifest.name, self.manifest.timeout
                 ))
             })?
             .map_err(|e| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "plugin '{}' execution failed: {e}",
                     self.manifest.name
                 ))
@@ -204,7 +204,7 @@ impl Tool for CommandPluginTool {
         if !output.status.success() {
             let stderr = redact_sensitive_text(&String::from_utf8_lossy(&output.stderr));
             let code = output.status.code().unwrap_or(-1);
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "plugin '{}' exited with code {}: {}",
                 self.manifest.name, code, stderr
             )));
@@ -216,7 +216,7 @@ impl Tool for CommandPluginTool {
         // Try to parse as structured JSON response.
         if let Ok(resp) = serde_json::from_str::<PluginResponse>(stdout) {
             if let Some(error) = resp.error {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "plugin '{}' returned error: {}",
                     self.manifest.name,
                     redact_sensitive_text(&error)

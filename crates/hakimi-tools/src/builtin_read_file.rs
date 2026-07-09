@@ -60,7 +60,7 @@ impl Tool for ReadFileTool {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: path".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: path".into()))?;
 
         let offset = args
             .get("offset")
@@ -85,12 +85,12 @@ impl Tool for ReadFileTool {
         debug!(path = %full_path.display(), offset, limit, "reading file");
 
         if let Some(error) = get_read_block_error(&full_path) {
-            return Err(HakimiError::Tool(error));
+            return Err(HakimiError::ToolSimple(error));
         }
 
         let content = fs::read_to_string(&full_path).await.map_err(|e| {
             debug!(path = %full_path.display(), error = %e, "failed to read file");
-            HakimiError::Tool(format!("failed to read '{}': {}", full_path.display(), e))
+            HakimiError::ToolSimple(format!("failed to read '{}': {}", full_path.display(), e))
         })?;
 
         let lines: Vec<&str> = content.lines().collect();

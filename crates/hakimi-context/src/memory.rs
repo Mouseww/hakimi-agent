@@ -226,13 +226,13 @@ impl MemoryProvider for FileMemoryProvider {
         match name {
             "memory_save" => {
                 let entry_name = args.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
-                    hakimi_common::HakimiError::Tool("missing 'name' argument".into())
+                    hakimi_common::HakimiError::ToolSimple("missing 'name' argument".into())
                 })?;
                 let content = args
                     .get("content")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| {
-                        hakimi_common::HakimiError::Tool("missing 'content' argument".into())
+                        hakimi_common::HakimiError::ToolSimple("missing 'content' argument".into())
                     })?;
 
                 debug!(
@@ -244,7 +244,7 @@ impl MemoryProvider for FileMemoryProvider {
                 // Ensure memory directory exists
                 if !self.memory_dir.exists() {
                     std::fs::create_dir_all(&self.memory_dir).map_err(|e| {
-                        hakimi_common::HakimiError::Tool(format!(
+                        hakimi_common::HakimiError::ToolSimple(format!(
                             "failed to create memory dir: {e}"
                         ))
                     })?;
@@ -263,7 +263,7 @@ impl MemoryProvider for FileMemoryProvider {
                     .collect();
                 let path = self.memory_dir.join(format!("{safe_name}.md"));
                 std::fs::write(&path, content).map_err(|e| {
-                    hakimi_common::HakimiError::Tool(format!("failed to write memory: {e}"))
+                    hakimi_common::HakimiError::ToolSimple(format!("failed to write memory: {e}"))
                 })?;
 
                 debug!(path = %path.display(), "Saved memory entry");
@@ -271,7 +271,7 @@ impl MemoryProvider for FileMemoryProvider {
             }
             "memory_search" => {
                 let query = args.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
-                    hakimi_common::HakimiError::Tool("missing 'query' argument".into())
+                    hakimi_common::HakimiError::ToolSimple("missing 'query' argument".into())
                 })?;
                 debug!(query, "Searching memory");
                 let result = self.prefetch(query).await;
@@ -312,7 +312,7 @@ impl MemoryProvider for FileMemoryProvider {
                     Ok(format!("Memory entries:\n{}", names.join("\n")))
                 }
             }
-            other => Err(hakimi_common::HakimiError::Tool(format!(
+            other => Err(hakimi_common::HakimiError::ToolSimple(format!(
                 "Unknown memory tool: {other}"
             ))),
         }
@@ -400,27 +400,27 @@ impl MemoryProvider for UserMemoryProvider {
                     .get("content")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| {
-                        hakimi_common::HakimiError::Tool("missing 'content' argument".into())
+                        hakimi_common::HakimiError::ToolSimple("missing 'content' argument".into())
                     })?;
 
                 if let Some(parent) = self.profile_path.parent()
                     && !parent.exists()
                 {
                     std::fs::create_dir_all(parent).map_err(|e| {
-                        hakimi_common::HakimiError::Tool(format!(
+                        hakimi_common::HakimiError::ToolSimple(format!(
                             "failed to create profile dir: {e}"
                         ))
                     })?;
                 }
 
                 std::fs::write(&self.profile_path, content).map_err(|e| {
-                    hakimi_common::HakimiError::Tool(format!("failed to write profile: {e}"))
+                    hakimi_common::HakimiError::ToolSimple(format!("failed to write profile: {e}"))
                 })?;
 
                 debug!(path = %self.profile_path.display(), "Updated user profile");
                 Ok("User profile updated.".to_string())
             }
-            other => Err(hakimi_common::HakimiError::Tool(format!(
+            other => Err(hakimi_common::HakimiError::ToolSimple(format!(
                 "Unknown user profile tool: {other}"
             ))),
         }

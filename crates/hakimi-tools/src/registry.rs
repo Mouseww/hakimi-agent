@@ -138,7 +138,7 @@ impl ToolRegistry {
         } else if is_bridge_tool(name) {
             self.dispatch_tool_search_bridge(name, args, ctx).await
         } else {
-            Err(HakimiError::Tool(format!("Tool not found: {}", name)))
+            Err(HakimiError::ToolSimple(format!("Tool not found: {}", name)))
         }
     }
 
@@ -152,7 +152,7 @@ impl ToolRegistry {
             TOOL_SEARCH_NAME => self.dispatch_tool_search(args).await,
             TOOL_DESCRIBE_NAME => self.dispatch_tool_describe(args).await,
             TOOL_CALL_NAME => self.dispatch_deferred_tool(args, ctx).await,
-            _ => Err(HakimiError::Tool(format!("Tool not found: {}", name))),
+            _ => Err(HakimiError::ToolSimple(format!("Tool not found: {}", name))),
         }
     }
 

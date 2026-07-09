@@ -36,7 +36,7 @@ impl HomeAssistantConfig {
             .trim_end_matches('/')
             .to_string();
         if !base_url.starts_with("http://") && !base_url.starts_with("https://") {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "HASS_URL must start with http:// or https://".into(),
             ));
         }
@@ -45,7 +45,7 @@ impl HomeAssistantConfig {
             .map(|v| v.trim().to_string())
             .unwrap_or_default();
         if token.is_empty() {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "HASS_TOKEN environment variable is required".into(),
             ));
         }
@@ -68,7 +68,7 @@ fn ha_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create Home Assistant client: {e}")))
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create Home Assistant client: {e}")))
 }
 
 async fn ha_get(path: &str) -> Result<JsonValue> {
@@ -81,11 +81,11 @@ async fn ha_get(path: &str) -> Result<JsonValue> {
         .header("content-type", "application/json")
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Home Assistant request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Home Assistant request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Home Assistant request failed with status: {status}"
         )));
     }
@@ -93,7 +93,7 @@ async fn ha_get(path: &str) -> Result<JsonValue> {
     response
         .json::<JsonValue>()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to parse Home Assistant response: {e}")))
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse Home Assistant response: {e}")))
 }
 
 async fn ha_post(path: &str, payload: &JsonValue) -> Result<JsonValue> {
@@ -107,11 +107,11 @@ async fn ha_post(path: &str, payload: &JsonValue) -> Result<JsonValue> {
         .json(payload)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Home Assistant request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Home Assistant request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Home Assistant service call failed with status: {status}"
         )));
     }
@@ -119,14 +119,14 @@ async fn ha_post(path: &str, payload: &JsonValue) -> Result<JsonValue> {
     response
         .json::<JsonValue>()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to parse Home Assistant response: {e}")))
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse Home Assistant response: {e}")))
 }
 
 fn required_string<'a>(args: &'a JsonValue, key: &str) -> Result<&'a str> {
     args.get(key)
         .and_then(|v| v.as_str())
         .filter(|v| !v.trim().is_empty())
-        .ok_or_else(|| HakimiError::Tool(format!("missing required parameter: {key}")))
+        .ok_or_else(|| HakimiError::ToolSimple(format!("missing required parameter: {key}")))
 }
 
 fn optional_string<'a>(args: &'a JsonValue, key: &str) -> Option<&'a str> {
@@ -165,7 +165,7 @@ fn validate_entity_id(entity_id: &str) -> Result<()> {
     if is_valid_entity_id(entity_id) {
         Ok(())
     } else {
-        Err(HakimiError::Tool(format!(
+        Err(HakimiError::ToolSimple(format!(
             "invalid entity_id format: {entity_id}"
         )))
     }
@@ -175,13 +175,13 @@ fn validate_service_name(kind: &str, value: &str) -> Result<()> {
     if is_valid_service_name(value) {
         Ok(())
     } else {
-        Err(HakimiError::Tool(format!("invalid {kind} format: {value}")))
+        Err(HakimiError::ToolSimple(format!("invalid {kind} format: {value}")))
     }
 }
 
 fn ensure_domain_allowed(domain: &str) -> Result<()> {
     if BLOCKED_DOMAINS.contains(&domain) {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "service domain '{domain}' is blocked for security"
         )));
     }
@@ -296,10 +296,10 @@ fn service_payload(entity_id: Option<&str>, data: Option<&JsonValue>) -> Result<
         Some(JsonValue::String(raw)) if raw.trim().is_empty() => {}
         Some(JsonValue::String(raw)) => {
             let parsed: JsonValue = serde_json::from_str(raw).map_err(|e| {
-                HakimiError::Tool(format!("invalid JSON string in data parameter: {e}"))
+                HakimiError::ToolSimple(format!("invalid JSON string in data parameter: {e}"))
             })?;
             let JsonValue::Object(map) = parsed else {
-                return Err(HakimiError::Tool(
+                return Err(HakimiError::ToolSimple(
                     "data JSON string must decode to an object".into(),
                 ));
             };
@@ -307,7 +307,7 @@ fn service_payload(entity_id: Option<&str>, data: Option<&JsonValue>) -> Result<
         }
         Some(JsonValue::Null) | None => {}
         Some(_) => {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "data must be an object or a JSON object string".into(),
             ));
         }
@@ -396,7 +396,7 @@ impl Tool for HaListEntitiesTool {
 
         let states = ha_get("/api/states").await?;
         let states = states.as_array().ok_or_else(|| {
-            HakimiError::Tool("Home Assistant states response was not an array".into())
+            HakimiError::ToolSimple("Home Assistant states response was not an array".into())
         })?;
         Ok(json!({"result": summarize_entities(states, domain, area)}).to_string())
     }
@@ -513,7 +513,7 @@ impl Tool for HaListServicesTool {
 
         let services = ha_get("/api/services").await?;
         let services = services.as_array().ok_or_else(|| {
-            HakimiError::Tool("Home Assistant services response was not an array".into())
+            HakimiError::ToolSimple("Home Assistant services response was not an array".into())
         })?;
         Ok(json!({"result": summarize_services(services, domain)}).to_string())
     }

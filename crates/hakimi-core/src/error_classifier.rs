@@ -434,7 +434,7 @@ impl Classifiable for HakimiError {
         match self {
             HakimiError::Transport(msg) => classifier.classify_transport_error(msg),
             HakimiError::Io(err) => classifier.classify_transport_error(&err.to_string()),
-            HakimiError::Context(msg) => ErrorClassification {
+            HakimiError::ContextSimple(msg) => ErrorClassification {
                 reason: FailoverReason::ContextOverflow,
                 action: RecoveryAction::CompressContext,
                 is_retryable: false,
@@ -824,7 +824,7 @@ mod tests {
     #[test]
     fn test_classifiable_context_error() {
         use super::Classifiable;
-        let err = HakimiError::Context("token limit exceeded".into());
+        let err = HakimiError::ContextSimple("token limit exceeded".into());
         let c = err.classify();
         assert_eq!(c.reason, FailoverReason::ContextOverflow);
         assert_eq!(c.action, RecoveryAction::CompressContext);
@@ -833,7 +833,7 @@ mod tests {
     #[test]
     fn test_classifiable_json_error() {
         use super::Classifiable;
-        let err = HakimiError::Json(serde_json::from_str::<String>("invalid").unwrap_err());
+        let err = HakimiError::Json(serde_json::from_str::<String>("invalid").unwrap_err().to_string());
         let c = err.classify();
         assert_eq!(c.reason, FailoverReason::ParsingError);
         assert!(!c.is_retryable);

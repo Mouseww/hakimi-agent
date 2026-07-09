@@ -54,7 +54,7 @@ fn sanitize_name(name: &str) -> Result<()> {
         || name.contains("..")
         || name.starts_with('.')
     {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "invalid skill name '{name}'. Names cannot be empty, contain path separators, '..' , or start with '.'"
         )));
     }
@@ -105,11 +105,11 @@ impl Tool for SkillManageTool {
         let action = args
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing action".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing action".into()))?;
         let name = args
             .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing name".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing name".into()))?;
         sanitize_name(name)?;
 
         debug!(action = %action, name = %name, "skill_manage operation");
@@ -117,19 +117,19 @@ impl Tool for SkillManageTool {
         let dir = skills_dir();
         fs::create_dir_all(&dir)
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to create skills directory: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create skills directory: {e}")))?;
 
         match action {
             "create" => {
                 if find_skill(name).await.is_some() {
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "skill '{name}' already exists. Use patch or edit."
                     )));
                 }
                 let content = args
                     .get("content")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing content".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing content".into()))?;
 
                 let category = args.get("category").and_then(|v| v.as_str()).unwrap_or("");
                 let skill_dir = if !category.is_empty() {
@@ -141,37 +141,37 @@ impl Tool for SkillManageTool {
 
                 fs::create_dir_all(&skill_dir)
                     .await
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let path = skill_dir.join("SKILL.md");
                 fs::write(&path, content)
                     .await
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
 
                 Ok(format!("Created skill '{name}' at {}", path.display()))
             }
             "edit" => {
                 let path = find_skill(name)
                     .await
-                    .ok_or_else(|| HakimiError::Tool(format!("skill '{name}' not found.")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("skill '{name}' not found.")))?;
                 let content = args
                     .get("content")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing content".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing content".into()))?;
                 fs::write(&path, content)
                     .await
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!("Edited skill '{name}' ({})", path.display()))
             }
             "patch" => {
                 let path = find_skill(name)
                     .await
-                    .ok_or_else(|| HakimiError::Tool(format!("skill '{name}' not found.")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("skill '{name}' not found.")))?;
 
                 // Optional sub-file patching
                 let target_path =
                     if let Some(sub_path) = args.get("file_path").and_then(|v| v.as_str()) {
                         if sub_path.contains("..") {
-                            return Err(HakimiError::Tool("invalid file_path".into()));
+                            return Err(HakimiError::ToolSimple("invalid file_path".into()));
                         }
                         path.parent().unwrap().join(sub_path)
                     } else {
@@ -181,7 +181,7 @@ impl Tool for SkillManageTool {
                 let old_string = args
                     .get("old_string")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing old_string".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing old_string".into()))?;
                 let new_string = args
                     .get("new_string")
                     .and_then(|v| v.as_str())
@@ -193,13 +193,13 @@ impl Tool for SkillManageTool {
 
                 let content = fs::read_to_string(&target_path)
                     .await
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let matches = content.matches(old_string).count();
                 if matches == 0 {
-                    return Err(HakimiError::Tool("old_string not found in file".into()));
+                    return Err(HakimiError::ToolSimple("old_string not found in file".into()));
                 }
                 if matches > 1 && !replace_all {
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "old_string matched {} times. Be more specific or use replace_all=true.",
                         matches
                     )));
@@ -213,22 +213,22 @@ impl Tool for SkillManageTool {
 
                 fs::write(&target_path, new_content)
                     .await
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!("Patched {} correctly.", target_path.display()))
             }
             "delete" => {
                 let path = find_skill(name)
                     .await
-                    .ok_or_else(|| HakimiError::Tool(format!("skill '{name}' not found.")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("skill '{name}' not found.")))?;
                 // If it's a directory (i.e. we found SKILL.md), delete the whole directory
                 if path.file_name().unwrap_or_default() == "SKILL.md" {
                     fs::remove_dir_all(path.parent().unwrap())
                         .await
-                        .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                        .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 } else {
                     fs::remove_file(&path)
                         .await
-                        .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                        .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 }
 
                 let absorbed = args
@@ -246,18 +246,18 @@ impl Tool for SkillManageTool {
             "write_file" => {
                 let path = find_skill(name)
                     .await
-                    .ok_or_else(|| HakimiError::Tool(format!("skill '{name}' not found.")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("skill '{name}' not found.")))?;
                 let sub_path = args
                     .get("file_path")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing file_path".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing file_path".into()))?;
                 let file_content = args
                     .get("file_content")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing file_content".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing file_content".into()))?;
 
                 if sub_path.contains("..") {
-                    return Err(HakimiError::Tool("invalid file_path".into()));
+                    return Err(HakimiError::ToolSimple("invalid file_path".into()));
                 }
                 let parent_dir = path.parent().unwrap();
                 let target_path = parent_dir.join(sub_path);
@@ -265,41 +265,41 @@ impl Tool for SkillManageTool {
                 if let Some(p) = target_path.parent() {
                     fs::create_dir_all(p)
                         .await
-                        .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                        .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 }
 
                 fs::write(&target_path, file_content)
                     .await
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!("Wrote file {} in skill '{name}'", sub_path))
             }
             "remove_file" => {
                 let path = find_skill(name)
                     .await
-                    .ok_or_else(|| HakimiError::Tool(format!("skill '{name}' not found.")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("skill '{name}' not found.")))?;
                 let sub_path = args
                     .get("file_path")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing file_path".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing file_path".into()))?;
 
                 if sub_path.contains("..") {
-                    return Err(HakimiError::Tool("invalid file_path".into()));
+                    return Err(HakimiError::ToolSimple("invalid file_path".into()));
                 }
                 let target_path = path.parent().unwrap().join(sub_path);
 
                 if target_path.exists() {
                     fs::remove_file(&target_path)
                         .await
-                        .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                        .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                     Ok(format!("Removed file {} from skill '{name}'", sub_path))
                 } else {
-                    Err(HakimiError::Tool(format!(
+                    Err(HakimiError::ToolSimple(format!(
                         "File {} does not exist",
                         sub_path
                     )))
                 }
             }
-            _ => Err(HakimiError::Tool(format!("invalid action '{action}'"))),
+            _ => Err(HakimiError::ToolSimple(format!("invalid action '{action}'"))),
         }
     }
 }
