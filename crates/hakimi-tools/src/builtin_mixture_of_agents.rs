@@ -88,7 +88,9 @@ impl Tool for MixtureOfAgentsTool {
             .and_then(|v| v.as_str())
             .map(str::trim)
             .filter(|s| s.len() >= MIN_PROMPT_CHARS)
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: user_prompt".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: user_prompt".into())
+            })?;
 
         let api_key = openrouter_api_key().ok_or_else(|| {
             HakimiError::ToolSimple(
@@ -116,7 +118,9 @@ impl Tool for MixtureOfAgentsTool {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(180))
             .build()
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to create MoA HTTP client: {e}")))?;
+            .map_err(|e| {
+                HakimiError::ToolSimple(format!("failed to create MoA HTTP client: {e}"))
+            })?;
 
         debug!(
             references = reference_models.len(),

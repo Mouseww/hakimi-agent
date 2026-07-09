@@ -68,7 +68,9 @@ fn ha_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| HakimiError::ToolSimple(format!("failed to create Home Assistant client: {e}")))
+        .map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to create Home Assistant client: {e}"))
+        })
 }
 
 async fn ha_get(path: &str) -> Result<JsonValue> {
@@ -90,10 +92,9 @@ async fn ha_get(path: &str) -> Result<JsonValue> {
         )));
     }
 
-    response
-        .json::<JsonValue>()
-        .await
-        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse Home Assistant response: {e}")))
+    response.json::<JsonValue>().await.map_err(|e| {
+        HakimiError::ToolSimple(format!("failed to parse Home Assistant response: {e}"))
+    })
 }
 
 async fn ha_post(path: &str, payload: &JsonValue) -> Result<JsonValue> {
@@ -116,10 +117,9 @@ async fn ha_post(path: &str, payload: &JsonValue) -> Result<JsonValue> {
         )));
     }
 
-    response
-        .json::<JsonValue>()
-        .await
-        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse Home Assistant response: {e}")))
+    response.json::<JsonValue>().await.map_err(|e| {
+        HakimiError::ToolSimple(format!("failed to parse Home Assistant response: {e}"))
+    })
 }
 
 fn required_string<'a>(args: &'a JsonValue, key: &str) -> Result<&'a str> {
@@ -175,7 +175,9 @@ fn validate_service_name(kind: &str, value: &str) -> Result<()> {
     if is_valid_service_name(value) {
         Ok(())
     } else {
-        Err(HakimiError::ToolSimple(format!("invalid {kind} format: {value}")))
+        Err(HakimiError::ToolSimple(format!(
+            "invalid {kind} format: {value}"
+        )))
     }
 }
 

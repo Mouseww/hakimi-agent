@@ -83,7 +83,9 @@ impl Tool for ImageGenerateTool {
             .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: prompt".into()))?;
 
         if prompt.trim().is_empty() {
-            return Err(HakimiError::ToolSimple("prompt parameter cannot be empty".into()));
+            return Err(HakimiError::ToolSimple(
+                "prompt parameter cannot be empty".into(),
+            ));
         }
 
         // Determine provider
@@ -291,8 +293,9 @@ async fn generate_fal_image(
 
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to create output directory: {e}"))
+        })?;
     }
 
     std::fs::write(&out_path, &image_bytes)
@@ -396,8 +399,9 @@ async fn generate_openai_image(
 
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to create output directory: {e}"))
+        })?;
     }
 
     std::fs::write(&out_path, &image_bytes)

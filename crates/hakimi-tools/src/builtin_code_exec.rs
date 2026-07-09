@@ -89,9 +89,9 @@ impl Tool for CodeExecTool {
 
         // Write code to a temp file
         let temp_dir = std::path::PathBuf::from(&ctx.workdir).join(".hakimi_tmp");
-        tokio::fs::create_dir_all(&temp_dir)
-            .await
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to create temp directory: {e}")))?;
+        tokio::fs::create_dir_all(&temp_dir).await.map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to create temp directory: {e}"))
+        })?;
 
         let temp_file = temp_dir.join(format!(
             "snippet_{}_{}_{}",
@@ -215,7 +215,9 @@ def retry(fn, max_attempts=3, delay=2):
                     timeout_secs, language
                 ))
             })?
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to execute {} code: {e}", language)))?;
+            .map_err(|e| {
+                HakimiError::ToolSimple(format!("failed to execute {} code: {e}", language))
+            })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

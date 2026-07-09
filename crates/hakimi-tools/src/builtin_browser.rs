@@ -95,9 +95,9 @@ impl BrowserManager {
                 builder = builder.chrome_executable(executable);
             }
 
-            let config = builder
-                .build()
-                .map_err(|e| HakimiError::ToolSimple(format!("failed to build browser config: {e}")))?;
+            let config = builder.build().map_err(|e| {
+                HakimiError::ToolSimple(format!("failed to build browser config: {e}"))
+            })?;
 
             let (browser, mut handler) = Browser::launch(config)
                 .await
@@ -887,7 +887,9 @@ async fn capture_browser_screenshot(
         .map_err(|e| HakimiError::ToolSimple(format!("screenshot failed: {e}")))?;
 
     if screenshot_bytes.is_empty() {
-        return Err(HakimiError::ToolSimple("screenshot returned empty data".into()));
+        return Err(HakimiError::ToolSimple(
+            "screenshot returned empty data".into(),
+        ));
     }
 
     let out_path = output_path.unwrap_or_else(|| {
@@ -1008,7 +1010,9 @@ async fn install_dialog_listeners(
     let mut openings = page
         .event_listener::<EventJavascriptDialogOpening>()
         .await
-        .map_err(|e| HakimiError::ToolSimple(format!("failed to listen for browser dialogs: {e}")))?;
+        .map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to listen for browser dialogs: {e}"))
+        })?;
     let opening_dialogs = pending_dialogs;
     tokio::spawn(async move {
         while let Some(event) = openings.next().await {
@@ -1066,7 +1070,9 @@ async fn get_console_output(page: &Page, clear: bool) -> Result<JsonValue> {
 
 async fn evaluate_page_expression(page: &Page, expression: &str) -> Result<JsonValue> {
     if expression.trim().is_empty() {
-        return Err(HakimiError::ToolSimple("expression must not be empty".into()));
+        return Err(HakimiError::ToolSimple(
+            "expression must not be empty".into(),
+        ));
     }
 
     let expression_literal = serde_json::to_string(expression)
@@ -1110,10 +1116,9 @@ async () => {
 "#
     .replace("__HAKIMI_EXPRESSION__", &expression_literal);
 
-    let result = page
-        .evaluate_function(js)
-        .await
-        .map_err(|e| HakimiError::ToolSimple(format!("browser expression evaluation failed: {e}")))?;
+    let result = page.evaluate_function(js).await.map_err(|e| {
+        HakimiError::ToolSimple(format!("browser expression evaluation failed: {e}"))
+    })?;
 
     let raw = result.value().and_then(|v| v.as_str()).unwrap_or("{}");
     serde_json::from_str(raw)
@@ -1295,9 +1300,9 @@ async fn press_page_key(page: &Page, key: &str) -> Result<()> {
         .build()
         .map_err(|e| HakimiError::ToolSimple(format!("failed to build key-up event: {e}")))?;
 
-    page.execute(key_down)
-        .await
-        .map_err(|e| HakimiError::ToolSimple(format!("key-down dispatch failed for '{key}': {e}")))?;
+    page.execute(key_down).await.map_err(|e| {
+        HakimiError::ToolSimple(format!("key-down dispatch failed for '{key}': {e}"))
+    })?;
     page.execute(key_up)
         .await
         .map_err(|e| HakimiError::ToolSimple(format!("key-up dispatch failed for '{key}': {e}")))?;
@@ -1547,7 +1552,9 @@ impl Tool for BrowserClickTool {
         let selector = args
             .get("selector")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: selector".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: selector".into())
+            })?;
 
         let wait_ms = args.get("wait_ms").and_then(|v| v.as_u64()).unwrap_or(5000);
 
@@ -1557,10 +1564,9 @@ impl Tool for BrowserClickTool {
 
         // Find the element by CSS selector
         let _wait_secs = (wait_ms as f64) / 1000.0;
-        let element = page
-            .find_element(selector)
-            .await
-            .map_err(|e| HakimiError::ToolSimple(format!("element not found ('{selector}'): {e}")))?;
+        let element = page.find_element(selector).await.map_err(|e| {
+            HakimiError::ToolSimple(format!("element not found ('{selector}'): {e}"))
+        })?;
 
         // Click the element
         element
@@ -1654,7 +1660,9 @@ impl Tool for BrowserTypeTool {
         let selector = args
             .get("selector")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: selector".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: selector".into())
+            })?;
 
         let text = args
             .get("text")
@@ -1676,16 +1684,14 @@ impl Tool for BrowserTypeTool {
         let page = self.manager.get_page().await?;
 
         // Find the element
-        let element = page
-            .find_element(selector)
-            .await
-            .map_err(|e| HakimiError::ToolSimple(format!("element not found ('{selector}'): {e}")))?;
+        let element = page.find_element(selector).await.map_err(|e| {
+            HakimiError::ToolSimple(format!("element not found ('{selector}'): {e}"))
+        })?;
 
         // Click to focus
-        element
-            .click()
-            .await
-            .map_err(|e| HakimiError::ToolSimple(format!("focus click failed on '{selector}': {e}")))?;
+        element.click().await.map_err(|e| {
+            HakimiError::ToolSimple(format!("focus click failed on '{selector}': {e}"))
+        })?;
 
         // Clear field if requested
         if clear_first {
@@ -1787,7 +1793,9 @@ impl Tool for BrowserScrollTool {
         let direction = args
             .get("direction")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: direction".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: direction".into())
+            })?;
 
         let delta = match direction {
             "down" => 500,

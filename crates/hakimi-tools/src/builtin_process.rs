@@ -124,7 +124,9 @@ impl Tool for ProcessTool {
                     args.get("session_id")
                         .and_then(|v| v.as_str())
                         .ok_or_else(|| {
-                            HakimiError::ToolSimple("'session_id' is required for 'status' action".into())
+                            HakimiError::ToolSimple(
+                                "'session_id' is required for 'status' action".into(),
+                            )
                         })?;
 
                 let mut processes = PROCESSES.lock().await;
@@ -154,7 +156,9 @@ impl Tool for ProcessTool {
                     args.get("session_id")
                         .and_then(|v| v.as_str())
                         .ok_or_else(|| {
-                            HakimiError::ToolSimple("'session_id' is required for 'log' action".into())
+                            HakimiError::ToolSimple(
+                                "'session_id' is required for 'log' action".into(),
+                            )
                         })?;
 
                 let mut processes = PROCESSES.lock().await;
@@ -220,7 +224,9 @@ impl Tool for ProcessTool {
                     args.get("session_id")
                         .and_then(|v| v.as_str())
                         .ok_or_else(|| {
-                            HakimiError::ToolSimple("'session_id' is required for 'kill' action".into())
+                            HakimiError::ToolSimple(
+                                "'session_id' is required for 'kill' action".into(),
+                            )
                         })?;
 
                 let mut processes = PROCESSES.lock().await;
@@ -232,10 +238,9 @@ impl Tool for ProcessTool {
                 })?;
 
                 if let Some(child) = &mut info.child {
-                    child
-                        .kill()
-                        .await
-                        .map_err(|e| HakimiError::ToolSimple(format!("failed to kill process: {e}")))?;
+                    child.kill().await.map_err(|e| {
+                        HakimiError::ToolSimple(format!("failed to kill process: {e}"))
+                    })?;
                     Ok(format!("Process '{}' killed.", session_id))
                 } else {
                     Ok(format!(

@@ -202,7 +202,6 @@ impl MemoryArchive {
         None
     }
 
-
     /// Group entries by year-month
     fn group_by_month(&self, entries: &[MemoryEntry]) -> HashMap<String, Vec<MemoryEntry>> {
         let mut grouped: HashMap<String, Vec<MemoryEntry>> = HashMap::new();

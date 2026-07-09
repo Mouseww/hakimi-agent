@@ -55,7 +55,9 @@ impl Tool for VisionAnalyzeTool {
         let image_url = args
             .get("image_url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: image_url".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: image_url".into())
+            })?;
 
         let question = args
             .get("question")
@@ -148,8 +150,9 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String)> {
 
 /// Load a local image file and return (bytes, mime_type).
 fn load_local_image(path: &str) -> Result<(Vec<u8>, String)> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| HakimiError::ToolSimple(format!("Failed to read local image file '{path}': {e}")))?;
+    let bytes = std::fs::read(path).map_err(|e| {
+        HakimiError::ToolSimple(format!("Failed to read local image file '{path}': {e}"))
+    })?;
 
     let mime_type = guess_mime_type(path);
     Ok((bytes, mime_type))

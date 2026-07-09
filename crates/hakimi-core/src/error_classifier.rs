@@ -833,7 +833,11 @@ mod tests {
     #[test]
     fn test_classifiable_json_error() {
         use super::Classifiable;
-        let err = HakimiError::Json(serde_json::from_str::<String>("invalid").unwrap_err().to_string());
+        let err = HakimiError::Json(
+            serde_json::from_str::<String>("invalid")
+                .unwrap_err()
+                .to_string(),
+        );
         let c = err.classify();
         assert_eq!(c.reason, FailoverReason::ParsingError);
         assert!(!c.is_retryable);

@@ -578,7 +578,9 @@ async fn search_bing_cn(query: &str, max_results: usize) -> Result<String> {
 
     let status = response.status();
     if !status.is_success() {
-        return Err(HakimiError::ToolSimple(format!("Bing CN returned HTTP {status}")));
+        return Err(HakimiError::ToolSimple(format!(
+            "Bing CN returned HTTP {status}"
+        )));
     }
 
     let body = response

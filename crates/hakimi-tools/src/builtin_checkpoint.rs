@@ -745,7 +745,9 @@ fn normalize_path_for_prefix(path: &Path) -> Result<PathBuf> {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
                 if !normalized.pop() {
-                    return Err(HakimiError::ToolSimple("path traversal is not allowed".into()));
+                    return Err(HakimiError::ToolSimple(
+                        "path traversal is not allowed".into(),
+                    ));
                 }
             }
             other => normalized.push(other.as_os_str()),

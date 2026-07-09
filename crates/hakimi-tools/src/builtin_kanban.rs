@@ -287,7 +287,9 @@ impl KanbanStore {
         validate_status(&input.status)?;
         let title = input.title.trim();
         if title.is_empty() {
-            return Err(HakimiError::ToolSimple("kanban task title is required".into()));
+            return Err(HakimiError::ToolSimple(
+                "kanban task title is required".into(),
+            ));
         }
         let body = normalize_optional(input.body);
         let assignee = normalize_profile_arg(input.assignee.as_deref())?;
@@ -424,7 +426,9 @@ impl KanbanStore {
         self.get_task_required(task_id)?;
         let body = body.trim();
         if body.is_empty() {
-            return Err(HakimiError::ToolSimple("kanban comment body is required".into()));
+            return Err(HakimiError::ToolSimple(
+                "kanban comment body is required".into(),
+            ));
         }
         let now = now_epoch();
         let conn = self.connect()?;
@@ -2083,8 +2087,9 @@ fn show_task_json(store: &KanbanStore, task_id: &str) -> Result<String> {
 }
 
 pub fn kanban_dashboard_boards() -> Result<JsonValue> {
-    serde_json::from_str(&board_list_json()?)
-        .map_err(|err| HakimiError::ToolSimple(format!("kanban board list serialization error: {err}")))
+    serde_json::from_str(&board_list_json()?).map_err(|err| {
+        HakimiError::ToolSimple(format!("kanban board list serialization error: {err}"))
+    })
 }
 
 pub fn kanban_dashboard_snapshot(
@@ -2154,7 +2159,9 @@ pub fn kanban_dashboard_create_task(
                 .as_deref()
                 .and_then(non_empty_str)
                 .ok_or_else(|| {
-                    HakimiError::ToolSimple("blocked dashboard task blocked_reason is required".into())
+                    HakimiError::ToolSimple(
+                        "blocked dashboard task blocked_reason is required".into(),
+                    )
                 })?
                 .to_string(),
         )
@@ -2557,10 +2564,9 @@ fn kanban_boards_response(args: Vec<&str>) -> Result<String> {
             Ok(json!(meta).to_string())
         }
         "switch" | "use" => {
-            let slug = args
-                .get(1)
-                .copied()
-                .ok_or_else(|| HakimiError::ToolSimple("usage: /kanban boards switch <slug>".into()))?;
+            let slug = args.get(1).copied().ok_or_else(|| {
+                HakimiError::ToolSimple("usage: /kanban boards switch <slug>".into())
+            })?;
             switch_board(slug)?;
             board_summary_json(&normalize_board_slug(slug)?)
         }
@@ -2687,8 +2693,9 @@ fn normalize_profile_arg(value: Option<&str>) -> Result<Option<String>> {
 }
 
 fn require_notify_text<'a>(value: &'a str, name: &str) -> Result<&'a str> {
-    let trimmed = non_empty_str(value)
-        .ok_or_else(|| HakimiError::ToolSimple(format!("kanban notification {name} is required")))?;
+    let trimmed = non_empty_str(value).ok_or_else(|| {
+        HakimiError::ToolSimple(format!("kanban notification {name} is required"))
+    })?;
     if trimmed.len() > 256 || trimmed.chars().any(char::is_control) {
         return Err(HakimiError::ToolSimple(format!(
             "invalid kanban notification {name}: use 1-256 non-control characters"
@@ -2873,7 +2880,9 @@ fn board_exists(slug: &str) -> bool {
 fn normalize_board_slug(slug: &str) -> Result<String> {
     let slug = slug.trim().to_ascii_lowercase();
     if slug.is_empty() {
-        return Err(HakimiError::ToolSimple("kanban board slug is required".into()));
+        return Err(HakimiError::ToolSimple(
+            "kanban board slug is required".into(),
+        ));
     }
     if slug.len() > 64
         || !slug
@@ -2936,7 +2945,9 @@ fn create_board(
 fn switch_board(slug: &str) -> Result<()> {
     let slug = normalize_board_slug(slug)?;
     if !board_exists(&slug) {
-        return Err(HakimiError::ToolSimple(format!("kanban board not found: {slug}")));
+        return Err(HakimiError::ToolSimple(format!(
+            "kanban board not found: {slug}"
+        )));
     }
     let path = current_board_path();
     if let Some(parent) = path.parent() {
@@ -3000,7 +3011,9 @@ fn dashboard_board_slug(board: Option<&str>) -> Result<Option<String>> {
     };
     let slug = normalize_board_slug(raw)?;
     if slug != DEFAULT_BOARD && !board_exists(&slug) {
-        return Err(HakimiError::ToolSimple(format!("kanban board not found: {slug}")));
+        return Err(HakimiError::ToolSimple(format!(
+            "kanban board not found: {slug}"
+        )));
     }
     Ok(Some(slug))
 }

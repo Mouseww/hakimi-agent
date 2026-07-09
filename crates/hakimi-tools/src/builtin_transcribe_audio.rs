@@ -72,7 +72,9 @@ impl Tool for TranscribeAudioTool {
         let audio_path = args
             .get("audio_path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: audio_path".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: audio_path".into())
+            })?;
 
         let provider = args
             .get("provider")
@@ -199,8 +201,9 @@ async fn download_audio(url: &str) -> Result<AudioSource> {
 }
 
 fn read_local_audio(path: &str) -> Result<AudioSource> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| HakimiError::ToolSimple(format!("failed to read local audio file '{path}': {e}")))?;
+    let bytes = std::fs::read(path).map_err(|e| {
+        HakimiError::ToolSimple(format!("failed to read local audio file '{path}': {e}"))
+    })?;
 
     Ok(AudioSource {
         file_name: file_name_from_source(path),
@@ -230,7 +233,9 @@ async fn transcribe_wav_in_chunks(
 ) -> Result<String> {
     let chunks = split_wav_for_transcription(source, TRANSCRIPTION_MAX_FILE_SIZE_BYTES)?;
     if chunks.is_empty() {
-        return Err(HakimiError::ToolSimple("no audio chunks were created".into()));
+        return Err(HakimiError::ToolSimple(
+            "no audio chunks were created".into(),
+        ));
     }
 
     debug!(
@@ -316,7 +321,9 @@ struct WavLayout {
 
 fn parse_wav_layout(bytes: &[u8]) -> Result<WavLayout> {
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
-        return Err(HakimiError::ToolSimple("expected a RIFF/WAVE audio file".into()));
+        return Err(HakimiError::ToolSimple(
+            "expected a RIFF/WAVE audio file".into(),
+        ));
     }
 
     let mut cursor = 12usize;
@@ -367,8 +374,8 @@ fn patch_wav_sizes(bytes: &mut [u8], data_len_offset: usize) -> Result<()> {
         .len()
         .checked_sub(data_len_offset + 4)
         .ok_or_else(|| HakimiError::ToolSimple("WAV data chunk is invalid".into()))?;
-    let riff_len =
-        u32::try_from(riff_len).map_err(|_| HakimiError::ToolSimple("WAV chunk is too large".into()))?;
+    let riff_len = u32::try_from(riff_len)
+        .map_err(|_| HakimiError::ToolSimple("WAV chunk is too large".into()))?;
     let data_len = u32::try_from(data_len)
         .map_err(|_| HakimiError::ToolSimple("WAV data chunk is too large".into()))?;
 
@@ -461,10 +468,9 @@ async fn request_openai_transcription(
         .map_err(|e| HakimiError::ToolSimple(format!("transcription API request failed: {e}")))?;
 
     let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|e| HakimiError::ToolSimple(format!("failed to read transcription response: {e}")))?;
+    let body = response.text().await.map_err(|e| {
+        HakimiError::ToolSimple(format!("failed to read transcription response: {e}"))
+    })?;
 
     if !status.is_success() {
         return Err(HakimiError::ToolSimple(format!(

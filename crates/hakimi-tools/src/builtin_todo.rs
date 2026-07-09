@@ -37,7 +37,9 @@ async fn load_todos(session_id: &str) -> Result<Vec<TodoItem>> {
         Ok(data) => serde_json::from_str(&data)
             .map_err(|e| HakimiError::ToolSimple(format!("failed to parse todos file: {e}"))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(HakimiError::ToolSimple(format!("failed to read todos file: {e}"))),
+        Err(e) => Err(HakimiError::ToolSimple(format!(
+            "failed to read todos file: {e}"
+        ))),
     }
 }
 
@@ -170,15 +172,18 @@ impl Tool for TodoTool {
                         HakimiError::ToolSimple(format!("todo with id '{}' not found", target_id))
                     })?;
 
-                Ok(serde_json::to_string_pretty(todo)
-                    .map_err(|e| HakimiError::ToolSimple(format!("failed to serialize todo: {e}")))?)
+                Ok(serde_json::to_string_pretty(todo).map_err(|e| {
+                    HakimiError::ToolSimple(format!("failed to serialize todo: {e}"))
+                })?)
             }
             "create" => {
                 let new_todos = args
                     .get("todos")
                     .and_then(|v| v.as_array())
                     .ok_or_else(|| {
-                        HakimiError::ToolSimple("'todos' array is required for 'create' action".into())
+                        HakimiError::ToolSimple(
+                            "'todos' array is required for 'create' action".into(),
+                        )
                     })?;
 
                 let mut existing = load_todos(session_id).await?;
@@ -188,7 +193,9 @@ impl Tool for TodoTool {
                     let id = item
                         .get("id")
                         .and_then(|v| v.as_str())
-                        .ok_or_else(|| HakimiError::ToolSimple("each todo must have an 'id'".into()))?
+                        .ok_or_else(|| {
+                            HakimiError::ToolSimple("each todo must have an 'id'".into())
+                        })?
                         .to_string();
 
                     let content = item
@@ -240,10 +247,9 @@ impl Tool for TodoTool {
                 let mut updated = 0;
 
                 for item in update_todos {
-                    let id = item
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| HakimiError::ToolSimple("each todo must have an 'id'".into()))?;
+                    let id = item.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
+                        HakimiError::ToolSimple("each todo must have an 'id'".into())
+                    })?;
 
                     let todo = existing.iter_mut().find(|t| t.id == id).ok_or_else(|| {
                         HakimiError::ToolSimple(format!("todo with id '{}' not found", id))

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hakimi_common::{error::ErrorContext, HakimiError, Result, ToolContext};
+use hakimi_common::{HakimiError, Result, ToolContext, error::ErrorContext};
 use hakimi_metrics::MetricsRecorder;
 use hakimi_session::{MessageOps, SessionDB, SessionMeta, SessionOps};
 use serde_json::{Value as JsonValue, json};
@@ -150,10 +150,18 @@ impl Tool for SessionSearchTool {
             "session search"
         );
 
-        let db = SessionDB::new(&db_path)
-            .map_err(|e| session_error(format!("failed to open session database: {e}"), "session_search"))?;
-        db.initialize()
-            .map_err(|e| session_error(format!("failed to initialize database: {e}"), "session_search"))?;
+        let db = SessionDB::new(&db_path).map_err(|e| {
+            session_error(
+                format!("failed to open session database: {e}"),
+                "session_search",
+            )
+        })?;
+        db.initialize().map_err(|e| {
+            session_error(
+                format!("failed to initialize database: {e}"),
+                "session_search",
+            )
+        })?;
 
         // SCROLL MODE: session_id + around_message_id
         if let (Some(sid), Some(anchor_id)) = (session_id, around_msg_id) {
@@ -185,9 +193,9 @@ impl Tool for SessionSearchTool {
 impl SessionSearchTool {
     /// BROWSE MODE: List recent sessions
     fn browse_mode(&self, db: &SessionDB, limit: i64) -> Result<String> {
-        let sessions = db
-            .get_recent_sessions(None, limit)
-            .map_err(|e| session_error(format!("failed to get recent sessions: {e}"), "browse_mode"))?;
+        let sessions = db.get_recent_sessions(None, limit).map_err(|e| {
+            session_error(format!("failed to get recent sessions: {e}"), "browse_mode")
+        })?;
 
         if sessions.is_empty() {
             return Ok("No sessions found.".to_string());
@@ -254,9 +262,9 @@ impl SessionSearchTool {
         );
 
         for sid in session_ids.iter().take(limit as usize) {
-            let session = db
-                .get_session(sid)
-                .map_err(|e| session_error(format!("failed to get session: {e}"), "discovery_mode"))?;
+            let session = db.get_session(sid).map_err(|e| {
+                session_error(format!("failed to get session: {e}"), "discovery_mode")
+            })?;
 
             if let Some(session) = session {
                 output.push_str(&self.format_session_with_bookends(db, &session, &results)?);
@@ -278,12 +286,17 @@ impl SessionSearchTool {
         let session = db
             .get_session(session_id)
             .map_err(|e| session_error(format!("failed to get session: {e}"), "scroll_mode"))?
-            .ok_or_else(|| session_error(format!("session not found: {}", session_id), "scroll_mode"))?;
+            .ok_or_else(|| {
+                session_error(format!("session not found: {}", session_id), "scroll_mode")
+            })?;
 
         let (messages, before, after) = db
             .get_messages_around(session_id, anchor_id, window)
             .map_err(|e| {
-                session_error(format!("failed to get messages around anchor: {e}"), "scroll_mode")
+                session_error(
+                    format!("failed to get messages around anchor: {e}"),
+                    "scroll_mode",
+                )
             })?;
 
         if messages.is_empty() {

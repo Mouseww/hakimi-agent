@@ -88,7 +88,9 @@ impl Tool for TextToSpeechTool {
             .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: text".into()))?;
 
         if text.trim().is_empty() {
-            return Err(HakimiError::ToolSimple("text parameter cannot be empty".into()));
+            return Err(HakimiError::ToolSimple(
+                "text parameter cannot be empty".into(),
+            ));
         }
 
         let voice_playback = args
@@ -267,7 +269,9 @@ async fn generate_openai_tts(
         .map_err(|e| HakimiError::ToolSimple(format!("failed to read TTS response: {e}")))?;
 
     if audio_bytes.is_empty() {
-        return Err(HakimiError::ToolSimple("TTS API returned empty response".into()));
+        return Err(HakimiError::ToolSimple(
+            "TTS API returned empty response".into(),
+        ));
     }
 
     // Determine output path
@@ -279,8 +283,9 @@ async fn generate_openai_tts(
 
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to create output directory: {e}"))
+        })?;
     }
 
     std::fs::write(&out_path, &audio_bytes)
@@ -356,8 +361,9 @@ async fn generate_edge_tts(
 
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to create output directory: {e}"))
+        })?;
     }
 
     std::fs::write(&out_path, &audio_data)
