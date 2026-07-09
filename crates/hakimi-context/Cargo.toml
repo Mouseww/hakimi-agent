@@ -16,3 +16,6 @@ regex = { workspace = true }
 chrono = { workspace = true }
 md5 = "0.7"
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
