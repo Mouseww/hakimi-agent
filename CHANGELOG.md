@@ -2,6 +2,24 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.68] - 2026-07-10
+
+### Added
+- Performance metrics collection in core agent operations (TASK_1.1.2)
+  - Created comprehensive `ConversationMetrics` structure
+  - Added metrics for latency, token counts, and API calls
+  - Integrated `MetricsTimer` for duration tracking
+  - Added metrics field to `ConversationResult`
+  - Automatic metrics collection in conversation loops
+  - Support for iteration and token limit detection
+
+### Technical Details
+- **metrics.rs**: New module with `ConversationMetrics`, `ToolMetric`, and `MetricsTimer`
+- **conversation.rs**: Added `metrics` field to `ConversationResult`
+- **loop_impl.rs**: Integrated metrics tracking throughout execution
+- Metrics include: total_duration_ms, api_call_count, token usage, tool execution times
+- Foundation for observability dashboards and performance analysis
+
 ## [0.5.67] - 2026-07-10
 
 ### Added

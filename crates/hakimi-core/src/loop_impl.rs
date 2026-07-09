@@ -106,6 +106,12 @@ pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResul
 
 /// Shared inner loop — `streaming` controls how the response is fetched.
 async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<ConversationResult> {
+    use crate::metrics::{ConversationMetrics, MetricsTimer};
+    
+    // Start metrics collection
+    let conversation_timer = MetricsTimer::start();
+    let mut metrics = ConversationMetrics::new();
+    
     let budget = IterationBudget::new(agent.max_iterations);
     let mut total_usage = Usage::default();
     let mut api_call_count: usize = 0;
@@ -309,11 +315,25 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             "Agent loop completed"
         );
 
+        // Finalize metrics
+        metrics.finalize(conversation_timer.elapsed());
+        metrics.record_token_usage(
+            total_usage.prompt_tokens as usize,
+            total_usage.completion_tokens as usize,
+        );
+        // Record API call count (already tracked by api_call_count)
+        for _ in 0..api_call_count {
+            metrics.record_api_call();
+        }
+        metrics.hit_iteration_limit = false;
+        metrics.hit_token_limit = false;
+
         return Ok(ConversationResult {
             final_response,
             messages: agent.messages.clone(),
             usage: total_usage,
             api_call_count,
+            metrics,
         });
     }
 
@@ -323,11 +343,25 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         engine.on_session_end();
     }
 
+    // Finalize metrics for early termination
+    metrics.finalize(conversation_timer.elapsed());
+    metrics.record_token_usage(
+        total_usage.prompt_tokens as usize,
+        total_usage.completion_tokens as usize,
+    );
+    for _ in 0..api_call_count {
+        metrics.record_api_call();
+    }
+    metrics.hit_iteration_limit = budget.remaining() == 0;
+    // Token limit detection would require checking against a configured limit
+    metrics.hit_token_limit = false;
+
     Ok(ConversationResult {
         final_response: String::new(),
         messages: agent.messages.clone(),
         usage: total_usage,
         api_call_count,
+        metrics,
     })
 }
 
@@ -371,6 +405,7 @@ async fn fetch_response(
         match result {
             Ok(resp) => {
                 *api_call_count += 1;
+                // Metrics will be recorded later in run_loop_inner
                 return Ok(resp);
             }
             Err(e) => {
