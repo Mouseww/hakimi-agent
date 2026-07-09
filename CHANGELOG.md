@@ -2,6 +2,27 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.61] - 2026-07-10
+
+### Session Search 集成测试 (任务 1.3.1)
+
+#### Testing
+- 新增 18 个 session_search 工具集成测试用例
+  - Browse 模式：列出最近会话 (3 个测试)
+  - Discovery 模式：FTS5 搜索 + bookends 上下文 (5 个测试)
+  - Scroll 模式：围绕消息滚动，边界检测 (6 个测试)
+  - 错误处理：空会话、不存在的会话 (2 个测试)
+  - 参数验证：limit 和 window 参数限制 (2 个测试)
+- FTS5 搜索测试：支持英文和中文关键词
+- 测试环境隔离：使用 HAKIMI_HOME 环境变量和临时目录
+- 测试执行：需使用 `--test-threads=1` 避免环境变量竞争
+
+#### Technical
+- 新增文件：crates/hakimi-tools/tests/session_search_integration_test.rs (519 行)
+- 使用 tempfile crate 创建临时测试数据库
+- 全局 Mutex 锁确保环境变量设置的原子性
+- 所有测试通过 ✅
+
 ## [0.5.60] - 2026-07-10
 
 ### Tracing Spans 追踪系统 (任务 1.1.1)
