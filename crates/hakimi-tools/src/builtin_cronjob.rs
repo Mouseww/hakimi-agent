@@ -22,7 +22,7 @@ impl CronjobTool {
     fn get_store() -> std::result::Result<PersistentCronStore, HakimiError> {
         let cron_db_path = hakimi_common::effective_hakimi_home().join("cron.db");
         PersistentCronStore::open(&cron_db_path)
-            .map_err(|e| HakimiError::Tool(format!("Failed to open cron DB: {e}")))
+            .map_err(|e| HakimiError::ToolSimple(format!("Failed to open cron DB: {e}")))
     }
 
     fn string_array(args: &JsonValue, key: &str) -> Option<Vec<String>> {
@@ -48,9 +48,9 @@ impl CronjobTool {
             }
             return u32::try_from(repeat)
                 .map(|repeat| Some(Some(repeat)))
-                .map_err(|_| HakimiError::Tool("repeat is too large".into()));
+                .map_err(|_| HakimiError::ToolSimple("repeat is too large".into()));
         }
-        Err(HakimiError::Tool("repeat must be an integer".into()))
+        Err(HakimiError::ToolSimple("repeat must be an integer".into()))
     }
 }
 
@@ -99,7 +99,7 @@ impl Tool for CronjobTool {
             "list" => {
                 let jobs = store
                     .load_all()
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 if jobs.is_empty() {
                     return Ok("No scheduled cron jobs.".to_string());
                 }
@@ -128,12 +128,12 @@ impl Tool for CronjobTool {
                 let prompt = args
                     .get("prompt")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("prompt is required".into()))?;
-                validate_cron_prompt(prompt).map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("prompt is required".into()))?;
+                validate_cron_prompt(prompt).map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let schedule_str = args
                     .get("schedule")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("schedule is required".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("schedule is required".into()))?;
                 let name = args
                     .get("name")
                     .and_then(|v| v.as_str())
@@ -141,7 +141,7 @@ impl Tool for CronjobTool {
                     .to_string();
 
                 let parsed_schedule =
-                    parse_schedule(schedule_str).map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    parse_schedule(schedule_str).map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let next_run = Some(parsed_schedule.next_after(Utc::now()));
 
                 let mut job = CronJob::new(&name, parsed_schedule, prompt);
@@ -175,7 +175,7 @@ impl Tool for CronjobTool {
 
                 store
                     .save_job(&job)
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!(
                     "Created cron job `{}` with schedule `{}`. Next run at: {:?}",
                     job.id, schedule_str, job.next_run
@@ -185,11 +185,11 @@ impl Tool for CronjobTool {
                 let job_id = args
                     .get("job_id")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("job_id is required".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("job_id is required".into()))?;
                 let mut job = store
                     .get_job(job_id)
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?
-                    .ok_or_else(|| HakimiError::Tool("Job not found".into()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?
+                    .ok_or_else(|| HakimiError::ToolSimple("Job not found".into()))?;
                 let mut changed = false;
 
                 if let Some(name) = args.get("name").and_then(|v| v.as_str()) {
@@ -197,13 +197,13 @@ impl Tool for CronjobTool {
                     changed = true;
                 }
                 if let Some(prompt) = args.get("prompt").and_then(|v| v.as_str()) {
-                    validate_cron_prompt(prompt).map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    validate_cron_prompt(prompt).map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                     job.prompt = prompt.to_string();
                     changed = true;
                 }
                 if let Some(schedule_str) = args.get("schedule").and_then(|v| v.as_str()) {
                     let parsed_schedule = parse_schedule(schedule_str)
-                        .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                        .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                     job.schedule = parsed_schedule;
                     job.next_run = Some(job.schedule.next_after(Utc::now()));
                     changed = true;
@@ -239,12 +239,12 @@ impl Tool for CronjobTool {
                 }
 
                 if !changed {
-                    return Err(HakimiError::Tool("No updates provided".into()));
+                    return Err(HakimiError::ToolSimple("No updates provided".into()));
                 }
 
                 store
                     .update_job(&job)
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!(
                     "Updated cron job `{}` ({}). Next run at: {:?}",
                     job.id, job.name, job.next_run
@@ -254,53 +254,53 @@ impl Tool for CronjobTool {
                 let job_id = args
                     .get("job_id")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("job_id is required".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("job_id is required".into()))?;
                 let removed = store
                     .remove_job(job_id)
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 if removed {
                     Ok(format!("Removed cron job: {}", job_id))
                 } else {
-                    Err(HakimiError::Tool("Job not found".into()))
+                    Err(HakimiError::ToolSimple("Job not found".into()))
                 }
             }
             "pause" => {
                 let job_id = args
                     .get("job_id")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("job_id is required".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("job_id is required".into()))?;
                 store
                     .set_enabled(job_id, false)
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!("Paused cron job: {}", job_id))
             }
             "resume" => {
                 let job_id = args
                     .get("job_id")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("job_id is required".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("job_id is required".into()))?;
                 store
                     .set_enabled(job_id, true)
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!("Resumed cron job: {}", job_id))
             }
             "run" => {
                 let job_id = args
                     .get("job_id")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("job_id is required".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("job_id is required".into()))?;
                 let jobs = store
                     .load_all()
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let job = jobs
                     .into_iter()
                     .find(|job| job.id == job_id)
-                    .ok_or_else(|| HakimiError::Tool("Job not found".into()))?;
-                validate_cron_prompt(&job.prompt).map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("Job not found".into()))?;
+                validate_cron_prompt(&job.prompt).map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let now = Utc::now();
                 store
                     .trigger_now(&job.id, now)
-                    .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 Ok(format!(
                     "Triggered cron job `{}` ({}) for the next scheduler tick at {}",
                     job.id,
@@ -308,7 +308,7 @@ impl Tool for CronjobTool {
                     now.to_rfc3339()
                 ))
             }
-            _ => Err(HakimiError::Tool(format!("Unsupported action: {}", action))),
+            _ => Err(HakimiError::ToolSimple(format!("Unsupported action: {}", action))),
         }
     }
 }

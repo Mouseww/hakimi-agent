@@ -100,7 +100,7 @@ pub(crate) fn assert_command_safe(command: &str) -> Result<()> {
     }
 
     if let Some(finding) = scan_command_for_security(command) {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Blocked by command security scanner: {} - {} (rule: {}). Command preview: `{}`.",
             finding.title,
             finding.description,

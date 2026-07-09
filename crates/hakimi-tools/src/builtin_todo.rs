@@ -35,9 +35,9 @@ async fn load_todos(session_id: &str) -> Result<Vec<TodoItem>> {
     let path = session_file(session_id);
     match fs::read_to_string(&path).await {
         Ok(data) => serde_json::from_str(&data)
-            .map_err(|e| HakimiError::Tool(format!("failed to parse todos file: {e}"))),
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to parse todos file: {e}"))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(HakimiError::Tool(format!("failed to read todos file: {e}"))),
+        Err(e) => Err(HakimiError::ToolSimple(format!("failed to read todos file: {e}"))),
     }
 }
 
@@ -46,13 +46,13 @@ async fn save_todos(session_id: &str, todos: &[TodoItem]) -> Result<()> {
     let dir = todos_dir();
     fs::create_dir_all(&dir)
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to create todos directory: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create todos directory: {e}")))?;
     let path = session_file(session_id);
     let data = serde_json::to_string_pretty(todos)
-        .map_err(|e| HakimiError::Tool(format!("failed to serialize todos: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to serialize todos: {e}")))?;
     fs::write(&path, data)
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to write todos file: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to write todos file: {e}")))?;
     Ok(())
 }
 
@@ -115,7 +115,7 @@ impl Tool for TodoTool {
         let action = args
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: action".into()))?;
 
         let session_id = &ctx.session_id;
 
@@ -148,7 +148,7 @@ impl Tool for TodoTool {
                     .get("todos")
                     .and_then(|v| v.as_array())
                     .ok_or_else(|| {
-                        HakimiError::Tool(
+                        HakimiError::ToolSimple(
                             "'todos' array with 'id' is required for 'read' action".into(),
                         )
                     })?;
@@ -157,7 +157,7 @@ impl Tool for TodoTool {
                     .and_then(|t| t.get("id"))
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| {
-                        HakimiError::Tool(
+                        HakimiError::ToolSimple(
                             "'id' is required in the first todo object for 'read'".into(),
                         )
                     })?;
@@ -167,18 +167,18 @@ impl Tool for TodoTool {
                     .iter()
                     .find(|t| t.id == target_id)
                     .ok_or_else(|| {
-                        HakimiError::Tool(format!("todo with id '{}' not found", target_id))
+                        HakimiError::ToolSimple(format!("todo with id '{}' not found", target_id))
                     })?;
 
                 Ok(serde_json::to_string_pretty(todo)
-                    .map_err(|e| HakimiError::Tool(format!("failed to serialize todo: {e}")))?)
+                    .map_err(|e| HakimiError::ToolSimple(format!("failed to serialize todo: {e}")))?)
             }
             "create" => {
                 let new_todos = args
                     .get("todos")
                     .and_then(|v| v.as_array())
                     .ok_or_else(|| {
-                        HakimiError::Tool("'todos' array is required for 'create' action".into())
+                        HakimiError::ToolSimple("'todos' array is required for 'create' action".into())
                     })?;
 
                 let mut existing = load_todos(session_id).await?;
@@ -188,7 +188,7 @@ impl Tool for TodoTool {
                     let id = item
                         .get("id")
                         .and_then(|v| v.as_str())
-                        .ok_or_else(|| HakimiError::Tool("each todo must have an 'id'".into()))?
+                        .ok_or_else(|| HakimiError::ToolSimple("each todo must have an 'id'".into()))?
                         .to_string();
 
                     let content = item
@@ -205,7 +205,7 @@ impl Tool for TodoTool {
 
                     // Check for duplicate id
                     if existing.iter().any(|t| t.id == id) {
-                        return Err(HakimiError::Tool(format!(
+                        return Err(HakimiError::ToolSimple(format!(
                             "todo with id '{}' already exists. Use 'update' to modify it.",
                             id
                         )));
@@ -231,7 +231,7 @@ impl Tool for TodoTool {
                     args.get("todos")
                         .and_then(|v| v.as_array())
                         .ok_or_else(|| {
-                            HakimiError::Tool(
+                            HakimiError::ToolSimple(
                                 "'todos' array is required for 'update' action".into(),
                             )
                         })?;
@@ -243,10 +243,10 @@ impl Tool for TodoTool {
                     let id = item
                         .get("id")
                         .and_then(|v| v.as_str())
-                        .ok_or_else(|| HakimiError::Tool("each todo must have an 'id'".into()))?;
+                        .ok_or_else(|| HakimiError::ToolSimple("each todo must have an 'id'".into()))?;
 
                     let todo = existing.iter_mut().find(|t| t.id == id).ok_or_else(|| {
-                        HakimiError::Tool(format!("todo with id '{}' not found", id))
+                        HakimiError::ToolSimple(format!("todo with id '{}' not found", id))
                     })?;
 
                     if let Some(content) = item.get("content").and_then(|v| v.as_str()) {
@@ -261,7 +261,7 @@ impl Tool for TodoTool {
                 save_todos(session_id, &existing).await?;
                 Ok(format!("Updated {} todo(s).", updated))
             }
-            _ => Err(HakimiError::Tool(format!(
+            _ => Err(HakimiError::ToolSimple(format!(
                 "invalid action '{}'. Must be 'read', 'create', 'update', or 'list'.",
                 action
             ))),

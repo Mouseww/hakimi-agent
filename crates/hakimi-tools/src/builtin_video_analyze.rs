@@ -53,7 +53,7 @@ impl Tool for VideoAnalyzeTool {
         let video_url = args
             .get("video_url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: video_url".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: video_url".into()))?;
         let question = args
             .get("question")
             .and_then(|v| v.as_str())
@@ -111,17 +111,17 @@ async fn download_video(url: &str) -> Result<(Vec<u8>, String)> {
         .timeout(std::time::Duration::from_secs(60))
         .redirect(safe_http_redirect_policy(5))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("Failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Failed to create HTTP client: {e}")))?;
 
     let response = client
         .get(url)
         .header("accept", "video/*,*/*;q=0.8")
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Failed to download video: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Failed to download video: {e}")))?;
 
     if !response.status().is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Failed to download video: HTTP {}",
             response.status()
         )));
@@ -146,7 +146,7 @@ async fn download_video(url: &str) -> Result<(Vec<u8>, String)> {
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Failed to read video bytes: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Failed to read video bytes: {e}")))?;
     if bytes.len() > MAX_VIDEO_BASE64_BYTES {
         return Err(video_too_large(bytes.len(), "downloaded video"));
     }
@@ -159,7 +159,7 @@ fn load_local_video(path: &str) -> Result<(Vec<u8>, String)> {
     let mime_type =
         detect_video_mime_type(resolved).ok_or_else(|| unsupported_video_format(resolved))?;
     let bytes = std::fs::read(resolved).map_err(|e| {
-        HakimiError::Tool(format!("Failed to read local video file '{resolved}': {e}"))
+        HakimiError::ToolSimple(format!("Failed to read local video file '{resolved}': {e}"))
     })?;
     if bytes.len() > MAX_VIDEO_BASE64_BYTES {
         return Err(video_too_large(bytes.len(), "local video"));
@@ -222,13 +222,13 @@ fn content_type_video_mime(content_type: &str) -> Option<String> {
 }
 
 fn unsupported_video_format(source: &str) -> HakimiError {
-    HakimiError::Tool(format!(
+    HakimiError::ToolSimple(format!(
         "Unsupported video format for '{source}'. Supported extensions: mp4, webm, mov, avi, mkv, mpeg, mpg"
     ))
 }
 
 fn video_too_large(size: usize, label: &str) -> HakimiError {
-    HakimiError::Tool(format!(
+    HakimiError::ToolSimple(format!(
         "Video too large ({label}: {size} bytes, max {MAX_VIDEO_BASE64_BYTES} bytes). Compress or trim the video and retry."
     ))
 }

@@ -49,12 +49,12 @@ impl Tool for WriteFileTool {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: path".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: path".into()))?;
 
         let content = args
             .get("content")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: content".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: content".into()))?;
 
         let requested_path = PathBuf::from(path);
         let full_path = if requested_path.is_absolute() {
@@ -66,14 +66,14 @@ impl Tool for WriteFileTool {
         debug!(path = %full_path.display(), bytes = content.len(), "writing file");
 
         if let Some(error) = get_write_block_error(&full_path) {
-            return Err(HakimiError::Tool(error));
+            return Err(HakimiError::ToolSimple(error));
         }
 
         // Create parent directories
         if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent).await.map_err(|e| {
                 debug!(dir = %parent.display(), error = %e, "failed to create parent directories");
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "failed to create directories '{}': {}",
                     parent.display(),
                     e
@@ -83,7 +83,7 @@ impl Tool for WriteFileTool {
 
         fs::write(&full_path, content).await.map_err(|e| {
             debug!(path = %full_path.display(), error = %e, "failed to write file");
-            HakimiError::Tool(format!("failed to write '{}': {}", full_path.display(), e))
+            HakimiError::ToolSimple(format!("failed to write '{}': {}", full_path.display(), e))
         })?;
 
         let line_count = content.lines().count();

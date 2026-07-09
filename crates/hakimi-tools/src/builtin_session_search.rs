@@ -1,11 +1,20 @@
 use async_trait::async_trait;
-use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_common::{error::ErrorContext, HakimiError, Result, ToolContext};
 use hakimi_metrics::MetricsRecorder;
 use hakimi_session::{MessageOps, SessionDB, SessionMeta, SessionOps};
 use serde_json::{Value as JsonValue, json};
 use tracing::{debug, instrument};
 
 use crate::Tool;
+
+/// Helper to create session errors with context
+fn session_error(message: impl Into<String>, operation: &str) -> HakimiError {
+    HakimiError::Session {
+        message: message.into(),
+        context: ErrorContext::new(operation),
+        source: None,
+    }
+}
 
 /// Enhanced session search tool with three modes:
 /// 1. DISCOVERY: FTS5 search with bookends (first 3 + last 3 user+assistant messages)
@@ -142,9 +151,9 @@ impl Tool for SessionSearchTool {
         );
 
         let db = SessionDB::new(&db_path)
-            .map_err(|e| HakimiError::Session(format!("failed to open session database: {e}")))?;
+            .map_err(|e| session_error(format!("failed to open session database: {e}"), "session_search"))?;
         db.initialize()
-            .map_err(|e| HakimiError::Session(format!("failed to initialize database: {e}")))?;
+            .map_err(|e| session_error(format!("failed to initialize database: {e}"), "session_search"))?;
 
         // SCROLL MODE: session_id + around_message_id
         if let (Some(sid), Some(anchor_id)) = (session_id, around_msg_id) {
@@ -178,7 +187,7 @@ impl SessionSearchTool {
     fn browse_mode(&self, db: &SessionDB, limit: i64) -> Result<String> {
         let sessions = db
             .get_recent_sessions(None, limit)
-            .map_err(|e| HakimiError::Session(format!("failed to get recent sessions: {e}")))?;
+            .map_err(|e| session_error(format!("failed to get recent sessions: {e}"), "browse_mode"))?;
 
         if sessions.is_empty() {
             return Ok("No sessions found.".to_string());
@@ -226,7 +235,7 @@ impl SessionSearchTool {
 
         let results = db
             .search_messages(query, search_limit)
-            .map_err(|e| HakimiError::Session(format!("FTS5 search failed: {e}")))?;
+            .map_err(|e| session_error(format!("FTS5 search failed: {e}"), "discovery_mode"))?;
 
         if results.is_empty() {
             return Ok(format!("No messages found matching query: \"{}\"", query));
@@ -247,7 +256,7 @@ impl SessionSearchTool {
         for sid in session_ids.iter().take(limit as usize) {
             let session = db
                 .get_session(sid)
-                .map_err(|e| HakimiError::Session(format!("failed to get session: {e}")))?;
+                .map_err(|e| session_error(format!("failed to get session: {e}"), "discovery_mode"))?;
 
             if let Some(session) = session {
                 output.push_str(&self.format_session_with_bookends(db, &session, &results)?);
@@ -268,13 +277,13 @@ impl SessionSearchTool {
     ) -> Result<String> {
         let session = db
             .get_session(session_id)
-            .map_err(|e| HakimiError::Session(format!("failed to get session: {e}")))?
-            .ok_or_else(|| HakimiError::Session(format!("session not found: {}", session_id)))?;
+            .map_err(|e| session_error(format!("failed to get session: {e}"), "scroll_mode"))?
+            .ok_or_else(|| session_error(format!("session not found: {}", session_id), "scroll_mode"))?;
 
         let (messages, before, after) = db
             .get_messages_around(session_id, anchor_id, window)
             .map_err(|e| {
-                HakimiError::Session(format!("failed to get messages around anchor: {e}"))
+                session_error(format!("failed to get messages around anchor: {e}"), "scroll_mode")
             })?;
 
         if messages.is_empty() {
@@ -385,7 +394,7 @@ mod tests {
     async fn test_browse_mode() {
         let db = test_db();
         let sid = "test_session";
-        db.create_session(sid, None).unwrap();
+        db.create_session(sid, None, None, None).unwrap();
         db.save_message(sid, &Message::user("Hello")).unwrap();
 
         let tool = SessionSearchTool;
@@ -400,7 +409,7 @@ mod tests {
     async fn test_discovery_mode() {
         let db = test_db();
         let sid = "test_session";
-        db.create_session(sid, None).unwrap();
+        db.create_session(sid, None, None, None).unwrap();
         db.save_message(sid, &Message::user("Rust programming"))
             .unwrap();
 

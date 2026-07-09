@@ -42,20 +42,20 @@ pub(crate) fn validate_consult(
     lineage: &[String],
 ) -> Result<PersonaConfig> {
     if depth >= MAX_TEAM_DEPTH {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "team consultation depth limit ({MAX_TEAM_DEPTH}) reached; cannot delegate further"
         )));
     }
     if lineage.iter().any(|id| id == teammate_id) {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "cycle detected: '{teammate_id}' is already in the collaboration chain"
         )));
     }
     let cfg = reg
         .get(teammate_id)
-        .ok_or_else(|| HakimiError::Tool(format!("teammate persona '{teammate_id}' not found")))?;
+        .ok_or_else(|| HakimiError::ToolSimple(format!("teammate persona '{teammate_id}' not found")))?;
     if !cfg.addressable {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "teammate persona '{teammate_id}' is not addressable (its addressable switch is off)"
         )));
     }
@@ -226,7 +226,7 @@ impl TeamExecutor for PersonaTeamExecutor {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to acquire team permit: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to acquire team permit: {e}")))?;
 
         // Publish ConsultStarted only after the permit is held, so the two consult
         // exit arms below (which publish ConsultEnded) are the only reachable exits
@@ -301,7 +301,7 @@ impl TeamExecutor for PersonaTeamExecutor {
                         from_id: from_id.clone(),
                         to_id: cfg.id.clone(),
                     });
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "teammate '{}' failed after {MAX_CONSULT_ATTEMPTS} attempts: {e}",
                         cfg.id
                     )));

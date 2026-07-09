@@ -1,6 +1,7 @@
 mod advanced_compressor;
 mod compressor;
 mod engine;
+pub mod error;
 mod factory;
 pub mod intent;
 mod memory;

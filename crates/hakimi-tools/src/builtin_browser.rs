@@ -97,11 +97,11 @@ impl BrowserManager {
 
             let config = builder
                 .build()
-                .map_err(|e| HakimiError::Tool(format!("failed to build browser config: {e}")))?;
+                .map_err(|e| HakimiError::ToolSimple(format!("failed to build browser config: {e}")))?;
 
             let (browser, mut handler) = Browser::launch(config)
                 .await
-                .map_err(|e| HakimiError::Tool(format!("failed to launch browser: {e}")))?;
+                .map_err(|e| HakimiError::ToolSimple(format!("failed to launch browser: {e}")))?;
 
             // -----------------------------------------------------------------------
             // CHILD PROCESS REAPER (Linux PDEATHSIG fallback)
@@ -126,7 +126,7 @@ impl BrowserManager {
         let page = browser
             .new_page("about:blank")
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to create page: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create page: {e}")))?;
 
         if let Err(e) = install_console_recorder(&page).await {
             warn!(error = %e, "browser console recorder install failed");
@@ -884,10 +884,10 @@ async fn capture_browser_screenshot(
                 .build(),
         )
         .await
-        .map_err(|e| HakimiError::Tool(format!("screenshot failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("screenshot failed: {e}")))?;
 
     if screenshot_bytes.is_empty() {
-        return Err(HakimiError::Tool("screenshot returned empty data".into()));
+        return Err(HakimiError::ToolSimple("screenshot returned empty data".into()));
     }
 
     let out_path = output_path.unwrap_or_else(|| {
@@ -898,12 +898,12 @@ async fn capture_browser_screenshot(
 
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            HakimiError::Tool(format!("failed to create screenshot directory: {e}"))
+            HakimiError::ToolSimple(format!("failed to create screenshot directory: {e}"))
         })?;
     }
 
     std::fs::write(&out_path, &screenshot_bytes)
-        .map_err(|e| HakimiError::Tool(format!("failed to write screenshot: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to write screenshot: {e}")))?;
 
     Ok((out_path, screenshot_bytes))
 }
@@ -989,14 +989,14 @@ const CONSOLE_RECORDER_SCRIPT: &str = r#"
 async fn install_console_recorder(page: &Page) -> Result<()> {
     page.evaluate_on_new_document(CONSOLE_RECORDER_SCRIPT)
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to install console recorder: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to install console recorder: {e}")))?;
     ensure_console_recorder(page).await
 }
 
 async fn ensure_console_recorder(page: &Page) -> Result<()> {
     page.evaluate(CONSOLE_RECORDER_SCRIPT)
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to enable console recorder: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to enable console recorder: {e}")))?;
     Ok(())
 }
 
@@ -1008,7 +1008,7 @@ async fn install_dialog_listeners(
     let mut openings = page
         .event_listener::<EventJavascriptDialogOpening>()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to listen for browser dialogs: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to listen for browser dialogs: {e}")))?;
     let opening_dialogs = pending_dialogs;
     tokio::spawn(async move {
         while let Some(event) = openings.next().await {
@@ -1057,20 +1057,20 @@ async fn get_console_output(page: &Page, clear: bool) -> Result<JsonValue> {
     let result = page
         .evaluate_function(js)
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read browser console: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read browser console: {e}")))?;
 
     let raw = result.value().and_then(|v| v.as_str()).unwrap_or("{}");
     serde_json::from_str(raw)
-        .map_err(|e| HakimiError::Tool(format!("failed to parse browser console data: {e}")))
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse browser console data: {e}")))
 }
 
 async fn evaluate_page_expression(page: &Page, expression: &str) -> Result<JsonValue> {
     if expression.trim().is_empty() {
-        return Err(HakimiError::Tool("expression must not be empty".into()));
+        return Err(HakimiError::ToolSimple("expression must not be empty".into()));
     }
 
     let expression_literal = serde_json::to_string(expression)
-        .map_err(|e| HakimiError::Tool(format!("failed to encode expression: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to encode expression: {e}")))?;
     let js = r#"
 async () => {
     const expression = __HAKIMI_EXPRESSION__;
@@ -1113,11 +1113,11 @@ async () => {
     let result = page
         .evaluate_function(js)
         .await
-        .map_err(|e| HakimiError::Tool(format!("browser expression evaluation failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("browser expression evaluation failed: {e}")))?;
 
     let raw = result.value().and_then(|v| v.as_str()).unwrap_or("{}");
     serde_json::from_str(raw)
-        .map_err(|e| HakimiError::Tool(format!("failed to parse browser eval data: {e}")))
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse browser eval data: {e}")))
 }
 
 /// Extract a clean text snapshot from a page's accessibility tree / DOM.
@@ -1223,7 +1223,7 @@ async fn get_page_snapshot(page: &Page) -> Result<String> {
     let result = page
         .evaluate(js)
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to get page snapshot: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to get page snapshot: {e}")))?;
 
     let text = result
         .value()
@@ -1253,11 +1253,11 @@ async fn get_page_images(page: &Page) -> Result<JsonValue> {
     let result = page
         .evaluate(js)
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to get page images: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to get page images: {e}")))?;
 
     let raw = result.value().and_then(|v| v.as_str()).unwrap_or("[]");
     serde_json::from_str(raw)
-        .map_err(|e| HakimiError::Tool(format!("failed to parse page image data: {e}")))
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to parse page image data: {e}")))
 }
 
 async fn press_page_key(page: &Page, key: &str) -> Result<()> {
@@ -1266,7 +1266,7 @@ async fn press_page_key(page: &Page, key: &str) -> Result<()> {
     };
 
     let key_definition = chromiumoxide::keys::get_key_definition(key)
-        .ok_or_else(|| HakimiError::Tool(format!("unknown browser key: {key}")))?;
+        .ok_or_else(|| HakimiError::ToolSimple(format!("unknown browser key: {key}")))?;
 
     let mut cmd = DispatchKeyEventParams::builder();
     let key_down_event_type = if let Some(text) = key_definition.text {
@@ -1289,18 +1289,18 @@ async fn press_page_key(page: &Page, key: &str) -> Result<()> {
         .clone()
         .r#type(key_down_event_type)
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to build key-down event: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to build key-down event: {e}")))?;
     let key_up = cmd
         .r#type(DispatchKeyEventType::KeyUp)
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to build key-up event: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to build key-up event: {e}")))?;
 
     page.execute(key_down)
         .await
-        .map_err(|e| HakimiError::Tool(format!("key-down dispatch failed for '{key}': {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("key-down dispatch failed for '{key}': {e}")))?;
     page.execute(key_up)
         .await
-        .map_err(|e| HakimiError::Tool(format!("key-up dispatch failed for '{key}': {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("key-up dispatch failed for '{key}': {e}")))?;
 
     Ok(())
 }
@@ -1369,13 +1369,13 @@ impl Tool for BrowserNavigateTool {
         let url = args
             .get("url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: url".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: url".into()))?;
 
         if !url.starts_with("http://")
             && !url.starts_with("https://")
             && !url.starts_with("file://")
         {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "URL must start with http://, https://, or file://".into(),
             ));
         }
@@ -1391,7 +1391,7 @@ impl Tool for BrowserNavigateTool {
 
         page.goto(url)
             .await
-            .map_err(|e| HakimiError::Tool(format!("navigation failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("navigation failed: {e}")))?;
 
         // Wait a moment for rendering
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -1547,7 +1547,7 @@ impl Tool for BrowserClickTool {
         let selector = args
             .get("selector")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: selector".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: selector".into()))?;
 
         let wait_ms = args.get("wait_ms").and_then(|v| v.as_u64()).unwrap_or(5000);
 
@@ -1560,13 +1560,13 @@ impl Tool for BrowserClickTool {
         let element = page
             .find_element(selector)
             .await
-            .map_err(|e| HakimiError::Tool(format!("element not found ('{selector}'): {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("element not found ('{selector}'): {e}")))?;
 
         // Click the element
         element
             .click()
             .await
-            .map_err(|e| HakimiError::Tool(format!("click failed on '{selector}': {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("click failed on '{selector}': {e}")))?;
 
         // Wait for navigation/rendering after click
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -1654,12 +1654,12 @@ impl Tool for BrowserTypeTool {
         let selector = args
             .get("selector")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: selector".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: selector".into()))?;
 
         let text = args
             .get("text")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: text".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: text".into()))?;
 
         let submit = args
             .get("submit")
@@ -1679,13 +1679,13 @@ impl Tool for BrowserTypeTool {
         let element = page
             .find_element(selector)
             .await
-            .map_err(|e| HakimiError::Tool(format!("element not found ('{selector}'): {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("element not found ('{selector}'): {e}")))?;
 
         // Click to focus
         element
             .click()
             .await
-            .map_err(|e| HakimiError::Tool(format!("focus click failed on '{selector}': {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("focus click failed on '{selector}': {e}")))?;
 
         // Clear field if requested
         if clear_first {
@@ -1703,13 +1703,13 @@ impl Tool for BrowserTypeTool {
         element
             .type_str(text)
             .await
-            .map_err(|e| HakimiError::Tool(format!("typing failed on '{selector}': {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("typing failed on '{selector}': {e}")))?;
 
         if submit {
             element
                 .press_key("Enter")
                 .await
-                .map_err(|e| HakimiError::Tool(format!("enter key press failed: {e}")))?;
+                .map_err(|e| HakimiError::ToolSimple(format!("enter key press failed: {e}")))?;
 
             // Wait for potential navigation
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
@@ -1787,13 +1787,13 @@ impl Tool for BrowserScrollTool {
         let direction = args
             .get("direction")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: direction".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: direction".into()))?;
 
         let delta = match direction {
             "down" => 500,
             "up" => -500,
             other => {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "invalid direction '{other}'. Use 'up' or 'down'."
                 )));
             }
@@ -1804,7 +1804,7 @@ impl Tool for BrowserScrollTool {
         let page = self.manager.get_page().await?;
         page.evaluate(format!("window.scrollBy(0, {delta})"))
             .await
-            .map_err(|e| HakimiError::Tool(format!("scroll failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("scroll failed: {e}")))?;
 
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
 
@@ -1871,7 +1871,7 @@ impl Tool for BrowserBackTool {
         let page = self.manager.get_page().await?;
         page.evaluate("window.history.back()")
             .await
-            .map_err(|e| HakimiError::Tool(format!("back navigation failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("back navigation failed: {e}")))?;
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -1942,10 +1942,10 @@ impl Tool for BrowserPressTool {
         let key = args
             .get("key")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: key".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: key".into()))?;
 
         if key.trim().is_empty() {
-            return Err(HakimiError::Tool("key must not be empty".into()));
+            return Err(HakimiError::ToolSimple("key must not be empty".into()));
         }
 
         debug!(key = %key, "browser key press request");
@@ -2168,12 +2168,12 @@ impl Tool for BrowserDialogTool {
         let action = args
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: action".into()))?;
         let accept = match action {
             "accept" => true,
             "dismiss" => false,
             other => {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "invalid dialog action: {other}; expected accept or dismiss"
                 )));
             }
@@ -2212,10 +2212,10 @@ impl Tool for BrowserDialogTool {
         page.execute(
             params
                 .build()
-                .map_err(|e| HakimiError::Tool(format!("invalid dialog response: {e}")))?,
+                .map_err(|e| HakimiError::ToolSimple(format!("invalid dialog response: {e}")))?,
         )
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to handle browser dialog: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to handle browser dialog: {e}")))?;
 
         self.manager.acknowledge_dialog(dialog_id).await;
         Ok(json!({
@@ -2543,7 +2543,7 @@ impl Tool for BrowserCdpTool {
             .and_then(|v| v.as_str())
             .unwrap_or("status");
         if action != "status" && action != "probe" && action != "frames" && action != "dispatch" {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "invalid browser_cdp action: {action}; expected status, probe, frames, or dispatch"
             )));
         }
@@ -2608,7 +2608,7 @@ impl Tool for BrowserCdpTool {
             let frames = tokio::time::timeout(timeout, async {
                 let (mut browser, mut handler) =
                     Browser::connect(endpoint_url).await.map_err(|e| {
-                        HakimiError::Tool(format!(
+                        HakimiError::ToolSimple(format!(
                             "failed to connect to CDP endpoint {}: {e}",
                             endpoint_display_for_frames
                         ))
@@ -2626,7 +2626,7 @@ impl Tool for BrowserCdpTool {
                     Ok(targets) => targets,
                     Err(e) => {
                         handler_task.abort();
-                        return Err(HakimiError::Tool(format!(
+                        return Err(HakimiError::ToolSimple(format!(
                             "CDP Target.getTargets failed before frame inspection: {e}"
                         )));
                     }
@@ -2641,13 +2641,13 @@ impl Tool for BrowserCdpTool {
                         .find(|target| target.target_id.as_ref() == target_id)
                     else {
                         handler_task.abort();
-                        return Err(HakimiError::Tool(format!(
+                        return Err(HakimiError::ToolSimple(format!(
                             "CDP target_id {target_id} was not found; omit target_id to inspect all page targets"
                         )));
                     };
                     if target.r#type.as_str() != "page" {
                         handler_task.abort();
-                        return Err(HakimiError::Tool(format!(
+                        return Err(HakimiError::ToolSimple(format!(
                             "CDP target_id {target_id} has type '{}' and cannot provide a Page frame tree",
                             target.r#type.as_str()
                         )));
@@ -2670,7 +2670,7 @@ impl Tool for BrowserCdpTool {
                         .map_err(HakimiError::Tool)?;
                     if let Err(e) = browser.execute(attach).await {
                         handler_task.abort();
-                        return Err(HakimiError::Tool(format!(
+                        return Err(HakimiError::ToolSimple(format!(
                             "CDP Target.attachToTarget failed for {page_target_id}: {e}"
                         )));
                     }
@@ -2682,7 +2682,7 @@ impl Tool for BrowserCdpTool {
                         Ok(page) => page,
                         Err(e) => {
                             handler_task.abort();
-                            return Err(HakimiError::Tool(format!(
+                            return Err(HakimiError::ToolSimple(format!(
                                 "CDP target {page_target_id} could not be opened as a page after attach: {e}"
                             )));
                         }
@@ -2692,7 +2692,7 @@ impl Tool for BrowserCdpTool {
                         Ok(response) => response.result,
                         Err(e) => {
                             handler_task.abort();
-                            return Err(HakimiError::Tool(format!(
+                            return Err(HakimiError::ToolSimple(format!(
                                 "CDP Page.getFrameTree failed for target {page_target_id}: {e}"
                             )));
                         }
@@ -2766,7 +2766,7 @@ impl Tool for BrowserCdpTool {
             let dispatch = tokio::time::timeout(timeout, async {
                 let (mut browser, mut handler) =
                     Browser::connect(endpoint_url).await.map_err(|e| {
-                        HakimiError::Tool(format!(
+                        HakimiError::ToolSimple(format!(
                             "failed to connect to CDP endpoint {}: {e}",
                             endpoint_display_for_dispatch
                         ))
@@ -2786,14 +2786,14 @@ impl Tool for BrowserCdpTool {
                         Ok(targets) => targets,
                         Err(e) => {
                             handler_task.abort();
-                            return Err(HakimiError::Tool(format!(
+                            return Err(HakimiError::ToolSimple(format!(
                                 "CDP Target.getTargets failed before dispatch: {e}"
                             )));
                         }
                     };
                     if !targets.iter().any(|target| target.target_id.as_ref() == target_id) {
                         handler_task.abort();
-                        return Err(HakimiError::Tool(format!(
+                        return Err(HakimiError::ToolSimple(format!(
                             "CDP target_id {target_id} was not found; use method='Target.getTargets' without target_id to list tabs"
                         )));
                     }
@@ -2805,7 +2805,7 @@ impl Tool for BrowserCdpTool {
                         .map_err(HakimiError::Tool)?;
                     if let Err(e) = browser.execute(attach).await {
                         handler_task.abort();
-                        return Err(HakimiError::Tool(format!(
+                        return Err(HakimiError::ToolSimple(format!(
                             "CDP Target.attachToTarget failed for {target_id}: {e}"
                         )));
                     }
@@ -2814,7 +2814,7 @@ impl Tool for BrowserCdpTool {
                         Ok(page) => page,
                         Err(e) => {
                             handler_task.abort();
-                            return Err(HakimiError::Tool(format!(
+                            return Err(HakimiError::ToolSimple(format!(
                                 "CDP target {target_id} could not be opened as a page after attach: {e}"
                             )));
                         }
@@ -2823,7 +2823,7 @@ impl Tool for BrowserCdpTool {
                         Ok(response) => response.result,
                         Err(e) => {
                             handler_task.abort();
-                            return Err(HakimiError::Tool(format!(
+                            return Err(HakimiError::ToolSimple(format!(
                                 "CDP method {method} failed for target {target_id}: {e}"
                             )));
                         }
@@ -2833,7 +2833,7 @@ impl Tool for BrowserCdpTool {
                         Ok(response) => response.result,
                         Err(e) => {
                             handler_task.abort();
-                            return Err(HakimiError::Tool(format!("CDP method {method} failed: {e}")));
+                            return Err(HakimiError::ToolSimple(format!("CDP method {method} failed: {e}")));
                         }
                     }
                 };
@@ -2878,7 +2878,7 @@ impl Tool for BrowserCdpTool {
         let endpoint_display_for_probe = endpoint_display.clone();
         let probe = tokio::time::timeout(timeout, async {
             let (mut browser, mut handler) = Browser::connect(endpoint_url).await.map_err(|e| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "failed to connect to CDP endpoint {}: {e}",
                     endpoint_display_for_probe
                 ))
@@ -2896,7 +2896,7 @@ impl Tool for BrowserCdpTool {
                 Ok(version) => version,
                 Err(e) => {
                     handler_task.abort();
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "CDP Browser.getVersion failed: {e}"
                     )));
                 }
@@ -2905,7 +2905,7 @@ impl Tool for BrowserCdpTool {
                 Ok(targets) => targets,
                 Err(e) => {
                     handler_task.abort();
-                    return Err(HakimiError::Tool(format!(
+                    return Err(HakimiError::ToolSimple(format!(
                         "CDP Target.getTargets failed: {e}"
                     )));
                 }

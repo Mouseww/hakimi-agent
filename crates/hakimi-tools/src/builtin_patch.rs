@@ -57,17 +57,17 @@ impl Tool for PatchTool {
         let path = args
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: path".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: path".into()))?;
 
         let old_string = args
             .get("old_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: old_string".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: old_string".into()))?;
 
         let new_string = args
             .get("new_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: new_string".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: new_string".into()))?;
 
         let replace_all = args
             .get("replace_all")
@@ -84,20 +84,20 @@ impl Tool for PatchTool {
         debug!(path = %full_path.display(), replace_all, "patching file");
 
         if let Some(error) = get_write_block_error(&full_path) {
-            return Err(HakimiError::Tool(error));
+            return Err(HakimiError::ToolSimple(error));
         }
 
         let content = fs::read_to_string(&full_path).await.map_err(|e| {
             debug!(path = %full_path.display(), error = %e, "failed to read file for patching");
-            HakimiError::Tool(format!("failed to read '{}': {}", full_path.display(), e))
+            HakimiError::ToolSimple(format!("failed to read '{}': {}", full_path.display(), e))
         })?;
 
         if old_string.is_empty() {
-            return Err(HakimiError::Tool("old_string cannot be empty".into()));
+            return Err(HakimiError::ToolSimple("old_string cannot be empty".into()));
         }
 
         if old_string == new_string {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "old_string and new_string are identical, nothing to replace".into(),
             ));
         }
@@ -105,14 +105,14 @@ impl Tool for PatchTool {
         let count = content.matches(old_string).count();
 
         if count == 0 {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "old_string not found in '{}'",
                 full_path.display()
             )));
         }
 
         if !replace_all && count > 1 {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "old_string found {count} times in '{}'. It must be unique. Use replace_all=true to replace all occurrences.",
                 full_path.display()
             )));
@@ -126,7 +126,7 @@ impl Tool for PatchTool {
 
         fs::write(&full_path, &new_content).await.map_err(|e| {
             debug!(path = %full_path.display(), error = %e, "failed to write patched file");
-            HakimiError::Tool(format!("failed to write '{}': {}", full_path.display(), e))
+            HakimiError::ToolSimple(format!("failed to write '{}': {}", full_path.display(), e))
         })?;
 
         let replacements = if replace_all { count } else { 1 };

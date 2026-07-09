@@ -91,10 +91,10 @@ impl KnowledgeProvider {
                 metadata,
                 embedding,
             })
-            .map_err(|e| HakimiError::Tool(format!("vector upsert failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("vector upsert failed: {e}")))?;
         vectors
             .save()
-            .map_err(|e| HakimiError::Tool(format!("vector save failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("vector save failed: {e}")))?;
         Ok(())
     }
 
@@ -112,7 +112,7 @@ impl KnowledgeProvider {
         let vectors = vector_store.lock().await;
         let results = vectors
             .search(&query_embedding, limit)
-            .map_err(|e| HakimiError::Tool(format!("vector search failed: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("vector search failed: {e}")))?;
         let count = results.len();
         Ok(Some(json!({
             "mode": "vector",
@@ -304,21 +304,21 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                 let key = args
                     .get("key")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing 'key' argument".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing 'key' argument".into()))?;
                 let kind = args
                     .get("kind")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing 'kind' argument".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing 'kind' argument".into()))?;
 
                 let node = NodeType::from_kind_and_key(kind, key)
-                    .ok_or_else(|| HakimiError::Tool(format!("unknown kind: {kind}")))?;
+                    .ok_or_else(|| HakimiError::ToolSimple(format!("unknown kind: {kind}")))?;
 
                 {
                     let mut store = self.store.lock().await;
                     store.graph_mut().add_node(node);
                     store
                         .save()
-                        .map_err(|e| HakimiError::Tool(format!("save failed: {e}")))?;
+                        .map_err(|e| HakimiError::ToolSimple(format!("save failed: {e}")))?;
                 }
 
                 if let Err(e) = self
@@ -339,25 +339,25 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                 let from = args
                     .get("from")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing 'from' argument".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing 'from' argument".into()))?;
                 let to = args
                     .get("to")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing 'to' argument".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing 'to' argument".into()))?;
                 let relation = args
                     .get("relation")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing 'relation' argument".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing 'relation' argument".into()))?;
 
                 {
                     let mut store = self.store.lock().await;
                     store
                         .graph_mut()
                         .add_edge(from, to, Self::edge_from_relation(relation))
-                        .map_err(|e| HakimiError::Tool(e.to_string()))?;
+                        .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                     store
                         .save()
-                        .map_err(|e| HakimiError::Tool(format!("save failed: {e}")))?;
+                        .map_err(|e| HakimiError::ToolSimple(format!("save failed: {e}")))?;
                 }
 
                 if let Err(e) = self
@@ -380,7 +380,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                 let query = args
                     .get("query")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing 'query' argument".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing 'query' argument".into()))?;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
 
                 if let Some(value) = self.vector_search_json(query, limit).await? {
@@ -420,7 +420,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                 let key = args
                     .get("key")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| HakimiError::Tool("missing 'key' argument".into()))?;
+                    .ok_or_else(|| HakimiError::ToolSimple("missing 'key' argument".into()))?;
                 let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
 
                 let store = self.store.lock().await;
@@ -471,7 +471,7 @@ impl hakimi_context::MemoryProvider for KnowledgeProvider {
                     vector_line
                 ))
             }
-            other => Err(HakimiError::Tool(format!(
+            other => Err(HakimiError::ToolSimple(format!(
                 "Unknown knowledge tool: {other}"
             ))),
         }

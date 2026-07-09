@@ -85,10 +85,10 @@ impl Tool for TextToSpeechTool {
         let text = args
             .get("text")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: text".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: text".into()))?;
 
         if text.trim().is_empty() {
-            return Err(HakimiError::Tool("text parameter cannot be empty".into()));
+            return Err(HakimiError::ToolSimple("text parameter cannot be empty".into()));
         }
 
         let voice_playback = args
@@ -126,7 +126,7 @@ impl Tool for TextToSpeechTool {
         let text = if voice_playback {
             let plan = crate::plan_voice_tts_playback(text, output_path.clone(), auto_play)
                 .ok_or_else(|| {
-                    HakimiError::Tool("voice playback text is empty after cleanup".into())
+                    HakimiError::ToolSimple("voice playback text is empty after cleanup".into())
                 })?;
             output_path = Some(plan.output_path);
             debug!(
@@ -147,7 +147,7 @@ impl Tool for TextToSpeechTool {
             "openai" => generate_openai_tts(&text, voice.as_deref(), output_path, ctx).await?,
             "edge" => generate_edge_tts(&text, voice.as_deref(), output_path).await?,
             _ => {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "unsupported TTS provider: '{provider}'. Use 'openai' or 'edge'."
                 )));
             }
@@ -208,7 +208,7 @@ async fn generate_openai_tts(
         .filter(|s| !s.is_empty())
         .or_else(|| std::env::var("HAKIMI_TTS_API_KEY").ok())
         .ok_or_else(|| {
-            HakimiError::Tool(
+            HakimiError::ToolSimple(
                 "HAKIMI_TTS_API_KEY environment variable not set. \
              Set it to your OpenAI API key, or use provider='edge' for free TTS."
                     .into(),
@@ -236,7 +236,7 @@ async fn generate_openai_tts(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))?;
 
     let body = json!({
         "model": model,
@@ -251,12 +251,12 @@ async fn generate_openai_tts(
         .json(&body)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("TTS API request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("TTS API request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
         let error_body = response.text().await.unwrap_or_default();
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "TTS API returned status {status}: {error_body}"
         )));
     }
@@ -264,10 +264,10 @@ async fn generate_openai_tts(
     let audio_bytes = response
         .bytes()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read TTS response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read TTS response: {e}")))?;
 
     if audio_bytes.is_empty() {
-        return Err(HakimiError::Tool("TTS API returned empty response".into()));
+        return Err(HakimiError::ToolSimple("TTS API returned empty response".into()));
     }
 
     // Determine output path
@@ -280,11 +280,11 @@ async fn generate_openai_tts(
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::Tool(format!("failed to create output directory: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
     }
 
     std::fs::write(&out_path, &audio_bytes)
-        .map_err(|e| HakimiError::Tool(format!("failed to write audio file: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to write audio file: {e}")))?;
 
     Ok(out_path)
 }
@@ -314,7 +314,7 @@ async fn generate_edge_tts(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))?;
 
     // Validate that the voice exists by checking the voice list
     let voices_response = client
@@ -357,11 +357,11 @@ async fn generate_edge_tts(
     // Ensure parent directory exists
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| HakimiError::Tool(format!("failed to create output directory: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create output directory: {e}")))?;
     }
 
     std::fs::write(&out_path, &audio_data)
-        .map_err(|e| HakimiError::Tool(format!("failed to write audio file: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to write audio file: {e}")))?;
 
     Ok(out_path)
 }
@@ -387,11 +387,11 @@ async fn edge_tts_synthesize(text: &str, voice: &str, client: &reqwest::Client) 
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Edge TTS request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Edge TTS request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Edge TTS request failed with status: {status}"
         )));
     }
@@ -399,10 +399,10 @@ async fn edge_tts_synthesize(text: &str, voice: &str, client: &reqwest::Client) 
     let audio = response
         .bytes()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read Edge TTS response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read Edge TTS response: {e}")))?;
 
     if audio.is_empty() {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "Edge TTS returned empty audio. The text may be too long or the voice may not be available.".into()
         ));
     }

@@ -72,7 +72,7 @@ impl Tool for TranscribeAudioTool {
         let audio_path = args
             .get("audio_path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: audio_path".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: audio_path".into()))?;
 
         let provider = args
             .get("provider")
@@ -84,7 +84,7 @@ impl Tool for TranscribeAudioTool {
             .unwrap_or_else(|| "openai".to_string());
 
         if provider != "openai" {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "unsupported transcription provider: '{provider}'. Use 'openai'."
             )));
         }
@@ -157,16 +157,16 @@ async fn download_audio(url: &str) -> Result<AudioSource> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))?;
 
     let response = client
         .get(url)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to download audio: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to download audio: {e}")))?;
 
     if !response.status().is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "failed to download audio: HTTP {}",
             response.status()
         )));
@@ -188,7 +188,7 @@ async fn download_audio(url: &str) -> Result<AudioSource> {
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read downloaded audio: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read downloaded audio: {e}")))?;
 
     Ok(AudioSource {
         file_name: file_name_from_source(url),
@@ -200,7 +200,7 @@ async fn download_audio(url: &str) -> Result<AudioSource> {
 
 fn read_local_audio(path: &str) -> Result<AudioSource> {
     let bytes = std::fs::read(path)
-        .map_err(|e| HakimiError::Tool(format!("failed to read local audio file '{path}': {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read local audio file '{path}': {e}")))?;
 
     Ok(AudioSource {
         file_name: file_name_from_source(path),
@@ -230,7 +230,7 @@ async fn transcribe_wav_in_chunks(
 ) -> Result<String> {
     let chunks = split_wav_for_transcription(source, TRANSCRIPTION_MAX_FILE_SIZE_BYTES)?;
     if chunks.is_empty() {
-        return Err(HakimiError::Tool("no audio chunks were created".into()));
+        return Err(HakimiError::ToolSimple("no audio chunks were created".into()));
     }
 
     debug!(
@@ -244,7 +244,7 @@ async fn transcribe_wav_in_chunks(
         let transcript = request_openai_transcription(chunk, model, "text", prompt, language, ctx)
             .await
             .map_err(|err| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "chunk {}/{} transcription failed: {err}",
                     index + 1,
                     chunks.len()
@@ -266,7 +266,7 @@ fn split_wav_for_transcription(
 ) -> Result<Vec<AudioSource>> {
     let wav = parse_wav_layout(&source.bytes)?;
     let exact_header_budget = max_file_size.checked_sub(wav.data_start).ok_or_else(|| {
-        HakimiError::Tool("STT max file size is too small for WAV chunking".into())
+        HakimiError::ToolSimple("STT max file size is too small for WAV chunking".into())
     })?;
     let reserved_budget = max_file_size.saturating_sub(WAV_CHUNK_HEADER_RESERVE_BYTES);
     let max_data_bytes = if reserved_budget >= wav.block_align {
@@ -277,7 +277,7 @@ fn split_wav_for_transcription(
     let block_align = wav.block_align.max(1);
     let max_data_bytes = (max_data_bytes / block_align) * block_align;
     if max_data_bytes == 0 {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "STT max file size is too small for WAV chunking".into(),
         ));
     }
@@ -316,7 +316,7 @@ struct WavLayout {
 
 fn parse_wav_layout(bytes: &[u8]) -> Result<WavLayout> {
     if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
-        return Err(HakimiError::Tool("expected a RIFF/WAVE audio file".into()));
+        return Err(HakimiError::ToolSimple("expected a RIFF/WAVE audio file".into()));
     }
 
     let mut cursor = 12usize;
@@ -327,12 +327,12 @@ fn parse_wav_layout(bytes: &[u8]) -> Result<WavLayout> {
         let chunk_len = read_u32_le(bytes, cursor + 4)? as usize;
         let data_start = cursor
             .checked_add(8)
-            .ok_or_else(|| HakimiError::Tool("invalid WAV chunk offset".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("invalid WAV chunk offset".into()))?;
         let data_end = data_start
             .checked_add(chunk_len)
-            .ok_or_else(|| HakimiError::Tool("invalid WAV chunk length".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("invalid WAV chunk length".into()))?;
         if data_end > bytes.len() {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "WAV chunk length exceeds file size".into(),
             ));
         }
@@ -352,25 +352,25 @@ fn parse_wav_layout(bytes: &[u8]) -> Result<WavLayout> {
 
         cursor = data_end
             .checked_add(chunk_len % 2)
-            .ok_or_else(|| HakimiError::Tool("invalid WAV chunk padding".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("invalid WAV chunk padding".into()))?;
     }
 
-    data.ok_or_else(|| HakimiError::Tool("WAV file has no data chunk".into()))
+    data.ok_or_else(|| HakimiError::ToolSimple("WAV file has no data chunk".into()))
 }
 
 fn patch_wav_sizes(bytes: &mut [u8], data_len_offset: usize) -> Result<()> {
     let riff_len = bytes
         .len()
         .checked_sub(8)
-        .ok_or_else(|| HakimiError::Tool("WAV chunk is too small".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("WAV chunk is too small".into()))?;
     let data_len = bytes
         .len()
         .checked_sub(data_len_offset + 4)
-        .ok_or_else(|| HakimiError::Tool("WAV data chunk is invalid".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("WAV data chunk is invalid".into()))?;
     let riff_len =
-        u32::try_from(riff_len).map_err(|_| HakimiError::Tool("WAV chunk is too large".into()))?;
+        u32::try_from(riff_len).map_err(|_| HakimiError::ToolSimple("WAV chunk is too large".into()))?;
     let data_len = u32::try_from(data_len)
-        .map_err(|_| HakimiError::Tool("WAV data chunk is too large".into()))?;
+        .map_err(|_| HakimiError::ToolSimple("WAV data chunk is too large".into()))?;
 
     bytes[4..8].copy_from_slice(&riff_len.to_le_bytes());
     bytes[data_len_offset..data_len_offset + 4].copy_from_slice(&data_len.to_le_bytes());
@@ -380,14 +380,14 @@ fn patch_wav_sizes(bytes: &mut [u8], data_len_offset: usize) -> Result<()> {
 fn read_u16_le(bytes: &[u8], offset: usize) -> Result<u16> {
     let slice = bytes
         .get(offset..offset + 2)
-        .ok_or_else(|| HakimiError::Tool("unexpected end of WAV header".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("unexpected end of WAV header".into()))?;
     Ok(u16::from_le_bytes([slice[0], slice[1]]))
 }
 
 fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32> {
     let slice = bytes
         .get(offset..offset + 4)
-        .ok_or_else(|| HakimiError::Tool("unexpected end of WAV header".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("unexpected end of WAV header".into()))?;
     Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
 }
 
@@ -415,7 +415,7 @@ async fn request_openai_transcription(
         .or_else(|| std::env::var("HAKIMI_TRANSCRIPTION_API_KEY").ok())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok())
         .ok_or_else(|| {
-            HakimiError::Tool(
+            HakimiError::ToolSimple(
                 "HAKIMI_TRANSCRIPTION_API_KEY or OPENAI_API_KEY environment variable not set."
                     .into(),
             )
@@ -432,7 +432,7 @@ async fn request_openai_transcription(
     let file_part = Part::bytes(source.bytes.clone())
         .file_name(source.file_name.clone())
         .mime_str(&source.mime_type)
-        .map_err(|e| HakimiError::Tool(format!("failed to prepare audio upload: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to prepare audio upload: {e}")))?;
 
     let mut form = Form::new()
         .text("model", model.to_string())
@@ -450,7 +450,7 @@ async fn request_openai_transcription(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(180))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))?;
 
     let response = client
         .post(&url)
@@ -458,16 +458,16 @@ async fn request_openai_transcription(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("transcription API request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("transcription API request failed: {e}")))?;
 
     let status = response.status();
     let body = response
         .text()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read transcription response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read transcription response: {e}")))?;
 
     if !status.is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "transcription API returned status {status}: {body}"
         )));
     }
@@ -476,7 +476,7 @@ async fn request_openai_transcription(
         return serde_json::from_str::<JsonValue>(&body)
             .map(|value| value.to_string())
             .map_err(|e| {
-                HakimiError::Tool(format!("failed to parse JSON transcription response: {e}"))
+                HakimiError::ToolSimple(format!("failed to parse JSON transcription response: {e}"))
             });
     }
 

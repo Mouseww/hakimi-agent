@@ -85,7 +85,7 @@ impl Tool for SearchFilesTool {
         let pattern = args
             .get("pattern")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: pattern".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: pattern".into()))?;
 
         let path = args
             .get("path")
@@ -239,7 +239,7 @@ async fn run_ripgrep(
     let output = cmd
         .output()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to run ripgrep: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to run ripgrep: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
@@ -294,7 +294,7 @@ async fn run_grep(
     let output = cmd
         .output()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to run grep: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to run grep: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
@@ -317,7 +317,7 @@ async fn search_files_by_name(
     offset: usize,
 ) -> Result<String> {
     let re = Regex::new(pattern)
-        .map_err(|e| HakimiError::Tool(format!("invalid regex pattern: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("invalid regex pattern: {e}")))?;
 
     let mut results = Vec::new();
     collect_files(path, &re, file_glob, &mut results, limit + offset).await?;
@@ -350,13 +350,13 @@ fn collect_files<'a>(
         }
 
         let mut entries = fs::read_dir(dir).await.map_err(|e| {
-            HakimiError::Tool(format!("failed to read directory '{}': {e}", dir.display()))
+            HakimiError::ToolSimple(format!("failed to read directory '{}': {e}", dir.display()))
         })?;
 
         while let Some(entry) = entries
             .next_entry()
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to read directory entry: {e}")))?
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to read directory entry: {e}")))?
         {
             if results.len() >= max {
                 break;

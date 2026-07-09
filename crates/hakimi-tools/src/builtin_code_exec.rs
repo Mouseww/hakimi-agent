@@ -59,7 +59,7 @@ impl Tool for CodeExecTool {
         let code = args
             .get("code")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: code".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: code".into()))?;
 
         let language = args
             .get("language")
@@ -80,7 +80,7 @@ impl Tool for CodeExecTool {
             "javascript" => (Cow::Borrowed("node"), ".js"),
             "bash" => (resolve_bash_interpreter(), ".sh"),
             _ => {
-                return Err(HakimiError::Tool(format!(
+                return Err(HakimiError::ToolSimple(format!(
                     "unsupported language '{}'. Supported: python, javascript, bash.",
                     language
                 )));
@@ -91,7 +91,7 @@ impl Tool for CodeExecTool {
         let temp_dir = std::path::PathBuf::from(&ctx.workdir).join(".hakimi_tmp");
         tokio::fs::create_dir_all(&temp_dir)
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to create temp directory: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to create temp directory: {e}")))?;
 
         let temp_file = temp_dir.join(format!(
             "snippet_{}_{}_{}",
@@ -104,7 +104,7 @@ impl Tool for CodeExecTool {
         ));
         tokio::fs::write(&temp_file, code)
             .await
-            .map_err(|e| HakimiError::Tool(format!("failed to write temp file: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to write temp file: {e}")))?;
 
         if language == "python" {
             let hermes_tools_py = r#"
@@ -210,12 +210,12 @@ def retry(fn, max_attempts=3, delay=2):
 
         let output = result
             .map_err(|_| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "code execution timed out after {}s ({})",
                     timeout_secs, language
                 ))
             })?
-            .map_err(|e| HakimiError::Tool(format!("failed to execute {} code: {e}", language)))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("failed to execute {} code: {e}", language)))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

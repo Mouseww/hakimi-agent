@@ -56,7 +56,7 @@ impl Tool for WebSearchTool {
         let query = args
             .get("query")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: query".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: query".into()))?;
 
         let max_results = args
             .get("max_results")
@@ -135,7 +135,7 @@ impl Tool for WebSearchTool {
 
 fn require_env_key(var: &str) -> Result<String> {
     std::env::var(var).map_err(|_| {
-        HakimiError::Tool(format!(
+        HakimiError::ToolSimple(format!(
             "{var} not set. Please set it to use the configured search provider."
         ))
     })
@@ -146,7 +146,7 @@ fn build_http_client() -> Result<reqwest::Client> {
         .user_agent(BROWSER_UA)
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| HakimiError::Tool(format!("failed to create HTTP client: {e}")))
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to create HTTP client: {e}")))
 }
 
 fn format_results(results: &[SearchResult]) -> String {
@@ -186,12 +186,12 @@ async fn search_searxng(query: &str, max_results: usize, base_url: &str) -> Resu
         .header("Accept", "application/json")
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("SearXNG request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("SearXNG request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
         let err_body = response.text().await.unwrap_or_default();
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "SearXNG returned {status}: {err_body}"
         )));
     }
@@ -199,7 +199,7 @@ async fn search_searxng(query: &str, max_results: usize, base_url: &str) -> Resu
     let data: JsonValue = response
         .json()
         .await
-        .map_err(|e| HakimiError::Tool(format!("SearXNG response parse error: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("SearXNG response parse error: {e}")))?;
 
     let results: Vec<SearchResult> = data
         .get("results")
@@ -253,12 +253,12 @@ async fn search_tavily(query: &str, max_results: usize, api_key: &str) -> Result
         .json(&body)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Tavily request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Tavily request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
         let err_body = response.text().await.unwrap_or_default();
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Tavily API returned {status}: {err_body}"
         )));
     }
@@ -266,7 +266,7 @@ async fn search_tavily(query: &str, max_results: usize, api_key: &str) -> Result
     let data: JsonValue = response
         .json()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Tavily response parse error: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Tavily response parse error: {e}")))?;
 
     let results: Vec<SearchResult> = data
         .get("results")
@@ -319,12 +319,12 @@ async fn search_brave(query: &str, max_results: usize, api_key: &str) -> Result<
         .header("X-Subscription-Token", api_key)
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Brave Search request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Brave Search request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
         let err_body = response.text().await.unwrap_or_default();
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "Brave Search API returned {status}: {err_body}"
         )));
     }
@@ -332,7 +332,7 @@ async fn search_brave(query: &str, max_results: usize, api_key: &str) -> Result<
     let data: JsonValue = response
         .json()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Brave Search response parse error: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Brave Search response parse error: {e}")))?;
 
     let results: Vec<SearchResult> = data
         .get("web")
@@ -395,11 +395,11 @@ async fn search_ddg_html(query: &str, max_results: usize) -> Result<String> {
         .header("Sec-Fetch-User", "?1")
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("web search request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("web search request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "DuckDuckGo returned HTTP {status}"
         )));
     }
@@ -407,7 +407,7 @@ async fn search_ddg_html(query: &str, max_results: usize) -> Result<String> {
     let body = response
         .text()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read search response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read search response: {e}")))?;
 
     let results = parse_ddg_html(&body, max_results);
 
@@ -574,17 +574,17 @@ async fn search_bing_cn(query: &str, max_results: usize) -> Result<String> {
         .header("Sec-Fetch-Site", "none")
         .send()
         .await
-        .map_err(|e| HakimiError::Tool(format!("Bing CN request failed: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("Bing CN request failed: {e}")))?;
 
     let status = response.status();
     if !status.is_success() {
-        return Err(HakimiError::Tool(format!("Bing CN returned HTTP {status}")));
+        return Err(HakimiError::ToolSimple(format!("Bing CN returned HTTP {status}")));
     }
 
     let body = response
         .text()
         .await
-        .map_err(|e| HakimiError::Tool(format!("failed to read Bing CN response: {e}")))?;
+        .map_err(|e| HakimiError::ToolSimple(format!("failed to read Bing CN response: {e}")))?;
 
     let results = parse_bing_html(&body, max_results);
 

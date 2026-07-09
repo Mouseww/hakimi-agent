@@ -287,7 +287,7 @@ impl KanbanStore {
         validate_status(&input.status)?;
         let title = input.title.trim();
         if title.is_empty() {
-            return Err(HakimiError::Tool("kanban task title is required".into()));
+            return Err(HakimiError::ToolSimple("kanban task title is required".into()));
         }
         let body = normalize_optional(input.body);
         let assignee = normalize_profile_arg(input.assignee.as_deref())?;
@@ -341,7 +341,7 @@ impl KanbanStore {
 
     fn get_task_required(&self, id: &str) -> Result<KanbanTask> {
         self.get_task(id)?
-            .ok_or_else(|| HakimiError::Tool(format!("kanban task not found: {id}")))
+            .ok_or_else(|| HakimiError::ToolSimple(format!("kanban task not found: {id}")))
     }
 
     fn list_tasks(
@@ -424,7 +424,7 @@ impl KanbanStore {
         self.get_task_required(task_id)?;
         let body = body.trim();
         if body.is_empty() {
-            return Err(HakimiError::Tool("kanban comment body is required".into()));
+            return Err(HakimiError::ToolSimple("kanban comment body is required".into()));
         }
         let now = now_epoch();
         let conn = self.connect()?;
@@ -463,7 +463,7 @@ impl KanbanStore {
 
     fn block_task(&self, task_id: &str, reason: &str) -> Result<KanbanTask> {
         let reason = non_empty_str(reason)
-            .ok_or_else(|| HakimiError::Tool("block reason is required".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("block reason is required".into()))?;
         self.update_status(task_id, "blocked", Some(reason), None)?;
         self.get_task_required(task_id)
     }
@@ -472,7 +472,7 @@ impl KanbanStore {
         let next = status.unwrap_or("ready");
         validate_status(next)?;
         if matches!(next, "blocked" | "done" | "archived") {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "unblock status must be triage, todo, ready, running, or review".into(),
             ));
         }
@@ -483,7 +483,7 @@ impl KanbanStore {
     fn set_task_status(&self, task_id: &str, status: &str) -> Result<KanbanTask> {
         validate_status(status)?;
         match status {
-            "blocked" => Err(HakimiError::Tool(
+            "blocked" => Err(HakimiError::ToolSimple(
                 "blocked dashboard update blocked_reason is required".into(),
             )),
             "done" => self.complete_task(task_id, None),
@@ -552,7 +552,7 @@ impl KanbanStore {
     ) -> Result<KanbanWorkerLog> {
         let task = self.get_task_required(task_id)?;
         let body = non_empty_str(body)
-            .ok_or_else(|| HakimiError::Tool("kanban worker log body is required".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("kanban worker log body is required".into()))?;
         let profile = normalize_profile_arg(profile)?
             .or(task.profile.clone())
             .or(task.assignee.clone());
@@ -635,14 +635,14 @@ impl KanbanStore {
         relation: Option<&str>,
     ) -> Result<KanbanLink> {
         if parent_id == child_id {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "kanban task cannot link to itself".into(),
             ));
         }
         self.get_task_required(parent_id)?;
         self.get_task_required(child_id)?;
         if self.reaches(child_id, parent_id)? {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "kanban link would create a dependency cycle".into(),
             ));
         }
@@ -687,7 +687,7 @@ impl KanbanStore {
     fn create_swarm(&self, input: CreateSwarm) -> Result<KanbanSwarmCreated> {
         let goal = required_text(&input.goal, "swarm goal")?;
         if input.workers.is_empty() {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "kanban swarm requires at least one worker".into(),
             ));
         }
@@ -816,7 +816,7 @@ impl KanbanStore {
     ) -> Result<KanbanComment> {
         let key = required_text(key, "blackboard key")?;
         let payload = serde_json::to_string(&json!({"key": key, "value": value}))
-            .map_err(|err| HakimiError::Tool(format!("kanban swarm payload error: {err}")))?;
+            .map_err(|err| HakimiError::ToolSimple(format!("kanban swarm payload error: {err}")))?;
         self.add_comment(
             root_id,
             &format!("{SWARM_BLACKBOARD_PREFIX}{payload}"),
@@ -870,12 +870,12 @@ impl KanbanStore {
         payload: Option<JsonValue>,
     ) -> Result<KanbanEvent> {
         let kind = non_empty_str(kind)
-            .ok_or_else(|| HakimiError::Tool("kanban event kind is required".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("kanban event kind is required".into()))?;
         let now = now_epoch();
         let payload = payload
             .map(|value| serde_json::to_string(&value))
             .transpose()
-            .map_err(|err| HakimiError::Tool(format!("kanban event payload error: {err}")))?;
+            .map_err(|err| HakimiError::ToolSimple(format!("kanban event payload error: {err}")))?;
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO kanban_events (task_id, kind, actor, note, payload, created_at)
@@ -958,7 +958,7 @@ impl KanbanStore {
         }
         self.get_notify_sub(&target.task_id, platform, chat_id, thread_id.as_deref())?
             .ok_or_else(|| {
-                HakimiError::Tool("kanban notification subscription was not saved".into())
+                HakimiError::ToolSimple("kanban notification subscription was not saved".into())
             })
     }
 
@@ -1753,7 +1753,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
         }
         "show" => match parts.next() {
             Some(task_id) => show_task_json(store, task_id),
-            None => Err(HakimiError::Tool("usage: /kanban show <task_id>".into())),
+            None => Err(HakimiError::ToolSimple("usage: /kanban show <task_id>".into())),
         },
         "create" => {
             let title = parts.collect::<Vec<_>>().join(" ");
@@ -1774,7 +1774,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                 let summary = parts.collect::<Vec<_>>().join(" ");
                 json_result(store.complete_task(task_id, non_empty_str(&summary)))
             }
-            None => Err(HakimiError::Tool(
+            None => Err(HakimiError::ToolSimple(
                 "usage: /kanban complete <task_id> [summary]".into(),
             )),
         },
@@ -1783,20 +1783,20 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                 let reason = parts.collect::<Vec<_>>().join(" ");
                 json_result(store.block_task(task_id, &reason))
             }
-            None => Err(HakimiError::Tool(
+            None => Err(HakimiError::ToolSimple(
                 "usage: /kanban block <task_id> <reason>".into(),
             )),
         },
         "unblock" => match parts.next() {
             Some(task_id) => json_result(store.unblock_task(task_id, None)),
-            None => Err(HakimiError::Tool("usage: /kanban unblock <task_id>".into())),
+            None => Err(HakimiError::ToolSimple("usage: /kanban unblock <task_id>".into())),
         },
         "comment" => match parts.next() {
             Some(task_id) => {
                 let body = parts.collect::<Vec<_>>().join(" ");
                 json_result(store.add_comment(task_id, &body, Some("gateway")))
             }
-            None => Err(HakimiError::Tool(
+            None => Err(HakimiError::ToolSimple(
                 "usage: /kanban comment <task_id> <body>".into(),
             )),
         },
@@ -1805,7 +1805,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                 let note = parts.collect::<Vec<_>>().join(" ");
                 json_result(store.heartbeat_task(task_id, non_empty_str(&note)))
             }
-            None => Err(HakimiError::Tool(
+            None => Err(HakimiError::ToolSimple(
                 "usage: /kanban heartbeat <task_id> [note]".into(),
             )),
         },
@@ -1814,13 +1814,13 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                 let relation = parts.next();
                 json_result(store.link_tasks(parent_id, child_id, relation))
             }
-            _ => Err(HakimiError::Tool(
+            _ => Err(HakimiError::ToolSimple(
                 "usage: /kanban link <parent_id> <child_id> [relation]".into(),
             )),
         },
         "events" => match parts.next() {
             Some(task_id) => json_result(store.events(task_id, DEFAULT_LIMIT)),
-            None => Err(HakimiError::Tool("usage: /kanban events <task_id>".into())),
+            None => Err(HakimiError::ToolSimple("usage: /kanban events <task_id>".into())),
         },
         "notify-subscribe" | "subscribe" => match (parts.next(), parts.next(), parts.next()) {
             (Some(task_id), Some(platform), Some(chat_id)) => {
@@ -1834,7 +1834,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                     notifier_profile,
                 }))
             }
-            _ => Err(HakimiError::Tool(
+            _ => Err(HakimiError::ToolSimple(
                 "usage: /kanban notify-subscribe <task_id> <platform> <chat_id> [thread_id] [notifier_profile]".into(),
             )),
         },
@@ -1853,7 +1853,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                     notifier_profile: None,
                 }))
             }
-            _ => Err(HakimiError::Tool(
+            _ => Err(HakimiError::ToolSimple(
                 "usage: /kanban notify-unsubscribe <task_id> <platform> <chat_id> [thread_id]".into(),
             )),
         },
@@ -1866,7 +1866,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                 let profile = parts.next();
                 json_result(store.assign_task(task_id, profile, Some("gateway")))
             }
-            None => Err(HakimiError::Tool(
+            None => Err(HakimiError::ToolSimple(
                 "usage: /kanban assign <task_id> [profile|none]".into(),
             )),
         },
@@ -1888,7 +1888,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
                     }
                 }
             }
-            None => Err(HakimiError::Tool(
+            None => Err(HakimiError::ToolSimple(
                 "usage: /kanban worker-log <task_id> [body]".into(),
             )),
         },
@@ -1897,7 +1897,7 @@ fn kanban_response_with_store(raw: Option<&str>, store: &KanbanStore) -> String 
             json_result(store.diagnostics(task_id))
         }
         "stats" => store.stats().map(|v| v.to_string()),
-        _ => Err(HakimiError::Tool(format!(
+        _ => Err(HakimiError::ToolSimple(format!(
             "unknown /kanban command: {command}; run /kanban help"
         ))),
     };
@@ -2084,7 +2084,7 @@ fn show_task_json(store: &KanbanStore, task_id: &str) -> Result<String> {
 
 pub fn kanban_dashboard_boards() -> Result<JsonValue> {
     serde_json::from_str(&board_list_json()?)
-        .map_err(|err| HakimiError::Tool(format!("kanban board list serialization error: {err}")))
+        .map_err(|err| HakimiError::ToolSimple(format!("kanban board list serialization error: {err}")))
 }
 
 pub fn kanban_dashboard_snapshot(
@@ -2154,7 +2154,7 @@ pub fn kanban_dashboard_create_task(
                 .as_deref()
                 .and_then(non_empty_str)
                 .ok_or_else(|| {
-                    HakimiError::Tool("blocked dashboard task blocked_reason is required".into())
+                    HakimiError::ToolSimple("blocked dashboard task blocked_reason is required".into())
                 })?
                 .to_string(),
         )
@@ -2205,7 +2205,7 @@ pub fn kanban_dashboard_update_task(
                 .and_then(non_empty_str)
                 .is_none()
         {
-            return Err(HakimiError::Tool(
+            return Err(HakimiError::ToolSimple(
                 "blocked dashboard update blocked_reason is required".into(),
             ));
         }
@@ -2222,7 +2222,7 @@ pub fn kanban_dashboard_update_task(
                     .as_deref()
                     .and_then(non_empty_str)
                     .ok_or_else(|| {
-                        HakimiError::Tool(
+                        HakimiError::ToolSimple(
                             "blocked dashboard update blocked_reason is required".into(),
                         )
                     })?;
@@ -2314,14 +2314,14 @@ fn require_str<'a>(args: &'a JsonValue, name: &str) -> Result<&'a str> {
     args.get(name)
         .and_then(JsonValue::as_str)
         .and_then(non_empty_str)
-        .ok_or_else(|| HakimiError::Tool(format!("missing required parameter: {name}")))
+        .ok_or_else(|| HakimiError::ToolSimple(format!("missing required parameter: {name}")))
 }
 
 fn create_swarm_from_args(args: &JsonValue) -> Result<CreateSwarm> {
     let workers = args
         .get("workers")
         .and_then(JsonValue::as_array)
-        .ok_or_else(|| HakimiError::Tool("missing required parameter: workers".into()))?
+        .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: workers".into()))?
         .iter()
         .map(swarm_worker_from_value)
         .collect::<Result<Vec<_>>>()?;
@@ -2344,17 +2344,17 @@ fn create_swarm_from_args(args: &JsonValue) -> Result<CreateSwarm> {
 fn swarm_worker_from_value(value: &JsonValue) -> Result<SwarmWorkerSpec> {
     let object = value
         .as_object()
-        .ok_or_else(|| HakimiError::Tool("kanban swarm worker must be an object".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("kanban swarm worker must be an object".into()))?;
     let profile = object
         .get("profile")
         .and_then(JsonValue::as_str)
         .and_then(non_empty_str)
-        .ok_or_else(|| HakimiError::Tool("kanban swarm worker profile is required".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("kanban swarm worker profile is required".into()))?;
     let title = object
         .get("title")
         .and_then(JsonValue::as_str)
         .and_then(non_empty_str)
-        .ok_or_else(|| HakimiError::Tool("kanban swarm worker title is required".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("kanban swarm worker title is required".into()))?;
     let skills = object
         .get("skills")
         .and_then(JsonValue::as_array)
@@ -2392,7 +2392,7 @@ fn create_swarm_from_slash(store: &KanbanStore, args: &[&str]) -> Result<KanbanS
             "--worker" | "-w" => {
                 index += 1;
                 let raw = args.get(index).copied().ok_or_else(|| {
-                    HakimiError::Tool(
+                    HakimiError::ToolSimple(
                         "usage: /kanban swarm --worker <profile:title[:skill,skill]> --verifier <profile> --synthesizer <profile> <goal>".into(),
                     )
                 })?;
@@ -2413,10 +2413,10 @@ fn create_swarm_from_slash(store: &KanbanStore, args: &[&str]) -> Result<KanbanS
             "--priority" => {
                 index += 1;
                 let raw = args.get(index).copied().ok_or_else(|| {
-                    HakimiError::Tool("usage: /kanban swarm --priority <integer>".into())
+                    HakimiError::ToolSimple("usage: /kanban swarm --priority <integer>".into())
                 })?;
                 priority = raw.parse::<i64>().map_err(|_| {
-                    HakimiError::Tool("kanban swarm priority must be an integer".into())
+                    HakimiError::ToolSimple("kanban swarm priority must be an integer".into())
                 })?;
             }
             value => goal_parts.push(value),
@@ -2438,9 +2438,9 @@ fn parse_swarm_worker(raw: &str) -> Result<SwarmWorkerSpec> {
     let profile = parts
         .next()
         .and_then(non_empty_str)
-        .ok_or_else(|| HakimiError::Tool("kanban swarm worker profile is required".into()))?;
+        .ok_or_else(|| HakimiError::ToolSimple("kanban swarm worker profile is required".into()))?;
     let title = parts.next().and_then(non_empty_str).ok_or_else(|| {
-        HakimiError::Tool(
+        HakimiError::ToolSimple(
             "kanban swarm worker must be profile:title or profile:title:skill,skill".into(),
         )
     })?;
@@ -2463,7 +2463,7 @@ fn parse_swarm_worker(raw: &str) -> Result<SwarmWorkerSpec> {
 }
 
 fn required_text<'a>(value: &'a str, field_name: &str) -> Result<&'a str> {
-    non_empty_str(value).ok_or_else(|| HakimiError::Tool(format!("{field_name} is required")))
+    non_empty_str(value).ok_or_else(|| HakimiError::ToolSimple(format!("{field_name} is required")))
 }
 
 fn require_profile_text<'a>(value: &'a str, field_name: &str) -> Result<&'a str> {
@@ -2550,7 +2550,7 @@ fn kanban_boards_response(args: Vec<&str>) -> Result<String> {
         }
         "create" | "new" => {
             let slug = args.get(1).copied().ok_or_else(|| {
-                HakimiError::Tool("usage: /kanban boards create <slug> [name]".into())
+                HakimiError::ToolSimple("usage: /kanban boards create <slug> [name]".into())
             })?;
             let name = args.get(2..).map(|rest| rest.join(" "));
             let meta = create_board(slug, name.as_deref(), None)?;
@@ -2560,11 +2560,11 @@ fn kanban_boards_response(args: Vec<&str>) -> Result<String> {
             let slug = args
                 .get(1)
                 .copied()
-                .ok_or_else(|| HakimiError::Tool("usage: /kanban boards switch <slug>".into()))?;
+                .ok_or_else(|| HakimiError::ToolSimple("usage: /kanban boards switch <slug>".into()))?;
             switch_board(slug)?;
             board_summary_json(&normalize_board_slug(slug)?)
         }
-        _ => Err(HakimiError::Tool(format!(
+        _ => Err(HakimiError::ToolSimple(format!(
             "unknown /kanban boards command: {command}; run /kanban boards help"
         ))),
     }
@@ -2617,7 +2617,7 @@ fn validate_status(status: &str) -> Result<()> {
     if VALID_STATUSES.contains(&status) {
         Ok(())
     } else {
-        Err(HakimiError::Tool(format!(
+        Err(HakimiError::ToolSimple(format!(
             "invalid kanban status: {status}; expected one of {}",
             VALID_STATUSES.join(", ")
         )))
@@ -2679,7 +2679,7 @@ fn normalize_profile_arg(value: Option<&str>) -> Result<Option<String>> {
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
     {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "invalid kanban profile: {normalized}; use 1-64 letters, digits, dash, underscore, or dot"
         )));
     }
@@ -2688,9 +2688,9 @@ fn normalize_profile_arg(value: Option<&str>) -> Result<Option<String>> {
 
 fn require_notify_text<'a>(value: &'a str, name: &str) -> Result<&'a str> {
     let trimmed = non_empty_str(value)
-        .ok_or_else(|| HakimiError::Tool(format!("kanban notification {name} is required")))?;
+        .ok_or_else(|| HakimiError::ToolSimple(format!("kanban notification {name} is required")))?;
     if trimmed.len() > 256 || trimmed.chars().any(char::is_control) {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "invalid kanban notification {name}: use 1-256 non-control characters"
         )));
     }
@@ -2702,7 +2702,7 @@ fn normalize_notify_text(value: Option<&str>) -> Result<Option<String>> {
         return Ok(None);
     };
     if value.len() > 256 || value.chars().any(char::is_control) {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "invalid kanban notification thread_id: use 1-256 non-control characters".into(),
         ));
     }
@@ -2719,14 +2719,14 @@ fn normalize_event_kinds(kinds: &[String]) -> Result<Vec<String>> {
     let mut normalized = Vec::new();
     for kind in kinds {
         let kind = non_empty_str(kind).ok_or_else(|| {
-            HakimiError::Tool("kanban notification event kind is required".into())
+            HakimiError::ToolSimple("kanban notification event kind is required".into())
         })?;
         if kind.len() > 64
             || !kind
                 .chars()
                 .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
         {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "invalid kanban notification event kind: {kind}; use lowercase letters, digits, or underscore"
             )));
         }
@@ -2755,7 +2755,7 @@ fn validate_log_task_id(task_id: &str) -> Result<()> {
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
     {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "invalid kanban task id for worker log path: {task_id}"
         )));
     }
@@ -2789,7 +2789,7 @@ fn extract_leading_board(rest: &str) -> Result<(Option<String>, String)> {
     if first == "--board" {
         let slug = parts
             .next()
-            .ok_or_else(|| HakimiError::Tool("--board requires a board slug".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("--board requires a board slug".into()))?;
         let board = normalize_board_slug(slug)?;
         return Ok((Some(board), parts.collect::<Vec<_>>().join(" ")));
     }
@@ -2873,7 +2873,7 @@ fn board_exists(slug: &str) -> bool {
 fn normalize_board_slug(slug: &str) -> Result<String> {
     let slug = slug.trim().to_ascii_lowercase();
     if slug.is_empty() {
-        return Err(HakimiError::Tool("kanban board slug is required".into()));
+        return Err(HakimiError::ToolSimple("kanban board slug is required".into()));
     }
     if slug.len() > 64
         || !slug
@@ -2881,7 +2881,7 @@ fn normalize_board_slug(slug: &str) -> Result<String> {
             .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_')
         || matches!(slug.as_bytes().first(), Some(b'-' | b'_'))
     {
-        return Err(HakimiError::Tool(format!(
+        return Err(HakimiError::ToolSimple(format!(
             "invalid kanban board slug: {slug}; use 1-64 lowercase letters, digits, hyphen, or underscore"
         )));
     }
@@ -2914,7 +2914,7 @@ fn write_board_metadata(meta: &KanbanBoardMetadata) -> Result<()> {
     let dir = board_dir(&meta.slug);
     std::fs::create_dir_all(&dir).map_err(HakimiError::Io)?;
     let body = serde_json::to_string_pretty(meta)
-        .map_err(|err| HakimiError::Tool(format!("kanban board metadata error: {err}")))?;
+        .map_err(|err| HakimiError::ToolSimple(format!("kanban board metadata error: {err}")))?;
     std::fs::write(dir.join("board.json"), body + "\n").map_err(HakimiError::Io)
 }
 
@@ -2936,7 +2936,7 @@ fn create_board(
 fn switch_board(slug: &str) -> Result<()> {
     let slug = normalize_board_slug(slug)?;
     if !board_exists(&slug) {
-        return Err(HakimiError::Tool(format!("kanban board not found: {slug}")));
+        return Err(HakimiError::ToolSimple(format!("kanban board not found: {slug}")));
     }
     let path = current_board_path();
     if let Some(parent) = path.parent() {
@@ -3000,7 +3000,7 @@ fn dashboard_board_slug(board: Option<&str>) -> Result<Option<String>> {
     };
     let slug = normalize_board_slug(raw)?;
     if slug != DEFAULT_BOARD && !board_exists(&slug) {
-        return Err(HakimiError::Tool(format!("kanban board not found: {slug}")));
+        return Err(HakimiError::ToolSimple(format!("kanban board not found: {slug}")));
     }
     Ok(Some(slug))
 }
@@ -3010,7 +3010,7 @@ fn now_epoch() -> i64 {
 }
 
 fn db_err(err: rusqlite::Error) -> HakimiError {
-    HakimiError::Tool(format!("kanban sqlite error: {err}"))
+    HakimiError::ToolSimple(format!("kanban sqlite error: {err}"))
 }
 
 #[cfg(test)]

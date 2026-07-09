@@ -78,7 +78,7 @@ impl hakimi_tools::Tool for McpToolAdapter {
         let result = {
             let mut client = self.client.lock().await;
             client.call_tool(&self.name, arguments).await.map_err(|e| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "MCP tool '{}' failed: {}",
                     self.name,
                     sanitize_mcp_error(&e.to_string())
@@ -88,7 +88,7 @@ impl hakimi_tools::Tool for McpToolAdapter {
 
         if result.is_error {
             let text = sanitize_mcp_error(&result.text_content());
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "MCP tool '{}' returned error: {text}",
                 self.name
             )));

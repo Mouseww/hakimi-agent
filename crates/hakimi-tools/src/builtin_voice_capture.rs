@@ -103,7 +103,7 @@ impl Tool for VoiceCaptureTool {
         let plan =
             find_voice_capture_plan(output_path.as_deref(), duration_seconds, silence_threshold)
                 .ok_or_else(|| {
-                    HakimiError::Tool(
+                    HakimiError::ToolSimple(
                 "no local voice capture backend found; install ffmpeg, arecord/rec, or Termux:API"
                     .into(),
             )
@@ -115,7 +115,7 @@ impl Tool for VoiceCaptureTool {
             .filter(|parent| !parent.as_os_str().is_empty())
         {
             std::fs::create_dir_all(parent).map_err(|err| {
-                HakimiError::Tool(format!(
+                HakimiError::ToolSimple(format!(
                     "failed to create voice recording directory '{}': {err}",
                     parent.display()
                 ))
@@ -137,11 +137,11 @@ impl Tool for VoiceCaptureTool {
             command.output(),
         )
         .await
-        .map_err(|_| HakimiError::Tool("voice capture command timed out".into()))?
-        .map_err(|err| HakimiError::Tool(format!("voice capture command failed: {err}")))?;
+        .map_err(|_| HakimiError::ToolSimple("voice capture command timed out".into()))?
+        .map_err(|err| HakimiError::ToolSimple(format!("voice capture command failed: {err}")))?;
 
         if !output.status.success() {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "voice capture backend '{}' exited with status {}: {}",
                 plan.backend,
                 output.status,
@@ -150,7 +150,7 @@ impl Tool for VoiceCaptureTool {
         }
 
         if !plan.output_path.is_file() {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "voice capture backend '{}' did not create '{}'",
                 plan.backend,
                 plan.output_path.display()
@@ -168,7 +168,7 @@ impl Tool for VoiceCaptureTool {
         if plan.format == VoiceCaptureFormat::Pcm16Wav {
             let summary = summarize_pcm16_wav_file(&plan.output_path, plan.silence_threshold)
                 .map_err(|err| {
-                    HakimiError::Tool(format!("failed to inspect captured WAV recording: {err}"))
+                    HakimiError::ToolSimple(format!("failed to inspect captured WAV recording: {err}"))
                 })?;
             response["recording"] = json!({
                 "samples": summary.samples,

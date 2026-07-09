@@ -121,7 +121,7 @@ impl Tool for CheckpointTool {
         let action = args
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::Tool("missing required parameter: action".into()))?;
+            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: action".into()))?;
 
         match action {
             "create" => {
@@ -159,7 +159,7 @@ impl Tool for CheckpointTool {
                 let store = CheckpointStore::for_workdir(Path::new(&ctx.workdir))?;
                 store.status().map(|body| body.to_string())
             }
-            _ => Err(HakimiError::Tool(format!(
+            _ => Err(HakimiError::ToolSimple(format!(
                 "Unknown checkpoint action: '{action}'. Valid actions: create, list, rollback, diff, status"
             ))),
         }
@@ -300,9 +300,9 @@ impl CheckpointStore {
     fn with_base(base: PathBuf, workdir: &Path) -> Result<Self> {
         let workdir = workdir
             .canonicalize()
-            .map_err(|e| HakimiError::Tool(format!("invalid checkpoint workdir: {e}")))?;
+            .map_err(|e| HakimiError::ToolSimple(format!("invalid checkpoint workdir: {e}")))?;
         if !workdir.is_dir() {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "checkpoint workdir is not a directory: {}",
                 workdir.display()
             )));
@@ -602,7 +602,7 @@ impl CheckpointStore {
             OsString::from(&self.project_ref),
         ])?;
         if !output.status.success() {
-            return Err(HakimiError::Tool(format!(
+            return Err(HakimiError::ToolSimple(format!(
                 "checkpoint {} does not belong to this workdir",
                 short_id(&commit)
             )));
@@ -621,7 +621,7 @@ impl CheckpointStore {
         }
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         warn!(stderr = %stderr, "checkpoint git command failed");
-        Err(HakimiError::Tool(format!(
+        Err(HakimiError::ToolSimple(format!(
             "checkpoint git command failed: {stderr}"
         )))
     }
@@ -636,7 +636,7 @@ impl CheckpointStore {
             return Ok(String::from_utf8_lossy(&output.stdout).to_string());
         }
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(HakimiError::Tool(format!(
+        Err(HakimiError::ToolSimple(format!(
             "checkpoint git command failed: {stderr}"
         )))
     }
@@ -679,7 +679,7 @@ where
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    Err(HakimiError::Tool(format!(
+    Err(HakimiError::ToolSimple(format!(
         "checkpoint git init failed: {stderr}"
     )))
 }
@@ -698,7 +698,7 @@ fn required_checkpoint_id(args: &JsonValue) -> Result<&str> {
     args.get("checkpoint_id")
         .and_then(|v| v.as_str())
         .filter(|v| !v.trim().is_empty())
-        .ok_or_else(|| HakimiError::Tool("checkpoint_id is required".into()))
+        .ok_or_else(|| HakimiError::ToolSimple("checkpoint_id is required".into()))
 }
 
 fn optional_relative_path(args: &JsonValue, key: &str) -> Result<Option<String>> {
@@ -711,7 +711,7 @@ fn optional_relative_path(args: &JsonValue, key: &str) -> Result<Option<String>>
 fn validate_checkpoint_id(value: &str) -> Result<()> {
     let value = value.trim();
     if !(4..=64).contains(&value.len()) || !value.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "checkpoint_id must be a 4-64 character hex commit id".into(),
         ));
     }
@@ -724,14 +724,14 @@ fn validate_optional_path(path: Option<&str>, workdir: &Path) -> Result<Option<S
     };
     let candidate = Path::new(path);
     if candidate.is_absolute() {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "checkpoint path must be relative to the workdir".into(),
         ));
     }
     let resolved = workdir.join(candidate);
     let normalized = normalize_path_for_prefix(&resolved)?;
     if !normalized.starts_with(workdir) {
-        return Err(HakimiError::Tool(
+        return Err(HakimiError::ToolSimple(
             "checkpoint path escapes the workdir".into(),
         ));
     }
@@ -745,7 +745,7 @@ fn normalize_path_for_prefix(path: &Path) -> Result<PathBuf> {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
                 if !normalized.pop() {
-                    return Err(HakimiError::Tool("path traversal is not allowed".into()));
+                    return Err(HakimiError::ToolSimple("path traversal is not allowed".into()));
                 }
             }
             other => normalized.push(other.as_os_str()),
