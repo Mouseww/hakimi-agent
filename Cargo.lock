@@ -1303,6 +1303,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hakimi-metrics"
+version = "0.5.57"
+dependencies = [
+ "once_cell",
+ "parking_lot",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hakimi-plugin"
 version = "0.5.56"
 dependencies = [
@@ -1340,6 +1350,7 @@ dependencies = [
  "hakimi-cron",
  "hakimi-gateway",
  "hakimi-knowledge",
+ "hakimi-metrics",
  "hakimi-session",
  "hakimi-skills",
  "hakimi-tools",
@@ -1364,6 +1375,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "hakimi-common",
+ "hakimi-metrics",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1401,6 +1413,7 @@ dependencies = [
  "futures",
  "hakimi-common",
  "hakimi-cron",
+ "hakimi-metrics",
  "hakimi-session",
  "regex",
  "reqwest",

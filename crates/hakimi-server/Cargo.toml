@@ -26,6 +26,7 @@ hakimi-transports = { path = "../hakimi-transports" }
 hakimi-knowledge = { path = "../hakimi-knowledge" }
 hakimi-cron = { path = "../hakimi-cron" }
 hakimi-gateway = { path = "../hakimi-gateway" }
+hakimi-metrics = { path = "../hakimi-metrics" }
 axum = { version = "0.8", features = ["json"] }
 tokio = { workspace = true }
 serde = { workspace = true }

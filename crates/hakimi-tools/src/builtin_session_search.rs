@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
+use hakimi_metrics::MetricsRecorder;
 use hakimi_session::{MessageOps, SessionDB, SessionMeta, SessionOps};
 use serde_json::{Value as JsonValue, json};
 use tracing::{debug, instrument};
@@ -115,6 +116,7 @@ impl Tool for SessionSearchTool {
 
     #[instrument(skip(self, args, _ctx), fields(tool = "session_search"))]
     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
+        let start = std::time::Instant::now();
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
         let session_id = args.get("session_id").and_then(|v| v.as_str());
         let around_msg_id = args.get("around_message_id").and_then(|v| v.as_i64());
@@ -147,18 +149,27 @@ impl Tool for SessionSearchTool {
         // SCROLL MODE: session_id + around_message_id
         if let (Some(sid), Some(anchor_id)) = (session_id, around_msg_id) {
             debug!(mode = "scroll", "Executing Scroll mode");
-            return self.scroll_mode(&db, sid, anchor_id, window);
+            let result = self.scroll_mode(&db, sid, anchor_id, window);
+            let elapsed = start.elapsed();
+            hakimi_metrics::global().record_duration("session_search.scroll", elapsed);
+            return result;
         }
 
         // DISCOVERY MODE: query provided
         if !query.is_empty() {
             debug!(mode = "discovery", "Executing Discovery mode");
-            return self.discovery_mode(&db, query, limit, role_filter);
+            let result = self.discovery_mode(&db, query, limit, role_filter);
+            let elapsed = start.elapsed();
+            hakimi_metrics::global().record_duration("session_search.discovery", elapsed);
+            return result;
         }
 
         // BROWSE MODE: no args
         debug!(mode = "browse", "Executing Browse mode");
-        self.browse_mode(&db, limit)
+        let result = self.browse_mode(&db, limit);
+        let elapsed = start.elapsed();
+        hakimi_metrics::global().record_duration("session_search.browse", elapsed);
+        result
     }
 }
 

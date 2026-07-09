@@ -20,7 +20,7 @@ members = [
     "crates/hakimi-skills",
     "crates/hakimi-batch",
     "crates/hakimi-i18n",
-    "qq-bot-sdk",
+    "qq-bot-sdk", "crates/hakimi-metrics",
 ]
 
 [workspace.package]
