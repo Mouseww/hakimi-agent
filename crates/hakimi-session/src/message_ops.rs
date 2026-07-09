@@ -4,11 +4,13 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use tracing::{debug, instrument, warn};
 
 use crate::db::SessionDB;
 use crate::session_ops::generate_session_title;
 use hakimi_common::{Message, MessageRole};
+use hakimi_metrics::{global as metrics, MetricsRecorder};
 
 /// A full-text search result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +195,8 @@ impl MessageOps for SessionDB {
         }
 
         let elapsed = start.elapsed();
+        metrics().record_duration("message_ops.fts5_search", elapsed);
+
         debug!(
             results_count = results.len(),
             duration_ms = elapsed.as_millis(),
@@ -200,6 +204,7 @@ impl MessageOps for SessionDB {
         );
 
         if elapsed.as_millis() > 500 {
+            metrics().increment_counter("message_ops.slow_queries", 1);
             warn!(
                 query = %query,
                 duration_ms = elapsed.as_millis(),
@@ -260,6 +265,7 @@ impl MessageOps for SessionDB {
         anchor_id: i64,
         window: i64,
     ) -> Result<(Vec<Message>, i64, i64)> {
+        let start = Instant::now();
         debug!("Starting get_messages_around");
         let conn = self.conn().lock().unwrap();
 
@@ -314,10 +320,14 @@ impl MessageOps for SessionDB {
 
         let messages: Vec<Message> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
+        let elapsed = start.elapsed();
+        metrics().record_duration("message_ops.get_messages_around", elapsed);
+
         debug!(
             messages_count = messages.len(),
             messages_before = messages_before,
             messages_after = messages_after,
+            duration_ms = elapsed.as_millis(),
             "Completed get_messages_around"
         );
 

@@ -74,6 +74,7 @@ use crate::server::AppState;
 use hakimi_common::Message as CoreMessage;
 use hakimi_cron::persistence::PersistentCronStore;
 use hakimi_cron::{CronJob, CronRepeat, parse_schedule, validate_cron_prompt};
+use hakimi_metrics::MetricsRecorder;
 use hakimi_session::{MessageOps, SessionOps};
 
 // ---------------------------------------------------------------------------
@@ -2504,6 +2505,8 @@ pub fn build_router(state: AppState) -> Router {
             "/gateways/platforms/{platform}",
             patch(update_gateway_platform),
         )
+        // Metrics endpoint
+        .route("/metrics", get(get_metrics))
         // Agent-dimension (persona) endpoints
         .route("/agents", get(list_agents))
         .route("/agents", post(create_agent))
@@ -6415,6 +6418,14 @@ async fn teams_webhook_health() -> Json<JsonValue> {
         "service": "teams-webhook",
         "timestamp": chrono::Utc::now().to_rfc3339()
     }))
+}
+
+/// GET /api/metrics — Performance metrics snapshot
+pub async fn get_metrics() -> Result<Json<serde_json::Value>, StatusCode> {
+    let snapshot = hakimi_metrics::global().snapshot();
+    Ok(Json(
+        serde_json::to_value(snapshot).unwrap_or_else(|_| json!({"error": "serialization failed"})),
+    ))
 }
 
 // ---------------------------------------------------------------------------
