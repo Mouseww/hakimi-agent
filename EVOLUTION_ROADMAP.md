@@ -114,7 +114,7 @@
 **目标**: 补齐与 Hermes 的功能差距
 
 #### 里程碑 2.1: Lineage 父子会话关系 (4天)
-- [ ] **任务 2.1.1**: 数据库 schema 扩展
+- [x] **任务 2.1.1**: 数据库 schema 扩展
   - 文件: `crates/hakimi-session/src/schema.rs`
   - 字段: 
     ```sql
@@ -135,7 +135,7 @@
     ```
   - 验收: 单元测试覆盖 3 代会话树
 
-- [ ] **任务 2.1.3**: session_search 集成 lineage
+- [x] **任务 2.1.3**: session_search 集成 lineage
   - 文件: `crates/hakimi-tools/src/builtin_session_search.rs`
   - 功能: Discovery 模式去重时优先保留 root 会话
   - 参数: 新增 `include_lineage: bool`（默认 true）
