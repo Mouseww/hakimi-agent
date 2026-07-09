@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 use uuid::Uuid;
@@ -19,6 +19,7 @@ pub struct SessionMeta {
     pub model: Option<String>,
     pub system_prompt: Option<String>,
     pub parent_session_id: Option<String>,
+    pub root_session_id: Option<String>,
     pub started_at: Option<String>,
     pub ended_at: Option<String>,
     pub end_reason: Option<String>,
@@ -77,6 +78,12 @@ pub trait SessionOps {
     ) -> Result<Option<(SessionMeta, Vec<hakimi_common::Message>)>>;
 
     fn get_recent_sessions(&self, source: Option<&str>, limit: i64) -> Result<Vec<SessionMeta>>;
+
+    // Lineage methods
+    fn get_session_root(&self, session_id: &str) -> Result<Option<String>>;
+    fn has_parent(&self, session_id: &str) -> Result<bool>;
+    fn get_session_depth(&self, session_id: &str) -> Result<usize>;
+    fn get_child_sessions(&self, session_id: &str) -> Result<Vec<SessionMeta>>;
 }
 
 /// Generate a concise session title from the conversation messages.
@@ -133,11 +140,20 @@ impl SessionOps for SessionDB {
     ) -> Result<String> {
         let now = Utc::now().to_rfc3339();
 
+        // Calculate root_session_id based on parent
+        let root_session_id = if let Some(parent_id) = parent_session_id {
+            // Get the root of the parent session
+            self.get_session_root(parent_id)?
+                .or(Some(parent_id.to_string()))
+        } else {
+            None
+        };
+
         let conn = self.conn().lock().unwrap();
         conn.execute(
             "INSERT INTO sessions
-                (id, source, user_id, model, system_prompt, parent_session_id, started_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                (id, source, user_id, model, system_prompt, parent_session_id, root_session_id, started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 id,
                 source,
@@ -145,12 +161,16 @@ impl SessionOps for SessionDB {
                 model,
                 system_prompt,
                 parent_session_id,
+                root_session_id,
                 now
             ],
         )
         .context("Failed to create session")?;
 
-        debug!("Created session {id} from source={source}");
+        debug!(
+            "Created session {id} from source={source}, parent={:?}, root={:?}",
+            parent_session_id, root_session_id
+        );
         Ok(id.to_string())
     }
 
@@ -160,9 +180,9 @@ impl SessionOps for SessionDB {
         let mut stmt = conn
             .prepare(
                 "SELECT id, source, user_id, model, system_prompt, parent_session_id,
-                        started_at, ended_at, end_reason, message_count, tool_call_count,
-                        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                        reasoning_tokens, title, api_call_count, workdir
+                        root_session_id, started_at, ended_at, end_reason, message_count, 
+                        tool_call_count, input_tokens, output_tokens, cache_read_tokens, 
+                        cache_write_tokens, reasoning_tokens, title, api_call_count, workdir
                  FROM sessions WHERE id = ?1",
             )
             .context("Failed to prepare get_session statement")?;
@@ -175,19 +195,20 @@ impl SessionOps for SessionDB {
                 model: row.get(3)?,
                 system_prompt: row.get(4)?,
                 parent_session_id: row.get(5)?,
-                started_at: row.get(6)?,
-                ended_at: row.get(7)?,
-                end_reason: row.get(8)?,
-                message_count: row.get(9)?,
-                tool_call_count: row.get(10)?,
-                input_tokens: row.get(11)?,
-                output_tokens: row.get(12)?,
-                cache_read_tokens: row.get(13)?,
-                cache_write_tokens: row.get(14)?,
-                reasoning_tokens: row.get(15)?,
-                title: row.get(16)?,
-                api_call_count: row.get(17)?,
-                workdir: row.get(18)?,
+                root_session_id: row.get(6)?,
+                started_at: row.get(7)?,
+                ended_at: row.get(8)?,
+                end_reason: row.get(9)?,
+                message_count: row.get(10)?,
+                tool_call_count: row.get(11)?,
+                input_tokens: row.get(12)?,
+                output_tokens: row.get(13)?,
+                cache_read_tokens: row.get(14)?,
+                cache_write_tokens: row.get(15)?,
+                reasoning_tokens: row.get(16)?,
+                title: row.get(17)?,
+                api_call_count: row.get(18)?,
+                workdir: row.get(19)?,
             })
         });
 
@@ -393,16 +414,16 @@ impl SessionOps for SessionDB {
         let sql = match source {
             Some(_) => {
                 "SELECT id, source, user_id, model, system_prompt, parent_session_id,
-                        started_at, ended_at, end_reason, message_count, tool_call_count,
-                        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                        reasoning_tokens, title, api_call_count, workdir
+                        root_session_id, started_at, ended_at, end_reason, message_count, 
+                        tool_call_count, input_tokens, output_tokens, cache_read_tokens, 
+                        cache_write_tokens, reasoning_tokens, title, api_call_count, workdir
                  FROM sessions WHERE source = ?1 ORDER BY started_at DESC LIMIT ?2"
             }
             None => {
                 "SELECT id, source, user_id, model, system_prompt, parent_session_id,
-                        started_at, ended_at, end_reason, message_count, tool_call_count,
-                        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                        reasoning_tokens, title, api_call_count, workdir
+                        root_session_id, started_at, ended_at, end_reason, message_count, 
+                        tool_call_count, input_tokens, output_tokens, cache_read_tokens, 
+                        cache_write_tokens, reasoning_tokens, title, api_call_count, workdir
                  FROM sessions ORDER BY started_at DESC LIMIT ?1"
             }
         };
@@ -425,6 +446,100 @@ impl SessionOps for SessionDB {
         }
         Ok(sessions)
     }
+
+    /// Get the root session ID for a given session (following parent chain).
+    fn get_session_root(&self, session_id: &str) -> Result<Option<String>> {
+        let conn = self.conn().lock().unwrap();
+
+        // Query the session, handling both "no row" and "NULL value" cases
+        let result = conn.query_row(
+            "SELECT root_session_id FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| Ok(row.get::<_, Option<String>>(0)?),
+        );
+
+        match result {
+            Ok(root) => Ok(root),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                anyhow::bail!("Session {} not found", session_id)
+            }
+            Err(e) => Err(e).context("Failed to get session root"),
+        }
+    }
+
+    /// Check if a session has a parent.
+    fn has_parent(&self, session_id: &str) -> Result<bool> {
+        let conn = self.conn().lock().unwrap();
+        let parent = conn.query_row(
+            "SELECT parent_session_id FROM sessions WHERE id = ?1",
+            params![session_id],
+            |row| Ok(row.get::<_, Option<String>>(0)?),
+        );
+
+        match parent {
+            Ok(Some(_)) => Ok(true),
+            Ok(None) => Ok(false),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                anyhow::bail!("Session {} not found", session_id)
+            }
+            Err(e) => Err(e).context("Failed to check parent"),
+        }
+    }
+
+    /// Get the depth of a session in its lineage tree (root = 0).
+    fn get_session_depth(&self, session_id: &str) -> Result<usize> {
+        let mut depth = 0;
+        let mut current_id = session_id.to_string();
+        let conn = self.conn().lock().unwrap();
+
+        loop {
+            let parent = conn.query_row(
+                "SELECT parent_session_id FROM sessions WHERE id = ?1",
+                params![current_id],
+                |row| Ok(row.get::<_, Option<String>>(0)?),
+            );
+
+            match parent {
+                Ok(Some(pid)) => {
+                    depth += 1;
+                    current_id = pid;
+                    if depth > 100 {
+                        anyhow::bail!("Session lineage depth exceeds 100, possible cycle");
+                    }
+                }
+                Ok(None) => break,
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    anyhow::bail!("Session {} not found while calculating depth", current_id)
+                }
+                Err(e) => return Err(e).context("Failed to get parent for depth calculation"),
+            }
+        }
+        Ok(depth)
+    }
+
+    /// Get direct child sessions of a given session.
+    fn get_child_sessions(&self, session_id: &str) -> Result<Vec<SessionMeta>> {
+        let conn = self.conn().lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, source, user_id, model, system_prompt, parent_session_id,
+                        root_session_id, started_at, ended_at, end_reason, message_count,
+                        tool_call_count, input_tokens, output_tokens, cache_read_tokens,
+                        cache_write_tokens, reasoning_tokens, title, api_call_count, workdir
+                 FROM sessions WHERE parent_session_id = ?1 ORDER BY started_at ASC",
+            )
+            .context("Failed to prepare get_child_sessions")?;
+
+        let rows = stmt
+            .query_map(params![session_id], row_to_session_meta)
+            .context("Failed to query child sessions")?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(row?);
+        }
+        Ok(sessions)
+    }
 }
 
 /// Helper to map a rusqlite Row to SessionMeta.
@@ -436,19 +551,20 @@ fn row_to_session_meta(row: &rusqlite::Row) -> rusqlite::Result<SessionMeta> {
         model: row.get(3)?,
         system_prompt: row.get(4)?,
         parent_session_id: row.get(5)?,
-        started_at: row.get(6)?,
-        ended_at: row.get(7)?,
-        end_reason: row.get(8)?,
-        message_count: row.get(9)?,
-        tool_call_count: row.get(10)?,
-        input_tokens: row.get(11)?,
-        output_tokens: row.get(12)?,
-        cache_read_tokens: row.get(13)?,
-        cache_write_tokens: row.get(14)?,
-        reasoning_tokens: row.get(15)?,
-        title: row.get(16)?,
-        api_call_count: row.get(17)?,
-        workdir: row.get(18)?,
+        root_session_id: row.get(6)?,
+        started_at: row.get(7)?,
+        ended_at: row.get(8)?,
+        end_reason: row.get(9)?,
+        message_count: row.get(10)?,
+        tool_call_count: row.get(11)?,
+        input_tokens: row.get(12)?,
+        output_tokens: row.get(13)?,
+        cache_read_tokens: row.get(14)?,
+        cache_write_tokens: row.get(15)?,
+        reasoning_tokens: row.get(16)?,
+        title: row.get(17)?,
+        api_call_count: row.get(18)?,
+        workdir: row.get(19)?,
     })
 }
 
