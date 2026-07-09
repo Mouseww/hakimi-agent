@@ -2,6 +2,34 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.59] - 2026-07-10
+
+### 记忆归档机制 (任务 1.2.3)
+
+#### Added
+- 新增 MemoryArchive 结构体，管理记忆归档操作
+- 支持按日期归档旧记忆：archive_before(cutoff_date)
+- 归档文件按年-月组织：~/.hakimi/memory/archive/2026-01/memory_archived.md
+- 归档后在 memory.md 中保留索引，指向归档位置
+- 归档统计：ArchiveStats 记录条目数、大小、路径、耗时
+- 归档管理 API：list_archives(), restore_archive()
+- 时间戳解析支持多种格式
+- MemoryEntry 结构：timestamp + content + metadata
+
+#### Improved
+- 归档前自动备份 memory.md（带时间戳）
+- 归档操作原子性（失败时可从备份恢复）
+- 详细错误信息和日志记录
+
+#### Testing
+- 完整测试覆盖（6/6 通过）
+- 测试场景包括：解析、分组、归档、列出、恢复
+
+#### Technical
+- 新增模块：crates/hakimi-context/src/archive.rs
+- 代码行数：约 580 行（含测试）
+
+
 ## [0.5.58] - 2026-07-10
 
 ### 🔄 工作记忆生命周期管理 (任务 1.2.1)

@@ -596,8 +596,7 @@ mod tests {
 
         // Create working memory with content
         let working_path = temp_dir.path().join("working_memory.md");
-        std::fs::write(&working_path, "Temporary note from session\nAnother line")
-            .unwrap();
+        std::fs::write(&working_path, "Temporary note from session\nAnother line").unwrap();
 
         // Finalize the session
         let result = provider.finalize_session();
@@ -612,8 +611,8 @@ mod tests {
 
         // Memory should contain archived content with timestamp
         let memory_path = temp_dir.path().join("memory.md");
-        let memory_content = std::fs::read_to_string(&memory_path)
-            .expect("memory.md should exist after archiving");
+        let memory_content =
+            std::fs::read_to_string(&memory_path).expect("memory.md should exist after archiving");
 
         assert!(
             memory_content.contains("Temporary note from session"),

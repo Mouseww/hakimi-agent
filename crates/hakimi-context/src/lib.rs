@@ -1,4 +1,5 @@
 mod advanced_compressor;
+pub mod archive;
 mod compressor;
 mod engine;
 pub mod error;
@@ -24,3 +25,5 @@ pub use role_adapter::{Role, RoleAdapter, RoleProfile};
 pub use scrubber::{StreamingContextScrubber, sanitize_context};
 pub use simple_engine::SimpleContextEngine;
 pub use smart_engine::SmartContextEngine;
+// Export archive module
+pub use archive::{ArchiveInfo, ArchiveStats, MemoryArchive, MemoryEntry};
