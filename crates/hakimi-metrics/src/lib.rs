@@ -5,8 +5,12 @@
 use std::time::Duration;
 
 pub mod memory_store;
+pub mod tracer;
+pub mod tracing;
 
 pub use memory_store::MemoryMetricsStore;
+pub use tracer::{Tracer, TracerStats};
+pub use tracing::{Span, SpanContext, SpanEvent, SpanId, SpanStatus, TraceId};
 
 /// 全局 metrics 注册表
 pub trait MetricsRecorder: Send + Sync {
