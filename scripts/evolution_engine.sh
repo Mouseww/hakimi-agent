@@ -39,8 +39,12 @@ show_progress() {
     echo ""
     
     # 统计已完成任务
-    local total_tasks=$(grep -c "^- \[ \]" "$ROADMAP_FILE" || echo 0)
-    local completed_tasks=$(grep -c "^- \[x\]" "$ROADMAP_FILE" || echo 0)
+    local total_tasks=$(grep -c "^- \[ \]" "$ROADMAP_FILE" 2>/dev/null)
+    local completed_tasks=$(grep -c "^- \[x\]" "$ROADMAP_FILE" 2>/dev/null)
+    
+    # 默认值
+    : ${total_tasks:=0}
+    : ${completed_tasks:=0}
     
     if [ "$total_tasks" -gt 0 ]; then
         local progress=$((completed_tasks * 100 / total_tasks))
