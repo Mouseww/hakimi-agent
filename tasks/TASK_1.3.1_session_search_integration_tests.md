@@ -1,12 +1,98 @@
 # 任务 1.3.1: 补充 session_search 工具集成测试
 
-**状态**: 🚧 进行中 (0%)  
+**状态**: ✅ 已完成 (100%)  
 **开始时间**: 2026-07-10 03:00 UTC  
+**完成时间**: 2026-07-10 03:40 UTC
 
 **优先级**: 🔴 高  
 **预估时间**: 4 小时  
+**实际时间**: 40 分钟  
 **依赖**: 任务 1.1.x, 1.2.x (已完成)  
-**阻塞**: 任务 1.3.2, 1.3.3 (需要此任务完成后才能继续)
+**阻塞**: 任务 1.3.2, 1.3.3 (已解除阻塞)
+
+---
+
+## 📋 目标
+
+为 `builtin_session_search` 工具添加全面的集成测试，确保所有核心功能都有测试覆盖，包括：
+1. Discovery 模式 + bookends 完整性
+2. Scroll 边界检测（首尾）
+3. Browse 排序正确性
+4. FTS5 中文分词（如适用）
+
+---
+
+## 🎯 验收标准
+
+- [x] Discovery 模式测试（bookends 完整性）
+- [x] Scroll 模式边界测试（到达首尾的行为）
+- [x] Browse 模式排序测试（时间倒序）
+- [x] FTS5 搜索测试（关键词匹配）
+- [x] 错误路径测试（无效参数、空会话等）
+- [x] 所有测试通过：`cargo test --package hakimi-tools session_search -- --test-threads=1`
+
+---
+
+## ✅ 完成总结
+
+### 实现内容
+- ✅ 新增 18 个综合集成测试用例
+  - Browse 模式 (3 个)：空数据库、显示最近会话、限制参数
+  - Discovery 模式 (5 个)：基本搜索、无结果、bookends、多关键词、中文搜索
+  - Scroll 模式 (6 个)：基本滚动、开始边界、结束边界、无效 ID、上下文窗口
+  - 错误处理 (2 个)：空会话、不存在的会话
+  - 参数验证 (2 个)：window 限制、limit 限制
+
+### 技术亮点
+- 使用 `HAKIMI_HOME` 环境变量隔离测试环境
+- 每个测试使用独立的临时目录和数据库
+- 全局 Mutex 锁避免并发环境变量竞争
+- 测试需串行运行：`--test-threads=1`
+
+### 测试结果
+```bash
+cargo test --package hakimi-tools --test session_search_integration_test -- --test-threads=1
+```
+
+**结果**: ✅ 18/18 通过
+
+---
+
+## 📁 涉及文件
+
+### 新增文件
+- `crates/hakimi-tools/tests/session_search_integration_test.rs` (519 行)
+- `tasks/TASK_1.3.1_session_search_integration_tests.md` (本文件)
+
+### 修改文件
+- `Cargo.lock` (依赖更新)
+- `CHANGELOG.md` (添加 v0.5.61 条目)
+- `Cargo.toml` (版本号 0.5.60 → 0.5.61)
+
+---
+
+## 🚀 部署信息
+
+- **PR**: #16 (已合并)
+- **版本**: v0.5.61
+- **提交**: ef529f3
+- **发布日期**: 2026-07-10
+
+---
+
+## 📝 备注
+
+1. **环境变量竞争**: 由于测试修改全局 `HAKIMI_HOME` 环境变量，必须串行运行避免竞争条件
+2. **FTS5 依赖**: 中文搜索测试依赖 SQLite FTS5 默认分词器，效果可能有限
+3. **测试隔离**: 每个测试创建独立临时目录，测试结束自动清理
+
+---
+
+## 🔗 相关链接
+
+- PR: https://github.com/Mouseww/hakimi-agent/pull/16
+- 提交: https://github.com/Mouseww/hakimi-agent/commit/ef529f3
+- 下一个任务: TASK_1.1.2_performance_metrics.md
 
 ---
 
