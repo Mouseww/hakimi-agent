@@ -2,6 +2,45 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.64] - 2026-07-10
+
+### Lineage 查询 API (任务 2.1.2)
+
+#### Features
+- **新增会话谱系查询 API**
+  - `get_session_lineage(&self, session_id: &str) -> Result<Vec<SessionMeta>>`
+    - 获取从当前会话到根会话的完整谱系链
+    - 返回顺序：[当前会话, 父会话, ..., 根会话]
+    - 支持单会话、多代会话树、多分支树场景
+  - `get_root_session_meta(&self, session_id: &str) -> Result<SessionMeta>`
+    - 快速获取根会话的完整元数据
+    - 优先使用 `root_session_id` 字段，回退到父节点遍历
+
+#### Safety & Reliability
+- **循环引用检测**：使用 HashSet 追踪已访问节点，防止无限循环
+- **深度限制保护**：限制最大深度 100 层，防止栈溢出
+- **孤儿会话检测**：检测 parent_id 指向不存在的会话
+- **完整错误处理**：所有边界情况都有清晰的错误消息
+
+#### Testing
+- 新增 5 个单元测试覆盖所有场景：
+  - `test_get_session_lineage_single_session` - 单个会话场景
+  - `test_get_session_lineage_three_generations` - 三代会话树
+  - `test_get_session_lineage_nonexistent_session` - 错误处理
+  - `test_get_root_session_meta_single_session` - 根会话查询
+  - `test_get_root_session_meta_multi_branch` - 多分支树
+- 所有测试通过 (13/13 passed in test_lineage.rs)
+
+#### Code Quality
+- 修复 clippy 警告：redundant closure, enclosing Ok 和 ? operator
+- 代码通过 `cargo clippy` 检查
+- 完整构建成功
+
+#### Files Changed
+- `crates/hakimi-session/src/session_ops.rs`: 添加 trait 方法和实现 (+134 行)
+- `crates/hakimi-session/tests/test_lineage.rs`: 添加测试用例 (+184 行)
+- `tasks/TASK_2.1.2_lineage_query_api.md`: 任务文档
+
 ## [0.5.63] - 2026-07-10
 
 ### 会话管理压力测试和边界测试 (任务 1.3.3)
