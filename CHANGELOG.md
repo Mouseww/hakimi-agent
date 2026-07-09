@@ -2,6 +2,22 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.67] - 2026-07-10
+
+### Added
+- Tracing instrumentation in core agent operations (TASK_1.1.1)
+  - Added `#[instrument]` macro to key public APIs in `AIAgent`
+  - Added tracing spans to conversation loop functions
+  - Added tracing spans to tool dispatch operations
+  - Configured session_id, message metadata, and tool names as span fields
+  - Integrated tracing infrastructure for observability
+
+### Technical Details
+- Enhanced `agent.rs` with instrumentation on `chat()`, `run_conversation()` methods
+- Enhanced `loop_impl.rs` with spans on `run_loop()`, `run_loop_streaming()`, and `dispatch_tool()`
+- All spans include contextual information (session_id, tool names, etc.)
+- Foundation for future observability features
+
 ## [0.5.66] - 2026-07-10
 
 ### 📊 记忆容量监控 (任务 1.2.2)
