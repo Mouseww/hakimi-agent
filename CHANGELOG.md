@@ -2,6 +2,41 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.60] - 2026-07-10
+
+### Tracing Spans 追踪系统 (任务 1.1.1)
+
+#### Added
+- 新增 Span 数据结构：追踪操作生命周期
+  - SpanId 和 TraceId：基于 UUID v4 的唯一标识
+  - 父子关系：parent_span_id 支持嵌套追踪
+  - 状态管理：Running/Success/Error/Cancelled
+  - 时间追踪：自动记录开始/结束时间，计算持续时间（纳秒精度）
+  - 元数据存储：tags (HashMap) + events (SpanEvent)
+- 新增 Tracer 管理器：收集和存储 Span
+  - start_trace(name)：创建新的 Trace
+  - record_span(span)：记录完成的 Span
+  - get_trace_spans(trace_id)：查询完整调用链
+  - clear_trace(trace_id)：清理过期数据
+  - stats()：获取统计信息（总数、平均值）
+- 新增 SpanContext：RAII 模式自动管理 Span 生命周期
+  - Drop 时自动调用 finish()
+  - 简化作用域内的追踪管理
+- SpanEvent：记录 Span 内的重要事件
+  - 时间戳 + 名称 + 属性
+
+#### Technical
+- 依赖：uuid v1 (features: v4, serde), chrono v0.4 (features: serde)
+- 线程安全：Arc<RwLock> 实现并发访问
+- 新增模块：
+  - crates/hakimi-metrics/src/tracing.rs (276 行)
+  - crates/hakimi-metrics/src/tracer.rs (209 行)
+- 示例代码：crates/hakimi-metrics/examples/tracing_example.rs
+
+#### Testing
+- 14 个单元测试全部通过
+- 测试覆盖：生命周期、嵌套、上下文、事件、统计
+
 ## [0.5.59] - 2026-07-10
 
 ### 记忆归档机制 (任务 1.2.3)

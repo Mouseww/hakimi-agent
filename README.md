@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.55-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.60-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,37 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.55)
+## ✨ Recent Updates (v0.5.60)
+
+**🎯 Tracing Spans 追踪系统 (任务 1.1.1)：**
+
+**核心功能：**
+- ✅ **Span 数据结构** — 完整的操作生命周期追踪
+  - SpanId 和 TraceId (基于 UUID v4)
+  - 父子关系：支持嵌套追踪
+  - 状态管理：Running/Success/Error/Cancelled
+  - 纳秒精度时间追踪
+  - 标签和事件元数据
+- 🔄 **Tracer 管理器** — 集中式 Span 收集和查询
+  - 创建和记录 Span
+  - 完整调用链查询
+  - 统计信息（总数、平均值）
+- 🛡️ **SpanContext** — RAII 模式自动管理
+  - Drop 时自动完成
+  - 简化作用域追踪
+
+**技术亮点：**
+- ⚡ **线程安全** — Arc<RwLock> 并发访问
+- 📊 **14 个单元测试** — 全部通过
+- 🎨 **示例代码** — examples/tracing_example.rs
+- 📦 **零外部依赖** — 仅使用 uuid + chrono
+
+---
+
+<details>
+<summary><b>📜 Previous Updates (v0.5.55 - v0.5.59)</b></summary>
+
+### v0.5.59 - 记忆归档机制
 
 **🔧 HTTP Keepalive 修复 + 上下文管理全面升级：**
 
@@ -292,6 +322,8 @@
 - Agent can handle complex dependency chains (research → implement → test)
 - Mixed workflows supported (parallel development after sequential planning)
 - Previous results automatically injected as context for dependent tasks
+
+</details>
 
 ### Previous Updates (v0.5.19)
 
