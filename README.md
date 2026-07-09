@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.63-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.66-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,17 +29,24 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.60)
+## ✨ Recent Updates (v0.5.66)
 
-**🎯 Tracing Spans 追踪系统 (任务 1.1.1)：**
+**📊 记忆容量监控 (任务 1.2.2)：**
 
 **核心功能：**
-- ✅ **Span 数据结构** — 完整的操作生命周期追踪
-  - SpanId 和 TraceId (基于 UUID v4)
-  - 父子关系：支持嵌套追踪
-  - 状态管理：Running/Success/Error/Cancelled
-  - 纳秒精度时间追踪
-  - 标签和事件元数据
+- ✅ **记忆文件大小限制** — 防止记忆文件过大
+  - 软限制（60KB）：警告日志
+  - 硬限制（64KB）：拒绝加载
+  - 自动容量检查和友好错误提示
+- ✅ **check_file_size() 方法** — 单文件大小检查
+  - 返回详细错误信息（包含大小和限制）
+  - 引导用户清理或归档
+- ✅ **测试覆盖** — 4 个测试用例全通过
+  - 正常大小、警告区间、超限、不存在文件
+
+**历史更新：**
+- v0.5.65: session_search 工具集成 Lineage (任务 2.1.3)
+- v0.5.60: Tracing Spans 追踪系统 (任务 1.1.1)
 - 🔄 **Tracer 管理器** — 集中式 Span 收集和查询
   - 创建和记录 Span
   - 完整调用链查询

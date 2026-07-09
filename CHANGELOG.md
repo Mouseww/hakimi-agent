@@ -2,6 +2,48 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.66] - 2026-07-10
+
+### 📊 记忆容量监控 (任务 1.2.2)
+
+#### Added
+- **记忆文件大小限制**：
+  - 软限制（60KB）：警告日志，提示用户清理
+  - 硬限制（64KB）：拒绝加载，返回友好错误信息
+  - 常量定义：`MEMORY_WARN_SIZE_BYTES`, `MEMORY_MAX_SIZE_BYTES`
+  
+- **新增方法**：
+  - `FileMemoryProvider::check_file_size(filename)` — 检查单个文件大小
+  - 返回 `Result<(), String>`，超限时包含大小和限制说明
+  
+- **自动容量检查**：
+  - `system_prompt_block()` 加载时检查文件大小
+  - 超限文件自动跳过并记录错误日志
+  - 警告区间（60-64KB）使用 `warn!` 日志
+
+#### Improved
+- **友好错误提示**：
+  - 超限错误包含文件名、当前大小、限制大小
+  - 引导用户使用清理或归档命令
+  - 格式：`Memory file 'memory.md' exceeds maximum size (70 KB > 64 KB). Please clean up or archive old content.`
+
+#### Testing
+- ✅ 4 个单元测试全部通过：
+  - `test_check_file_size_within_limits` — 正常大小文件（30KB）
+  - `test_check_file_size_warning_zone` — 警告区间文件（62KB）
+  - `test_check_file_size_exceeds_limit` — 超限文件（70KB）
+  - `test_check_file_size_nonexistent_file` — 不存在的文件
+- 编译无错误，兼容现有代码
+
+#### Technical
+- 使用 `std::fs::metadata()` 获取文件大小（低开销）
+- 日志级别：`warn!`（警告区间）、`error!`（硬限制）
+- 为未来 MemoryTool 集成预留接口
+
+#### Dependencies
+- 依赖：任务 1.2.1（工作记忆生命周期管理）
+- 解锁：任务 1.2.3（记忆归档机制，引用容量限制错误提示）
+
 ## [0.5.65] - 2026-07-10
 
 ### session_search 工具集成 Lineage (任务 2.1.3)
