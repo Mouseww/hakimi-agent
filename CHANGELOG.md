@@ -2,6 +2,37 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.63] - 2026-07-10
+
+### 会话管理压力测试和边界测试 (任务 1.3.3)
+
+#### Testing
+- 新增 9 个全面的压力测试和边界测试用例
+  - **压力测试 (5 个)**：
+    - 10K 消息搜索性能测试：验证 FTS5 搜索、get_messages_around、get_bookends 性能 (< 500ms)
+    - 100 会话并发创建测试：创建 100 个会话 × 10 条消息，验证完成时间 < 10 秒
+    - 大结果集查询测试：2,000 条消息，返回 1,500 个结果，验证性能 < 500ms
+    - P95 延迟基准测试：100 次搜索操作的 P95 延迟 < 500ms
+    - 数据库完整性测试：10 个会话 × 100 条消息，验证数据完整性
+  - **边界条件测试 (4 个)**：
+    - 空会话测试：验证空会话操作不崩溃
+    - 单消息会话测试：验证只有一条消息的会话处理正确
+    - 超长消息测试：100KB 消息存储和检索测试
+    - 特殊字符测试：会话 ID 中的破折号、下划线、点等特殊字符
+- 使用 tempfile crate 创建隔离测试环境
+- 使用全局锁序列化测试避免 HAKIMI_HOME 冲突
+- 所有测试通过 ✅
+
+#### Technical
+- 新增文件：crates/hakimi-session/tests/stress_test.rs (470+ 行)
+- 新增依赖：tempfile 3.8, futures 0.3 (dev-dependencies)
+- 修复 Message 结构初始化：移除不存在的 cached 字段
+- 修复测试数据库初始化：添加 initialize() 调用
+
+#### Documentation
+- tasks/TASK_1.3.3_stress_and_boundary_tests.md (任务文档待创建)
+- PR #18: Comprehensive Stress and Boundary Tests
+
 ## [0.5.62] - 2026-07-10
 
 ### Memory 工具错误路径测试 (任务 1.3.2)
