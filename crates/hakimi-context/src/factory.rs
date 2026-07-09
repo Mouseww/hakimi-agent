@@ -2,7 +2,9 @@ use hakimi_transports::ProviderTransport;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::{AdvancedCompressor, ContextEngine, LlmCompressor, SimpleContextEngine, SmartContextEngine};
+use crate::{
+    AdvancedCompressor, ContextEngine, LlmCompressor, SimpleContextEngine, SmartContextEngine,
+};
 
 fn normalize_engine_name(engine: &str) -> String {
     engine.trim().to_ascii_lowercase().replace('-', "_")

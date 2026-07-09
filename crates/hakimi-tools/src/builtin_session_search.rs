@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use hakimi_session::{MessageOps, SessionDB, SessionMeta, SessionOps};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::debug;
 
 use crate::Tool;
@@ -277,7 +277,10 @@ impl SessionSearchTool {
 
         for msg in &messages {
             let is_anchor = msg.timestamp.is_some(); // Simplified anchor detection
-            output.push_str(&format_message(msg, if is_anchor { Some(anchor_id) } else { None }));
+            output.push_str(&format_message(
+                msg,
+                if is_anchor { Some(anchor_id) } else { None },
+            ));
             output.push('\n');
         }
 

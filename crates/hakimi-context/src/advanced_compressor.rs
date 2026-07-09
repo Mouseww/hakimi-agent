@@ -167,7 +167,6 @@ pub struct AdvancedCompressor {
     /// Last summary error message
     last_summary_error: Option<String>,
 
-
     /// Compression statistics
     stats: std::sync::Mutex<CompressionStats>,
 
@@ -291,7 +290,8 @@ impl AdvancedCompressor {
             if msg.role == MessageRole::Assistant {
                 if let Some(ref tool_calls) = msg.tool_calls {
                     for tc in tool_calls {
-                        call_id_to_tool.insert(tc.id.clone(), (tc.name.clone(), tc.arguments.clone()));
+                        call_id_to_tool
+                            .insert(tc.id.clone(), (tc.name.clone(), tc.arguments.clone()));
                     }
                 }
             }
@@ -307,7 +307,7 @@ impl AdvancedCompressor {
             }
 
             let content_len = msg.content.as_ref().map(|s| s.len()).unwrap_or(0);
-            
+
             // Compute content hash for deduplication
             let content_hash = if let Some(ref content) = msg.content {
                 let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
@@ -332,7 +332,10 @@ impl AdvancedCompressor {
                             .unwrap_or("unknown"),
                         "Deduplicating identical tool result"
                     );
-                    msg.content = Some(format!("[Duplicate result - same as message #{}]", prev_idx + 1));
+                    msg.content = Some(format!(
+                        "[Duplicate result - same as message #{}]",
+                        prev_idx + 1
+                    ));
                     pruned += 1;
                     continue;
                 }
@@ -346,7 +349,12 @@ impl AdvancedCompressor {
             // Generate enhanced summary with detailed parsing
             let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
             let summary = if let Some((tool_name, args)) = call_id_to_tool.get(tool_call_id) {
-                Self::summarize_tool_result_enhanced(tool_name, args, msg.content.as_deref().unwrap_or(""), content_len)
+                Self::summarize_tool_result_enhanced(
+                    tool_name,
+                    args,
+                    msg.content.as_deref().unwrap_or(""),
+                    content_len,
+                )
             } else {
                 format!("[Tool result pruned - {} chars]", content_len)
             };
@@ -375,7 +383,6 @@ impl AdvancedCompressor {
         }
     }
 
-
     /// Hermes Feature 7: Enhanced tool result summary with detailed parsing
     fn summarize_tool_result_enhanced(
         tool_name: &str,
@@ -394,36 +401,38 @@ impl AdvancedCompressor {
                 }
             }
             "read_file" => {
-                let path = Self::parse_json_field(args, "path")
-                    .unwrap_or_else(|| "unknown".to_string());
+                let path =
+                    Self::parse_json_field(args, "path").unwrap_or_else(|| "unknown".to_string());
                 let lines = content.lines().count();
-                format!("[read_file] {} ({} lines, {} chars)", path, lines, content_len)
+                format!(
+                    "[read_file] {} ({} lines, {} chars)",
+                    path, lines, content_len
+                )
             }
             "write_file" => {
-                let path = Self::parse_json_field(args, "path")
-                    .unwrap_or_else(|| "unknown".to_string());
+                let path =
+                    Self::parse_json_field(args, "path").unwrap_or_else(|| "unknown".to_string());
                 format!("[write_file] wrote to {} ({} chars)", path, content_len)
             }
             "search_files" => {
-                let pattern = Self::parse_json_field(args, "pattern")
-                    .unwrap_or_else(|| "".to_string());
+                let pattern =
+                    Self::parse_json_field(args, "pattern").unwrap_or_else(|| "".to_string());
                 let matches = content.lines().filter(|l| l.contains("match")).count();
                 format!("[search_files] pattern='{}', {} matches", pattern, matches)
             }
             "patch" => {
-                let path = Self::parse_json_field(args, "path")
-                    .unwrap_or_else(|| "unknown".to_string());
+                let path =
+                    Self::parse_json_field(args, "path").unwrap_or_else(|| "unknown".to_string());
                 format!("[patch] modified {} ({} chars)", path, content_len)
             }
             "web_search" => {
-                let query = Self::parse_json_field(args, "query")
-                    .unwrap_or_else(|| "".to_string());
+                let query = Self::parse_json_field(args, "query").unwrap_or_else(|| "".to_string());
                 let results = content.lines().filter(|l| l.contains("http")).count();
                 format!("[web_search] query='{}', {} results", query, results)
             }
             "web_extract" => {
-                let url = Self::parse_json_field(args, "url")
-                    .unwrap_or_else(|| "unknown".to_string());
+                let url =
+                    Self::parse_json_field(args, "url").unwrap_or_else(|| "unknown".to_string());
                 format!("[web_extract] from {} ({} chars)", url, content_len)
             }
             "delegate_task" => {
@@ -471,7 +480,8 @@ impl AdvancedCompressor {
                         continue;
                     }
 
-                    if let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(&tc.arguments) {
+                    if let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                    {
                         let truncated = Self::truncate_json_value(&mut parsed, max_param_size);
                         if truncated {
                             tc.arguments = serde_json::to_string(&parsed)
@@ -634,13 +644,18 @@ impl AdvancedCompressor {
             }
         }
 
-        self.compression_history.insert(content_hash, (self.compression_count + 1, current_tokens));
+        self.compression_history
+            .insert(content_hash, (self.compression_count + 1, current_tokens));
         false
     }
 
     fn compute_context_hash(messages: &[Message]) -> String {
         let mut hasher_input = String::new();
-        for msg in messages.iter().take(10).chain(messages.iter().rev().take(10)) {
+        for msg in messages
+            .iter()
+            .take(10)
+            .chain(messages.iter().rev().take(10))
+        {
             hasher_input.push_str(&format!("{:?}", msg.role));
             if let Some(ref content) = msg.content {
                 hasher_input.push_str(&content[..content.len().min(100)]);

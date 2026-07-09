@@ -40,11 +40,7 @@ pub trait MessageOps {
     ) -> Result<(Vec<Message>, i64, i64)>;
     /// Get bookend messages: first N and last N user+assistant messages of a session.
     /// Returns (start_messages, end_messages).
-    fn get_bookends(
-        &self,
-        session_id: &str,
-        count: i64,
-    ) -> Result<(Vec<Message>, Vec<Message>)>;
+    fn get_bookends(&self, session_id: &str, count: i64) -> Result<(Vec<Message>, Vec<Message>)>;
 }
 
 impl MessageOps for SessionDB {
@@ -242,7 +238,11 @@ impl MessageOps for SessionDB {
             .context("Failed to check anchor message")?;
 
         if !anchor_exists {
-            anyhow::bail!("Anchor message {} not found in session {}", anchor_id, session_id);
+            anyhow::bail!(
+                "Anchor message {} not found in session {}",
+                anchor_id,
+                session_id
+            );
         }
 
         // Count messages before and after the anchor
@@ -282,11 +282,7 @@ impl MessageOps for SessionDB {
         Ok((messages, messages_before, messages_after))
     }
 
-    fn get_bookends(
-        &self,
-        session_id: &str,
-        count: i64,
-    ) -> Result<(Vec<Message>, Vec<Message>)> {
+    fn get_bookends(&self, session_id: &str, count: i64) -> Result<(Vec<Message>, Vec<Message>)> {
         let conn = self.conn().lock().unwrap();
 
         // First N user+assistant messages
@@ -298,9 +294,8 @@ impl MessageOps for SessionDB {
              LIMIT ?2",
         )?;
 
-        let start_rows = start_stmt.query_map(params![session_id, count], |row| {
-            row_to_message(row)
-        })?;
+        let start_rows =
+            start_stmt.query_map(params![session_id, count], |row| row_to_message(row))?;
 
         let start_messages: Vec<Message> = start_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -313,9 +308,7 @@ impl MessageOps for SessionDB {
              LIMIT ?2",
         )?;
 
-        let end_rows = end_stmt.query_map(params![session_id, count], |row| {
-            row_to_message(row)
-        })?;
+        let end_rows = end_stmt.query_map(params![session_id, count], |row| row_to_message(row))?;
 
         let mut end_messages: Vec<Message> = end_rows.collect::<rusqlite::Result<Vec<_>>>()?;
         // Reverse to maintain chronological order

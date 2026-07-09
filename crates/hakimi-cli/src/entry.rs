@@ -6628,11 +6628,12 @@ Just send a message to chat with me!"
                 let base_history_len = {
                     let histories = histories_clone.lock().await;
                     let chat_msgs = histories.get(&history_key).cloned().unwrap_or_default();
-                    
+
                     // Apply intelligent compression before loading
                     let config = crate::context_manager::ContextConfig::default();
-                    let compressed_msgs = crate::context_manager::compress_history(chat_msgs, &config);
-                    
+                    let compressed_msgs =
+                        crate::context_manager::compress_history(chat_msgs, &config);
+
                     let len = compressed_msgs.len();
                     a.clear_messages();
                     for m in compressed_msgs {
@@ -7076,10 +7077,13 @@ Just send a message to chat with me!"
                             let mut histories = histories_clone.lock().await;
                             let chat_history = histories.entry(history_key.clone()).or_default();
                             chat_history.extend(new_msgs);
-                            
+
                             // Apply compression after extending to prevent unbounded growth
                             let config = crate::context_manager::ContextConfig::default();
-                            *chat_history = crate::context_manager::compress_history(chat_history.clone(), &config);
+                            *chat_history = crate::context_manager::compress_history(
+                                chat_history.clone(),
+                                &config,
+                            );
                         }
                         {
                             let mut usage = last_usage.lock().await;
