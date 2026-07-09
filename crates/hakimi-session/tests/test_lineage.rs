@@ -248,3 +248,187 @@ fn test_backwards_compatibility() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_get_session_lineage_single_session() -> Result<()> {
+    let (_dir, db) = setup_test_db()?;
+
+    // Create a standalone session
+    let session_id = db.create_session("test", Some("user1"), Some("gpt-4"), None)?;
+
+    // Lineage should contain only the session itself
+    let lineage = db.get_session_lineage(&session_id)?;
+    assert_eq!(lineage.len(), 1);
+    assert_eq!(lineage[0].id, session_id);
+
+    Ok(())
+}
+
+#[test]
+fn test_get_session_lineage_three_generations() -> Result<()> {
+    let (_dir, db) = setup_test_db()?;
+
+    // Create A → B → C lineage
+    let session_a = db.create_session("test", Some("user1"), Some("gpt-4"), None)?;
+    let session_b = db.create_session_with_id(
+        "session-b",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_a),
+    )?;
+    let session_c = db.create_session_with_id(
+        "session-c",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_b),
+    )?;
+
+    // Get lineage from C (should return [C, B, A])
+    let lineage = db.get_session_lineage(&session_c)?;
+    assert_eq!(lineage.len(), 3);
+    assert_eq!(lineage[0].id, session_c);
+    assert_eq!(lineage[1].id, session_b);
+    assert_eq!(lineage[2].id, session_a);
+
+    // Get lineage from B (should return [B, A])
+    let lineage_b = db.get_session_lineage(&session_b)?;
+    assert_eq!(lineage_b.len(), 2);
+    assert_eq!(lineage_b[0].id, session_b);
+    assert_eq!(lineage_b[1].id, session_a);
+
+    // Get lineage from A (should return [A])
+    let lineage_a = db.get_session_lineage(&session_a)?;
+    assert_eq!(lineage_a.len(), 1);
+    assert_eq!(lineage_a[0].id, session_a);
+
+    Ok(())
+}
+
+#[test]
+fn test_get_session_lineage_nonexistent_session() -> Result<()> {
+    let (_dir, db) = setup_test_db()?;
+
+    // Try to get lineage for a session that doesn't exist
+    let result = db.get_session_lineage("nonexistent-id");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("not found"));
+
+    Ok(())
+}
+
+#[test]
+fn test_get_root_session_meta_single_session() -> Result<()> {
+    let (_dir, db) = setup_test_db()?;
+
+    // Create a standalone session
+    let session_id = db.create_session("test", Some("user1"), Some("gpt-4"), None)?;
+
+    // Root should be itself
+    let root = db.get_root_session_meta(&session_id)?;
+    assert_eq!(root.id, session_id);
+
+    Ok(())
+}
+
+#[test]
+fn test_get_root_session_meta_with_lineage() -> Result<()> {
+    let (_dir, db) = setup_test_db()?;
+
+    // Create A → B → C lineage
+    let session_a = db.create_session("test", Some("user1"), Some("gpt-4"), None)?;
+    let session_b = db.create_session_with_id(
+        "session-b",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_a),
+    )?;
+    let session_c = db.create_session_with_id(
+        "session-c",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_b),
+    )?;
+
+    // All should return root as A
+    let root_from_a = db.get_root_session_meta(&session_a)?;
+    assert_eq!(root_from_a.id, session_a);
+
+    let root_from_b = db.get_root_session_meta(&session_b)?;
+    assert_eq!(root_from_b.id, session_a);
+
+    let root_from_c = db.get_root_session_meta(&session_c)?;
+    assert_eq!(root_from_c.id, session_a);
+
+    Ok(())
+}
+
+#[test]
+fn test_get_root_session_meta_multi_branch() -> Result<()> {
+    let (_dir, db) = setup_test_db()?;
+
+    // Create tree: A has two children B and C, each with their own child
+    let session_a = db.create_session("test", Some("user1"), Some("gpt-4"), None)?;
+    
+    let session_b = db.create_session_with_id(
+        "session-b",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_a),
+    )?;
+    let session_b1 = db.create_session_with_id(
+        "session-b1",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_b),
+    )?;
+
+    let session_c = db.create_session_with_id(
+        "session-c",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_a),
+    )?;
+    let session_c1 = db.create_session_with_id(
+        "session-c1",
+        "test",
+        Some("user1"),
+        Some("gpt-4"),
+        None,
+        Some(&session_c),
+    )?;
+
+    // All nodes should return A as root
+    for session_id in [&session_b, &session_b1, &session_c, &session_c1] {
+        let root = db.get_root_session_meta(session_id)?;
+        assert_eq!(root.id, session_a);
+    }
+
+    // Verify lineage for deepest nodes
+    let lineage_b1 = db.get_session_lineage(&session_b1)?;
+    assert_eq!(lineage_b1.len(), 3); // [B1, B, A]
+    assert_eq!(lineage_b1[0].id, session_b1);
+    assert_eq!(lineage_b1[1].id, session_b);
+    assert_eq!(lineage_b1[2].id, session_a);
+
+    let lineage_c1 = db.get_session_lineage(&session_c1)?;
+    assert_eq!(lineage_c1.len(), 3); // [C1, C, A]
+    assert_eq!(lineage_c1[0].id, session_c1);
+    assert_eq!(lineage_c1[1].id, session_c);
+    assert_eq!(lineage_c1[2].id, session_a);
+
+    Ok(())
+}
