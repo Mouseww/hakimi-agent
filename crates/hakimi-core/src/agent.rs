@@ -6,7 +6,7 @@ use hakimi_context::ContextEngine;
 use hakimi_tools::ToolRegistry;
 use hakimi_transports::{EmbeddingProvider, ProviderTransport};
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{info, warn, instrument};
 use uuid::Uuid;
 
 use crate::conversation::ConversationResult;
@@ -470,10 +470,11 @@ impl AIAgent {
         AIAgentBuilder::new()
     }
 
-    /// Simple interface: send a message and get a text response.
+    /// Simple one-shot interface.
     ///
     /// This is a convenience wrapper around [`run_conversation`](Self::run_conversation)
     /// that returns only the final text.
+    #[instrument(skip(self), fields(session_id = %self.session_id))]
     pub async fn chat(&mut self, message: &str) -> Result<String> {
         let result = self.run_conversation(message).await?;
         Ok(result.final_response)
@@ -485,10 +486,11 @@ impl AIAgent {
     }
 
     /// Run a full conversation turn: send a user message and iterate with tools
-    /// until the model produces a text response or the budget is exhausted.
+    /// Run a multi-turn conversation driven by tool calls.
     ///
     /// Returns a [`ConversationResult`] containing the final response, all
     /// messages, accumulated usage, and the number of API calls made.
+    #[instrument(skip(self), fields(session_id = %self.session_id, message_len = user_message.len()))]
     pub async fn run_conversation(&mut self, user_message: &str) -> Result<ConversationResult> {
         // Refresh the runtime skill working set for this turn. Skills are not
         // appended permanently to `system_prompt`; `build_send_messages` will

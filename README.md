@@ -29,9 +29,9 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.66)
+## ✨ Recent Updates (v0.5.67)
 
-**📊 记忆容量监控 (任务 1.2.2)：**
+**🔍 Tracing Instrumentation (任务 1.1.1)：**
 
 **核心功能：**
 - ✅ **记忆文件大小限制** — 防止记忆文件过大

@@ -4,7 +4,7 @@ use hakimi_common::{
     ToolDefinition, Usage,
 };
 use hakimi_transports::{RequestParams, StreamAccumulator, StreamEvent};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, instrument};
 
 use crate::agent::AIAgent;
 use crate::budget::IterationBudget;
@@ -93,11 +93,13 @@ fn adjust_max_tokens_for_available_output(params: &mut RequestParams, error: &st
 }
 
 /// Run the core conversation loop (non-streaming).
+#[instrument(skip(agent), fields(session_id = %agent.session_id))]
 pub async fn run_loop(agent: &mut AIAgent) -> Result<ConversationResult> {
     run_loop_inner(agent, false).await
 }
 
 /// Run the streaming variant of the core conversation loop.
+#[instrument(skip(agent), fields(session_id = %agent.session_id))]
 pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResult> {
     run_loop_inner(agent, true).await
 }
@@ -874,6 +876,7 @@ fn build_assistant_message_with_tools(
 }
 
 /// Dispatch a single tool call via the tool registry and return the result message.
+#[instrument(skip(tool_registry, tool_ctx, tc), fields(tool_name = %tc.name, tool_call_id = %tc.id))]
 async fn dispatch_tool(
     tool_registry: &hakimi_tools::ToolRegistry,
     tool_ctx: &hakimi_common::ToolContext,
