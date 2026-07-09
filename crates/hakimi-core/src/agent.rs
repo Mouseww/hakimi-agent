@@ -6,7 +6,7 @@ use hakimi_context::ContextEngine;
 use hakimi_tools::ToolRegistry;
 use hakimi_transports::{EmbeddingProvider, ProviderTransport};
 use tokio::sync::RwLock;
-use tracing::{info, warn, instrument};
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 
 use crate::conversation::ConversationResult;

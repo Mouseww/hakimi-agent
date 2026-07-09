@@ -5684,7 +5684,7 @@ async fn get_session_tree(
     use hakimi_session::SessionOps;
 
     let db = state.session_db.lock().await;
-    
+
     // Get current session
     let current = match db.get_session(&id)? {
         Some(meta) => meta,
@@ -5698,13 +5698,13 @@ async fn get_session_tree(
 
     // Get root session
     let root = db.get_root_session_meta(&id)?;
-    
+
     // Get complete lineage (from root to current)
     let lineage = db.get_session_lineage(&id)?;
-    
+
     // Get children tree recursively
     let children = get_session_tree_recursive(&db, &id)?;
-    
+
     Ok(Json(SessionTreeResponse {
         current: SessionInfo::from(current),
         root: SessionInfo::from(root),
@@ -5719,9 +5719,9 @@ fn get_session_tree_recursive(
     session_id: &str,
 ) -> Result<Vec<SessionTreeNode>, anyhow::Error> {
     use hakimi_session::SessionOps;
-    
+
     let children = db.get_child_sessions(session_id)?;
-    
+
     let mut tree_nodes = Vec::new();
     for child in children {
         let child_id = child.id.clone();
@@ -5731,7 +5731,7 @@ fn get_session_tree_recursive(
             children: child_children,
         });
     }
-    
+
     Ok(tree_nodes)
 }
 
