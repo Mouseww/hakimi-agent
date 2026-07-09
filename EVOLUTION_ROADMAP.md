@@ -89,7 +89,7 @@
     - FTS5 中文分词（如适用）
   - 验收: `cargo test --package hakimi-tools session_search` 全通过
 
-- [ ] **任务 1.3.2**: 添加 memory 工具错误路径测试
+- [x] **任务 1.3.2**: 添加 memory 工具错误路径测试
   - 文件: `crates/hakimi-tools/src/builtin_memory.rs`
   - 测试:
     - 记忆文件不存在
@@ -98,13 +98,14 @@
     - 并发写入冲突
   - 验收: 错误处理优雅（不 panic）
 
-- [ ] **任务 1.3.3**: 压力测试与边界测试
+- [x] **任务 1.3.3**: 压力测试与边界测试
   - 文件: `crates/hakimi-session/tests/stress_test.rs`
   - 场景:
     - 10K 消息会话的搜索性能
     - 100 并发会话创建
     - 单次查询返回 1K+ 结果
   - 验收: 无 panic，响应时间 < 500ms (P95)
+  - **完成**: v0.5.63, PR #18
 
 ---
 
