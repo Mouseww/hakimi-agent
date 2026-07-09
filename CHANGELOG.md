@@ -2,6 +2,34 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.58] - 2026-07-10
+
+### 🔄 工作记忆生命周期管理 (任务 1.2.1)
+
+#### Added
+- **会话结束时自动清理工作记忆**：
+  - 新增 `FileMemoryProvider::finalize_session()` 方法
+  - 自动归档 `working_memory.md` 内容到 `memory.md`（带时间戳）
+  - 归档后清空工作记忆，防止泄漏到新会话
+  - 归档格式：`---\n[Session ended: 2026-07-10 12:34 UTC]\n<content>`
+
+#### Improved
+- **记忆管理测试覆盖**：
+  - 空工作记忆场景（无归档，直接清空）
+  - 有内容场景（正确归档+清空）
+  - 多次归档场景（累积追加到 memory.md）
+  - 所有测试通过（3/3）
+
+#### Technical
+- 使用 `tracing::info` 记录归档操作（包含字符数）
+- 错误处理：文件不存在视为空内容（正常场景）
+- 添加 `tempfile` 到 dev-dependencies（测试需要）
+- 为未来集成 Gateway `/new` 命令和 CLI 会话重置留出扩展点
+
+### Dependencies
+- 依赖：任务 1.1.x（已完成）
+- 解锁：任务 1.2.2（记忆容量监控），1.2.3（记忆归档机制）
+
 ## [0.5.57] - 2026-07-10
 
 ### 🛡️ 错误处理增强 (任务 1.1.3)

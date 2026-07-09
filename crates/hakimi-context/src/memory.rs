@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{Result, ToolDefinition};
 use serde_json::Value as JsonValue;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Trait for providing memory / long-term context to the agent.
 #[async_trait]
@@ -41,6 +41,50 @@ impl FileMemoryProvider {
         Self {
             memory_dir: memory_dir.into(),
         }
+    }
+
+    /// Finalize the current session by archiving working memory and clearing it.
+    ///
+    /// This method:
+    /// 1. Reads `working_memory.md`
+    /// 2. If non-empty, appends content to `memory.md` with a timestamp
+    /// 3. Clears `working_memory.md`
+    /// 4. Logs the operation
+    ///
+    /// This should be called when a session ends (e.g., on `/new` command).
+    pub fn finalize_session(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let working_path = self.memory_dir.join("working_memory.md");
+        let memory_path = self.memory_dir.join("memory.md");
+
+        // 1. Read working memory
+        let working_content = match std::fs::read_to_string(&working_path) {
+            Ok(c) => c.trim().to_string(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e.into()),
+        };
+
+        // 2. If non-empty, archive to memory.md
+        if !working_content.is_empty() {
+            let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M UTC");
+            let archive_section = format!(
+                "\n\n---\n[Session ended: {}]\n{}",
+                timestamp, working_content
+            );
+
+            let mut memory_content = std::fs::read_to_string(&memory_path).unwrap_or_default();
+            memory_content.push_str(&archive_section);
+            std::fs::write(&memory_path, memory_content)?;
+
+            info!(
+                chars = working_content.chars().count(),
+                "Archived working memory to memory.md"
+            );
+        }
+
+        // 3. Clear working_memory.md
+        std::fs::write(&working_path, "")?;
+
+        Ok(())
     }
 }
 
@@ -424,5 +468,121 @@ impl MemoryProvider for UserMemoryProvider {
                 "Unknown user profile tool: {other}"
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_finalize_session_empty_working_memory() {
+        let temp_dir = TempDir::new().unwrap();
+        let provider = FileMemoryProvider::new(temp_dir.path());
+
+        // Working memory doesn't exist initially
+        let result = provider.finalize_session();
+        assert!(result.is_ok(), "finalize_session should succeed");
+
+        // Working memory file should be created but empty
+        let working_path = temp_dir.path().join("working_memory.md");
+        assert_eq!(
+            std::fs::read_to_string(&working_path).unwrap(),
+            "",
+            "working_memory.md should be empty after finalization"
+        );
+
+        // Memory file should not be created if working memory was empty
+        let memory_path = temp_dir.path().join("memory.md");
+        assert!(
+            !memory_path.exists() || std::fs::read_to_string(&memory_path).unwrap().is_empty(),
+            "memory.md should not contain archived content if working memory was empty"
+        );
+    }
+
+    #[test]
+    fn test_finalize_session_with_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let provider = FileMemoryProvider::new(temp_dir.path());
+
+        // Create working memory with content
+        let working_path = temp_dir.path().join("working_memory.md");
+        std::fs::write(&working_path, "Temporary note from session\nAnother line")
+            .unwrap();
+
+        // Finalize the session
+        let result = provider.finalize_session();
+        assert!(result.is_ok(), "finalize_session should succeed");
+
+        // Working memory should now be empty
+        assert_eq!(
+            std::fs::read_to_string(&working_path).unwrap(),
+            "",
+            "working_memory.md should be cleared after finalization"
+        );
+
+        // Memory should contain archived content with timestamp
+        let memory_path = temp_dir.path().join("memory.md");
+        let memory_content = std::fs::read_to_string(&memory_path)
+            .expect("memory.md should exist after archiving");
+
+        assert!(
+            memory_content.contains("Temporary note from session"),
+            "memory.md should contain archived working memory content"
+        );
+        assert!(
+            memory_content.contains("Another line"),
+            "memory.md should contain all archived content"
+        );
+        assert!(
+            memory_content.contains("[Session ended:"),
+            "memory.md should contain session end timestamp"
+        );
+        assert!(
+            memory_content.contains("---"),
+            "memory.md should contain separator"
+        );
+    }
+
+    #[test]
+    fn test_finalize_session_multiple_times() {
+        let temp_dir = TempDir::new().unwrap();
+        let provider = FileMemoryProvider::new(temp_dir.path());
+        let working_path = temp_dir.path().join("working_memory.md");
+        let memory_path = temp_dir.path().join("memory.md");
+
+        // First session
+        std::fs::write(&working_path, "Session 1 notes").unwrap();
+        provider.finalize_session().unwrap();
+
+        // Second session
+        std::fs::write(&working_path, "Session 2 notes").unwrap();
+        provider.finalize_session().unwrap();
+
+        // Memory should contain both archived sessions
+        let memory_content = std::fs::read_to_string(&memory_path).unwrap();
+        assert!(
+            memory_content.contains("Session 1 notes"),
+            "memory.md should contain first session"
+        );
+        assert!(
+            memory_content.contains("Session 2 notes"),
+            "memory.md should contain second session"
+        );
+
+        // Should have two session end markers
+        let session_end_count = memory_content.matches("[Session ended:").count();
+        assert_eq!(
+            session_end_count, 2,
+            "memory.md should have two session end markers"
+        );
+
+        // Working memory should still be empty
+        assert_eq!(
+            std::fs::read_to_string(&working_path).unwrap(),
+            "",
+            "working_memory.md should be empty after second finalization"
+        );
     }
 }
