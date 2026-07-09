@@ -55,7 +55,9 @@ fn assert_safe_host(host: &str, port: u16, allow_private: bool) -> Result<()> {
         normalized = normalized[1..normalized.len() - 1].to_string();
     }
     if normalized.is_empty() {
-        return Err(HakimiError::ToolSimple("URL hostname cannot be empty".into()));
+        return Err(HakimiError::ToolSimple(
+            "URL hostname cannot be empty".into(),
+        ));
     }
     if BLOCKED_HOSTNAMES.contains(&normalized.as_str()) {
         return Err(HakimiError::ToolSimple(format!(

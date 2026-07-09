@@ -6423,9 +6423,9 @@ async fn teams_webhook_health() -> Json<JsonValue> {
 /// GET /api/metrics — Performance metrics snapshot
 pub async fn get_metrics() -> Result<Json<serde_json::Value>, StatusCode> {
     let snapshot = hakimi_metrics::global().snapshot();
-    Ok(Json(
-        serde_json::to_value(snapshot).unwrap_or_else(|_| json!({"error": "serialization failed"})),
-    ))
+    Ok(Json(serde_json::to_value(snapshot).unwrap_or_else(
+        |_| json!({"error": "serialization failed"}),
+    )))
 }
 
 // ---------------------------------------------------------------------------

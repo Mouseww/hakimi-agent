@@ -115,9 +115,9 @@ impl Tool for SkillManageTool {
         debug!(action = %action, name = %name, "skill_manage operation");
 
         let dir = skills_dir();
-        fs::create_dir_all(&dir)
-            .await
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to create skills directory: {e}")))?;
+        fs::create_dir_all(&dir).await.map_err(|e| {
+            HakimiError::ToolSimple(format!("failed to create skills directory: {e}"))
+        })?;
 
         match action {
             "create" => {
@@ -196,7 +196,9 @@ impl Tool for SkillManageTool {
                     .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let matches = content.matches(old_string).count();
                 if matches == 0 {
-                    return Err(HakimiError::ToolSimple("old_string not found in file".into()));
+                    return Err(HakimiError::ToolSimple(
+                        "old_string not found in file".into(),
+                    ));
                 }
                 if matches > 1 && !replace_all {
                     return Err(HakimiError::ToolSimple(format!(
@@ -299,7 +301,9 @@ impl Tool for SkillManageTool {
                     )))
                 }
             }
-            _ => Err(HakimiError::ToolSimple(format!("invalid action '{action}'"))),
+            _ => Err(HakimiError::ToolSimple(format!(
+                "invalid action '{action}'"
+            ))),
         }
     }
 }

@@ -51,9 +51,9 @@ pub(crate) fn validate_consult(
             "cycle detected: '{teammate_id}' is already in the collaboration chain"
         )));
     }
-    let cfg = reg
-        .get(teammate_id)
-        .ok_or_else(|| HakimiError::ToolSimple(format!("teammate persona '{teammate_id}' not found")))?;
+    let cfg = reg.get(teammate_id).ok_or_else(|| {
+        HakimiError::ToolSimple(format!("teammate persona '{teammate_id}' not found"))
+    })?;
     if !cfg.addressable {
         return Err(HakimiError::ToolSimple(format!(
             "teammate persona '{teammate_id}' is not addressable (its addressable switch is off)"
@@ -222,11 +222,10 @@ impl TeamExecutor for PersonaTeamExecutor {
             )
         };
 
-        let _permit = self
-            .semaphore
-            .acquire()
-            .await
-            .map_err(|e| HakimiError::ToolSimple(format!("failed to acquire team permit: {e}")))?;
+        let _permit =
+            self.semaphore.acquire().await.map_err(|e| {
+                HakimiError::ToolSimple(format!("failed to acquire team permit: {e}"))
+            })?;
 
         // Publish ConsultStarted only after the permit is held, so the two consult
         // exit arms below (which publish ConsultEnded) are the only reachable exits

@@ -140,8 +140,8 @@ impl Tool for CronjobTool {
                     .unwrap_or("unnamed job")
                     .to_string();
 
-                let parsed_schedule =
-                    parse_schedule(schedule_str).map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
+                let parsed_schedule = parse_schedule(schedule_str)
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let next_run = Some(parsed_schedule.next_after(Utc::now()));
 
                 let mut job = CronJob::new(&name, parsed_schedule, prompt);
@@ -197,7 +197,8 @@ impl Tool for CronjobTool {
                     changed = true;
                 }
                 if let Some(prompt) = args.get("prompt").and_then(|v| v.as_str()) {
-                    validate_cron_prompt(prompt).map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
+                    validate_cron_prompt(prompt)
+                        .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                     job.prompt = prompt.to_string();
                     changed = true;
                 }
@@ -296,7 +297,8 @@ impl Tool for CronjobTool {
                     .into_iter()
                     .find(|job| job.id == job_id)
                     .ok_or_else(|| HakimiError::ToolSimple("Job not found".into()))?;
-                validate_cron_prompt(&job.prompt).map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
+                validate_cron_prompt(&job.prompt)
+                    .map_err(|e| HakimiError::ToolSimple(e.to_string()))?;
                 let now = Utc::now();
                 store
                     .trigger_now(&job.id, now)
@@ -308,7 +310,10 @@ impl Tool for CronjobTool {
                     now.to_rfc3339()
                 ))
             }
-            _ => Err(HakimiError::ToolSimple(format!("Unsupported action: {}", action))),
+            _ => Err(HakimiError::ToolSimple(format!(
+                "Unsupported action: {}",
+                action
+            ))),
         }
     }
 }

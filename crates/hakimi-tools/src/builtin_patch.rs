@@ -62,12 +62,16 @@ impl Tool for PatchTool {
         let old_string = args
             .get("old_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: old_string".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: old_string".into())
+            })?;
 
         let new_string = args
             .get("new_string")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: new_string".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: new_string".into())
+            })?;
 
         let replace_all = args
             .get("replace_all")

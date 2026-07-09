@@ -168,7 +168,9 @@ impl Tool for VoiceCaptureTool {
         if plan.format == VoiceCaptureFormat::Pcm16Wav {
             let summary = summarize_pcm16_wav_file(&plan.output_path, plan.silence_threshold)
                 .map_err(|err| {
-                    HakimiError::ToolSimple(format!("failed to inspect captured WAV recording: {err}"))
+                    HakimiError::ToolSimple(format!(
+                        "failed to inspect captured WAV recording: {err}"
+                    ))
                 })?;
             response["recording"] = json!({
                 "samples": summary.samples,

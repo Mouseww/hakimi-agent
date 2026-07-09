@@ -150,9 +150,9 @@ impl Tool for MemoryTool {
                     format!("{existing}\n{content}\n")
                 };
 
-                fs::write(&file_path, &new_content)
-                    .await
-                    .map_err(|e| HakimiError::ToolSimple(format!("failed to write memory file: {e}")))?;
+                fs::write(&file_path, &new_content).await.map_err(|e| {
+                    HakimiError::ToolSimple(format!("failed to write memory file: {e}"))
+                })?;
 
                 Ok(format!(
                     "Added content to {target} memory ({}).",
@@ -166,7 +166,9 @@ impl Tool for MemoryTool {
 
                 fs::write(&file_path, format!("{content}\n"))
                     .await
-                    .map_err(|e| HakimiError::ToolSimple(format!("failed to write memory file: {e}")))?;
+                    .map_err(|e| {
+                        HakimiError::ToolSimple(format!("failed to write memory file: {e}"))
+                    })?;
 
                 Ok(format!(
                     "Replaced {target} memory content ({}).",
@@ -196,9 +198,9 @@ impl Tool for MemoryTool {
                 }
 
                 let new_content = existing.replace(old_text, "");
-                fs::write(&file_path, &new_content)
-                    .await
-                    .map_err(|e| HakimiError::ToolSimple(format!("failed to write memory file: {e}")))?;
+                fs::write(&file_path, &new_content).await.map_err(|e| {
+                    HakimiError::ToolSimple(format!("failed to write memory file: {e}"))
+                })?;
 
                 Ok(format!(
                     "Removed matching text from {target} memory ({}).",

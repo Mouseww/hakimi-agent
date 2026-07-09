@@ -1,8 +1,8 @@
 use hakimi_common::{Message, ToolContext};
 use hakimi_session::{MessageOps, SessionDB, SessionOps};
 use hakimi_tools::{SessionSearchTool, Tool};
-use std::sync::{Arc, Mutex};
 use serde_json::json;
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
 // Global lock to serialize tests that modify HAKIMI_HOME
@@ -11,12 +11,12 @@ static TEST_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| M
 /// Helper: Create a test database with HAKIMI_HOME set
 fn setup_test_db() -> (TempDir, SessionDB) {
     let tmp = TempDir::new().unwrap();
-    
+
     // Set HAKIMI_HOME to temp dir for this test
     unsafe {
         std::env::set_var("HAKIMI_HOME", tmp.path());
     }
-    
+
     let db_path = tmp.path().join("sessions.db");
     let db = SessionDB::new(&db_path).unwrap();
     db.initialize().unwrap();
@@ -53,7 +53,8 @@ async fn test_browse_mode_empty_database() {
     let result = tool.execute(&args, &ctx).await.unwrap();
     assert!(
         result.contains("No sessions found") || result.contains("Recent Sessions"),
-        "Result: {}", result
+        "Result: {}",
+        result
     );
 }
 
@@ -78,7 +79,8 @@ async fn test_browse_mode_shows_recent_sessions() {
     // Should show recent sessions
     assert!(
         result.contains("Recent Sessions") || result.contains("session-"),
-        "Result: {}", result
+        "Result: {}",
+        result
     );
 }
 
@@ -248,19 +250,19 @@ async fn test_scroll_mode_basic() {
 
     // Get messages to find an anchor ID
     let messages = db.get_messages(session_id).unwrap();
-    
+
     // Extract message ID from a middle message (assuming get_messages returns all messages)
     if messages.len() < 10 {
         return; // Skip if not enough messages
     }
-    
+
     // Find a message using search
     let search_results = db.search_messages("Test message 5", 10).unwrap();
     if search_results.is_empty() {
         // Skip test if FTS5 isn't working
         return;
     }
-    
+
     let anchor_id = search_results[0].message_id;
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
@@ -295,7 +297,7 @@ async fn test_scroll_mode_at_start() {
     if search_results.is_empty() {
         return; // Skip if FTS5 not working
     }
-    
+
     let first_id = search_results[0].message_id;
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
@@ -310,7 +312,10 @@ async fn test_scroll_mode_at_start() {
     let result = tool.execute(&args, &ctx).await.unwrap();
 
     // Should handle boundary gracefully
-    assert!(result.len() > 0, "Result should not be empty at start boundary");
+    assert!(
+        result.len() > 0,
+        "Result should not be empty at start boundary"
+    );
 }
 
 #[tokio::test]
@@ -320,12 +325,12 @@ async fn test_scroll_mode_at_end() {
 
     insert_test_messages(&db, session_id, 10);
 
-    // Find the last message ID  
+    // Find the last message ID
     let search_results = db.search_messages("Test message 9", 10).unwrap();
     if search_results.is_empty() {
         return; // Skip if FTS5 not working
     }
-    
+
     let last_id = search_results[0].message_id;
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
@@ -340,7 +345,10 @@ async fn test_scroll_mode_at_end() {
     let result = tool.execute(&args, &ctx).await.unwrap();
 
     // Should handle boundary gracefully
-    assert!(result.len() > 0, "Result should not be empty at end boundary");
+    assert!(
+        result.len() > 0,
+        "Result should not be empty at end boundary"
+    );
 }
 
 #[tokio::test]
@@ -431,13 +439,13 @@ async fn test_parameter_window_clamping() {
     if search_results.is_empty() {
         return;
     }
-    
+
     let anchor_id = search_results[0].message_id;
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
     let mut ctx = ToolContext::default();
     ctx.session_id = session_id.to_string();
-    
+
     // Test window > max (should be clamped to 20)
     let args = json!({
         "session_id": session_id,
@@ -460,7 +468,7 @@ async fn test_parameter_limit_clamping() {
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
     let ctx = ToolContext::default();
-    
+
     // Test limit > max (should be clamped to 50)
     let args = json!({
         "query": "Test message",
@@ -478,10 +486,10 @@ async fn test_parameter_limit_clamping() {
 #[tokio::test]
 async fn test_tool_metadata() {
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
-    
+
     assert_eq!(tool.name(), "session_search");
     assert!(!tool.description().is_empty());
-    
+
     let schema = tool.schema();
     assert!(schema.is_object());
 }
@@ -497,7 +505,7 @@ async fn test_multiple_sessions_discovery() {
         let session_id = format!("multi-session-{}", i);
         db.create_session_with_id(&session_id, "cli", Some("test-user"), None, None, None)
             .unwrap();
-        
+
         let msg = Message::user(format!("Common keyword in session {}", i));
         db.save_message(&session_id, &msg).unwrap();
     }

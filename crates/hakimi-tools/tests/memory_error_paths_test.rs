@@ -34,10 +34,10 @@ async fn test_remove_file_not_found_error() {
 #[tokio::test]
 async fn test_large_content_handling() {
     let (tool, ctx, _dir) = setup();
-    
+
     // Create a large content string (65KB, above the warning threshold)
     let large_content = "x".repeat(65 * 1024);
-    
+
     let args = json!({
         "action": "add",
         "target": "memory",
@@ -72,7 +72,7 @@ async fn test_concurrent_writes() {
             delegate_executor: None,
             ..Default::default()
         };
-        
+
         let handle = tokio::spawn(async move {
             let args = json!({
                 "action": "add",
@@ -86,7 +86,7 @@ async fn test_concurrent_writes() {
 
     // Wait for all writes to complete
     let results: Vec<_> = futures::future::join_all(handles).await;
-    
+
     // All writes should succeed (no panics)
     for result in results {
         assert!(result.is_ok(), "Concurrent write should not panic");
@@ -98,10 +98,13 @@ async fn test_concurrent_writes() {
     // of file-based storage without locking)
     let path = dir_path.join("memory.md");
     let content = fs::read_to_string(&path).await.unwrap();
-    
+
     // At least some content should be present
-    assert!(!content.is_empty(), "File should not be empty after concurrent writes");
-    
+    assert!(
+        !content.is_empty(),
+        "File should not be empty after concurrent writes"
+    );
+
     // Count how many lines were successfully written
     let mut written_count = 0;
     for i in 0..10 {
@@ -109,21 +112,25 @@ async fn test_concurrent_writes() {
             written_count += 1;
         }
     }
-    
+
     // Due to race conditions, not all writes may succeed perfectly
     // But at least some should be present
-    assert!(written_count > 0, "At least some concurrent writes should succeed, got {}", written_count);
+    assert!(
+        written_count > 0,
+        "At least some concurrent writes should succeed, got {}",
+        written_count
+    );
 }
 
 #[tokio::test]
 #[cfg(unix)]
 async fn test_read_only_directory_error() {
     use std::os::unix::fs::PermissionsExt;
-    
+
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     let readonly_dir = dir.path().join("readonly");
     fs::create_dir(&readonly_dir).await.unwrap();
-    
+
     // Make the directory read-only (remove write AND execute permissions)
     let mut perms = fs::metadata(&readonly_dir).await.unwrap().permissions();
     perms.set_mode(0o444); // Read-only, no write or execute
@@ -147,19 +154,22 @@ async fn test_read_only_directory_error() {
     });
 
     let result = tool.execute(&args, &ctx).await;
-    
+
     // The test may succeed if create_dir_all succeeds (it might have execute permission from parent)
     // Or it may fail with a permission error - both are acceptable
     // The key is that we don't panic
-    assert!(result.is_ok() || result.is_err(), "Should handle permission scenarios gracefully");
-    
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Should handle permission scenarios gracefully"
+    );
+
     if let Err(err) = result {
         let err_str = format!("{err}");
         assert!(
-            err_str.contains("failed to write") || 
-            err_str.contains("failed to create memory directory") ||
-            err_str.contains("permission") ||
-            err_str.contains("Permission denied"),
+            err_str.contains("failed to write")
+                || err_str.contains("failed to create memory directory")
+                || err_str.contains("permission")
+                || err_str.contains("Permission denied"),
             "Should report permission-related error, got: {err}"
         );
     }
@@ -168,7 +178,7 @@ async fn test_read_only_directory_error() {
 #[tokio::test]
 async fn test_empty_content_add() {
     let (tool, ctx, _dir) = setup();
-    
+
     let args = json!({
         "action": "add",
         "target": "memory",
@@ -188,8 +198,9 @@ async fn test_empty_content_add() {
 #[tokio::test]
 async fn test_special_characters_in_content() {
     let (tool, ctx, _dir) = setup();
-    
-    let special_content = "Test with special chars: 中文 émojis 🚀 newlines\n\ntabs\t\tand \"quotes\"";
+
+    let special_content =
+        "Test with special chars: 中文 émojis 🚀 newlines\n\ntabs\t\tand \"quotes\"";
     let args = json!({
         "action": "add",
         "target": "memory",
@@ -237,7 +248,7 @@ async fn test_remove_partial_match() {
 #[tokio::test]
 async fn test_working_memory_alias() {
     let (tool, ctx, _dir) = setup();
-    
+
     // Test "working" alias
     let args = json!({
         "action": "add",
@@ -257,10 +268,10 @@ async fn test_working_memory_alias() {
 #[tokio::test]
 async fn test_extremely_large_content() {
     let (tool, ctx, _dir) = setup();
-    
+
     // Create an extremely large content string (1MB)
     let huge_content = "x".repeat(1024 * 1024);
-    
+
     let args = json!({
         "action": "add",
         "target": "memory",
@@ -269,13 +280,16 @@ async fn test_extremely_large_content() {
 
     // Should succeed without crashing
     let result = tool.execute(&args, &ctx).await;
-    assert!(result.is_ok(), "Extremely large content should be handled gracefully");
+    assert!(
+        result.is_ok(),
+        "Extremely large content should be handled gracefully"
+    );
 }
 
 #[tokio::test]
 async fn test_unicode_filename_handling() {
     let (tool, ctx, _dir) = setup();
-    
+
     // All targets should work with Unicode content
     for target in &["memory", "user", "working_memory"] {
         let args = json!({
@@ -285,7 +299,11 @@ async fn test_unicode_filename_handling() {
         });
 
         let result = tool.execute(&args, &ctx).await;
-        assert!(result.is_ok(), "Unicode content should work for target {}", target);
+        assert!(
+            result.is_ok(),
+            "Unicode content should work for target {}",
+            target
+        );
     }
 }
 
@@ -302,11 +320,12 @@ async fn test_multiple_removes_same_text() {
     .unwrap();
 
     // First remove should succeed
-    let result = tool.execute(
-        &json!({"action": "remove", "target": "memory", "old_text": "foo"}),
-        &ctx,
-    )
-    .await;
+    let result = tool
+        .execute(
+            &json!({"action": "remove", "target": "memory", "old_text": "foo"}),
+            &ctx,
+        )
+        .await;
     assert!(result.is_ok());
 
     // Content should have only one "foo" removed (first occurrence)

@@ -98,7 +98,9 @@ impl Tool for DelegateTaskTool {
             let goal = args
                 .get("goal")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| HakimiError::ToolSimple("missing 'goal' or 'tasks' argument".into()))?
+                .ok_or_else(|| {
+                    HakimiError::ToolSimple("missing 'goal' or 'tasks' argument".into())
+                })?
                 .to_string();
             let context = args
                 .get("context")

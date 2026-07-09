@@ -53,7 +53,9 @@ impl Tool for VideoAnalyzeTool {
         let video_url = args
             .get("video_url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: video_url".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: video_url".into())
+            })?;
         let question = args
             .get("question")
             .and_then(|v| v.as_str())

@@ -100,7 +100,9 @@ impl Tool for TeamTool {
         // ADVANCED: Multi-stage execution
         if let Some(stages_array) = args.get("stages").and_then(|v| v.as_array()) {
             if stages_array.is_empty() {
-                return Err(HakimiError::ToolSimple("'stages' array must not be empty".into()));
+                return Err(HakimiError::ToolSimple(
+                    "'stages' array must not be empty".into(),
+                ));
             }
             let mut all_results = Vec::new();
             let mut accumulated_context = String::new();
@@ -208,7 +210,9 @@ impl Tool for TeamTool {
         // NEW: Structured tasks array - each teammate gets a different task
         if let Some(tasks_array) = args.get("tasks").and_then(|v| v.as_array()) {
             if tasks_array.is_empty() {
-                return Err(HakimiError::ToolSimple("'tasks' array must not be empty".into()));
+                return Err(HakimiError::ToolSimple(
+                    "'tasks' array must not be empty".into(),
+                ));
             }
 
             let mode = args
@@ -223,13 +227,17 @@ impl Tool for TeamTool {
                     .and_then(|v| v.as_str())
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
-                    .ok_or_else(|| HakimiError::ToolSimple(format!("tasks[{idx}] missing 'teammate'")))?;
+                    .ok_or_else(|| {
+                        HakimiError::ToolSimple(format!("tasks[{idx}] missing 'teammate'"))
+                    })?;
                 let task = task_obj
                     .get("task")
                     .and_then(|v| v.as_str())
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
-                    .ok_or_else(|| HakimiError::ToolSimple(format!("tasks[{idx}] missing 'task'")))?;
+                    .ok_or_else(|| {
+                        HakimiError::ToolSimple(format!("tasks[{idx}] missing 'task'"))
+                    })?;
                 let context = task_obj
                     .get("context")
                     .and_then(|v| v.as_str())

@@ -177,10 +177,9 @@ impl Tool for CommandPluginTool {
         // Write arguments to stdin.
         if let Some(ref mut stdin) = child.stdin {
             use tokio::io::AsyncWriteExt;
-            stdin
-                .write_all(args_json.as_bytes())
-                .await
-                .map_err(|e| HakimiError::ToolSimple(format!("failed to write to plugin stdin: {e}")))?;
+            stdin.write_all(args_json.as_bytes()).await.map_err(|e| {
+                HakimiError::ToolSimple(format!("failed to write to plugin stdin: {e}"))
+            })?;
             // Close stdin to signal end of input.
             drop(child.stdin.take());
         }

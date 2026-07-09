@@ -57,7 +57,9 @@ impl Tool for ClarifyTool {
         let question = args
             .get("question")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| HakimiError::ToolSimple("missing required parameter: question".into()))?;
+            .ok_or_else(|| {
+                HakimiError::ToolSimple("missing required parameter: question".into())
+            })?;
 
         let options: Option<Vec<String>> =
             args.get("options").and_then(|v| v.as_array()).map(|arr| {
