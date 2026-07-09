@@ -54,8 +54,11 @@ impl MemoryProvider for FileMemoryProvider {
         self.memory_dir.exists() && self.memory_dir.is_dir()
     }
 
+    #[instrument(skip(self), fields(provider = "file-memory"))]
     fn system_prompt_block(&self) -> String {
+        debug!("Loading memory files into system prompt");
         if !self.is_available() {
+            debug!("Memory directory not available");
             return String::new();
         }
 
@@ -106,14 +109,22 @@ impl MemoryProvider for FileMemoryProvider {
         }
 
         if blocks.is_empty() {
+            debug!("No memory files loaded");
             String::new()
         } else {
+            debug!(
+                files_loaded = blocks.len(),
+                "Memory files loaded successfully"
+            );
             blocks.join("\n\n")
         }
     }
 
+    #[instrument(skip(self), fields(provider = "file-memory", query))]
     async fn prefetch(&self, query: &str) -> String {
+        debug!("Starting memory prefetch");
         if !self.is_available() {
+            debug!("Memory directory not available");
             return String::new();
         }
 
@@ -209,7 +220,9 @@ impl MemoryProvider for FileMemoryProvider {
         ]
     }
 
+    #[instrument(skip(self, args), fields(provider = "file-memory", tool = name))]
     async fn handle_tool_call(&self, name: &str, args: &JsonValue) -> Result<String> {
+        debug!("Executing memory tool call");
         match name {
             "memory_save" => {
                 let entry_name = args.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
@@ -221,6 +234,12 @@ impl MemoryProvider for FileMemoryProvider {
                     .ok_or_else(|| {
                         hakimi_common::HakimiError::Tool("missing 'content' argument".into())
                     })?;
+
+                debug!(
+                    entry_name,
+                    content_len = content.len(),
+                    "Saving memory entry"
+                );
 
                 // Ensure memory directory exists
                 if !self.memory_dir.exists() {
@@ -254,14 +273,18 @@ impl MemoryProvider for FileMemoryProvider {
                 let query = args.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
                     hakimi_common::HakimiError::Tool("missing 'query' argument".into())
                 })?;
+                debug!(query, "Searching memory");
                 let result = self.prefetch(query).await;
                 if result.is_empty() {
+                    debug!("No memory matches found");
                     Ok("No matching memory entries found.".to_string())
                 } else {
+                    debug!(result_len = result.len(), "Memory search completed");
                     Ok(result)
                 }
             }
             "memory_list" => {
+                debug!("Listing memory entries");
                 if !self.is_available() {
                     return Ok("No memory directory found.".to_string());
                 }
@@ -282,8 +305,10 @@ impl MemoryProvider for FileMemoryProvider {
                     })
                     .collect();
                 if names.is_empty() {
+                    debug!("No memory entries found");
                     Ok("No memory entries.".to_string())
                 } else {
+                    debug!(entries_count = names.len(), "Memory list completed");
                     Ok(format!("Memory entries:\n{}", names.join("\n")))
                 }
             }
