@@ -1,7 +1,13 @@
 use async_trait::async_trait;
 use hakimi_common::{Result, ToolDefinition};
 use serde_json::Value as JsonValue;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
+
+/// Soft limit: warn user when memory file exceeds this size (60 KB)
+const MEMORY_WARN_SIZE_BYTES: u64 = 60 * 1024;
+
+/// Hard limit: refuse to load memory file exceeding this size (64 KB)
+const MEMORY_MAX_SIZE_BYTES: u64 = 64 * 1024;
 
 /// Trait for providing memory / long-term context to the agent.
 #[async_trait]
@@ -86,6 +92,54 @@ impl FileMemoryProvider {
 
         Ok(())
     }
+
+    /// Check if a memory file exceeds size limits.
+    ///
+    /// Returns:
+    /// - `Ok(())` if file is within limits or doesn't exist
+    /// - `Err(...)` with descriptive message if exceeds hard limit (64KB)
+    ///
+    /// Logs warning if exceeds soft limit (60KB) but still returns Ok.
+    pub fn check_file_size(&self, filename: &str) -> std::result::Result<(), String> {
+        let path = self.memory_dir.join(filename);
+
+        if !path.exists() {
+            return Ok(()); // File doesn't exist yet, no problem
+        }
+
+        match std::fs::metadata(&path) {
+            Ok(metadata) => {
+                let size = metadata.len();
+
+                if size > MEMORY_MAX_SIZE_BYTES {
+                    error!(
+                        file = filename,
+                        size_kb = size / 1024,
+                        limit_kb = MEMORY_MAX_SIZE_BYTES / 1024,
+                        "Memory file exceeds maximum size"
+                    );
+                    Err(format!(
+                        "Memory file '{}' exceeds maximum size ({} KB > {} KB). \
+                         Please clean up or use 'hakimi memory archive' command.",
+                        filename,
+                        size / 1024,
+                        MEMORY_MAX_SIZE_BYTES / 1024
+                    ))
+                } else if size > MEMORY_WARN_SIZE_BYTES {
+                    warn!(
+                        file = filename,
+                        size_kb = size / 1024,
+                        limit_kb = MEMORY_WARN_SIZE_BYTES / 1024,
+                        "Memory file approaching size limit"
+                    );
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            }
+            Err(e) => Err(format!("Failed to check file size: {}", e)),
+        }
+    }
 }
 
 #[async_trait]
@@ -124,6 +178,40 @@ impl MemoryProvider for FileMemoryProvider {
                 .file_stem()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown");
+
+            // Check file size before loading
+            match std::fs::metadata(&path) {
+                Ok(metadata) => {
+                    let size = metadata.len();
+
+                    if size > MEMORY_MAX_SIZE_BYTES {
+                        error!(
+                            path = %path.display(),
+                            size_kb = size / 1024,
+                            limit_kb = MEMORY_MAX_SIZE_BYTES / 1024,
+                            "Memory file exceeds maximum size, skipping load"
+                        );
+                        return format!(
+                            "[ERROR] Memory file '{}' is too large ({} KB > {} KB limit). \
+                             Please clean up or use 'hakimi memory archive' command.",
+                            name,
+                            size / 1024,
+                            MEMORY_MAX_SIZE_BYTES / 1024
+                        );
+                    } else if size > MEMORY_WARN_SIZE_BYTES {
+                        warn!(
+                            path = %path.display(),
+                            size_kb = size / 1024,
+                            limit_kb = MEMORY_WARN_SIZE_BYTES / 1024,
+                            "Memory file approaching size limit"
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "Failed to get file metadata");
+                    continue;
+                }
+            }
 
             let title = match name.to_lowercase().as_str() {
                 "user" => "USER PROFILE (who the user is)",
@@ -583,6 +671,78 @@ mod tests {
             std::fs::read_to_string(&working_path).unwrap(),
             "",
             "working_memory.md should be empty after second finalization"
+        );
+    }
+
+    #[test]
+    fn test_check_file_size_within_limits() {
+        let temp_dir = TempDir::new().unwrap();
+        let provider = FileMemoryProvider::new(temp_dir.path());
+
+        // Create a 30KB file
+        let path = temp_dir.path().join("memory.md");
+        let content = "x".repeat(30 * 1024);
+        std::fs::write(&path, content).unwrap();
+
+        let result = provider.check_file_size("memory.md");
+        assert!(result.is_ok(), "30KB file should be accepted");
+    }
+
+    #[test]
+    fn test_check_file_size_warning_zone() {
+        let temp_dir = TempDir::new().unwrap();
+        let provider = FileMemoryProvider::new(temp_dir.path());
+
+        // Create a 62KB file (within 60-64KB warning zone)
+        let path = temp_dir.path().join("memory.md");
+        let content = "x".repeat(62 * 1024);
+        std::fs::write(&path, content).unwrap();
+
+        let result = provider.check_file_size("memory.md");
+        assert!(
+            result.is_ok(),
+            "62KB file should still be accepted with warning"
+        );
+    }
+
+    #[test]
+    fn test_check_file_size_exceeds_limit() {
+        let temp_dir = TempDir::new().unwrap();
+        let provider = FileMemoryProvider::new(temp_dir.path());
+
+        // Create a 70KB file (exceeds 64KB limit)
+        let path = temp_dir.path().join("memory.md");
+        let content = "x".repeat(70 * 1024);
+        std::fs::write(&path, content).unwrap();
+
+        let result = provider.check_file_size("memory.md");
+        assert!(result.is_err(), "70KB file should be rejected");
+
+        let error_msg = result.unwrap_err();
+        assert!(
+            error_msg.contains("exceeds maximum size"),
+            "Error message should mention exceeding size"
+        );
+        assert!(
+            error_msg.contains("70 KB"),
+            "Error message should include actual size"
+        );
+        assert!(
+            error_msg.contains("64 KB"),
+            "Error message should include limit"
+        );
+    }
+
+    #[test]
+    fn test_check_file_size_nonexistent_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let provider = FileMemoryProvider::new(temp_dir.path());
+
+        // Don't create the file
+        let result = provider.check_file_size("nonexistent.md");
+        assert!(
+            result.is_ok(),
+            "Non-existent file should be accepted (not an error)"
         );
     }
 }
