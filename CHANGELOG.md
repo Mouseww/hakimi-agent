@@ -2,6 +2,43 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.57] - 2026-07-10
+
+### 🛡️ 错误处理增强 (任务 1.1.3)
+
+#### Added
+- **结构化错误类型系统**：
+  - 新增 `HakimiError` 枚举，支持结构化变体（`Session`, `Memory`, `Context`, `Tool`, `Transport`）
+  - `ErrorContext` 携带完整上下文（`session_id`, `user_id`, `timestamp`, `operation`, `details`）
+  - 向后兼容的简单变体（`ToolSimple`, `TransportSimple`, `ContextSimple` 等）
+
+- **领域专属错误**：
+  - `SessionError`：会话相关错误（`NotFound`, `InvalidId`, `MessageNotFound`, `SearchFailed`）
+  - `MemoryError`：记忆管理错误（`FileNotFound`, `FileTooLarge`, `InvalidTarget`, `PermissionDenied`）
+  - `ToolError`：工具执行错误（`ExecutionFailed`, `InvalidArguments`, `Timeout`）
+
+- **自动日志记录**：
+  - `HakimiError::log()` 方法自动输出结构化日志（包含 `session_id`/`user_id`/`timestamp`/`operation`）
+  - 支持按 `error_type`/`session_id`/`operation` 过滤日志
+  - 包含完整的 source 链追踪（backtrace）
+
+#### Improved
+- **错误追踪能力**：
+  - `message_ops`: 所有数据库错误携带 `session_id` 上下文
+  - `memory`: 文件大小限制错误包含 `target`/`size`/`limit` 详细信息
+  - `session_search`: FTS5 错误包含查询字符串和参数
+  - `builtin_session_search`: 新增 `session_error` 辅助函数简化错误创建
+
+#### Technical
+- 所有核心 crate 迁移到新错误类型（`hakimi-common`, `hakimi-session`, `hakimi-context`, `hakimi-tools`）
+- `error_classifier` 支持新错误结构
+- 测试覆盖所有错误场景（61 个测试通过）
+- 为未来集成 Sentry/Datadog 等工具奠定基础
+
+### Dependencies
+- 依赖：任务 1.1.1 (tracing spans), 1.1.2 (performance metrics)
+- 解锁：任务 1.2.x (记忆管理可使用完善的错误处理)
+
 ## [0.5.56] - 2026-07-09
 
 ### Added
