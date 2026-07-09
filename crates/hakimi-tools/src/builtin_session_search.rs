@@ -64,6 +64,75 @@ fn format_message(msg: &hakimi_common::Message, anchor_id: Option<i64>) -> Strin
     format!("{role_emoji} [{ts}]{anchor_marker} {content}")
 }
 
+/// Format lineage information for a session
+fn format_lineage(session: &SessionMeta, db: &SessionDB) -> Result<String> {
+    let mut lineage_info = String::new();
+
+    if let Some(parent_id) = &session.parent_session_id {
+        lineage_info.push_str(&format!("  - Parent: `{}`", parent_id));
+
+        // Get parent session title if available
+        if let Ok(Some(parent_meta)) = db.get_session(parent_id) {
+            if let Some(title) = parent_meta.title {
+                lineage_info.push_str(&format!(" ({})", title));
+            }
+        }
+        lineage_info.push('\n');
+    }
+
+    if let Some(root_id) = &session.root_session_id {
+        if root_id != &session.id {
+            lineage_info.push_str(&format!("  - Root: `{}`", root_id));
+
+            // Get root session title if available
+            if let Ok(Some(root_meta)) = db.get_session(root_id) {
+                if let Some(title) = root_meta.title {
+                    lineage_info.push_str(&format!(" ({})", title));
+                }
+            }
+            lineage_info.push('\n');
+        }
+    }
+
+    Ok(lineage_info)
+}
+
+/// Get session depth (for deduplication priority)
+/// Root sessions have depth 0
+fn get_session_depth(session: &SessionMeta, db: &SessionDB) -> usize {
+    // Root sessions have depth 0
+    if session.parent_session_id.is_none() {
+        return 0;
+    }
+
+    // Count ancestors
+    let mut depth = 0;
+    let mut current_id = session.parent_session_id.clone();
+    let mut visited = std::collections::HashSet::new();
+
+    while let Some(parent_id) = current_id {
+        if visited.contains(&parent_id) {
+            // Cycle detected, break
+            break;
+        }
+        visited.insert(parent_id.clone());
+        depth += 1;
+
+        if let Ok(Some(parent_meta)) = db.get_session(&parent_id) {
+            current_id = parent_meta.parent_session_id;
+        } else {
+            break;
+        }
+
+        // Safety limit
+        if depth > 100 {
+            break;
+        }
+    }
+
+    depth
+}
+
 #[async_trait]
 impl Tool for SessionSearchTool {
     fn name(&self) -> &str {
@@ -114,6 +183,11 @@ impl Tool for SessionSearchTool {
                     "type": "string",
                     "description": "For discovery: filter by message role (user, assistant, tool, system).",
                     "enum": ["user", "assistant", "tool", "system"]
+                },
+                "include_lineage": {
+                    "type": "boolean",
+                    "description": "Include session lineage information (parent/root session). Default: true.",
+                    "default": true
                 }
             }
         })
@@ -140,6 +214,10 @@ impl Tool for SessionSearchTool {
             .unwrap_or(5)
             .clamp(1, 50);
         let role_filter = args.get("role_filter").and_then(|v| v.as_str());
+        let include_lineage = args
+            .get("include_lineage")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
 
         let db_path = session_db_path();
         debug!(
@@ -175,7 +253,7 @@ impl Tool for SessionSearchTool {
         // DISCOVERY MODE: query provided
         if !query.is_empty() {
             debug!(mode = "discovery", "Executing Discovery mode");
-            let result = self.discovery_mode(&db, query, limit, role_filter);
+            let result = self.discovery_mode(&db, query, limit, role_filter, include_lineage);
             let elapsed = start.elapsed();
             hakimi_metrics::global().record_duration("session_search.discovery", elapsed);
             return result;
@@ -183,7 +261,7 @@ impl Tool for SessionSearchTool {
 
         // BROWSE MODE: no args
         debug!(mode = "browse", "Executing Browse mode");
-        let result = self.browse_mode(&db, limit);
+        let result = self.browse_mode(&db, limit, include_lineage);
         let elapsed = start.elapsed();
         hakimi_metrics::global().record_duration("session_search.browse", elapsed);
         result
@@ -192,7 +270,7 @@ impl Tool for SessionSearchTool {
 
 impl SessionSearchTool {
     /// BROWSE MODE: List recent sessions
-    fn browse_mode(&self, db: &SessionDB, limit: i64) -> Result<String> {
+    fn browse_mode(&self, db: &SessionDB, limit: i64, include_lineage: bool) -> Result<String> {
         let sessions = db.get_recent_sessions(None, limit).map_err(|e| {
             session_error(format!("failed to get recent sessions: {e}"), "browse_mode")
         })?;
@@ -212,7 +290,7 @@ impl SessionSearchTool {
                 .unwrap_or_else(|| "unknown".to_string());
 
             output.push_str(&format!(
-                "**{}** ({})\n- Session ID: `{}`\n- Source: {}\n- Messages: {} | Tool calls: {}\n\n",
+                "**{}** ({})\n- Session ID: `{}`\n- Source: {}\n- Messages: {} | Tool calls: {}\n",
                 title,
                 started,
                 session.id,
@@ -220,6 +298,17 @@ impl SessionSearchTool {
                 session.message_count,
                 session.tool_call_count
             ));
+
+            // Add lineage information if enabled
+            if include_lineage {
+                if let Ok(lineage_str) = format_lineage(session, db) {
+                    if !lineage_str.is_empty() {
+                        output.push_str(&lineage_str);
+                    }
+                }
+            }
+
+            output.push('\n');
         }
 
         output.push_str(&format!("\nShowing {} most recent sessions. Pass a `query` to search, or `session_id` + `around_message_id` to scroll.", sessions.len()));
@@ -234,6 +323,7 @@ impl SessionSearchTool {
         query: &str,
         limit: i64,
         role_filter: Option<&str>,
+        include_lineage: bool,
     ) -> Result<String> {
         let search_limit = if role_filter.is_some() {
             limit * 3 // fetch extra for filtering
@@ -254,20 +344,39 @@ impl SessionSearchTool {
         session_ids.sort();
         session_ids.dedup();
 
+        // If lineage is enabled, sort sessions by depth (root sessions first)
+        if include_lineage {
+            session_ids.sort_by_cached_key(|sid| {
+                db.get_session(sid)
+                    .ok()
+                    .flatten()
+                    .map(|meta| get_session_depth(&meta, db))
+                    .unwrap_or(999) // Unknown sessions last
+            });
+        }
+
+        // Take only `limit` sessions
+        let display_sessions: Vec<String> = session_ids.into_iter().take(limit as usize).collect();
+
         let mut output = format!(
             "## Search Results for \"{}\"\nFound {} message(s) across {} session(s)\n\n",
             query,
             results.len(),
-            session_ids.len()
+            display_sessions.len()
         );
 
-        for sid in session_ids.iter().take(limit as usize) {
+        for sid in &display_sessions {
             let session = db.get_session(sid).map_err(|e| {
                 session_error(format!("failed to get session: {e}"), "discovery_mode")
             })?;
 
             if let Some(session) = session {
-                output.push_str(&self.format_session_with_bookends(db, &session, &results)?);
+                output.push_str(&self.format_session_with_bookends(
+                    db,
+                    &session,
+                    &results,
+                    include_lineage,
+                )?);
                 output.push_str("\n---\n\n");
             }
         }
@@ -336,6 +445,7 @@ impl SessionSearchTool {
         db: &SessionDB,
         session: &SessionMeta,
         match_results: &[hakimi_session::SearchResult],
+        include_lineage: bool,
     ) -> Result<String> {
         let title = session.title.as_deref().unwrap_or("untitled");
         let started = session
@@ -345,9 +455,20 @@ impl SessionSearchTool {
             .unwrap_or_else(|| "unknown".to_string());
 
         let mut output = format!(
-            "### {} ({})\n**Session ID:** `{}`\n**Messages:** {} | **Tool calls:** {}\n\n",
+            "\n### {} ({})\n**Session ID:** `{}`\n**Messages:** {} | **Tool calls:** {}\n",
             title, started, session.id, session.message_count, session.tool_call_count
         );
+
+        // Add lineage information if enabled
+        if include_lineage {
+            if let Ok(lineage_str) = format_lineage(session, db) {
+                if !lineage_str.is_empty() {
+                    output.push_str(&lineage_str);
+                }
+            }
+        }
+
+        output.push('\n');
 
         // Get bookends
         let (start_msgs, end_msgs) = db.get_bookends(&session.id, 3).unwrap_or_default();

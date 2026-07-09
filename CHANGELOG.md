@@ -2,6 +2,40 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.65] - 2026-07-10
+
+### session_search 工具集成 Lineage (任务 2.1.3)
+
+#### Features
+- **session_search lineage 支持**
+  - 新增 `include_lineage` 参数（默认 true）
+  - Discovery 模式去重时优先保留 root 会话
+  - 搜索结果显示会话父子关系
+  - Browse 模式和 Discovery 模式都显示 lineage 信息
+
+#### Implementation
+- **辅助函数**:
+  - `format_lineage(&SessionMeta, &SessionDB)` - 格式化 lineage 信息
+  - `get_session_depth(&SessionMeta, &SessionDB)` - 计算会话深度（root = 0）
+- **去重优先级**: Discovery 模式按会话深度排序（root 会话优先）
+- **输出格式**: 
+  - 显示父会话 ID 和标题
+  - 显示根会话 ID 和标题（如果与当前会话不同）
+  - 缩进格式：`  - Parent: \`id\` (title)`
+
+#### Improvements
+- **会话搜索排序**: 根会话优先于子会话显示
+- **会话元信息**: 自动显示父会话和根会话标题
+- **循环检测**: 防止无限循环（100 层深度限制）
+
+#### Testing
+- 所有现有集成测试通过 (18/18)
+- 编译成功，无新增错误
+
+#### Files Changed
+- `crates/hakimi-tools/src/builtin_session_search.rs`: 主要实现 (+93 行)
+- `tasks/TASK_2.1.3_session_search_lineage.md`: 任务文档
+
 ## [0.5.64] - 2026-07-10
 
 ### Lineage 查询 API (任务 2.1.2)
