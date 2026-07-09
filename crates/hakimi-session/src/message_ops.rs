@@ -267,7 +267,7 @@ impl MessageOps for SessionDB {
         let upper_bound = anchor_id + window;
 
         let mut stmt = conn.prepare(
-            "SELECT id, role, content, tool_call_id, tool_name, tool_calls, timestamp, finish_reason, reasoning
+            "SELECT role, content, tool_call_id, tool_calls, tool_name, timestamp, token_count, finish_reason, reasoning
              FROM messages
              WHERE session_id = ?1 AND id >= ?2 AND id <= ?3
              ORDER BY id ASC",
@@ -287,7 +287,7 @@ impl MessageOps for SessionDB {
 
         // First N user+assistant messages
         let mut start_stmt = conn.prepare(
-            "SELECT id, role, content, tool_call_id, tool_name, tool_calls, timestamp, finish_reason, reasoning
+            "SELECT role, content, tool_call_id, tool_calls, tool_name, timestamp, token_count, finish_reason, reasoning
              FROM messages
              WHERE session_id = ?1 AND role IN ('user', 'assistant')
              ORDER BY id ASC
@@ -301,7 +301,7 @@ impl MessageOps for SessionDB {
 
         // Last N user+assistant messages
         let mut end_stmt = conn.prepare(
-            "SELECT id, role, content, tool_call_id, tool_name, tool_calls, timestamp, finish_reason, reasoning
+            "SELECT role, content, tool_call_id, tool_calls, tool_name, timestamp, token_count, finish_reason, reasoning
              FROM messages
              WHERE session_id = ?1 AND role IN ('user', 'assistant')
              ORDER BY id DESC
@@ -818,5 +818,114 @@ mod tests {
         assert_eq!(messages[0].content.as_deref(), Some("msg1"));
         assert_eq!(messages[1].content.as_deref(), Some("reply1"));
         assert_eq!(messages[2].content.as_deref(), Some("msg2"));
+    }
+
+    // ── Around & Bookends Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_get_messages_around() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        // 保存 10 条消息
+        for i in 1..=10 {
+            db.save_message(&sid, &Message::user(format!("msg {i}")))
+                .unwrap();
+        }
+
+        // 获取消息 5 前后 2 条（应返回 3-7）
+        let (window, before, after) = db.get_messages_around(&sid, 5, 2).unwrap();
+
+        assert_eq!(before, 4); // 消息 1-4 在前面
+        assert_eq!(after, 5); // 消息 6-10 在后面
+        assert_eq!(window.len(), 5); // 窗口包含 3-7
+    }
+
+    #[test]
+    fn test_get_messages_around_at_boundaries() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        for i in 1..=5 {
+            db.save_message(&sid, &Message::user(format!("msg {i}")))
+                .unwrap();
+        }
+
+        // anchor 在开头
+        let (_, before, _) = db.get_messages_around(&sid, 1, 2).unwrap();
+        assert_eq!(before, 0);
+
+        // anchor 在末尾
+        let (_, _, after) = db.get_messages_around(&sid, 5, 2).unwrap();
+        assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn test_get_messages_around_invalid_anchor() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("msg 1")).unwrap();
+
+        // 不存在的 anchor
+        let result = db.get_messages_around(&sid, 999, 5);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_get_bookends() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("Q1")).unwrap();
+        db.save_message(&sid, &Message::assistant("A1")).unwrap();
+        db.save_message(
+            &sid,
+            &Message::tool_result("call_1", "test_tool", "tool output"),
+        )
+        .unwrap(); // 应被跳过
+        db.save_message(&sid, &Message::user("Q2")).unwrap();
+        db.save_message(&sid, &Message::assistant("A2")).unwrap();
+        db.save_message(&sid, &Message::user("Q3")).unwrap();
+        db.save_message(&sid, &Message::assistant("A3")).unwrap();
+
+        let (start, end) = db.get_bookends(&sid, 2).unwrap();
+
+        // 前 2 条 user+assistant
+        assert_eq!(start.len(), 2);
+        assert_eq!(start[0].content.as_deref(), Some("Q1"));
+        assert_eq!(start[1].content.as_deref(), Some("A1"));
+
+        // 后 2 条 user+assistant（倒序后）
+        assert_eq!(end.len(), 2);
+        assert_eq!(end[0].content.as_deref(), Some("Q3"));
+        assert_eq!(end[1].content.as_deref(), Some("A3"));
+    }
+
+    #[test]
+    fn test_get_bookends_fewer_than_requested() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("Q1")).unwrap();
+        db.save_message(&sid, &Message::assistant("A1")).unwrap();
+
+        // 请求 5 条，但只有 2 条
+        let (start, end) = db.get_bookends(&sid, 5).unwrap();
+
+        assert_eq!(start.len(), 2);
+        assert_eq!(end.len(), 2);
+    }
+
+    #[test]
+    fn test_get_bookends_empty_session() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        let (start, end) = db.get_bookends(&sid, 3).unwrap();
+
+        assert!(start.is_empty());
+        assert!(end.is_empty());
     }
 }

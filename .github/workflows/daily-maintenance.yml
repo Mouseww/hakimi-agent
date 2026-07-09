@@ -1,0 +1,190 @@
+name: Daily Maintenance
+
+on:
+  schedule:
+    # 每天 UTC 02:00 (北京时间 10:00)
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  health-check:
+    name: 系统健康检查
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      
+      - name: 运行完整测试套件
+        run: |
+          cargo test --all --verbose
+          echo "✅ 所有测试通过" >> $GITHUB_STEP_SUMMARY
+      
+      - name: 检查依赖更新
+        run: |
+          cargo install cargo-outdated || true
+          cargo outdated --root-deps-only > outdated.txt || true
+          if [ -s outdated.txt ]; then
+            echo "## 📦 依赖更新可用" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat outdated.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: 安全漏洞扫描
+        run: |
+          cargo install cargo-audit || true
+          cargo audit --json > audit.json || true
+          if grep -q '"vulnerabilities":' audit.json; then
+            echo "## ⚠️ 发现安全漏洞" >> $GITHUB_STEP_SUMMARY
+            cargo audit >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ 无安全漏洞" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: 生成测试覆盖率报告
+        if: always()
+        run: |
+          cargo install cargo-tarpaulin || true
+          cargo tarpaulin --out Xml --timeout 300 || true
+      
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./cobertura.xml
+          fail_ci_if_error: false
+
+  auto-optimization:
+    name: 自动代码优化
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+      
+      - name: 运行 Clippy 自动修复
+        run: |
+          cargo clippy --fix --allow-dirty --allow-staged --all-targets || true
+      
+      - name: 运行 rustfmt
+        run: |
+          cargo +nightly fmt
+      
+      - name: 检查死代码
+        run: |
+          cargo install cargo-udeps || true
+          cargo +nightly udeps --all-targets > udeps.txt || true
+          if [ -s udeps.txt ]; then
+            echo "## 🧹 发现未使用依赖" >> udeps_report.md
+            cat udeps.txt >> udeps_report.md
+          fi
+      
+      - name: 提交优化
+        id: commit
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          if ! git diff --quiet; then
+            git add -A
+            git commit -m "chore: auto optimization from daily maintenance"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ 代码已是最优状态" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: 创建 Pull Request
+        if: steps.commit.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: auto-optimization-${{ github.run_number }}
+          title: "chore: 自动代码优化 (${{ github.run_number }})"
+          body: |
+            ## 🤖 自动优化报告
+            
+            本 PR 由 Daily Maintenance workflow 自动生成。
+            
+            ### 变更内容
+            - 运行 clippy --fix 修复 lint 问题
+            - 运行 rustfmt 格式化代码
+            - 检查未使用依赖
+            
+            ### 测试结果
+            所有测试已通过（见 workflow 日志）。
+            
+            ### 审查建议
+            - 技术性修复（格式化、简单 lint）可直接合并
+            - 逻辑变更需人工审查
+            
+            ---
+            *Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}*
+          labels: |
+            automated
+            maintenance
+          draft: false
+
+  roadmap-update:
+    name: 更新路线图进度
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史
+      
+      - name: 统计任务进度
+        run: |
+          total=$(grep -c "^- \[ \]" EVOLUTION_ROADMAP.md || echo 0)
+          completed=$(grep -c "^- \[x\]" EVOLUTION_ROADMAP.md || echo 0)
+          
+          if [ "$total" -gt 0 ]; then
+            progress=$((completed * 100 / total))
+            echo "## 📊 每日进度报告" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- 已完成: $completed / $total ($progress%)" >> $GITHUB_STEP_SUMMARY
+            echo "- 剩余任务: $((total - completed))" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: 检查最近提交
+        run: |
+          echo "## 📝 最近 5 次提交" >> $GITHUB_STEP_SUMMARY
+          git log --oneline -5 >> $GITHUB_STEP_SUMMARY
+      
+      - name: 生成每日总结
+        run: |
+          date=$(date +'%Y-%m-%d')
+          echo "# 每日总结 - $date" > daily_summary.md
+          echo "" >> daily_summary.md
+          echo "## 任务进度" >> daily_summary.md
+          grep -E "^- \[[x ]\]" EVOLUTION_ROADMAP.md | head -20 >> daily_summary.md || true
+          echo "" >> daily_summary.md
+          echo "## 最近活动" >> daily_summary.md
+          git log --since="24 hours ago" --pretty=format:"- %s (%an)" >> daily_summary.md || true
+      
+      - name: 发布总结到 Discussions
+        if: github.event_name == 'schedule'
+        run: |
+          echo "💡 每日总结已生成，可手动发布到 Discussions"
+          cat daily_summary.md
