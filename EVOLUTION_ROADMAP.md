@@ -125,7 +125,7 @@
   - 迁移: 添加 migration 脚本（版本 v2）
   - 验收: 旧数据库自动升级
 
-- [ ] **任务 2.1.2**: Lineage 查询 API
+- [x] **任务 2.1.2**: Lineage 查询 API
   - 文件: `crates/hakimi-session/src/session_ops.rs`
   - 方法:
     ```rust

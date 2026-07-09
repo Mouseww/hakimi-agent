@@ -84,6 +84,14 @@ pub trait SessionOps {
     fn has_parent(&self, session_id: &str) -> Result<bool>;
     fn get_session_depth(&self, session_id: &str) -> Result<usize>;
     fn get_child_sessions(&self, session_id: &str) -> Result<Vec<SessionMeta>>;
+    
+    /// Get the complete lineage chain from current session to root.
+    /// Returns a vector of SessionMeta ordered from the given session_id to its root ancestor.
+    fn get_session_lineage(&self, session_id: &str) -> Result<Vec<SessionMeta>>;
+    
+    /// Get the root session metadata for a given session.
+    /// Returns the full SessionMeta of the root session.
+    fn get_root_session_meta(&self, session_id: &str) -> Result<SessionMeta>;
 }
 
 /// Generate a concise session title from the conversation messages.
@@ -455,7 +463,7 @@ impl SessionOps for SessionDB {
         let result = conn.query_row(
             "SELECT root_session_id FROM sessions WHERE id = ?1",
             params![session_id],
-            |row| Ok(row.get::<_, Option<String>>(0)?),
+            |row| row.get::<_, Option<String>>(0),
         );
 
         match result {
@@ -473,7 +481,7 @@ impl SessionOps for SessionDB {
         let parent = conn.query_row(
             "SELECT parent_session_id FROM sessions WHERE id = ?1",
             params![session_id],
-            |row| Ok(row.get::<_, Option<String>>(0)?),
+            |row| row.get::<_, Option<String>>(0),
         );
 
         match parent {
@@ -496,7 +504,7 @@ impl SessionOps for SessionDB {
             let parent = conn.query_row(
                 "SELECT parent_session_id FROM sessions WHERE id = ?1",
                 params![current_id],
-                |row| Ok(row.get::<_, Option<String>>(0)?),
+                |row| row.get::<_, Option<String>>(0),
             );
 
             match parent {
@@ -539,6 +547,134 @@ impl SessionOps for SessionDB {
             sessions.push(row?);
         }
         Ok(sessions)
+    }
+
+    /// Get the complete lineage chain from the given session to its root ancestor.
+    /// Returns a vector ordered from the given session_id to root (e.g., [grandchild, child, root]).
+    fn get_session_lineage(&self, session_id: &str) -> Result<Vec<SessionMeta>> {
+        let mut lineage = Vec::new();
+        let mut current_id = session_id.to_string();
+        let conn = self.conn().lock().unwrap();
+        let mut visited = std::collections::HashSet::new();
+
+        loop {
+            // Prevent infinite loops due to cycles
+            if !visited.insert(current_id.clone()) {
+                anyhow::bail!(
+                    "Detected cycle in session lineage at session {}",
+                    current_id
+                );
+            }
+
+            if visited.len() > 100 {
+                anyhow::bail!("Session lineage exceeds 100 levels, possible data corruption");
+            }
+
+            // Get current session metadata
+            let meta_result = conn.query_row(
+                "SELECT id, source, user_id, model, system_prompt, parent_session_id,
+                        root_session_id, started_at, ended_at, end_reason, message_count,
+                        tool_call_count, input_tokens, output_tokens, cache_read_tokens,
+                        cache_write_tokens, reasoning_tokens, title, api_call_count, workdir
+                 FROM sessions WHERE id = ?1",
+                params![current_id],
+                row_to_session_meta,
+            );
+
+            let meta = match meta_result {
+                Ok(m) => m,
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    if lineage.is_empty() {
+                        anyhow::bail!("Session {} not found", session_id);
+                    } else {
+                        anyhow::bail!(
+                            "Orphaned session detected: parent {} does not exist",
+                            current_id
+                        );
+                    }
+                }
+                Err(e) => return Err(e).context("Failed to query session in lineage"),
+            };
+
+            lineage.push(meta.clone());
+
+            // Check for parent
+            match meta.parent_session_id {
+                Some(pid) => {
+                    current_id = pid;
+                }
+                None => break,
+            }
+        }
+
+        Ok(lineage)
+    }
+
+    /// Get the root session metadata for a given session.
+    fn get_root_session_meta(&self, session_id: &str) -> Result<SessionMeta> {
+        let conn = self.conn().lock().unwrap();
+
+        // First, try to get root_session_id from the current session
+        let root_id_opt: Option<String> = conn
+            .query_row(
+                "SELECT root_session_id FROM sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("Failed to query root_session_id")?
+            .flatten();
+
+        // If root_id is set, fetch that session
+        let root_id = if let Some(rid) = root_id_opt {
+            rid
+        } else {
+            // Otherwise, traverse the lineage to find the root
+            let mut current_id = session_id.to_string();
+            let mut visited = std::collections::HashSet::new();
+
+            loop {
+                if !visited.insert(current_id.clone()) {
+                    anyhow::bail!("Detected cycle while finding root session for {}", session_id);
+                }
+
+                if visited.len() > 100 {
+                    anyhow::bail!("Session lineage exceeds 100 levels");
+                }
+
+                let parent_opt: Option<String> = conn
+                    .query_row(
+                        "SELECT parent_session_id FROM sessions WHERE id = ?1",
+                        params![current_id],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .context("Failed to query parent in root traversal")?
+                    .flatten();
+
+                match parent_opt {
+                    Some(pid) => current_id = pid,
+                    None => break,
+                }
+            }
+
+            current_id
+        };
+
+        // Fetch the full metadata of the root session
+        let root_meta = conn
+            .query_row(
+                "SELECT id, source, user_id, model, system_prompt, parent_session_id,
+                        root_session_id, started_at, ended_at, end_reason, message_count,
+                        tool_call_count, input_tokens, output_tokens, cache_read_tokens,
+                        cache_write_tokens, reasoning_tokens, title, api_call_count, workdir
+                 FROM sessions WHERE id = ?1",
+                params![root_id],
+                row_to_session_meta,
+            )
+            .context("Failed to fetch root session metadata")?;
+
+        Ok(root_meta)
     }
 }
 

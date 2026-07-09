@@ -355,7 +355,7 @@ impl MessageOps for SessionDB {
         )?;
 
         let start_rows =
-            start_stmt.query_map(params![session_id, count], |row| row_to_message(row))?;
+            start_stmt.query_map(params![session_id, count], row_to_message)?;
 
         let start_messages: Vec<Message> = start_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -368,7 +368,7 @@ impl MessageOps for SessionDB {
              LIMIT ?2",
         )?;
 
-        let end_rows = end_stmt.query_map(params![session_id, count], |row| row_to_message(row))?;
+        let end_rows = end_stmt.query_map(params![session_id, count], row_to_message)?;
 
         let mut end_messages: Vec<Message> = end_rows.collect::<rusqlite::Result<Vec<_>>>()?;
         // Reverse to maintain chronological order
