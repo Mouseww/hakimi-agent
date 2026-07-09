@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use hakimi_session::{MessageOps, SessionDB, SessionMeta, SessionOps};
 use serde_json::{Value as JsonValue, json};
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use crate::Tool;
 
@@ -113,6 +113,7 @@ impl Tool for SessionSearchTool {
         Some(64 * 1024) // 64KB limit
     }
 
+    #[instrument(skip(self, args, _ctx), fields(tool = "session_search"))]
     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
         let session_id = args.get("session_id").and_then(|v| v.as_str());
@@ -145,15 +146,18 @@ impl Tool for SessionSearchTool {
 
         // SCROLL MODE: session_id + around_message_id
         if let (Some(sid), Some(anchor_id)) = (session_id, around_msg_id) {
+            debug!(mode = "scroll", "Executing Scroll mode");
             return self.scroll_mode(&db, sid, anchor_id, window);
         }
 
         // DISCOVERY MODE: query provided
         if !query.is_empty() {
+            debug!(mode = "discovery", "Executing Discovery mode");
             return self.discovery_mode(&db, query, limit, role_filter);
         }
 
         // BROWSE MODE: no args
+        debug!(mode = "browse", "Executing Browse mode");
         self.browse_mode(&db, limit)
     }
 }

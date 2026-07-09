@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, instrument, warn};
 
 use crate::db::SessionDB;
 use crate::session_ops::generate_session_title;
@@ -153,7 +153,17 @@ impl MessageOps for SessionDB {
     }
 
     /// Full-text search across message content, tool names, and tool calls.
+    #[instrument(
+        skip(self),
+        fields(
+            query = %query,
+            limit = limit,
+        )
+    )]
     fn search_messages(&self, query: &str, limit: i64) -> Result<Vec<SearchResult>> {
+        debug!("Starting FTS5 search");
+        let start = std::time::Instant::now();
+
         let conn = self.conn().lock().unwrap();
         let mut stmt = conn
             .prepare(
@@ -181,6 +191,22 @@ impl MessageOps for SessionDB {
         for row in rows {
             results.push(row?);
         }
+
+        let elapsed = start.elapsed();
+        debug!(
+            results_count = results.len(),
+            duration_ms = elapsed.as_millis(),
+            "FTS5 search completed"
+        );
+
+        if elapsed.as_millis() > 500 {
+            warn!(
+                query = %query,
+                duration_ms = elapsed.as_millis(),
+                "Slow FTS5 query detected"
+            );
+        }
+
         Ok(results)
     }
 
@@ -220,12 +246,21 @@ impl MessageOps for SessionDB {
         Ok(true)
     }
 
+    #[instrument(
+        skip(self),
+        fields(
+            session_id = %session_id,
+            anchor_id = anchor_id,
+            window = window,
+        )
+    )]
     fn get_messages_around(
         &self,
         session_id: &str,
         anchor_id: i64,
         window: i64,
     ) -> Result<(Vec<Message>, i64, i64)> {
+        debug!("Starting get_messages_around");
         let conn = self.conn().lock().unwrap();
 
         // First, verify the anchor exists and belongs to this session
@@ -279,10 +314,25 @@ impl MessageOps for SessionDB {
 
         let messages: Vec<Message> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
+        debug!(
+            messages_count = messages.len(),
+            messages_before = messages_before,
+            messages_after = messages_after,
+            "Completed get_messages_around"
+        );
+
         Ok((messages, messages_before, messages_after))
     }
 
+    #[instrument(
+        skip(self),
+        fields(
+            session_id = %session_id,
+            count = count,
+        )
+    )]
     fn get_bookends(&self, session_id: &str, count: i64) -> Result<(Vec<Message>, Vec<Message>)> {
+        debug!("Fetching session bookends");
         let conn = self.conn().lock().unwrap();
 
         // First N user+assistant messages
@@ -313,6 +363,12 @@ impl MessageOps for SessionDB {
         let mut end_messages: Vec<Message> = end_rows.collect::<rusqlite::Result<Vec<_>>>()?;
         // Reverse to maintain chronological order
         end_messages.reverse();
+
+        debug!(
+            start_count = start_messages.len(),
+            end_count = end_messages.len(),
+            "Bookends retrieved"
+        );
 
         Ok((start_messages, end_messages))
     }

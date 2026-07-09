@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hakimi_common::{Result, ToolDefinition};
 use serde_json::Value as JsonValue;
-use tracing::{debug, warn};
+use tracing::{debug, instrument, warn};
 
 /// Trait for providing memory / long-term context to the agent.
 #[async_trait]
