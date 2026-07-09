@@ -2,6 +2,29 @@
 
 All notable changes to Hakimi Agent will be documented in this file.
 
+## [0.5.62] - 2026-07-10
+
+### Memory 工具错误路径测试 (任务 1.3.2)
+
+#### Testing
+- 新增 11 个 memory 工具错误路径测试用例
+  - 错误处理 (2 个)：文件不存在、权限拒绝（Unix）
+  - 大内容处理 (2 个)：65KB、1MB 内容测试
+  - 并发测试 (1 个)：10 个并发写入验证（无 panic + 部分数据保留）
+  - 边界情况 (6 个)：空内容、Unicode、特殊字符、别名、部分移除、多次移除
+- 使用 tempfile crate 创建隔离测试环境
+- 并发测试使用 tokio::spawn + futures::join_all
+- Unix 平台权限测试使用 PermissionsExt
+- 所有测试通过 ✅
+
+#### Technical
+- 新增文件：crates/hakimi-tools/tests/memory_error_paths_test.rs (300+ 行)
+- 测试覆盖从快乐路径到错误边界的完整场景
+- 已知限制：并发写入的文件系统竞态条件，权限测试仅限 Unix
+
+#### Documentation
+- tasks/TASK_1.3.2_memory_tool_error_paths.md (任务文档)
+
 ## [0.5.61] - 2026-07-10
 
 ### Session Search 集成测试 (任务 1.3.1)
