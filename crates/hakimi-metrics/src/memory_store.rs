@@ -40,10 +40,7 @@ impl MetricsRecorder for MemoryMetricsStore {
     fn record_duration(&self, name: &str, duration: Duration) {
         let ms = duration.as_millis() as u64;
         let mut durations = self.durations.write();
-        durations
-            .entry(name.to_string())
-            .or_insert_with(Vec::new)
-            .push(ms);
+        durations.entry(name.to_string()).or_default().push(ms);
     }
 
     fn increment_counter(&self, name: &str, value: u64) {

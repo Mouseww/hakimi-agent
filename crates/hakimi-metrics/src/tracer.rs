@@ -45,7 +45,7 @@ impl Tracer {
             .write()
             .unwrap()
             .entry(trace_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(span_id);
     }
 
