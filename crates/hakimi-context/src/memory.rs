@@ -81,6 +81,7 @@ impl MemoryProvider for FileMemoryProvider {
             let title = match name.to_lowercase().as_str() {
                 "user" => "USER PROFILE (who the user is)",
                 "memory" => "MEMORY (your personal notes)",
+                "working_memory" | "working" => "WORKING MEMORY (current session)",
                 _ => name,
             };
 

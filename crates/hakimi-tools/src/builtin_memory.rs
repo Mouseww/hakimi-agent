@@ -42,8 +42,9 @@ impl MemoryTool {
         match target {
             "memory" => Ok(dir.join("memory.md")),
             "user" => Ok(dir.join("user.md")),
+            "working_memory" | "working" => Ok(dir.join("working_memory.md")),
             _ => Err(HakimiError::Tool(format!(
-                "invalid target '{}'. Must be 'memory' or 'user'.",
+                "invalid target '{}'. Must be 'memory', 'user', or 'working_memory'.",
                 target
             ))),
         }
@@ -67,7 +68,7 @@ impl Tool for MemoryTool {
     }
 
     fn description(&self) -> &str {
-        "Manage persistent memory. Store agent notes or user profile information in markdown files. Actions: add (append), replace (overwrite), remove (delete matching text)."
+        "Manage persistent memory. Store agent notes, user profile, or working memory (current session) in markdown files. Actions: add (append), replace (overwrite), remove (delete matching text). Targets: 'memory' (long-term notes), 'user' (profile), 'working_memory' (session-scoped)."
     }
 
     fn emoji(&self) -> &str {
@@ -85,8 +86,8 @@ impl Tool for MemoryTool {
                 },
                 "target": {
                     "type": "string",
-                    "description": "Which memory file to operate on: 'memory' for agent notes, 'user' for user profile.",
-                    "enum": ["memory", "user"]
+                    "description": "Which memory file to operate on: 'memory' for agent notes, 'user' for user profile, 'working_memory' for current session.",
+                    "enum": ["memory", "user", "working_memory"]
                 },
                 "content": {
                     "type": "string",

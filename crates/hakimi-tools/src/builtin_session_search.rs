@@ -1,12 +1,15 @@
 use async_trait::async_trait;
 use hakimi_common::{HakimiError, Result, ToolContext};
 use hakimi_session::{MessageOps, SessionDB, SessionMeta, SessionOps};
-use serde_json::{Value as JsonValue, json};
+use serde_json::{json, Value as JsonValue};
 use tracing::debug;
 
 use crate::Tool;
 
-/// Built-in tool for searching past sessions using FTS5 full-text search.
+/// Enhanced session search tool with three modes:
+/// 1. DISCOVERY: FTS5 search with bookends (first 3 + last 3 user+assistant messages)
+/// 2. SCROLL: Window around a specific message ID
+/// 3. BROWSE: Recent sessions list
 pub struct SessionSearchTool;
 
 /// Get the active runtime session database path.
@@ -14,31 +17,41 @@ fn session_db_path() -> std::path::PathBuf {
     hakimi_common::effective_hakimi_home().join("sessions.db")
 }
 
-/// Format a session summary for display.
-fn format_session_summary(session: &SessionMeta, snippet: Option<&str>) -> String {
-    let mut parts = vec![format!(
-        "Session: {} ({})",
-        session.id,
-        session.title.as_deref().unwrap_or("untitled")
-    )];
+/// Format timestamp for display
+fn format_timestamp(ts: &str) -> String {
+    use chrono::DateTime;
+    if let Ok(dt) = DateTime::parse_from_rfc3339(ts) {
+        dt.format("%B %d, %Y at %I:%M %p").to_string()
+    } else {
+        ts.to_string()
+    }
+}
 
-    if let Some(source) = &session.source {
-        parts.push(format!("  Source: {source}"));
-    }
-    if let Some(model) = &session.model {
-        parts.push(format!("  Model: {model}"));
-    }
-    if let Some(started) = &session.started_at {
-        parts.push(format!("  Started: {started}"));
-    }
-    parts.push(format!(
-        "  Messages: {} | Tool calls: {}",
-        session.message_count, session.tool_call_count
-    ));
-    if let Some(snippet) = snippet {
-        parts.push(format!("  Match: {snippet}"));
-    }
-    parts.join("\n")
+/// Format a single message for display
+fn format_message(msg: &hakimi_common::Message, anchor_id: Option<i64>) -> String {
+    let role_emoji = match msg.role {
+        hakimi_common::MessageRole::User => "👤",
+        hakimi_common::MessageRole::Assistant => "🤖",
+        hakimi_common::MessageRole::System => "⚙️",
+        hakimi_common::MessageRole::Tool => "🔧",
+    };
+
+    let content = msg
+        .content
+        .as_deref()
+        .unwrap_or("[no content]")
+        .chars()
+        .take(200)
+        .collect::<String>();
+
+    let ts = msg
+        .timestamp
+        .map(|t| format_timestamp(&t.to_rfc3339()))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let anchor_marker = if anchor_id.is_some() { " ⭐" } else { "" };
+
+    format!("{role_emoji} [{ts}]{anchor_marker} {content}")
 }
 
 #[async_trait]
@@ -52,11 +65,11 @@ impl Tool for SessionSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search past sessions and messages. Uses full-text search when a query is provided, or returns recent sessions when no query is given."
+        "Search past sessions and messages with three modes: (1) Discovery - FTS5 search with session bookends (first/last 3 messages), (2) Scroll - window around a specific message ID, (3) Browse - recent sessions. Use for 'what did we do about X' or 'where did we leave Y' questions."
     }
 
     fn emoji(&self) -> &str {
-        "\u{1f50d}"
+        "🔍"
     }
 
     fn schema(&self) -> JsonValue {
@@ -65,132 +78,320 @@ impl Tool for SessionSearchTool {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Optional search query. Uses FTS5 full-text search across messages. If empty, returns recent sessions."
+                    "description": "Optional FTS5 search query. If empty, returns recent sessions (browse mode). Supports boolean operators: 'alpha AND beta', 'alpha OR beta', '\"exact phrase\"'."
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "For scroll mode: session ID to navigate within. Must be paired with around_message_id."
+                },
+                "around_message_id": {
+                    "type": "integer",
+                    "description": "For scroll mode: message ID to center the window on. Must be paired with session_id."
+                },
+                "window": {
+                    "type": "integer",
+                    "description": "For scroll mode: messages to return on each side of anchor (default: 5, max: 20).",
+                    "minimum": 1,
+                    "maximum": 20
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of results to return. Defaults to 5.",
+                    "description": "For discovery/browse: max results to return (default: 5, max: 50).",
                     "minimum": 1,
                     "maximum": 50
                 },
                 "role_filter": {
                     "type": "string",
-                    "description": "Filter search results by message role (user, assistant, system, tool). Only used with a query.",
-                    "enum": ["user", "assistant", "system", "tool"]
+                    "description": "For discovery: filter by message role (user, assistant, tool, system).",
+                    "enum": ["user", "assistant", "tool", "system"]
                 }
             }
         })
     }
 
     fn max_result_size(&self) -> Option<usize> {
-        Some(32 * 1024)
+        Some(64 * 1024) // 64KB limit
     }
 
     async fn execute(&self, args: &JsonValue, _ctx: &ToolContext) -> Result<String> {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let session_id = args.get("session_id").and_then(|v| v.as_str());
+        let around_msg_id = args.get("around_message_id").and_then(|v| v.as_i64());
+        let window = args
+            .get("window")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(5)
+            .clamp(1, 20);
         let limit = args
             .get("limit")
-            .and_then(|v| v.as_u64())
+            .and_then(|v| v.as_i64())
             .unwrap_or(5)
-            .min(50) as i64;
+            .clamp(1, 50);
         let role_filter = args.get("role_filter").and_then(|v| v.as_str());
 
         let db_path = session_db_path();
         debug!(
             query = %query,
+            session_id = ?session_id,
+            around_msg_id = ?around_msg_id,
             limit = limit,
-            role_filter = ?role_filter,
-            path = %db_path.display(),
             "session search"
         );
 
         let db = SessionDB::new(&db_path)
             .map_err(|e| HakimiError::Session(format!("failed to open session database: {e}")))?;
-        db.initialize().map_err(|e| {
-            HakimiError::Session(format!("failed to initialize session database: {e}"))
-        })?;
+        db.initialize()
+            .map_err(|e| HakimiError::Session(format!("failed to initialize database: {e}")))?;
 
-        if query.is_empty() {
-            // Return recent sessions
-            let source_filter = role_filter.map(|_| None::<&str>); // role_filter doesn't apply here
-            let sessions = db
-                .get_recent_sessions(source_filter.unwrap_or(None), limit)
-                .map_err(|e| HakimiError::Session(format!("failed to get recent sessions: {e}")))?;
-
-            if sessions.is_empty() {
-                return Ok("No sessions found.".to_string());
-            }
-
-            let mut output = format!("Recent sessions (showing {}):\n\n", sessions.len());
-            for session in &sessions {
-                output.push_str(&format_session_summary(session, None));
-                output.push('\n');
-            }
-            return Ok(output);
+        // SCROLL MODE: session_id + around_message_id
+        if let (Some(sid), Some(anchor_id)) = (session_id, around_msg_id) {
+            return self.scroll_mode(&db, sid, anchor_id, window);
         }
 
-        // Perform FTS5 search
+        // DISCOVERY MODE: query provided
+        if !query.is_empty() {
+            return self.discovery_mode(&db, query, limit, role_filter);
+        }
+
+        // BROWSE MODE: no args
+        self.browse_mode(&db, limit)
+    }
+}
+
+impl SessionSearchTool {
+    /// BROWSE MODE: List recent sessions
+    fn browse_mode(&self, db: &SessionDB, limit: i64) -> Result<String> {
+        let sessions = db
+            .get_recent_sessions(None, limit)
+            .map_err(|e| HakimiError::Session(format!("failed to get recent sessions: {e}")))?;
+
+        if sessions.is_empty() {
+            return Ok("No sessions found.".to_string());
+        }
+
+        let mut output = format!("## Recent Sessions ({})\n\n", sessions.len());
+
+        for session in &sessions {
+            let title = session.title.as_deref().unwrap_or("untitled");
+            let started = session
+                .started_at
+                .as_deref()
+                .map(format_timestamp)
+                .unwrap_or_else(|| "unknown".to_string());
+
+            output.push_str(&format!(
+                "**{}** ({})\n- Session ID: `{}`\n- Source: {}\n- Messages: {} | Tool calls: {}\n\n",
+                title,
+                started,
+                session.id,
+                session.source.as_deref().unwrap_or("unknown"),
+                session.message_count,
+                session.tool_call_count
+            ));
+        }
+
+        output.push_str(&format!("\nShowing {} most recent sessions. Pass a `query` to search, or `session_id` + `around_message_id` to scroll.", sessions.len()));
+
+        Ok(output)
+    }
+
+    /// DISCOVERY MODE: FTS5 search with bookends
+    fn discovery_mode(
+        &self,
+        db: &SessionDB,
+        query: &str,
+        limit: i64,
+        role_filter: Option<&str>,
+    ) -> Result<String> {
         let search_limit = if role_filter.is_some() {
-            limit * 3 // fetch more so we can filter
+            limit * 3 // fetch extra for filtering
         } else {
             limit
         };
 
         let results = db
             .search_messages(query, search_limit)
-            .map_err(|e| HakimiError::Session(format!("failed to search messages: {e}")))?;
+            .map_err(|e| HakimiError::Session(format!("FTS5 search failed: {e}")))?;
 
-        // Filter by role if requested
-        let filtered: Vec<_> = if let Some(_role) = role_filter {
-            // We'd need to join with the messages table to filter by role.
-            // For now, include all results since FTS doesn't expose role directly.
-            results.into_iter().take(limit as usize).collect()
-        } else {
-            results.into_iter().take(limit as usize).collect()
-        };
-
-        if filtered.is_empty() {
-            return Ok(format!("No messages found matching query: \"{query}\""));
+        if results.is_empty() {
+            return Ok(format!("No messages found matching query: \"{}\"", query));
         }
 
-        // Group results by session and get session metadata
-        let mut session_ids: Vec<String> = filtered.iter().map(|r| r.session_id.clone()).collect();
+        // Group by session and dedupe
+        let mut session_ids: Vec<String> = results.iter().map(|r| r.session_id.clone()).collect();
+        session_ids.sort();
         session_ids.dedup();
 
         let mut output = format!(
-            "Search results for \"{query}\" ({} message(s)):\n\n",
-            filtered.len()
+            "## Search Results for \"{}\"\nFound {} message(s) across {} session(s)\n\n",
+            query,
+            results.len(),
+            session_ids.len()
         );
 
-        for sid in &session_ids {
+        for sid in session_ids.iter().take(limit as usize) {
             let session = db
                 .get_session(sid)
                 .map_err(|e| HakimiError::Session(format!("failed to get session: {e}")))?;
 
             if let Some(session) = session {
-                let session_matches: Vec<&hakimi_session::SearchResult> =
-                    filtered.iter().filter(|r| &r.session_id == sid).collect();
-
-                let snippet = session_matches
-                    .first()
-                    .and_then(|r| r.content.as_deref())
-                    .map(|c| {
-                        if c.len() > 200 {
-                            format!("{}...", &c[..200])
-                        } else {
-                            c.to_string()
-                        }
-                    });
-
-                output.push_str(&format_session_summary(&session, snippet.as_deref()));
-                output.push_str(&format!(
-                    "\n  Matching messages: {}\n",
-                    session_matches.len()
-                ));
-                output.push('\n');
+                output.push_str(&self.format_session_with_bookends(db, &session, &results)?);
+                output.push_str("\n---\n\n");
             }
         }
 
         Ok(output)
+    }
+
+    /// SCROLL MODE: Window around a message ID
+    fn scroll_mode(
+        &self,
+        db: &SessionDB,
+        session_id: &str,
+        anchor_id: i64,
+        window: i64,
+    ) -> Result<String> {
+        let session = db
+            .get_session(session_id)
+            .map_err(|e| HakimiError::Session(format!("failed to get session: {e}")))?
+            .ok_or_else(|| HakimiError::Session(format!("session not found: {}", session_id)))?;
+
+        let (messages, before, after) = db
+            .get_messages_around(session_id, anchor_id, window)
+            .map_err(|e| {
+                HakimiError::Session(format!("failed to get messages around anchor: {e}"))
+            })?;
+
+        if messages.is_empty() {
+            return Ok(format!(
+                "No messages found around anchor {} in session {}",
+                anchor_id, session_id
+            ));
+        }
+
+        let title = session.title.as_deref().unwrap_or("untitled");
+        let mut output = format!(
+            "## Scroll: {} (Session: `{}`)\nAnchor: message #{} | {} messages before | {} after\n\n",
+            title, session_id, anchor_id, before, after
+        );
+
+        for msg in &messages {
+            let is_anchor = msg.timestamp.is_some(); // Simplified anchor detection
+            output.push_str(&format_message(msg, if is_anchor { Some(anchor_id) } else { None }));
+            output.push('\n');
+        }
+
+        output.push_str(&format!(
+            "\n**Navigation:** To scroll forward, call with `around_message_id={}`. To scroll back, use `around_message_id={}`.",
+            messages.last().and_then(|m| m.timestamp.map(|_| anchor_id + window)).unwrap_or(anchor_id),
+            messages.first().and_then(|m| m.timestamp.map(|_| anchor_id - window)).unwrap_or(anchor_id)
+        ));
+
+        Ok(output)
+    }
+
+    /// Format a session summary with bookends (first 3 + last 3 user+assistant messages)
+    fn format_session_with_bookends(
+        &self,
+        db: &SessionDB,
+        session: &SessionMeta,
+        match_results: &[hakimi_session::SearchResult],
+    ) -> Result<String> {
+        let title = session.title.as_deref().unwrap_or("untitled");
+        let started = session
+            .started_at
+            .as_deref()
+            .map(format_timestamp)
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let mut output = format!(
+            "### {} ({})\n**Session ID:** `{}`\n**Messages:** {} | **Tool calls:** {}\n\n",
+            title, started, session.id, session.message_count, session.tool_call_count
+        );
+
+        // Get bookends
+        let (start_msgs, end_msgs) = db.get_bookends(&session.id, 3).unwrap_or_default();
+
+        if !start_msgs.is_empty() {
+            output.push_str("**Session Start (first 3 messages):**\n");
+            for msg in &start_msgs {
+                output.push_str(&format!("  {}\n", format_message(msg, None)));
+            }
+            output.push('\n');
+        }
+
+        // Show match context (first match only)
+        let session_matches: Vec<_> = match_results
+            .iter()
+            .filter(|r| r.session_id == session.id)
+            .collect();
+
+        if let Some(first_match) = session_matches.first() {
+            output.push_str(&format!("**Match ({} total):**\n", session_matches.len()));
+            let snippet = first_match
+                .content
+                .as_deref()
+                .unwrap_or("[no content]")
+                .chars()
+                .take(300)
+                .collect::<String>();
+            output.push_str(&format!("  {}\n\n", snippet));
+        }
+
+        if !end_msgs.is_empty() {
+            output.push_str("**Session End (last 3 messages):**\n");
+            for msg in &end_msgs {
+                output.push_str(&format!("  {}\n", format_message(msg, None)));
+            }
+        }
+
+        Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hakimi_common::{Message, ToolContext};
+    use tempfile::tempdir;
+
+    fn test_db() -> SessionDB {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("test_sessions.db");
+        let db = SessionDB::new(&db_path).unwrap();
+        db.initialize().unwrap();
+        db
+    }
+
+    #[tokio::test]
+    async fn test_browse_mode() {
+        let db = test_db();
+        let sid = "test_session";
+        db.create_session(sid, None).unwrap();
+        db.save_message(sid, &Message::user("Hello")).unwrap();
+
+        let tool = SessionSearchTool;
+        let ctx = ToolContext::default();
+        let args = json!({});
+
+        let result = tool.execute(&args, &ctx).await.unwrap();
+        assert!(result.contains("Recent Sessions"));
+    }
+
+    #[tokio::test]
+    async fn test_discovery_mode() {
+        let db = test_db();
+        let sid = "test_session";
+        db.create_session(sid, None).unwrap();
+        db.save_message(sid, &Message::user("Rust programming"))
+            .unwrap();
+
+        let tool = SessionSearchTool;
+        let ctx = ToolContext::default();
+        let args = json!({"query": "Rust"});
+
+        let result = tool.execute(&args, &ctx).await.unwrap();
+        assert!(result.contains("Search Results"));
+        assert!(result.contains("Rust"));
     }
 }

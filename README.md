@@ -554,7 +554,7 @@ Python agent frameworks are slow, memory-hungry, and crash at runtime. Hakimi is
 - **Desktop**: Hermes-style `computer_use` readiness surface with safe wait, macOS screenshot/list-app discovery, and guarded action schema
 - **Code**: Python/JS/Bash execution with sandbox
 - **Media**: vision analysis, video analysis, TTS, transcription with silence-hallucination filtering and oversized WAV chunking
-- **Memory**: persistent memory + FTS5 full-text search + `hakimi knowledge` / TUI `/knowledge` / gateway `/knowledge` graph operations
+- **Memory**: tiered memory system (short-term/long-term/working memory) + FTS5 full-text search + three-mode session search (Discovery with bookends, Scroll window navigation, Browse recent sessions) + `hakimi knowledge` / TUI `/knowledge` / gateway `/knowledge` graph operations
 - **Productivity**: todo, Kanban boards with profile routing, worker logs, event trails, diagnostics, notification subscriptions, swarm graph creation, dashboard read/write management, cron scheduler with interval/five-field cron expressions and home-channel fan-out delivery
 - **Meta**: sub-agent delegation, Mixture-of-Agents reasoning, skills system, MCP plugins
 - **Evaluation**: Hermes-compatible ShareGPT JSONL trajectory saving for completed and failed turns

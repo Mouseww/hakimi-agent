@@ -30,6 +30,21 @@ pub trait MessageOps {
     ) -> Result<Vec<Message>>;
     fn search_messages(&self, query: &str, limit: i64) -> Result<Vec<SearchResult>>;
     fn delete_message(&self, session_id: &str, message_id: &str) -> Result<bool>;
+    /// Get a window of messages around an anchor message ID.
+    /// Returns (window, messages_before, messages_after) where window includes the anchor.
+    fn get_messages_around(
+        &self,
+        session_id: &str,
+        anchor_id: i64,
+        window: i64,
+    ) -> Result<(Vec<Message>, i64, i64)>;
+    /// Get bookend messages: first N and last N user+assistant messages of a session.
+    /// Returns (start_messages, end_messages).
+    fn get_bookends(
+        &self,
+        session_id: &str,
+        count: i64,
+    ) -> Result<(Vec<Message>, Vec<Message>)>;
 }
 
 impl MessageOps for SessionDB {
@@ -207,6 +222,106 @@ impl MessageOps for SessionDB {
 
         debug!("Deleted message {message_id} from session {session_id}");
         Ok(true)
+    }
+
+    fn get_messages_around(
+        &self,
+        session_id: &str,
+        anchor_id: i64,
+        window: i64,
+    ) -> Result<(Vec<Message>, i64, i64)> {
+        let conn = self.conn().lock().unwrap();
+
+        // First, verify the anchor exists and belongs to this session
+        let anchor_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM messages WHERE session_id = ?1 AND id = ?2)",
+                params![session_id, anchor_id],
+                |row| row.get(0),
+            )
+            .context("Failed to check anchor message")?;
+
+        if !anchor_exists {
+            anyhow::bail!("Anchor message {} not found in session {}", anchor_id, session_id);
+        }
+
+        // Count messages before and after the anchor
+        let messages_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE session_id = ?1 AND id < ?2",
+                params![session_id, anchor_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let messages_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE session_id = ?1 AND id > ?2",
+                params![session_id, anchor_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        // Fetch window: anchor ± window messages
+        let lower_bound = anchor_id - window;
+        let upper_bound = anchor_id + window;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, role, content, tool_call_id, tool_name, tool_calls, timestamp, finish_reason, reasoning
+             FROM messages
+             WHERE session_id = ?1 AND id >= ?2 AND id <= ?3
+             ORDER BY id ASC",
+        )?;
+
+        let rows = stmt.query_map(params![session_id, lower_bound, upper_bound], |row| {
+            row_to_message(row)
+        })?;
+
+        let messages: Vec<Message> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        Ok((messages, messages_before, messages_after))
+    }
+
+    fn get_bookends(
+        &self,
+        session_id: &str,
+        count: i64,
+    ) -> Result<(Vec<Message>, Vec<Message>)> {
+        let conn = self.conn().lock().unwrap();
+
+        // First N user+assistant messages
+        let mut start_stmt = conn.prepare(
+            "SELECT id, role, content, tool_call_id, tool_name, tool_calls, timestamp, finish_reason, reasoning
+             FROM messages
+             WHERE session_id = ?1 AND role IN ('user', 'assistant')
+             ORDER BY id ASC
+             LIMIT ?2",
+        )?;
+
+        let start_rows = start_stmt.query_map(params![session_id, count], |row| {
+            row_to_message(row)
+        })?;
+
+        let start_messages: Vec<Message> = start_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        // Last N user+assistant messages
+        let mut end_stmt = conn.prepare(
+            "SELECT id, role, content, tool_call_id, tool_name, tool_calls, timestamp, finish_reason, reasoning
+             FROM messages
+             WHERE session_id = ?1 AND role IN ('user', 'assistant')
+             ORDER BY id DESC
+             LIMIT ?2",
+        )?;
+
+        let end_rows = end_stmt.query_map(params![session_id, count], |row| {
+            row_to_message(row)
+        })?;
+
+        let mut end_messages: Vec<Message> = end_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        // Reverse to maintain chronological order
+        end_messages.reverse();
+
+        Ok((start_messages, end_messages))
     }
 }
 

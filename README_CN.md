@@ -89,7 +89,7 @@ Python 写的 AI Agent 框架启动慢、吃内存、还动不动运行时报错
 - **桌面**：Hermes 风格 `computer_use` 就绪面，支持安全等待、macOS 截图/应用发现与受保护的动作 schema
 - **代码执行**：Python/JS/Bash 沙箱运行
 - **媒体**：图片分析、视频分析、语音合成、带静音幻觉过滤和超大 WAV 分块的语音转文字
-- **记忆**：持久化记忆 + FTS5 全文检索 + `hakimi knowledge` / TUI `/knowledge` / 网关 `/knowledge` 图谱操作
+- **记忆**：分级记忆系统（短期/长期/工作记忆）+ FTS5 全文检索 + 三模式会话搜索（Discovery 搜索 + bookends 首尾上下文，Scroll 滑动窗口浏览，Browse 最近会话列表）+ `hakimi knowledge` / TUI `/knowledge` / 网关 `/knowledge` 图谱操作
 - **效率**：待办清单、支持 Profile 路由、工作日志、事件轨迹、诊断、通知订阅、swarm 图创建与 dashboard 读写管理的 Kanban 看板、支持间隔/五字段 cron 表达式和 home-channel 扇出投递的定时任务
 - **元能力**：子 Agent 委派、Mixture-of-Agents 多模型推理、技能系统、插件机制
 - **评测**：Hermes 兼容的 ShareGPT JSONL 轨迹保存，覆盖完成与失败轮次
