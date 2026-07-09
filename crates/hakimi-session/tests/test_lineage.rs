@@ -376,7 +376,7 @@ fn test_get_root_session_meta_multi_branch() -> Result<()> {
 
     // Create tree: A has two children B and C, each with their own child
     let session_a = db.create_session("test", Some("user1"), Some("gpt-4"), None)?;
-    
+
     let session_b = db.create_session_with_id(
         "session-b",
         "test",

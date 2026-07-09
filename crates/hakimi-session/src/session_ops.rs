@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 use uuid::Uuid;
@@ -84,11 +84,11 @@ pub trait SessionOps {
     fn has_parent(&self, session_id: &str) -> Result<bool>;
     fn get_session_depth(&self, session_id: &str) -> Result<usize>;
     fn get_child_sessions(&self, session_id: &str) -> Result<Vec<SessionMeta>>;
-    
+
     /// Get the complete lineage chain from current session to root.
     /// Returns a vector of SessionMeta ordered from the given session_id to its root ancestor.
     fn get_session_lineage(&self, session_id: &str) -> Result<Vec<SessionMeta>>;
-    
+
     /// Get the root session metadata for a given session.
     /// Returns the full SessionMeta of the root session.
     fn get_root_session_meta(&self, session_id: &str) -> Result<SessionMeta>;
@@ -635,7 +635,10 @@ impl SessionOps for SessionDB {
 
             loop {
                 if !visited.insert(current_id.clone()) {
-                    anyhow::bail!("Detected cycle while finding root session for {}", session_id);
+                    anyhow::bail!(
+                        "Detected cycle while finding root session for {}",
+                        session_id
+                    );
                 }
 
                 if visited.len() > 100 {
