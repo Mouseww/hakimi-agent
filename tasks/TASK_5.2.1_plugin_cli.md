@@ -1,12 +1,12 @@
 # TASK 5.2.1: Plugin CLI 命令
 
-**状态**: 🔄 待开始  
+**状态**: ✅ 已完成  
 **优先级**: P1  
 **预计工作量**: 4-6 小时  
-**依赖**: TASK 5.1.1 (WASM Plugin Runtime) ✅, TASK 5.1.2 (WASM Plugin SDK)  
+**依赖**: TASK 5.1.1 (WASM Plugin Runtime) ✅, TASK 5.1.2 (WASM Plugin SDK) ✅  
 **解锁**: TASK 5.2.2 (Plugin Marketplace)  
 **分支**: `feat/plugin-cli`  
-**完成时间**: 待定
+**完成时间**: 2026-07-10
 
 ---
 
