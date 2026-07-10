@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.5.87] - 2026-07-10
+
+### Added
+- WASM 插件运行时 (TASK 5.1.1) - 进行中 ✨
+  - 实现 `WasmPluginLoader` 基于 Wasmtime 16.0
+  - 安全沙箱环境：内存限制 128MB，堆栈 1MB，执行超时 5s
+  - WASI 支持：标准输入输出，预打开目录，文件系统访问控制
+  - 宿主函数架构：log（已实现），http_request（占位符）
+  - 插件元数据提取：从 WASM 内存读取 JSON 格式元数据
+  - 资源限制器：强制内存和表大小限制
+  - 异步加载和卸载插件 API
+  
+### Technical Details
+- **依赖**: wasmtime 16.0, wasmtime-wasi 16.0（可选特性 'wasm'）
+- **架构**: 
+  - `WasmPluginLoader` - 核心加载器，管理 Engine 和实例
+  - `WasmSandboxConfig` - 沙箱配置（内存、超时、文件系统、网络）
+  - `WasmState` - 实例状态（WASI 上下文 + 资源限制）
+- **特性门控**: `--features wasm` 启用 WASM 支持
+- **测试覆盖**: 34/34 单元测试通过
+- **文件**: `crates/hakimi-plugin/src/wasm_loader.rs` (350 行)
+- 任务文档: `tasks/TASK_5.1.1_wasm_plugin_runtime.md`
+- PR: #46
+
+### Next Steps
+- 创建示例 WASM 插件（wasm32-wasi 目标）
+- 完整集成测试（真实 WASM 模块）
+- 宿主函数完整实现（HTTP、存储、工具调用）
+- 性能基准测试（WASM vs 原生）
+
 ## [0.5.86] - 2026-07-10
 
 ### Added
