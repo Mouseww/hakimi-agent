@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.5.90] - 2026-07-10
+
+### Added
+- **Plugin CLI 命令 (TASK 5.2.1)** — 完整的插件管理 CLI 界面 ✅
+  - `hakimi plugin list` 列出已安装或可用插件
+  - `hakimi plugin search <query>` 搜索插件市场
+  - `hakimi plugin install <name>` 安装插件（支持版本指定）
+  - `hakimi plugin uninstall <name>` 卸载插件
+  - `hakimi plugin info <name>` 查看插件详细信息
+  - `hakimi plugin test <name>` 测试插件加载
+  - `hakimi plugin enable/disable <name>` 启用/禁用插件
+  - `hakimi plugin update [name]` 检查插件更新
+  - 友好的表格输出（使用 tabled crate）
+  - 集成远程插件注册表支持
+
+### Changed
+- **PluginMarketplace 增强**
+  - 新增 `set_plugin_enabled()` 方法用于启用/禁用插件
+  - 完善插件状态管理功能
+
+### Technical Details
+- **文件**: 
+  - `crates/hakimi-cli/src/commands/plugin.rs` (409 行)
+  - `crates/hakimi-cli/src/commands/mod.rs` (新增)
+  - `crates/hakimi-plugin/src/marketplace.rs` (新增启用/禁用方法)
+- **依赖**: tabled（表格输出）
+- **测试**: 所有 CLI 测试通过（191 个测试）
+
+### Developer Experience
+- 完整的插件生命周期管理
+- 直观的命令行界面和彩色输出
+- 支持本地和远程插件安装
+- 自动版本管理和更新检查
+
+### Next Steps
+- TASK 5.2.2: Plugin Marketplace 后端实现
+- TASK 5.3.1: 插件权限系统
+- TASK 5.2.3: WebUI 插件管理界面
+
 ## [0.5.89] - 2026-07-10
 
 ### Added

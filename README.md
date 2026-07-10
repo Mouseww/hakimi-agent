@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.88-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.90-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -30,8 +30,61 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.89)
+## ✨ Recent Updates (v0.5.90)
 
+**🔌 Plugin CLI 命令 (TASK 5.2.1) — 完成：**
+
+**核心功能：**
+- ✨ **完整的插件管理 CLI** — 8 个子命令覆盖全生命周期
+  - `hakimi plugin list [--available]` — 列出已安装或可用插件
+  - `hakimi plugin search <query>` — 搜索插件市场
+  - `hakimi plugin install <name> [--version]` — 安装插件（支持版本指定）
+  - `hakimi plugin uninstall <name>` — 卸载插件
+  - `hakimi plugin info <name>` — 查看插件详细信息
+  - `hakimi plugin test <name>` — 测试插件加载
+  - `hakimi plugin enable/disable <name>` — 启用/禁用插件
+  - `hakimi plugin update [name]` — 检查插件更新
+- 📊 **友好的输出** — 表格化显示，彩色状态
+  - 使用 tabled crate 生成圆角表格
+  - 启用/禁用状态图标 (✓/✗)
+  - emoji 装饰增强可读性
+- 🌐 **远程注册表集成** — 连接插件市场
+  - 从 YAML 注册表获取插件元数据
+  - 自动下载和校验和验证
+  - 本地缓存支持离线查看
+
+**技术细节：**
+- 文件: `crates/hakimi-cli/src/commands/plugin.rs` (409 行)
+- 新增: `crates/hakimi-cli/src/commands/mod.rs` 
+- 增强: `PluginMarketplace::set_plugin_enabled()`
+- 依赖: tabled (表格输出)
+- 测试: 所有 CLI 测试通过（191 个测试）✅
+
+**使用示例：**
+```bash
+# 查看可用插件
+hakimi plugin list --available
+
+# 搜索插件
+hakimi plugin search weather
+
+# 安装插件
+hakimi plugin install weather-info
+
+# 查看详细信息
+hakimi plugin info weather-info
+
+# 测试插件
+hakimi plugin test weather-info
+
+# 禁用插件
+hakimi plugin disable weather-info
+
+# 检查更新
+hakimi plugin update
+```
+
+**v0.5.89 更新：**
 **🔌 WASM Plugin SDK (TASK 5.1.2) — 完成：**
 
 **核心功能：**
