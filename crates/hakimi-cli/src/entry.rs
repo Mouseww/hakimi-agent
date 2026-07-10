@@ -936,7 +936,7 @@ fn render_plugin_list(
 }
 
 fn plugin_list_response_with_loader(
-    mut loader: hakimi_plugin::PluginLoader,
+    loader: hakimi_plugin::PluginLoader,
     options: PluginListOptions,
 ) -> String {
     let plugin_dir = loader.plugin_dir().to_path_buf();
