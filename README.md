@@ -29,7 +29,32 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.71)
+## ✨ Recent Updates (v0.5.72)
+
+**🔍 SQL 查询角色过滤动态化 (任务 2.2.1) — 完成：**
+
+**核心功能：**
+- ✅ **动态角色过滤** — `get_bookends()` 和 `get_messages_around()` 支持任意角色组合查询
+- ✅ **灵活参数设计** — 新增 `roles: Option<&[&str]>` 参数，默认 `['user', 'assistant']`
+- ✅ **动态 SQL 构建** — `build_role_filter_sql()` 函数动态生成 `WHERE role IN (?, ?, ...)` 子句
+- ✅ **角色组合查询** — 支持 user, assistant, tool, system 的任意组合
+- ✅ **禁用过滤** — 传空数组 `Some(&[])` 可查询所有角色消息
+- ✅ **向后兼容** — 传 `None` 保持原有行为（只查询 user + assistant）
+
+**测试覆盖：**
+- ✅ 新增 6 个单元测试覆盖所有角色过滤场景
+- ✅ 所有 34 个 message_ops 测试通过
+- ✅ 参数化查询防止 SQL 注入
+- ✅ 性能无退化（索引仍然有效）
+
+**API 影响：**
+- `MessageOps` trait 方法签名更新
+- `session_search` 工具调用适配新签名
+- 为 TASK 2.2.2（工具层暴露 roles 参数）铺平道路
+
+---
+
+## ✨ Previous Updates (v0.5.71)
 
 **🚨 错误追踪系统 (任务 1.1.3) — 完成：**
 
