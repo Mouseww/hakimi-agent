@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use hakimi_common::{Result, ToolDefinition};
 use serde_json::Value as JsonValue;
+use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
+
+use crate::memory_cache::MemoryCache;
 
 /// Soft limit: warn user when memory file exceeds this size (60 KB)
 const MEMORY_WARN_SIZE_BYTES: u64 = 60 * 1024;
@@ -35,8 +38,10 @@ pub trait MemoryProvider: Send + Sync {
 ///
 /// Each file in the directory is treated as a separate memory entry.
 /// Files are read into the system prompt and searched during prefetch.
+#[derive(Clone)]
 pub struct FileMemoryProvider {
     memory_dir: std::path::PathBuf,
+    cache: Arc<MemoryCache>,
 }
 
 impl FileMemoryProvider {
@@ -46,7 +51,57 @@ impl FileMemoryProvider {
     pub fn new(memory_dir: impl Into<std::path::PathBuf>) -> Self {
         Self {
             memory_dir: memory_dir.into(),
+            cache: Arc::new(MemoryCache::new(30, 10)), // 30min TTL, 10MB limit
         }
+    }
+
+    /// Asynchronously prefetch all memory files into cache.
+    ///
+    /// This should be called after session creation to warm up the cache
+    /// in the background, improving first-byte time for the first request.
+    pub async fn prefetch_all(&self) -> std::io::Result<()> {
+        debug!("Starting async memory prefetch");
+        
+        if !self.is_available() {
+            debug!("Memory directory not available, skipping prefetch");
+            return Ok(());
+        }
+
+        let entries = match std::fs::read_dir(&self.memory_dir) {
+            Ok(e) => e,
+            Err(e) => {
+                warn!(error = %e, "Failed to read memory directory for prefetch");
+                return Err(e);
+            }
+        };
+
+        let paths: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file())
+            .collect();
+
+        // Prefetch all files in parallel
+        let cache = self.cache.clone();
+        let futures = paths.into_iter().map(|path| {
+            let cache = cache.clone();
+            async move {
+                if let Err(e) = cache.prefetch(&path).await {
+                    warn!(path = %path.display(), error = %e, "Failed to prefetch memory file");
+                }
+            }
+        });
+
+        futures::future::join_all(futures).await;
+        
+        let stats = self.cache.stats().await;
+        debug!(
+            entries = stats.entry_count,
+            bytes = stats.total_bytes,
+            "Memory prefetch completed"
+        );
+
+        Ok(())
     }
 
     /// Finalize the current session by archiving working memory and clearing it.
@@ -179,7 +234,34 @@ impl MemoryProvider for FileMemoryProvider {
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown");
 
-            // Check file size before loading
+            // Try to get content from cache first
+            let content = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                // We're in an async context, use the cache
+                let cache = self.cache.clone();
+                let path_clone = path.clone();
+                handle.block_on(async move {
+                    // Try cache first
+                    if let Some(cached) = cache.get_cached(&path_clone).await {
+                        Ok(cached)
+                    } else {
+                        // Cache miss, read directly
+                        std::fs::read_to_string(&path_clone)
+                    }
+                })
+            } else {
+                // No async runtime available, read directly
+                std::fs::read_to_string(&path)
+            };
+
+            let content = match content {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "Failed to read memory file");
+                    continue;
+                }
+            };
+
+            // Check file size
             match std::fs::metadata(&path) {
                 Ok(metadata) => {
                     let size = metadata.len();
@@ -220,24 +302,17 @@ impl MemoryProvider for FileMemoryProvider {
                 _ => name,
             };
 
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    let content = content.trim();
-                    if content.is_empty() {
-                        continue;
-                    }
-                    let chars = content.chars().count();
-                    blocks.push(format!(
-                        "══════════════════════════════════════════════\n\
-                        {title} [{chars} chars]\n\
-                        ══════════════════════════════════════════════\n\
-                        {content}"
-                    ));
-                }
-                Err(e) => {
-                    warn!(path = %path.display(), error = %e, "Failed to read memory file");
-                }
+            let content = content.trim();
+            if content.is_empty() {
+                continue;
             }
+            let chars = content.chars().count();
+            blocks.push(format!(
+                "══════════════════════════════════════════════\n\
+                {title} [{chars} chars]\n\
+                ══════════════════════════════════════════════\n\
+                {content}"
+            ));
         }
 
         if blocks.is_empty() {

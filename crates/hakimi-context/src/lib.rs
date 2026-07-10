@@ -6,6 +6,7 @@ pub mod error;
 mod factory;
 pub mod intent;
 mod memory;
+mod memory_cache;
 mod prompt_builder;
 pub mod role_adapter;
 mod scrubber;
@@ -18,6 +19,7 @@ pub use engine::{CompressionStats, ContextEngine};
 pub use factory::build_context_engine;
 pub use intent::{Intent, IntentClassifier, IntentPrediction};
 pub use memory::{FileMemoryProvider, MemoryProvider, UserMemoryProvider};
+pub use memory_cache::{CacheStats, MemoryCache};
 pub use prompt_builder::{
     build_context_files_prompt, build_environment_hints, build_skills_prompt, build_system_prompt,
 };
