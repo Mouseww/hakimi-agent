@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.66-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.70-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,39 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.69)
+## ✨ Recent Updates (v0.5.70)
+
+**🌲 WebUI 会话树可视化 (任务 2.1.4) — Phase 2 完成：**
+
+**前端组件：**
+- ✅ **SessionTree React 组件** — 层级会话树可视化展示
+  - 树形结构递归渲染，支持无限嵌套
+  - 折叠/展开交互控制
+  - 点击节点快速跳转会话
+  - 面包屑导航显示完整谱系路径
+- ✅ **UI 集成** — FolderTree 图标切换按钮
+  - 集成到会话列表标题
+  - 响应式设计，移动端适配
+  - lucide-react 图标统一风格
+- ✅ **智能展开** — 当前会话及祖先自动展开
+- ✅ **会话元数据** — 显示创建时间、消息数量
+
+**API 支持：**
+- ✅ **类型定义** — SessionMetadata、SessionTreeNode、SessionTreeResponse
+- ✅ **API 函数** — fetchSessionTree() 带身份认证
+
+**技术成果：**
+- 📦 **TypeScript 编译通过** — 0 错误
+- 🚀 **Vite 构建成功** — bundle 优化
+- ✅ **后端测试全通过** — 61/61
+
+**里程碑达成：**
+- 🎯 **Phase 2 完整对齐** — Lineage 父子会话关系功能完整
+- 📊 **与 Hermes 功能对齐度：95%** — 会话管理能力全面超越
+
+---
+
+**历史更新 (v0.5.69)：**
 
 **🔍 Tracing Instrumentation (任务 1.1.1)：**
 

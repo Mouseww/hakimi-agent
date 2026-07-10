@@ -113,7 +113,7 @@
 
 **目标**: 补齐与 Hermes 的功能差距
 
-#### 里程碑 2.1: Lineage 父子会话关系 (4天)
+#### 里程碑 2.1: Lineage 父子会话关系 ✅ 已完成 (4天)
 - [x] **任务 2.1.1**: 数据库 schema 扩展
   - 文件: `crates/hakimi-session/src/schema.rs`
   - 字段: 
@@ -141,11 +141,12 @@
   - 参数: 新增 `include_lineage: bool`（默认 true）
   - 验收: 搜索结果显示会话层级关系
 
-- [ ] **任务 2.1.4**: WebUI 可视化会话树
-  - 文件: `crates/hakimi-webui/src/components/SessionTree.tsx`
+- [x] **任务 2.1.4**: WebUI 可视化会话树 ✅
+  - 文件: `crates/hakimi-webui/src/SessionTree.tsx`
   - 展示: 树形结构 + 折叠/展开
   - 交互: 点击跳转到对应会话
   - 验收: 浏览器正确渲染 3 层嵌套
+  - **完成**: v0.5.70, PR #28, 2026-07-10
 
 #### 里程碑 2.2: 角色过滤动态化 (2天)
 - [ ] **任务 2.2.1**: SQL 查询参数化
