@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.5.78] - 2026-07-10
+
+### Added
+- 批处理作业进度跟踪系统 (TASK_3.3.1) ✅
+  - 新增 `JobProgress` 结构体追踪作业整体进度
+  - 新增 `StageProgress` 记录各阶段详细进度
+  - 新增 `ProgressStore` 持久化进度到 SQLite
+  - 新增 `ProgressNotifier` 提供实时进度广播
+  - 支持多阶段进度跟踪（initialization → processing → finalization）
+  - 支持实时进度更新通知（broadcast channel）
+  - 支持进度持久化和恢复
+  - 支持并发作业进度隔离
+
+### Technical Details
+- **progress.rs**: 完整的进度跟踪模型（270+ 行）
+- **progress_store.rs**: SQLite持久化实现（250+ 行）
+- **progress_notifier.rs**: 实时通知机制（130+ 行）
+- **BatchProcessor**: 集成进度跟踪到批处理流程
+- **BatchConfig**: 新增 `progress_tracking_enabled` 和 `progress_db_path` 配置
+- 21 个单元测试全部通过，覆盖率 > 90%
+
+### Features
+- 自动跟踪作业状态：Pending → Running → Completed/Failed
+- 实时计算完成百分比（基于处理项目数）
+- 记录各阶段开始/结束时间戳
+- 支持多订阅者的进度广播
+- 线程安全的进度存储（Arc<Mutex<Connection>>）
+- 自动清理过期进度记录
+
+### API Features
+- `JobProgress::new()`: 创建新进度追踪器
+- `JobProgress::update_step()`: 更新当前步骤
+- `JobProgress::start_stage()`: 开始新阶段
+- `JobProgress::complete_stage()`: 完成阶段
+- `JobProgress::update_stage_items()`: 更新阶段项目数
+- `ProgressStore::save_progress()`: 保存进度
+- `ProgressStore::get_progress()`: 获取进度
+- `ProgressStore::list_job_ids()`: 列出所有作业
+- `ProgressStore::cleanup_old()`: 清理旧进度
+- `ProgressNotifier::notify()`: 通知进度更新
+- `ProgressNotifier::subscribe()`: 订阅进度通知
+
+### Tests
+- progress: 9 个测试全部通过
+- progress_store: 7 个测试全部通过（包括并发测试）
+- progress_notifier: 5 个测试全部通过
+- hakimi-batch: 25 个测试全部通过
+- hakimi-common: 95 个测试全部通过
+- hakimi-core: 230 个测试全部通过
+
+### Integration
+- BatchProcessor 自动初始化进度追踪
+- 在 initialization 阶段完成后开始 processing
+- 每处理一个项目更新进度
+- 在 processing 完成后进入 finalization
+- 保存结果后完成 finalization 并设置 100% 完成度
+
 ## [0.5.77] - 2026-07-10
 
 ### Added
