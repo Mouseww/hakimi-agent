@@ -2528,6 +2528,14 @@ pub fn build_router(state: AppState) -> Router {
         )
         // Metrics endpoint
         .route("/metrics", get(get_metrics))
+        // Error tracking endpoints
+        .route("/errors/stats", get(get_error_stats))
+        .route("/errors", get(get_errors))
+        .route("/errors", delete(clear_errors))
+        .route("/errors/unrecovered", get(get_unrecovered_errors))
+        .route("/errors/recovered", delete(clear_recovered_errors))
+        .route("/errors/category/:category", get(get_errors_by_category))
+        .route("/errors/:id/recover", post(attempt_error_recovery))
         // Agent-dimension (persona) endpoints
         .route("/agents", get(list_agents))
         .route("/agents", post(create_agent))
@@ -6526,6 +6534,71 @@ pub async fn get_metrics() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(serde_json::to_value(snapshot).unwrap_or_else(
         |_| json!({"error": "serialization failed"}),
     )))
+}
+
+/// GET /api/errors/stats — Error tracking statistics
+pub async fn get_error_stats() -> Result<Json<serde_json::Value>, StatusCode> {
+    let stats = hakimi_metrics::error_tracker::global().get_stats();
+    Ok(Json(serde_json::to_value(stats).unwrap_or_else(
+        |_| json!({"error": "serialization failed"}),
+    )))
+}
+
+/// GET /api/errors — Get all error records
+pub async fn get_errors() -> Result<Json<Vec<hakimi_metrics::ErrorRecord>>, StatusCode> {
+    let errors = hakimi_metrics::error_tracker::global().get_errors();
+    Ok(Json(errors))
+}
+
+/// GET /api/errors/unrecovered — Get unrecovered errors
+pub async fn get_unrecovered_errors() -> Result<Json<Vec<hakimi_metrics::ErrorRecord>>, StatusCode> {
+    let errors = hakimi_metrics::error_tracker::global().get_unrecovered_errors();
+    Ok(Json(errors))
+}
+
+/// GET /api/errors/category/{category} — Get errors by category
+pub async fn get_errors_by_category(
+    Path(category): Path<String>,
+) -> Result<Json<Vec<hakimi_metrics::ErrorRecord>>, StatusCode> {
+    use hakimi_metrics::ErrorCategory;
+    
+    let category = match category.as_str() {
+        "network" => ErrorCategory::Network,
+        "database" => ErrorCategory::Database,
+        "filesystem" => ErrorCategory::FileSystem,
+        "configuration" => ErrorCategory::Configuration,
+        "authentication" => ErrorCategory::Authentication,
+        "business" => ErrorCategory::Business,
+        "external_service" => ErrorCategory::ExternalService,
+        "internal" => ErrorCategory::Internal,
+        "unknown" => ErrorCategory::Unknown,
+        _ => return Err(StatusCode::BAD_REQUEST),
+    };
+    
+    let errors = hakimi_metrics::error_tracker::global().get_errors_by_category(category);
+    Ok(Json(errors))
+}
+
+/// POST /api/errors/{id}/recover — Attempt to recover an error
+pub async fn attempt_error_recovery(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match hakimi_metrics::error_tracker::global().attempt_recovery(&id) {
+        Ok(()) => Ok(Json(json!({"success": true, "message": "Recovery successful"}))),
+        Err(e) => Ok(Json(json!({"success": false, "error": e}))),
+    }
+}
+
+/// DELETE /api/errors — Clear all error records
+pub async fn clear_errors() -> Result<Json<serde_json::Value>, StatusCode> {
+    hakimi_metrics::error_tracker::global().clear();
+    Ok(Json(json!({"success": true})))
+}
+
+/// DELETE /api/errors/recovered — Clear recovered errors
+pub async fn clear_recovered_errors() -> Result<Json<serde_json::Value>, StatusCode> {
+    hakimi_metrics::error_tracker::global().clear_recovered();
+    Ok(Json(json!({"success": true})))
 }
 
 // ---------------------------------------------------------------------------

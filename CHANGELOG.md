@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.71] - 2026-07-10
+
+### Added
+- Error tracking module (TASK_1.1.3) ✅
+  - New `error_tracker` module in hakimi-metrics
+  - Error categorization by type (Network, Database, FileSystem, etc.)
+  - Error severity levels (Low, Medium, High, Critical)
+  - Error recovery strategies with automatic retry mechanisms
+  - Error statistics and analytics
+  - Error filtering by category and severity
+  - Global error tracker instance
+  - Convenient `track_error!` macro for error recording
+
+### Added (API)
+- New error tracking REST API endpoints:
+  - `GET /api/errors/stats` - Error statistics
+  - `GET /api/errors` - All error records
+  - `GET /api/errors/unrecovered` - Unrecovered errors only
+  - `GET /api/errors/category/:category` - Errors by category
+  - `POST /api/errors/:id/recover` - Attempt error recovery
+  - `DELETE /api/errors` - Clear all errors
+  - `DELETE /api/errors/recovered` - Clear recovered errors
+
+### Technical Details
+- Implemented `ErrorRecord` with context, stack trace, and recovery tracking
+- Implemented `RecoveryStrategy` trait for custom recovery logic
+- Default recovery strategy with configurable max retries
+- Thread-safe error storage with Mutex
+- Automatic old error cleanup (configurable max storage)
+- Comprehensive test coverage
+
 ## [0.5.70] - 2026-07-10
 
 ### Added

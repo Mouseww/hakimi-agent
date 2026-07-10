@@ -4,10 +4,14 @@
 
 use std::time::Duration;
 
+pub mod error_tracker;
 pub mod memory_store;
 pub mod tracer;
 pub mod tracing;
 
+pub use error_tracker::{
+    ErrorCategory, ErrorRecord, ErrorSeverity, ErrorStats, ErrorTracker, RecoveryStrategy,
+};
 pub use memory_store::MemoryMetricsStore;
 pub use tracer::{Tracer, TracerStats};
 pub use tracing::{Span, SpanContext, SpanEvent, SpanId, SpanStatus, TraceId};
