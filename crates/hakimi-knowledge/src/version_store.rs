@@ -1,6 +1,6 @@
 use crate::version::KnowledgeVersion;
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -87,7 +87,11 @@ impl VersionStore {
     }
 
     /// Get a specific version of a knowledge entry
-    pub fn get_version(&self, knowledge_key: &str, version: i32) -> Result<Option<KnowledgeVersion>> {
+    pub fn get_version(
+        &self,
+        knowledge_key: &str,
+        version: i32,
+    ) -> Result<Option<KnowledgeVersion>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             r#"
@@ -223,7 +227,10 @@ mod tests {
         assert_eq!(retrieved.knowledge_key, "test_key");
         assert_eq!(retrieved.version, 1);
         assert_eq!(retrieved.content, "test content");
-        assert_eq!(retrieved.change_summary, Some("Initial version".to_string()));
+        assert_eq!(
+            retrieved.change_summary,
+            Some("Initial version".to_string())
+        );
     }
 
     #[test]

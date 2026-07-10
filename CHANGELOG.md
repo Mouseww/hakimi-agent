@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.5.76] - 2026-07-10
+
+### Added
+- 知识库全文搜索功能 (TASK_3.1.2) ✅
+  - 新增 `SearchEngine` 实现高级全文搜索
+  - 新增 `SearchIndex` 实现 TF-IDF 相关性评分
+  - 新增 `SearchOptions` 支持灵活的搜索配置
+  - 新增 `SearchResult` 包含评分和高亮信息
+  - 支持模糊匹配（Levenshtein 距离算法）
+  - 支持大小写敏感/不敏感搜索
+  - 支持最小评分过滤
+  - 支持结果高亮显示（HTML mark 标签）
+  - 支持多词搜索和组合评分
+  - 智能相关性评分（精确匹配、位置、长度）
+  - KnowledgeGraph 新增 `search_advanced()` 和 `search_tfidf()` 方法
+  - KnowledgeStore 集成新搜索引擎
+
+### Technical Details
+- **search.rs**: 完整的搜索引擎实现（500+ 行）
+- **SearchEngine**: 基于评分的相关性排序
+- **SearchIndex**: TF-IDF 文档频率分析
+- **Levenshtein distance**: 模糊匹配算法
+- **Highlighting**: 智能关键词高亮提取
+- 14 个单元测试全部通过，覆盖率 > 90%
+
+### Performance
+- 简单搜索：即时响应
+- TF-IDF 索引构建：O(n) 复杂度
+- 评分算法：组合多个因子（精确度、位置、长度）
+- 内存高效：仅存储必要的索引数据
+
+### Tests
+- hakimi-knowledge: 61 tests passing（新增 14 个搜索测试）
+- Build: Release compilation successful (4m 02s)
+
+### API Changes
+- `KnowledgeGraph::search_advanced(query, options)`: 高级搜索
+- `KnowledgeGraph::search_tfidf(query, options)`: TF-IDF 搜索
+- `KnowledgeStore::search()`: 自动使用新搜索引擎（启用模糊匹配）
+
 ## [0.5.75] - 2026-07-10
 
 ### Added

@@ -88,22 +88,29 @@ impl KnowledgeStore {
 #[async_trait]
 impl KnowledgeSearcher for KnowledgeStore {
     async fn search(&self, query: &str, limit: usize) -> hakimi_common::Result<JsonValue> {
-        let nodes = self.graph.search(query);
-        let results: Vec<JsonValue> = nodes
+        use crate::search::SearchOptions;
+
+        // Use advanced search with scoring
+        let options = SearchOptions::new().with_limit(limit).with_fuzzy(true); // Enable fuzzy matching for better results
+
+        let results = self.graph.search_advanced(query, &options);
+
+        let json_results: Vec<JsonValue> = results
             .iter()
-            .take(limit)
-            .map(|n| {
+            .map(|r| {
                 json!({
-                    "key": n.key(),
-                    "kind": n.kind(),
-                    "preview": format!("{:?}", n)
+                    "key": r.node_key,
+                    "kind": r.node_kind,
+                    "score": r.score,
+                    "highlights": r.highlights,
+                    "preview": format!("{} (score: {:.2})", r.node_key, r.score)
                 })
             })
             .collect();
 
         Ok(json!({
-            "results": results,
-            "count": results.len(),
+            "results": json_results,
+            "count": json_results.len(),
             "query": query
         }))
     }

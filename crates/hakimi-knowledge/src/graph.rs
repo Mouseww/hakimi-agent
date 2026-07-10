@@ -397,6 +397,30 @@ impl KnowledgeGraph {
             .collect()
     }
 
+    /// Advanced search with scoring and options
+    pub fn search_advanced(
+        &self,
+        query: &str,
+        options: &crate::search::SearchOptions,
+    ) -> Vec<crate::search::SearchResult> {
+        use crate::search::SearchEngine;
+        let nodes: Vec<&NodeType> = self.graph.node_weights().collect();
+        SearchEngine::search(&nodes, query, options)
+    }
+
+    /// Search using TF-IDF scoring
+    pub fn search_tfidf(
+        &self,
+        query: &str,
+        options: &crate::search::SearchOptions,
+    ) -> Vec<crate::search::SearchResult> {
+        use crate::search::SearchIndex;
+        let nodes: Vec<&NodeType> = self.graph.node_weights().collect();
+        let mut index = SearchIndex::new();
+        index.build(&nodes);
+        index.search_tfidf(&nodes, query, options)
+    }
+
     /// Compute graph statistics.
     pub fn stats(&self) -> GraphStats {
         let node_count = self.graph.node_count();

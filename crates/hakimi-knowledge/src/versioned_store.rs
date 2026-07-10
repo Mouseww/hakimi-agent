@@ -15,7 +15,7 @@ impl VersionedKnowledgeStore {
     /// Create a new versioned knowledge store
     pub fn new(graph_path: PathBuf, version_db_path: PathBuf) -> Result<Self> {
         let version_store = VersionStore::new(&version_db_path)?;
-        
+
         Ok(Self {
             graph_path,
             version_store,
@@ -40,19 +40,19 @@ impl VersionedKnowledgeStore {
         }
         let json = self.graph.to_json()?;
         std::fs::write(&self.graph_path, &json)?;
-        
+
         // Auto-create version if enabled
         if self.auto_version {
             self.create_version(None)?;
         }
-        
+
         Ok(())
     }
 
     /// Create a new version snapshot of the current graph
     pub fn create_version(&self, change_summary: Option<String>) -> Result<()> {
         let json = self.graph.to_json()?;
-        
+
         let version_number = self
             .version_store
             .get_latest_version_number("knowledge_graph")?
@@ -88,10 +88,10 @@ impl VersionedKnowledgeStore {
 
         // Restore graph from version
         self.graph = KnowledgeGraph::from_json(&version_data.content)?;
-        
+
         // Save to disk
         self.save()?;
-        
+
         Ok(())
     }
 
@@ -154,9 +154,11 @@ mod tests {
         let version_db = tmp.path().join("versions.db");
 
         let mut store = VersionedKnowledgeStore::new(graph_path, version_db).unwrap();
-        
+
         // Add initial data
-        store.graph_mut().add_node(NodeType::Entity("alice".to_string()));
+        store
+            .graph_mut()
+            .add_node(NodeType::Entity("alice".to_string()));
         store.save().unwrap();
 
         // Check version was created
@@ -174,15 +176,22 @@ mod tests {
         let mut store = VersionedKnowledgeStore::new(graph_path, version_db).unwrap();
 
         // V1: Add alice
-        store.graph_mut().add_node(NodeType::Entity("alice".to_string()));
+        store
+            .graph_mut()
+            .add_node(NodeType::Entity("alice".to_string()));
         store.save().unwrap();
 
         // V2: Add bob
-        store.graph_mut().add_node(NodeType::Person("bob".to_string()));
+        store
+            .graph_mut()
+            .add_node(NodeType::Person("bob".to_string()));
         store.save().unwrap();
 
         // V3: Add edge
-        store.graph_mut().add_edge("alice", "bob", EdgeType::Knows).unwrap();
+        store
+            .graph_mut()
+            .add_edge("alice", "bob", EdgeType::Knows)
+            .unwrap();
         store.save().unwrap();
 
         assert_eq!(store.graph().node_count(), 2);
@@ -207,8 +216,12 @@ mod tests {
 
         // Create multiple versions
         for i in 1..=5 {
-            store.graph_mut().add_node(NodeType::Entity(format!("entity{}", i)));
-            store.create_version(Some(format!("Added entity{}", i))).unwrap();
+            store
+                .graph_mut()
+                .add_node(NodeType::Entity(format!("entity{}", i)));
+            store
+                .create_version(Some(format!("Added entity{}", i)))
+                .unwrap();
         }
 
         let versions = store.get_version_history().unwrap();
@@ -229,11 +242,15 @@ mod tests {
         let mut store = VersionedKnowledgeStore::new(graph_path, version_db).unwrap();
 
         // V1
-        store.graph_mut().add_node(NodeType::Entity("e1".to_string()));
+        store
+            .graph_mut()
+            .add_node(NodeType::Entity("e1".to_string()));
         store.save().unwrap();
 
         // V2
-        store.graph_mut().add_node(NodeType::Entity("e2".to_string()));
+        store
+            .graph_mut()
+            .add_node(NodeType::Entity("e2".to_string()));
         store.save().unwrap();
 
         let diff = store.diff_versions(1, 2).unwrap();
