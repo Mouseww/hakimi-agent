@@ -17,6 +17,9 @@ thiserror = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
+rusqlite = { workspace = true }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
