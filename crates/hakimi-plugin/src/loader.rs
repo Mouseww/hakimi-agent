@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::{HakimiPlugin, PluginMetadata, PluginResult, PluginError};
+use crate::{PluginMetadata, PluginResult, PluginError};
 
 /// 插件加载器配置
 #[derive(Debug, Clone)]
