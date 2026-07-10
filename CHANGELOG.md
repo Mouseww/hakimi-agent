@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.88] - 2026-07-10
+
+### Fixed
+- **测试修复** — 修复 session_search_integration_test 的并发竞争条件
+  - 修改 `setup_test_db()` 返回锁守卫，确保所有测试序列化执行
+  - 避免并发修改 `HAKIMI_HOME` 环境变量导致的数据库打开失败
+  - 所有 18 个集成测试现在稳定通过
+
+### Changed
+- **WASM 插件运行时状态更新** — TASK 5.1.1 标记为已完成
+  - 核心加载器完成，34个单元测试通过
+  - PR #46 已合并到 main 分支
+  - WasmPluginLoader、安全沙箱、WASI 支持等核心功能全部实现
+
 ## [0.5.87] - 2026-07-10
 
 ### Added
