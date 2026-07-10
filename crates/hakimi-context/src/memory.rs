@@ -610,14 +610,14 @@ impl MemoryProvider for UserMemoryProvider {
                         hakimi_common::HakimiError::ToolSimple("missing 'content' argument".into())
                     })?;
 
-                if let Some(parent) = self.profile_path.parent()
-                    && !parent.exists()
-                {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        hakimi_common::HakimiError::ToolSimple(format!(
-                            "failed to create profile dir: {e}"
-                        ))
-                    })?;
+                if let Some(parent) = self.profile_path.parent() {
+                    if !parent.exists() {
+                        std::fs::create_dir_all(parent).map_err(|e| {
+                            hakimi_common::HakimiError::ToolSimple(format!(
+                                "failed to create profile dir: {e}"
+                            ))
+                        })?;
+                    }
                 }
 
                 std::fs::write(&self.profile_path, content).map_err(|e| {

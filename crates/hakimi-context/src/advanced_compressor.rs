@@ -791,14 +791,16 @@ impl AdvancedCompressor {
         focus_topic: Option<&str>,
     ) -> Result<Option<String>> {
         // Check cooldown
-        if let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-            && let Ok(cooldown) = self
+        if let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            if let Ok(cooldown) = self
                 .summary_failure_cooldown_until
                 .duration_since(std::time::UNIX_EPOCH)
-            && now.as_secs() < cooldown.as_secs()
-        {
-            debug!("Skipping summary during cooldown");
-            return Ok(None);
+            {
+                if now.as_secs() < cooldown.as_secs() {
+                    debug!("Skipping summary during cooldown");
+                    return Ok(None);
+                }
+            }
         }
 
         let transport = match &self.llm_transport {
@@ -912,22 +914,22 @@ impl AdvancedCompressor {
             let mut line = format!("[{role}]: {content}");
 
             // Add tool calls info
-            if let Some(ref tool_calls) = msg.tool_calls
-                && !tool_calls.is_empty()
-            {
-                line.push_str("\n[Tool calls:");
-                for tc in tool_calls {
-                    line.push_str(&format!(
-                        "\n  {}({})",
-                        tc.name,
-                        if tc.arguments.len() > 100 {
-                            format!("{}...", &tc.arguments[..100])
-                        } else {
-                            tc.arguments.clone()
-                        }
-                    ));
+            if let Some(ref tool_calls) = msg.tool_calls {
+                if !tool_calls.is_empty() {
+                    line.push_str("\n[Tool calls:");
+                    for tc in tool_calls {
+                        line.push_str(&format!(
+                            "\n  {}({})",
+                            tc.name,
+                            if tc.arguments.len() > 100 {
+                                format!("{}...", &tc.arguments[..100])
+                            } else {
+                                tc.arguments.clone()
+                            }
+                        ));
+                    }
+                    line.push_str("\n]");
                 }
-                line.push_str("\n]");
             }
 
             parts.push(line);

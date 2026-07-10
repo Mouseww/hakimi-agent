@@ -35,7 +35,7 @@ exclude = [
 
 [workspace.package]
 version = "0.5.92"
-edition = "2021"
+edition = "2024"
 
 [workspace.dependencies]
 # Async runtime
