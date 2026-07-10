@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.69] - 2026-07-10
+
+### Added
+- Session tree visualization API endpoint (TASK_2.1.4)
+  - New GET /api/sessions/:id/tree endpoint for complete session tree structure
+  - Returns current session, root session, full lineage, and recursive children
+  - Data structures: `SessionTreeResponse` and `SessionTreeNode`
+  
+### Fixed
+- Proper error handling for session tree API operations
+  - All database operations now use `.map_err()` for consistent error types
+  - Improved error messages for debugging
+  - Compilation errors resolved
+
+### Technical Details
+- **API endpoint**: GET /api/sessions/:id/tree
+- **Response structure**: 
+  - `current`: Current session information
+  - `root`: Root session metadata
+  - `lineage`: Full path from root to current
+  - `children`: Recursive child session tree
+- Reuses existing hakimi-session crate APIs
+- Foundation for WebUI session tree visualization
+
+
 All notable changes to Hakimi Agent will be documented in this file.
 
 ## [0.5.68] - 2026-07-10

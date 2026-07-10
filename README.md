@@ -29,7 +29,7 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.67)
+## ✨ Recent Updates (v0.5.69)
 
 **🔍 Tracing Instrumentation (任务 1.1.1)：**
 
