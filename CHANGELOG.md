@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.70] - 2026-07-10
+
+### Added
+- WebUI session tree visualization component (TASK_2.1.4) ✅
+  - New `SessionTree` React component for hierarchical session display
+  - Tree structure rendering with recursive child sessions
+  - Expand/collapse interaction for tree navigation
+  - Click-to-navigate session switching
+  - Session metadata display (creation date, message count)
+  - Breadcrumb lineage path from root to current session
+  - Responsive design with Tailwind CSS
+  - Integrated into main App with toggle button (FolderTree icon)
+  
+### Added (API)
+- Added `SessionMetadata`, `SessionTreeNode`, `SessionTreeResponse` types to api.ts
+- Added `fetchSessionTree()` API function with authentication support
+
+### Technical Details
+- **Component**: `hakimi-webui/src/SessionTree.tsx`
+- **Integration**: Toggle button in session list header
+- **Icons**: lucide-react (ChevronRight, ChevronDown, MessageSquare, FolderTree)
+- **State management**: React hooks for expand/collapse state
+- **Auto-expansion**: Current session and ancestors auto-expand on load
+- **Build**: TypeScript compilation successful, Vite build optimized
+
 ## [0.5.69] - 2026-07-10
 
 ### Added
