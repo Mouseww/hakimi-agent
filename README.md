@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.81-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.84-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -30,17 +30,38 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.81)
+## ✨ Recent Updates (v0.5.84)
 
-**🔌 插件动态加载机制 (TASK 4.1.2) — 完成：**
+**📚 文档体系完善 (TASK 4.2.1 & 4.2.2) — 完成：**
 
 **核心功能：**
-- ✅ **动态库加载** — 基于 `libloading` 实现 .so/.dylib/.dll 加载
-- ✅ **插件配置** — YAML 配置文件支持（plugins.yaml）
-- ✅ **路径自动发现** — 自动在插件目录查找动态库
-- ✅ **白名单机制** — 可选的插件白名单保护
-- ✅ **热加载框架** — 支持插件重载的基础设施
-- ✅ **示例插件** — 完整的插件开发模板
+- ✅ **架构设计文档** — 完整的系统架构说明（docs/ARCHITECTURE.md）
+  - 5 个 Mermaid 架构图（模块依赖、数据流、搜索、记忆、插件）
+  - 21 个 crate 职责说明
+  - 工具/技能/插件边界清晰定义
+  - 30 分钟快速阅读路径
+- ✅ **API 参考文档** — 自动生成并部署到 GitHub Pages
+  - 配置 GitHub Actions 自动部署
+  - cargo doc 完整构建
+  - 完整的公开 API 文档
+- ✅ **插件开发指南** — docs/plugin_development_guide.md
+  - 完整的插件开发流程
+  - 示例插件模板（examples/example_plugin）
+  - 钩子函数详细说明
+
+**文档链接：**
+- [架构设计文档](docs/ARCHITECTURE.md)
+- [API 参考文档](https://mouseww.github.io/hakimi-agent/)
+- [插件开发指南](docs/plugin_development_guide.md)
+
+**之前版本亮点：**
+
+**🔌 插件系统 (TASK 4.1.1 - 4.1.3) — v0.5.80-82：**
+- ✅ **插件 API** — HakimiPlugin trait，5 个生命周期钩子
+- ✅ **动态加载** — libloading 实现 .so/.dylib/.dll 加载
+- ✅ **插件市场** — GitHub Releases 分发，SHA256 校验
+- ✅ **配置管理** — plugins.yaml 配置，白名单保护
+- ✅ **热加载** — 支持插件重载的基础设施
 
 **插件加载器 API：**
 ```rust
