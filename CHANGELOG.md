@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.5.81] - 2026-07-10
+
+### Added
+- 插件动态加载机制 (TASK_4.1.2) ✅
+  - 新增 `PluginLoader` 基于 libloading 的动态库加载器
+  - 新增 `PluginLoaderConfig` 插件加载器配置
+  - 新增 `PluginsConfig` 和 `PluginEntry` 插件配置文件支持
+  - 新增 `config.rs` 模块处理 plugins.yaml 配置
+  - 支持 .so/.dylib/.dll 动态库加载
+  - 插件路径自动发现（Unix/Windows 命名约定）
+  - 插件白名单机制（可选）
+  - 插件热加载基础设施（reload_plugin）
+  - 插件元数据查询 API
+  - FFI 安全边界处理
+
+### Technical Details
+- **loader.rs** (11KB+): 完整的动态库加载器实现
+- **config.rs** (5KB+): 配置文件解析和管理
+- 新增依赖：`libloading 0.8`, `serde_yaml 0.9`, `notify 6.0`, `sha2 0.10`
+- 24 个单元测试全部通过（+10 个新测试）
+- 支持跨平台动态库加载（Linux/macOS/Windows）
+- 完善的错误处理（PluginError 枚举）
+
+### Features
+- **动态加载 API**：
+  - `load_plugin(path)` - 从路径加载插件
+  - `load_plugin_by_id(id)` - 根据 ID 自动查找并加载
+  - `unload_plugin(id)` - 卸载插件
+  - `reload_plugin(id)` - 重载插件（热更新）
+  - `list_plugins()` - 列出已加载插件
+  - `get_plugin_metadata(id)` - 查询插件元数据
+  - `is_loaded(id)` - 检查插件是否已加载
+
+- **插件配置**：
+  - YAML 格式配置文件（~/.hakimi/plugins.yaml）
+  - 插件目录配置（plugin_dir）
+  - 热加载开关（enable_hot_reload）
+  - 签名验证开关（verify_signature）
+  - 插件列表配置（plugins）
+  - 插件特定配置传递（config 字段）
+
+- **安全特性**：
+  - 插件白名单机制
+  - 文件扩展名验证
+  - 签名验证框架（待实现）
+  - FFI 边界安全检查
+  - 详细的安全警告文档
+
+### Documentation
+- 新增 `docs/plugin_development_guide.md` 插件开发指南
+- 新增 `examples/example_plugin/` 示例插件项目
+- 新增 `examples/example_plugin/README.md` 示例文档
+- 完整的 API 文档和使用示例
+- 安全注意事项和最佳实践
+
+### Tests
+- `test_plugin_loader_creation` - 加载器创建测试
+- `test_find_plugin_path_not_found` - 路径查找失败测试
+- `test_load_plugin_file_not_found` - 文件不存在测试
+- `test_load_plugin_invalid_extension` - 无效扩展名测试
+- `test_unload_nonexistent_plugin` - 卸载不存在插件测试
+- `test_plugin_whitelist` - 白名单机制测试
+- `test_default_config` - 默认配置测试
+- `test_example_config` - 示例配置测试
+- `test_config_serialization` - 配置序列化测试
+- `test_config_deserialization` - 配置反序列化测试
+
+### Breaking Changes
+- 无（向后兼容）
+
+### Migration Guide
+- 插件开发者可开始使用动态加载机制
+- 参考 `examples/example_plugin/` 创建插件
+- 将编译好的动态库复制到 `~/.hakimi/plugins/`
+- 编辑 `~/.hakimi/plugins.yaml` 配置插件
+
+---
+
 ## [0.5.80] - 2026-07-10
 
 ### Added
