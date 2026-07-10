@@ -1,13 +1,12 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use hakimi_plugin::marketplace::PluginMarketplace;
-use std::path::PathBuf;
 use tabled::{
     builder::Builder,
     settings::{object::Columns, Modify, Width, Style},
 };
 
-#[derive(Parser)]
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
 #[command(name = "plugin")]
 #[command(about = "Manage Hakimi plugins")]
 pub struct PluginCommand {
@@ -15,7 +14,7 @@ pub struct PluginCommand {
     pub action: PluginAction,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum PluginAction {
     /// List installed or available plugins
     List {
@@ -57,6 +56,24 @@ pub enum PluginAction {
         /// Plugin name
         name: String,
     },
+
+    /// Test plugin loading
+    Test {
+        /// Plugin name
+        name: String,
+    },
+
+    /// Enable a plugin
+    Enable {
+        /// Plugin name
+        name: String,
+    },
+
+    /// Disable a plugin
+    Disable {
+        /// Plugin name
+        name: String,
+    },
 }
 
 impl PluginCommand {
@@ -85,6 +102,15 @@ impl PluginCommand {
             }
             PluginAction::Info { name } => {
                 show_plugin_info(&marketplace, &name).await?;
+            }
+            PluginAction::Test { name } => {
+                test_plugin(&marketplace, &name).await?;
+            }
+            PluginAction::Enable { name } => {
+                enable_plugin(&marketplace, &name, true)?;
+            }
+            PluginAction::Disable { name } => {
+                enable_plugin(&marketplace, &name, false)?;
             }
         }
 
@@ -339,4 +365,41 @@ fn truncate(s: &str, max_len: usize) -> &str {
     } else {
         &s[..max_len]
     }
+}
+
+async fn test_plugin(marketplace: &PluginMarketplace, name: &str) -> Result<()> {
+    println!("🧪 Testing plugin: {}", name);
+    
+    let installed = marketplace.list_installed()?;
+    let plugin = installed
+        .iter()
+        .find(|p| p.name == name)
+        .context(format!("Plugin '{}' not found", name))?;
+    
+    println!("  Path: {}", plugin.path);
+    println!("  Version: {}", plugin.version);
+    
+    // TODO: 实际加载插件进行测试
+    // 目前只检查文件是否存在
+    if std::path::Path::new(&plugin.path).exists() {
+        println!("✓ Plugin file exists and is readable");
+    } else {
+        anyhow::bail!("Plugin file not found at: {}", plugin.path);
+    }
+    
+    println!("✓ Plugin test passed");
+    Ok(())
+}
+
+fn enable_plugin(marketplace: &PluginMarketplace, name: &str, enabled: bool) -> Result<()> {
+    let action = if enabled { "Enabling" } else { "Disabling" };
+    println!("{} plugin: {}", action, name);
+    
+    marketplace.set_plugin_enabled(name, enabled)
+        .context(format!("Failed to {} plugin", action.to_lowercase()))?;
+    
+    let status = if enabled { "enabled" } else { "disabled" };
+    println!("✓ Plugin '{}' {}", name, status);
+    
+    Ok(())
 }

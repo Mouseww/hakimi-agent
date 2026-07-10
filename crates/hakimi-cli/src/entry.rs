@@ -4232,6 +4232,8 @@ pub enum TopLevelCommand {
     Cron(CronCommandArgs),
     /// Manage HTTP tool plugins.
     Plugins(PluginCommandArgs),
+    /// Manage WASM plugins (install, uninstall, list).
+    Plugin(crate::commands::plugin::PluginCommand),
     /// Browse configured MCP servers and the curated MCP catalog.
     Mcp(McpCommandArgs),
     /// Inspect and update the local knowledge graph.
@@ -8543,6 +8545,10 @@ pub async fn run() -> Result<()> {
     }
     if let Some(TopLevelCommand::Plugins(plugin_args)) = &args.command {
         println!("{}", top_level_plugins_response(&plugin_args.args));
+        return Ok(());
+    }
+    if let Some(TopLevelCommand::Plugin(cmd)) = args.command {
+        cmd.execute().await?;
         return Ok(());
     }
     if let Some(TopLevelCommand::Mcp(mcp_args)) = &args.command {

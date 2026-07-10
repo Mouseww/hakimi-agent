@@ -3,6 +3,7 @@
 //! Provides the [`Command`] enum for REPL-level commands that start with `/`.
 
 pub mod backup;
+pub mod commands;
 pub mod context_manager;
 pub mod doctor;
 pub mod entry;
