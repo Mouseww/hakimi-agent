@@ -48,3 +48,6 @@ chrono = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
 tempfile = "3"
+
+[lints]
+workspace = true

@@ -21,3 +21,6 @@ axum = { version = "0.8", features = ["json"] }
 hmac = "0.12"
 sha2 = "0.10"
 regex = "1.10"
+
+[lints]
+workspace = true
