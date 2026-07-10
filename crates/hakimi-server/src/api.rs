@@ -5686,7 +5686,12 @@ async fn get_session_tree(
     let db = state.session_db.lock().await;
 
     // Get current session
-    let current = match db.get_session(&id)? {
+    let current = match db.get_session(&id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session: {e}"),
+        )
+    })? {
         Some(meta) => meta,
         None => {
             return Err(api_error(
@@ -5697,13 +5702,28 @@ async fn get_session_tree(
     };
 
     // Get root session
-    let root = db.get_root_session_meta(&id)?;
+    let root = db.get_root_session_meta(&id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get root session: {e}"),
+        )
+    })?;
 
     // Get complete lineage (from root to current)
-    let lineage = db.get_session_lineage(&id)?;
+    let lineage = db.get_session_lineage(&id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session lineage: {e}"),
+        )
+    })?;
 
     // Get children tree recursively
-    let children = get_session_tree_recursive(&db, &id)?;
+    let children = get_session_tree_recursive(&db, &id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session tree: {e}"),
+        )
+    })?;
 
     Ok(Json(SessionTreeResponse {
         current: SessionInfo::from(current),
