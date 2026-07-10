@@ -8,6 +8,12 @@ pub mod marketplace;
 pub mod loader;
 pub use loader::{PluginLoader, PluginLoaderConfig};
 
+// WASM plugin loader (optional feature)
+#[cfg(feature = "wasm")]
+pub mod wasm_loader;
+#[cfg(feature = "wasm")]
+pub use wasm_loader::{WasmPluginLoader, WasmSandboxConfig};
+
 use async_trait::async_trait;
 use hakimi_common::error::Result;
 use serde::{Deserialize, Serialize};
