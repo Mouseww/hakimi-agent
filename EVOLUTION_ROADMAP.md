@@ -2,7 +2,7 @@
 
 > **目标**: 让 Hakimi 在功能深度、稳定性和多平台支持上全面超越 Hermes Agent
 
-**当前版本**: v0.5.84  
+**当前版本**: v0.5.88  
 **上次更新**: 2026-07-10  
 **维护模式**: 自动化进化引擎（Always Approve 技术性修复）
 
@@ -172,7 +172,7 @@
   - **完成**: v0.5.73, PR #31, 2026-07-10
 
 #### 里程碑 2.3: 异步 prefetch 记忆 (3天)
-- [ ] **任务 2.3.1**: 实现后台预取任务
+- [x] **任务 2.3.1**: 实现后台预取任务 ✅
   - 文件: `crates/hakimi-context/src/memory.rs`
   - 方法:
     ```rust
@@ -184,13 +184,15 @@
     ```
   - 触发: 会话创建后立即调用
   - 验收: 主循环延迟 < 50ms
+  - **完成**: v0.5.86, PR #45
 
-- [ ] **任务 2.3.2**: 缓存失效策略
+- [x] **任务 2.3.2**: 缓存失效策略 ✅
   - 逻辑:
     - 文件修改时间（mtime）检测
     - 30分钟 TTL
     - 内存上限 10MB
   - 验收: 压力测试无内存泄漏
+  - **完成**: v0.5.86, PR #45（随 TASK 2.3.1 一并实现：mtime 检测、30分钟 TTL、10MB 上限）
 
 ---
 
@@ -374,6 +376,57 @@
   - 对比: 每次 PR 与 main 分支性能差异
   - 阈值: 回归 > 10% 自动 block PR
   - 验收: 性能曲线可视化
+
+---
+
+### Phase 5: 安全插件生态 (Week 13-16)
+
+**目标**: 建立安全、可移植、易开发的 WASM 插件生态
+
+#### 里程碑 5.1: WASM 插件基础设施 (6天)
+
+- [x] **任务 5.1.1**: WASM 插件运行时 ✅
+  - 文件: `crates/hakimi-plugin/src/wasm_loader.rs`
+  - 技术: Wasmtime + WASI + 沙箱资源限制
+  - 验收: 可加载 .wasm 插件，34个单元测试通过
+  - **完成**: v0.5.88, PR #46, 2026-07-10
+
+- [ ] **任务 5.1.2**: WASM Plugin SDK
+  - 文件: `crates/hakimi-plugin-sdk/`
+  - 功能: `#[hakimi_plugin]` 宏、`PluginContext`、宿主函数类型安全封装
+  - 验收: 示例插件可通过 SDK 编译为 wasm32-wasi
+  - 任务文档: `tasks/TASK_5.1.2_wasm_plugin_sdk.md`
+
+- [ ] **任务 5.1.3**: 示例 WASM 插件集合
+  - 示例: hello-world、天气查询、Markdown formatter、JSON validator
+  - 验收: 每个示例均可构建、安装、执行
+
+#### 里程碑 5.2: 插件管理体验 (7天)
+
+- [ ] **任务 5.2.1**: Plugin CLI 命令
+  - 文件: `crates/hakimi-cli/src/commands/plugin.rs`
+  - 命令: `list/install/uninstall/info/test/enable/disable`
+  - 验收: 用户可通过 CLI 完成插件全生命周期管理
+  - 任务文档: `tasks/TASK_5.2.1_plugin_cli.md`
+
+- [ ] **任务 5.2.2**: 插件市场 Registry API
+  - 功能: 远程插件索引、版本管理、校验和验证
+  - 验收: `hakimi plugin search` 和远程安装可用
+
+- [ ] **任务 5.2.3**: WebUI 插件管理界面
+  - 功能: 浏览、安装、启用/禁用、查看日志
+  - 验收: 无需命令行即可管理插件
+
+#### 里程碑 5.3: 插件安全模型 (5天)
+
+- [ ] **任务 5.3.1**: 插件权限清单
+  - 文件: `plugin.toml` / manifest metadata
+  - 权限: filesystem、network、storage、tool_call
+  - 验收: 未声明权限的宿主函数调用被拒绝
+
+- [ ] **任务 5.3.2**: 插件签名和校验
+  - 技术: SHA256 校验和 + 可选 Ed25519 签名
+  - 验收: 安装时校验完整性，篡改插件拒绝加载
 
 ---
 

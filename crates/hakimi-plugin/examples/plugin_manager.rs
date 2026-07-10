@@ -3,9 +3,8 @@ use hakimi_plugin::marketplace::PluginMarketplace;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.len() < 2 {
         print_usage();
         return Ok(());
@@ -81,14 +80,13 @@ fn create_marketplace() -> Result<PluginMarketplace> {
     let plugins_dir = hakimi_dir.join("plugins");
 
     // 使用本地注册表进行测试
-    let registry_url = std::env::var("HAKIMI_PLUGIN_REGISTRY")
-        .unwrap_or_else(|_| {
-            "file://".to_string() + 
-            &std::env::current_dir()
+    let registry_url = std::env::var("HAKIMI_PLUGIN_REGISTRY").unwrap_or_else(|_| {
+        "file://".to_string()
+            + &std::env::current_dir()
                 .unwrap()
                 .join("registry/plugins_registry.yaml")
                 .to_string_lossy()
-        });
+    });
 
     PluginMarketplace::new(registry_url, cache_dir, plugins_dir)
 }
@@ -191,11 +189,7 @@ async fn info(marketplace: &PluginMarketplace, name: &str) -> Result<()> {
     Ok(())
 }
 
-async fn install(
-    marketplace: &PluginMarketplace,
-    name: &str,
-    version: Option<&str>,
-) -> Result<()> {
+async fn install(marketplace: &PluginMarketplace, name: &str, version: Option<&str>) -> Result<()> {
     println!("📦 Installing plugin '{}'...", name);
 
     if let Some(v) = version {

@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
-use crate::{
-    Message, MessageAction, PluginContext, Session, ToolCallAction,
-    ToolCallResultAction,
-};
 use crate::registry::PluginRegistry;
+use crate::{Message, MessageAction, PluginContext, Session, ToolCallAction, ToolCallResultAction};
 use hakimi_common::error::Result;
 
 /// 插件管理器（协调插件生命周期和钩子调用）
@@ -16,16 +13,16 @@ impl PluginManager {
     pub fn new(registry: Arc<PluginRegistry>) -> Self {
         Self { registry }
     }
-    
+
     // === 会话钩子 ===
-    
+
     pub async fn trigger_session_start(
         &self,
         ctx: &PluginContext,
         session: &Session,
     ) -> Result<()> {
         let plugins = self.registry.all().await;
-        
+
         for plugin in plugins {
             if let Err(e) = plugin.on_session_start(ctx, session).await {
                 tracing::error!(
@@ -35,17 +32,13 @@ impl PluginManager {
                 );
             }
         }
-        
+
         Ok(())
     }
-    
-    pub async fn trigger_session_end(
-        &self,
-        ctx: &PluginContext,
-        session: &Session,
-    ) -> Result<()> {
+
+    pub async fn trigger_session_end(&self, ctx: &PluginContext, session: &Session) -> Result<()> {
         let plugins = self.registry.all().await;
-        
+
         for plugin in plugins {
             if let Err(e) = plugin.on_session_end(ctx, session).await {
                 tracing::error!(
@@ -55,19 +48,19 @@ impl PluginManager {
                 );
             }
         }
-        
+
         Ok(())
     }
-    
+
     // === 消息钩子 ===
-    
+
     pub async fn trigger_message_before_send(
         &self,
         ctx: &PluginContext,
         mut message: Message,
     ) -> Result<MessageAction> {
         let plugins = self.registry.all().await;
-        
+
         for plugin in plugins {
             match plugin.on_message_before_send(ctx, message.clone()).await {
                 Ok(MessageAction::Continue(msg)) => {
@@ -82,10 +75,7 @@ impl PluginManager {
                     return Ok(MessageAction::Reject(reason));
                 }
                 Ok(MessageAction::Replace(msg)) => {
-                    tracing::info!(
-                        "Plugin '{}' replaced message",
-                        plugin.metadata().id
-                    );
+                    tracing::info!("Plugin '{}' replaced message", plugin.metadata().id);
                     return Ok(MessageAction::Replace(msg));
                 }
                 Err(e) => {
@@ -97,17 +87,17 @@ impl PluginManager {
                 }
             }
         }
-        
+
         Ok(MessageAction::Continue(message))
     }
-    
+
     pub async fn trigger_message_after_send(
         &self,
         ctx: &PluginContext,
         message: &Message,
     ) -> Result<()> {
         let plugins = self.registry.all().await;
-        
+
         for plugin in plugins {
             if let Err(e) = plugin.on_message_after_send(ctx, message).await {
                 tracing::error!(
@@ -117,17 +107,17 @@ impl PluginManager {
                 );
             }
         }
-        
+
         Ok(())
     }
-    
+
     pub async fn trigger_message_received(
         &self,
         ctx: &PluginContext,
         mut message: Message,
     ) -> Result<MessageAction> {
         let plugins = self.registry.all().await;
-        
+
         for plugin in plugins {
             match plugin.on_message_received(ctx, message.clone()).await {
                 Ok(MessageAction::Continue(msg)) => {
@@ -157,12 +147,12 @@ impl PluginManager {
                 }
             }
         }
-        
+
         Ok(MessageAction::Continue(message))
     }
-    
+
     // === 工具调用钩子 ===
-    
+
     pub async fn trigger_tool_call_before(
         &self,
         ctx: &PluginContext,
@@ -170,9 +160,12 @@ impl PluginManager {
         mut params: serde_json::Value,
     ) -> Result<ToolCallAction> {
         let plugins = self.registry.all().await;
-        
+
         for plugin in plugins {
-            match plugin.on_tool_call_before(ctx, tool_name, params.clone()).await {
+            match plugin
+                .on_tool_call_before(ctx, tool_name, params.clone())
+                .await
+            {
                 Ok(ToolCallAction::Continue(p)) => {
                     params = p;
                 }
@@ -194,10 +187,10 @@ impl PluginManager {
                 }
             }
         }
-        
+
         Ok(ToolCallAction::Continue(params))
     }
-    
+
     pub async fn trigger_tool_call_after(
         &self,
         ctx: &PluginContext,
@@ -205,9 +198,12 @@ impl PluginManager {
         mut result: serde_json::Value,
     ) -> Result<ToolCallResultAction> {
         let plugins = self.registry.all().await;
-        
+
         for plugin in plugins {
-            match plugin.on_tool_call_after(ctx, tool_name, result.clone()).await {
+            match plugin
+                .on_tool_call_after(ctx, tool_name, result.clone())
+                .await
+            {
                 Ok(ToolCallResultAction::Continue(r)) => {
                     result = r;
                 }
@@ -237,7 +233,7 @@ impl PluginManager {
                 }
             }
         }
-        
+
         Ok(ToolCallResultAction::Continue(result))
     }
 }
@@ -245,15 +241,15 @@ impl PluginManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PluginMetadata, HakimiPlugin};
+    use crate::{HakimiPlugin, PluginMetadata};
     use async_trait::async_trait;
     use hakimi_common::error::HakimiError;
-    
+
     struct MockPlugin {
         metadata: PluginMetadata,
         should_reject: bool,
     }
-    
+
     impl MockPlugin {
         fn new(id: &str, should_reject: bool) -> Self {
             Self {
@@ -270,13 +266,13 @@ mod tests {
             }
         }
     }
-    
+
     #[async_trait]
     impl HakimiPlugin for MockPlugin {
         fn metadata(&self) -> &PluginMetadata {
             &self.metadata
         }
-        
+
         async fn on_message_before_send(
             &self,
             _ctx: &PluginContext,
@@ -288,7 +284,7 @@ mod tests {
                 Ok(MessageAction::Continue(message))
             }
         }
-        
+
         async fn on_tool_call_before(
             &self,
             _ctx: &PluginContext,
@@ -296,34 +292,39 @@ mod tests {
             params: serde_json::Value,
         ) -> Result<ToolCallAction> {
             if self.should_reject {
-                Ok(ToolCallAction::Cancel("Cancelled by mock plugin".to_string()))
+                Ok(ToolCallAction::Cancel(
+                    "Cancelled by mock plugin".to_string(),
+                ))
             } else {
                 Ok(ToolCallAction::Continue(params))
             }
         }
     }
-    
+
     #[tokio::test]
     async fn test_trigger_message_before_send_continue() {
         let registry = Arc::new(PluginRegistry::new());
         let plugin = Arc::new(MockPlugin::new("test.plugin", false));
         registry.register(plugin).await.unwrap();
-        
+
         let manager = PluginManager::new(registry);
         let ctx = PluginContext {
             session_id: "session1".to_string(),
             user_id: Some("user1".to_string()),
             config: serde_json::json!({}),
         };
-        
+
         let message = Message {
             id: "msg1".to_string(),
             role: "user".to_string(),
             content: "Hello".to_string(),
             timestamp: 0,
         };
-        
-        let result = manager.trigger_message_before_send(&ctx, message).await.unwrap();
+
+        let result = manager
+            .trigger_message_before_send(&ctx, message)
+            .await
+            .unwrap();
         match result {
             MessageAction::Continue(msg) => {
                 assert_eq!(msg.content, "Hello");
@@ -331,28 +332,31 @@ mod tests {
             _ => panic!("Expected Continue"),
         }
     }
-    
+
     #[tokio::test]
     async fn test_trigger_message_before_send_reject() {
         let registry = Arc::new(PluginRegistry::new());
         let plugin = Arc::new(MockPlugin::new("test.plugin", true));
         registry.register(plugin).await.unwrap();
-        
+
         let manager = PluginManager::new(registry);
         let ctx = PluginContext {
             session_id: "session1".to_string(),
             user_id: Some("user1".to_string()),
             config: serde_json::json!({}),
         };
-        
+
         let message = Message {
             id: "msg1".to_string(),
             role: "user".to_string(),
             content: "Hello".to_string(),
             timestamp: 0,
         };
-        
-        let result = manager.trigger_message_before_send(&ctx, message).await.unwrap();
+
+        let result = manager
+            .trigger_message_before_send(&ctx, message)
+            .await
+            .unwrap();
         match result {
             MessageAction::Reject(reason) => {
                 assert!(reason.contains("Rejected by mock plugin"));
@@ -360,23 +364,26 @@ mod tests {
             _ => panic!("Expected Reject"),
         }
     }
-    
+
     #[tokio::test]
     async fn test_trigger_tool_call_before_continue() {
         let registry = Arc::new(PluginRegistry::new());
         let plugin = Arc::new(MockPlugin::new("test.plugin", false));
         registry.register(plugin).await.unwrap();
-        
+
         let manager = PluginManager::new(registry);
         let ctx = PluginContext {
             session_id: "session1".to_string(),
             user_id: Some("user1".to_string()),
             config: serde_json::json!({}),
         };
-        
+
         let params = serde_json::json!({"key": "value"});
-        let result = manager.trigger_tool_call_before(&ctx, "test_tool", params.clone()).await.unwrap();
-        
+        let result = manager
+            .trigger_tool_call_before(&ctx, "test_tool", params.clone())
+            .await
+            .unwrap();
+
         match result {
             ToolCallAction::Continue(p) => {
                 assert_eq!(p, params);
@@ -384,23 +391,26 @@ mod tests {
             _ => panic!("Expected Continue"),
         }
     }
-    
+
     #[tokio::test]
     async fn test_trigger_tool_call_before_cancel() {
         let registry = Arc::new(PluginRegistry::new());
         let plugin = Arc::new(MockPlugin::new("test.plugin", true));
         registry.register(plugin).await.unwrap();
-        
+
         let manager = PluginManager::new(registry);
         let ctx = PluginContext {
             session_id: "session1".to_string(),
             user_id: Some("user1".to_string()),
             config: serde_json::json!({}),
         };
-        
+
         let params = serde_json::json!({"key": "value"});
-        let result = manager.trigger_tool_call_before(&ctx, "test_tool", params).await.unwrap();
-        
+        let result = manager
+            .trigger_tool_call_before(&ctx, "test_tool", params)
+            .await
+            .unwrap();
+
         match result {
             ToolCallAction::Cancel(reason) => {
                 assert!(reason.contains("Cancelled by mock plugin"));

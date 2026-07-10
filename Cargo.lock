@@ -1811,6 +1811,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "hakimi-plugin-sdk"
+version = "0.1.0"
+dependencies = [
+ "hakimi-plugin-sdk-macro",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "hakimi-plugin-sdk-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "hakimi-server"
 version = "0.5.88"
 dependencies = [

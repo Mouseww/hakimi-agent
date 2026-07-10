@@ -1,0 +1,1 @@
+/root/hakimi-agent/examples/hello-wasm-plugin/target/wasm32-wasip1/release/hello_wasm_plugin.wasm: /root/hakimi-agent/crates/hakimi-plugin-sdk/src/lib.rs /root/hakimi-agent/crates/hakimi-plugin-sdk-macro/src/lib.rs /root/hakimi-agent/examples/hello-wasm-plugin/src/lib.rs

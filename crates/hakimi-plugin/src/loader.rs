@@ -1,22 +1,22 @@
+use crate::{PluginError, PluginMetadata, PluginResult};
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::{PluginMetadata, PluginResult, PluginError};
 
 /// 插件加载器配置
 #[derive(Debug, Clone)]
 pub struct PluginLoaderConfig {
     /// 插件目录路径
     pub plugin_dir: PathBuf,
-    
+
     /// 是否启用热加载
     pub enable_hot_reload: bool,
-    
+
     /// 是否验证插件签名
     pub verify_signature: bool,
-    
+
     /// 允许的插件白名单（为空则允许所有）
     pub allowed_plugins: Vec<String>,
 }
@@ -27,7 +27,7 @@ impl Default for PluginLoaderConfig {
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".hakimi")
             .join("plugins");
-        
+
         Self {
             plugin_dir,
             enable_hot_reload: false,
@@ -41,10 +41,10 @@ impl Default for PluginLoaderConfig {
 pub struct PluginLoader {
     /// 已加载的动态库
     libraries: Arc<RwLock<HashMap<String, Library>>>,
-    
+
     /// 已加载的插件实例（使用 Box 存储 trait object）
     plugins: Arc<RwLock<HashMap<String, Arc<PluginHandle>>>>,
-    
+
     /// 插件配置
     config: PluginLoaderConfig,
 }
@@ -97,27 +97,26 @@ impl PluginLoader {
     /// 1. 仅从可信源加载插件
     /// 2. 启用签名验证
     /// 3. 使用沙箱环境（WASM 或容器）
-    pub async fn load_plugin<P: AsRef<Path>>(
-        &self,
-        library_path: P,
-    ) -> PluginResult<String> {
+    pub async fn load_plugin<P: AsRef<Path>>(&self, library_path: P) -> PluginResult<String> {
         let path = library_path.as_ref();
-        
+
         // 验证文件存在
         if !path.exists() {
-            return Err(PluginError::LoadError(
-                format!("Plugin library not found: {}", path.display())
-            ));
+            return Err(PluginError::LoadError(format!(
+                "Plugin library not found: {}",
+                path.display()
+            )));
         }
 
         // 验证文件扩展名
         let ext = path.extension().and_then(|e| e.to_str());
         match ext {
-            Some("so") | Some("dylib") | Some("dll") => {},
+            Some("so") | Some("dylib") | Some("dll") => {}
             _ => {
-                return Err(PluginError::LoadError(
-                    format!("Invalid library extension: {:?}", ext)
-                ));
+                return Err(PluginError::LoadError(format!(
+                    "Invalid library extension: {:?}",
+                    ext
+                )));
             }
         }
 
@@ -128,9 +127,8 @@ impl PluginLoader {
 
         // 加载动态库
         let library = unsafe {
-            Library::new(path).map_err(|e| {
-                PluginError::LoadError(format!("Failed to load library: {}", e))
-            })?
+            Library::new(path)
+                .map_err(|e| PluginError::LoadError(format!("Failed to load library: {}", e)))?
         };
 
         // 查找插件元数据函数
@@ -139,9 +137,7 @@ impl PluginLoader {
         // pub extern "C" fn plugin_metadata() -> PluginMetadata
         let get_metadata: Symbol<unsafe extern "C" fn() -> PluginMetadata> = unsafe {
             library.get(b"plugin_metadata\0").map_err(|e| {
-                PluginError::LoadError(format!(
-                    "Plugin missing 'plugin_metadata' symbol: {}", e
-                ))
+                PluginError::LoadError(format!("Plugin missing 'plugin_metadata' symbol: {}", e))
             })?
         };
 
@@ -149,12 +145,13 @@ impl PluginLoader {
         let plugin_id = metadata.id.clone();
 
         // 检查白名单
-        if !self.config.allowed_plugins.is_empty() 
-            && !self.config.allowed_plugins.contains(&plugin_id) 
+        if !self.config.allowed_plugins.is_empty()
+            && !self.config.allowed_plugins.contains(&plugin_id)
         {
-            return Err(PluginError::PermissionDenied(
-                format!("Plugin '{}' not in allowed list", plugin_id)
-            ));
+            return Err(PluginError::PermissionDenied(format!(
+                "Plugin '{}' not in allowed list",
+                plugin_id
+            )));
         }
 
         // 创建插件句柄
@@ -163,7 +160,10 @@ impl PluginLoader {
         });
 
         // 存储库和插件
-        self.libraries.write().await.insert(plugin_id.clone(), library);
+        self.libraries
+            .write()
+            .await
+            .insert(plugin_id.clone(), library);
         self.plugins.write().await.insert(plugin_id.clone(), handle);
 
         tracing::info!("Loaded plugin: {} v{}", metadata.name, metadata.version);
@@ -181,7 +181,7 @@ impl PluginLoader {
     pub async fn unload_plugin(&self, plugin_id: &str) -> PluginResult<()> {
         // 移除插件实例
         self.plugins.write().await.remove(plugin_id);
-        
+
         // 卸载动态库
         self.libraries.write().await.remove(plugin_id);
 
@@ -193,10 +193,10 @@ impl PluginLoader {
     pub async fn reload_plugin(&self, plugin_id: &str) -> PluginResult<()> {
         // 查找插件路径
         let path = self.find_plugin_path(plugin_id)?;
-        
+
         // 卸载旧版本
         self.unload_plugin(plugin_id).await?;
-        
+
         // 加载新版本
         self.load_plugin(&path).await?;
 
@@ -207,14 +207,17 @@ impl PluginLoader {
     /// 列出已加载插件
     pub async fn list_plugins(&self) -> Vec<PluginMetadata> {
         let plugins = self.plugins.read().await;
-        plugins.values()
+        plugins
+            .values()
             .map(|handle| handle.metadata.clone())
             .collect()
     }
 
     /// 获取插件元数据
     pub async fn get_plugin_metadata(&self, plugin_id: &str) -> Option<PluginMetadata> {
-        self.plugins.read().await
+        self.plugins
+            .read()
+            .await
             .get(plugin_id)
             .map(|handle| handle.metadata.clone())
     }
@@ -230,7 +233,7 @@ impl PluginLoader {
         // 1. 读取 .sig 文件
         // 2. 计算库文件 SHA256
         // 3. 验证签名
-        
+
         tracing::warn!("Plugin signature verification not implemented yet");
         Ok(())
     }
@@ -238,7 +241,7 @@ impl PluginLoader {
     /// 查找插件动态库路径
     fn find_plugin_path(&self, plugin_id: &str) -> PluginResult<PathBuf> {
         let plugin_dir = &self.config.plugin_dir;
-        
+
         // 尝试多种扩展名
         let extensions = if cfg!(target_os = "linux") {
             vec!["so"]
@@ -256,7 +259,7 @@ impl PluginLoader {
             if path.exists() {
                 return Ok(path);
             }
-            
+
             // 尝试不带 lib 前缀的名称（Windows 风格）
             let path = plugin_dir.join(format!("{}.{}", plugin_id, ext));
             if path.exists() {
@@ -264,9 +267,10 @@ impl PluginLoader {
             }
         }
 
-        Err(PluginError::NotFound(
-            format!("Plugin library not found: {}", plugin_id)
-        ))
+        Err(PluginError::NotFound(format!(
+            "Plugin library not found: {}",
+            plugin_id
+        )))
     }
 
     /// 启动文件监控（热加载）
@@ -277,7 +281,7 @@ impl PluginLoader {
 
         // TODO: 使用 notify crate 监控插件目录
         // 当检测到 .so/.dylib/.dll 文件变化时，自动 reload_plugin()
-        
+
         tracing::info!("Plugin hot-reload enabled (not implemented yet)");
         Ok(())
     }
@@ -297,7 +301,7 @@ mod tests {
     async fn test_plugin_loader_creation() {
         let config = PluginLoaderConfig::default();
         let loader = PluginLoader::new(config);
-        
+
         assert_eq!(loader.list_plugins().await.len(), 0);
     }
 
@@ -308,10 +312,10 @@ mod tests {
             ..Default::default()
         };
         let loader = PluginLoader::new(config);
-        
+
         let result = loader.find_plugin_path("nonexistent_plugin");
         assert!(result.is_err());
-        
+
         match result {
             Err(PluginError::NotFound(msg)) => {
                 assert!(msg.contains("nonexistent_plugin"));
@@ -324,10 +328,10 @@ mod tests {
     async fn test_load_plugin_file_not_found() {
         let config = PluginLoaderConfig::default();
         let loader = PluginLoader::new(config);
-        
+
         let result = loader.load_plugin("/nonexistent/plugin.so").await;
         assert!(result.is_err());
-        
+
         match result {
             Err(PluginError::LoadError(msg)) => {
                 assert!(msg.contains("not found"));
@@ -347,10 +351,10 @@ mod tests {
 
         let config = PluginLoaderConfig::default();
         let loader = PluginLoader::new(config);
-        
+
         let result = loader.load_plugin(&invalid_file).await;
         assert!(result.is_err());
-        
+
         match result {
             Err(PluginError::LoadError(msg)) => {
                 assert!(msg.contains("Invalid library extension"));
@@ -363,7 +367,7 @@ mod tests {
     async fn test_unload_nonexistent_plugin() {
         let config = PluginLoaderConfig::default();
         let loader = PluginLoader::new(config);
-        
+
         // 卸载不存在的插件应该成功（幂等操作）
         let result = loader.unload_plugin("nonexistent").await;
         assert!(result.is_ok());
@@ -377,7 +381,7 @@ mod tests {
             ..Default::default()
         };
         let loader = PluginLoader::new(config);
-        
+
         // 测试白名单逻辑（虽然会在加载时失败，但可以验证结构）
         assert_eq!(loader.config.allowed_plugins.len(), 1);
     }

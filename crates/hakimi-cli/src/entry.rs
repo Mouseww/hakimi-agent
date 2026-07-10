@@ -957,9 +957,10 @@ fn plugin_list_response(args: &[String]) -> String {
         Err(err) if err.starts_with("Usage:") => return err,
         Err(err) => return format!("❌ {err}\n{}", plugin_list_help_response()),
     };
-    plugin_list_response_with_loader(hakimi_plugin::PluginLoader::new(
-        hakimi_plugin::PluginLoaderConfig::default()
-    ), options)
+    plugin_list_response_with_loader(
+        hakimi_plugin::PluginLoader::new(hakimi_plugin::PluginLoaderConfig::default()),
+        options,
+    )
 }
 
 fn plugin_help_response() -> String {
@@ -991,9 +992,8 @@ fn top_level_plugins_response(args: &[String]) -> String {
         "list" | "ls" => plugin_list_response(&args[1..]),
         "templates" | "template" => plugin_templates_response(),
         "path" => {
-            let loader = hakimi_plugin::PluginLoader::new(
-                hakimi_plugin::PluginLoaderConfig::default()
-            );
+            let loader =
+                hakimi_plugin::PluginLoader::new(hakimi_plugin::PluginLoaderConfig::default());
             format!("📦 Plugin directory: `{}`", loader.plugin_dir().display())
         }
         "init" => {
@@ -1004,9 +1004,8 @@ fn top_level_plugins_response(args: &[String]) -> String {
                 );
             };
             let plugin_name = args.get(2).map(String::as_str).unwrap_or(template_name);
-            let loader = hakimi_plugin::PluginLoader::new(
-                hakimi_plugin::PluginLoaderConfig::default()
-            );
+            let loader =
+                hakimi_plugin::PluginLoader::new(hakimi_plugin::PluginLoaderConfig::default());
             match write_plugin_template_to_dir(template_name, plugin_name, loader.plugin_dir()) {
                 Ok(path) => format!(
                     "✅ Plugin template `{template_name}` created at {}",
@@ -6594,7 +6593,7 @@ Just send a message to chat with me!"
                     let file_mem = hakimi_context::FileMemoryProvider::new(
                         memory_dir.to_str().unwrap_or("memory"),
                     );
-                    
+
                     // Asynchronously prefetch memory files into cache (non-blocking)
                     if file_mem.is_available() {
                         let file_mem_clone = file_mem.clone();
@@ -6603,7 +6602,7 @@ Just send a message to chat with me!"
                                 tracing::warn!("Failed to prefetch memory files: {}", e);
                             }
                         });
-                        
+
                         let text = file_mem.system_prompt_block();
                         if !text.is_empty() {
                             memory_text.push_str(&text);

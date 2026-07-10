@@ -1,0 +1,17 @@
+[package]
+name = "hello-wasm-plugin"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hakimi Team"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hakimi-plugin-sdk = { path = "../../crates/hakimi-plugin-sdk" }
+
+[profile.release]
+opt-level = "z"     # 优化体积
+lto = true          # 链接时优化
+codegen-units = 1   # 单个代码生成单元
+strip = true        # 移除符号

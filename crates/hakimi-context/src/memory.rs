@@ -61,7 +61,7 @@ impl FileMemoryProvider {
     /// in the background, improving first-byte time for the first request.
     pub async fn prefetch_all(&self) -> std::io::Result<()> {
         debug!("Starting async memory prefetch");
-        
+
         if !self.is_available() {
             debug!("Memory directory not available, skipping prefetch");
             return Ok(());
@@ -93,7 +93,7 @@ impl FileMemoryProvider {
         });
 
         futures::future::join_all(futures).await;
-        
+
         let stats = self.cache.stats().await;
         debug!(
             entries = stats.entry_count,
