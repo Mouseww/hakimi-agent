@@ -29,7 +29,37 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.70)
+## ✨ Recent Updates (v0.5.71)
+
+**🚨 错误追踪系统 (任务 1.1.3) — 完成：**
+
+**核心功能：**
+- ✅ **错误分类系统** — 9 种错误类别（Network, Database, FileSystem, Configuration, Authentication, Business, ExternalService, Internal, Unknown）
+- ✅ **严重程度分级** — 4 级严重程度（Low, Medium, High, Critical）
+- ✅ **错误恢复策略** — 支持自动重试，可配置最大重试次数
+- ✅ **错误统计分析** — 实时统计错误分布、恢复状态
+- ✅ **错误过滤查询** — 按类别、严重程度筛选错误
+- ✅ **上下文记录** — 支持键值对上下文和堆栈追踪
+
+**API 端点：**
+- ✅ `GET /api/errors/stats` — 获取错误统计
+- ✅ `GET /api/errors` — 获取所有错误
+- ✅ `GET /api/errors/unrecovered` — 获取未恢复错误
+- ✅ `GET /api/errors/category/:category` — 按类别获取错误
+- ✅ `POST /api/errors/:id/recover` — 尝试恢复错误
+- ✅ `DELETE /api/errors` — 清除所有错误
+- ✅ `DELETE /api/errors/recovered` — 清除已恢复错误
+
+**技术实现：**
+- 线程安全的错误存储（Mutex）
+- 全局单例模式
+- 自动清理旧错误（防止内存溢出）
+- `track_error!` 宏简化错误记录
+- RecoveryStrategy trait 支持自定义恢复逻辑
+
+---
+
+**Previous: v0.5.70**
 
 **🌲 WebUI 会话树可视化 (任务 2.1.4) — Phase 2 完成：**
 
