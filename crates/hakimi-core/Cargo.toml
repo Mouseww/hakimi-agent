@@ -26,3 +26,6 @@ futures = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
 once_cell = { workspace = true }
+
+[lints]
+workspace = true

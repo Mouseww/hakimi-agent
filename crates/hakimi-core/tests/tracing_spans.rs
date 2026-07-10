@@ -4,7 +4,7 @@
 //! configured and emits spans during core operations.
 
 use hakimi_core::AIAgent;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Helper to initialize tracing for tests
 fn init_tracing() {

@@ -470,6 +470,26 @@ pub struct SessionMessagesResponse {
     pub messages: Vec<SessionMessageInfo>,
 }
 
+/// Response body for GET /sessions/:id/tree.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionTreeResponse {
+    /// Current session (the one requested)
+    pub current: SessionInfo,
+    /// Root session of this lineage
+    pub root: SessionInfo,
+    /// Complete lineage from root to current
+    pub lineage: Vec<SessionInfo>,
+    /// Child sessions tree
+    pub children: Vec<SessionTreeNode>,
+}
+
+/// A node in the session tree representing a session and its children.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionTreeNode {
+    pub session: SessionInfo,
+    pub children: Vec<SessionTreeNode>,
+}
+
 /// Simplified tool call information for session message responses.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ToolCallInfo {
@@ -2456,6 +2476,7 @@ pub fn build_router(state: AppState) -> Router {
             "/sessions/{id}/messages/{message_id}",
             delete(delete_session_message),
         )
+        .route("/sessions/{id}/tree", get(get_session_tree))
         .route("/sessions/{id}/fork", post(fork_session))
         .route("/tools", get(list_tools))
         .route("/config", get(get_config))
@@ -5653,6 +5674,85 @@ async fn get_session_messages(
             format!("Failed to get session messages: {e}"),
         )),
     }
+}
+
+/// GET /sessions/:id/tree — get session lineage tree (parent/child relationships)
+async fn get_session_tree(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<SessionTreeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    use hakimi_session::SessionOps;
+
+    let db = state.session_db.lock().await;
+
+    // Get current session
+    let current = match db.get_session(&id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session: {e}"),
+        )
+    })? {
+        Some(meta) => meta,
+        None => {
+            return Err(api_error(
+                StatusCode::NOT_FOUND,
+                format!("Session not found: {id}"),
+            ));
+        }
+    };
+
+    // Get root session
+    let root = db.get_root_session_meta(&id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get root session: {e}"),
+        )
+    })?;
+
+    // Get complete lineage (from root to current)
+    let lineage = db.get_session_lineage(&id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session lineage: {e}"),
+        )
+    })?;
+
+    // Get children tree recursively
+    let children = get_session_tree_recursive(&db, &id).map_err(|e| {
+        api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get session tree: {e}"),
+        )
+    })?;
+
+    Ok(Json(SessionTreeResponse {
+        current: SessionInfo::from(current),
+        root: SessionInfo::from(root),
+        lineage: lineage.into_iter().map(SessionInfo::from).collect(),
+        children,
+    }))
+}
+
+/// Helper function to recursively build session tree
+fn get_session_tree_recursive(
+    db: &hakimi_session::SessionDB,
+    session_id: &str,
+) -> Result<Vec<SessionTreeNode>, anyhow::Error> {
+    use hakimi_session::SessionOps;
+
+    let children = db.get_child_sessions(session_id)?;
+
+    let mut tree_nodes = Vec::new();
+    for child in children {
+        let child_id = child.id.clone();
+        let child_children = get_session_tree_recursive(db, &child_id)?;
+        tree_nodes.push(SessionTreeNode {
+            session: SessionInfo::from(child),
+            children: child_children,
+        });
+    }
+
+    Ok(tree_nodes)
 }
 
 /// GET /tools — list all available tools registered in the agent.

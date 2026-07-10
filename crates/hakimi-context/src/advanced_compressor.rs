@@ -371,6 +371,7 @@ impl AdvancedCompressor {
     }
 
     /// Generate informative one-line summary for a tool result
+    #[allow(dead_code)]
     fn summarize_tool_result(tool_name: &str, content_len: usize) -> String {
         match tool_name {
             "terminal" => format!("[terminal] command output ({} chars)", content_len),

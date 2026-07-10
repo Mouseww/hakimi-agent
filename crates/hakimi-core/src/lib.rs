@@ -8,10 +8,10 @@ pub mod dispatch_learner;
 // pub mod dispatched_agent; // TODO: waiting for ModelDispatcher implementation
 // pub mod dispatched_delegate; // TODO: waiting for ModelDispatcher implementation
 pub mod error_classifier;
-pub mod metrics;
 pub mod file_safety;
 pub mod guardrails;
 pub mod loop_impl;
+pub mod metrics;
 pub mod model_dispatch;
 // pub mod model_dispatcher; // TODO: 需要 ComplexityAnalyzer 结构体实现
 pub mod persona;

@@ -29,3 +29,6 @@ path = "examples/simple_bot.rs"
 [[example]]
 name = "advanced_bot"
 path = "examples/advanced_bot.rs"
+
+[lints]
+workspace = true

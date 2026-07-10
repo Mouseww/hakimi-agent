@@ -98,3 +98,13 @@ ring = "0.17"
 
 # Interactive prompts
 dialoguer = "0.11"
+
+[workspace.lints.clippy]
+# Allow large error types - we use anyhow extensively
+result_large_err = "allow"
+# Allow common Rust patterns
+collapsible_if = "allow"
+wildcard_in_or_patterns = "allow"
+unwrap_or_default = "allow"
+assertions_on_constants = "allow"
+expect_fun_call = "allow"

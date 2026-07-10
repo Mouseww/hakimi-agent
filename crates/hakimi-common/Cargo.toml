@@ -17,3 +17,6 @@ tokio = { workspace = true }
 dirs = { workspace = true }
 tracing = { workspace = true }
 rusqlite = { workspace = true, optional = true }
+
+[lints]
+workspace = true

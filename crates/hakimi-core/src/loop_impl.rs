@@ -4,7 +4,7 @@ use hakimi_common::{
     ToolDefinition, Usage,
 };
 use hakimi_transports::{RequestParams, StreamAccumulator, StreamEvent};
-use tracing::{debug, info, warn, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::agent::AIAgent;
 use crate::budget::IterationBudget;
@@ -107,11 +107,11 @@ pub async fn run_loop_streaming(agent: &mut AIAgent) -> Result<ConversationResul
 /// Shared inner loop — `streaming` controls how the response is fetched.
 async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<ConversationResult> {
     use crate::metrics::{ConversationMetrics, MetricsTimer};
-    
+
     // Start metrics collection
     let conversation_timer = MetricsTimer::start();
     let mut metrics = ConversationMetrics::new();
-    
+
     let budget = IterationBudget::new(agent.max_iterations);
     let mut total_usage = Usage::default();
     let mut api_call_count: usize = 0;

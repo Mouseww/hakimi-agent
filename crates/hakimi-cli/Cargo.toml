@@ -49,3 +49,6 @@ fs2 = "0.4"
 
 [dev-dependencies]
 chrono = { workspace = true }
+
+[lints]
+workspace = true
