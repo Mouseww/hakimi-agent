@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.84] - 2026-07-10
+
+### Added
+- 架构设计文档 (TASK 4.2.1) ✅
+  - 新增 `docs/ARCHITECTURE.md` - 完整架构设计文档
+  - 模块依赖架构图（Mermaid）
+  - 请求处理数据流图（Mermaid）
+  - 会话与搜索架构图（Mermaid）
+  - 记忆与上下文架构图（Mermaid）
+  - 插件生命周期图（Mermaid）
+  - 详细说明 21 个 crate 的职责
+  - 工具/技能/插件的边界说明
+  - 配置与运行时目录结构
+  - 可观测性策略说明
+  - 贡献设计原则
+  - 30 分钟快速阅读路径
+
+### Technical Details
+- **docs/ARCHITECTURE.md** (13KB+): 完整架构文档
+- 包含 5 个 Mermaid 图表
+- 覆盖入口层、核心能力层、基础设施层
+- 新贡献者可在 30 分钟内理解整体架构
+- 任务文档: `tasks/TASK_4.2.1_architecture_doc.md`
+
 ## [0.5.82] - 2026-07-10
 
 ### Added
