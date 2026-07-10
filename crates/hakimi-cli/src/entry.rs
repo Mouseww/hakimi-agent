@@ -6594,7 +6594,16 @@ Just send a message to chat with me!"
                     let file_mem = hakimi_context::FileMemoryProvider::new(
                         memory_dir.to_str().unwrap_or("memory"),
                     );
+                    
+                    // Asynchronously prefetch memory files into cache (non-blocking)
                     if file_mem.is_available() {
+                        let file_mem_clone = file_mem.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = file_mem_clone.prefetch_all().await {
+                                tracing::warn!("Failed to prefetch memory files: {}", e);
+                            }
+                        });
+                        
                         let text = file_mem.system_prompt_block();
                         if !text.is_empty() {
                             memory_text.push_str(&text);
