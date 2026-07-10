@@ -3,6 +3,9 @@ name = "hakimi-transports"
 version.workspace = true
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 hakimi-common = { path = "../hakimi-common" }
 serde = { workspace = true }

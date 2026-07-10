@@ -98,3 +98,7 @@ ring = "0.17"
 
 # Interactive prompts
 dialoguer = "0.11"
+
+[workspace.lints.clippy]
+# Allow large error types - we use anyhow extensively
+result_large_err = "allow"
