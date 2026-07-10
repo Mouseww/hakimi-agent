@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.85] - 2026-07-10
+
+### Fixed
+- 修复 axum 0.8 路由语法兼容性问题
+  - 更新路径参数语法从 `:param` 到 `{param}`
+  - 修复 `/errors/category/{category}` 和 `/errors/{id}/recover` 路由
+  - 解决了测试中的路由段格式错误
+
 ## [0.5.84] - 2026-07-10
 
 ### Added
