@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.80-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.81-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,7 +29,86 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.80)
+## ✨ Recent Updates (v0.5.81)
+
+**🔌 插件动态加载机制 (TASK 4.1.2) — 完成：**
+
+**核心功能：**
+- ✅ **动态库加载** — 基于 `libloading` 实现 .so/.dylib/.dll 加载
+- ✅ **插件配置** — YAML 配置文件支持（plugins.yaml）
+- ✅ **路径自动发现** — 自动在插件目录查找动态库
+- ✅ **白名单机制** — 可选的插件白名单保护
+- ✅ **热加载框架** — 支持插件重载的基础设施
+- ✅ **示例插件** — 完整的插件开发模板
+
+**插件加载器 API：**
+```rust
+// 创建加载器
+let config = PluginLoaderConfig {
+    plugin_dir: PathBuf::from("~/.hakimi/plugins"),
+    enable_hot_reload: true,
+    verify_signature: false,
+    allowed_plugins: vec![],
+};
+let loader = PluginLoader::new(config);
+
+// 加载插件
+loader.load_plugin("/path/to/libplugin.so").await?;
+
+// 根据 ID 加载（自动查找路径）
+loader.load_plugin_by_id("my_plugin").await?;
+
+// 重载插件（热更新）
+loader.reload_plugin("my_plugin").await?;
+
+// 列出已加载插件
+let plugins = loader.list_plugins().await;
+```
+
+**插件配置示例（~/.hakimi/plugins.yaml）：**
+```yaml
+plugin_dir: ~/.hakimi/plugins
+enable_hot_reload: true
+verify_signature: false
+
+plugins:
+  - id: logger
+    enabled: true
+    config:
+      level: info
+  
+  - id: rate_limiter
+    enabled: false
+```
+
+**开发者工具：**
+- 📚 插件开发指南（`docs/plugin_development_guide.md`）
+- 🔧 示例插件项目（`examples/example_plugin/`）
+- ✅ 24 个单元测试全部通过
+- 🔒 FFI 安全指南和最佳实践
+
+**技术细节：**
+- `libloading` 跨平台动态库加载
+- `serde_yaml` 配置文件解析
+- `notify` 文件监控（热加载基础）
+- 自动符号查找和验证
+- ABI 兼容性考虑
+
+**安全特性：**
+- 插件白名单机制（可选）
+- 签名验证框架（待实现）
+- FFI 边界安全检查
+- 完善的错误处理
+
+**下一步：**
+- TASK 4.1.3: 插件市场原型
+- 增强热加载监控（文件变化自动重载）
+- 实现插件签名验证
+- WASM 沙箱支持（长期计划）
+
+---
+
+## ✨ Previous Updates (v0.5.80)
 
 **🔌 插件系统基础架构 (TASK 4.1.1) — 完成：**
 

@@ -1,5 +1,6 @@
 pub mod manager;
 pub mod registry;
+pub mod config;
 
 // Legacy plugin loader stub for backward compatibility
 pub mod loader;
@@ -8,9 +9,39 @@ pub use loader::PluginLoader;
 use async_trait::async_trait;
 use hakimi_common::error::Result;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// 插件特定错误类型
+#[derive(Debug, Error)]
+pub enum PluginError {
+    #[error("Plugin load error: {0}")]
+    LoadError(String),
+    
+    #[error("Plugin not found: {0}")]
+    NotFound(String),
+    
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+    
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
+    
+    #[error("Initialization error: {0}")]
+    InitError(String),
+    
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
+// 为方便使用，定义插件专用的 Result 类型
+pub type PluginResult<T> = std::result::Result<T, PluginError>;
+
+// 重新导出 config
+pub use config::{PluginsConfig, PluginEntry};
 
 /// 插件元数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[repr(C)]
 pub struct PluginMetadata {
     /// 插件唯一标识（建议使用反向域名，如 com.example.my-plugin）
     pub id: String,

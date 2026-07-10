@@ -1,0 +1,14 @@
+[package]
+name = "example-plugin"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hakimi Team"]
+
+# 独立工作区，不加入主工作区
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]  # 生成动态库
+
+[dependencies]
+hakimi-plugin = { path = "../../crates/hakimi-plugin" }
