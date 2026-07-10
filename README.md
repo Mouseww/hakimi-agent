@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.86-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.87-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -30,8 +30,36 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.86)
+## ✨ Recent Updates (v0.5.87)
 
+**🎨 WASM 插件运行时 (TASK 5.1.1) — 进行中：**
+
+**核心功能：**
+- ✨ **WasmPluginLoader** — 基于 Wasmtime 16.0 的安全 WASM 运行时
+  - 编译和实例化 WASM 模块
+  - 异步加载/卸载插件 API
+  - 插件元数据自动提取（从 WASM 内存读取 JSON）
+- 🔒 **安全沙箱** — 资源隔离和限制
+  - 内存限制 128MB（可配置）
+  - 堆栈限制 1MB
+  - 执行超时 5秒（基于 fuel）
+  - 表大小限制 10000
+- 🌐 **WASI 支持** — WebAssembly System Interface
+  - 标准输入输出继承
+  - 预打开目录配置
+  - 文件系统访问控制
+- 🔌 **宿主函数** — Hakimi 集成接口
+  - log 日志记录（已实现）
+  - http_request HTTP 请求（占位符）
+  - 可扩展架构支持更多宿主函数
+
+**技术细节：**
+- 特性门控：`cargo build --features wasm`
+- 测试覆盖：34/34 单元测试通过 ✅
+- 跨平台：同一 .wasm 文件可在 Linux/macOS/Windows 运行
+- PR: #46
+
+**v0.5.86 更新：**
 **⚡ 性能优化 — 异步记忆预取机制 (TASK 2.3.1) — 完成：**
 
 **核心功能：**
@@ -1141,7 +1169,7 @@ RUST_LOG=debug cargo run -p hakimi-cli
 - [x] Mixture-of-Agents reasoning via OpenRouter
 - [x] OpenRouter, Anthropic, and Codex account usage display in gateway `/usage`
 - [x] Basic Hakimi WebUI operator console
-- [ ] WASM plugin runtime
+- [~] WASM plugin runtime (in progress - TASK 5.1.1, PR #46)
 - [ ] Web dashboard PTY terminal, session-scoped streaming, and full Kanban UI
 
 ---
