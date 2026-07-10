@@ -6551,7 +6551,8 @@ pub async fn get_errors() -> Result<Json<Vec<hakimi_metrics::ErrorRecord>>, Stat
 }
 
 /// GET /api/errors/unrecovered — Get unrecovered errors
-pub async fn get_unrecovered_errors() -> Result<Json<Vec<hakimi_metrics::ErrorRecord>>, StatusCode> {
+pub async fn get_unrecovered_errors() -> Result<Json<Vec<hakimi_metrics::ErrorRecord>>, StatusCode>
+{
     let errors = hakimi_metrics::error_tracker::global().get_unrecovered_errors();
     Ok(Json(errors))
 }
@@ -6561,7 +6562,7 @@ pub async fn get_errors_by_category(
     Path(category): Path<String>,
 ) -> Result<Json<Vec<hakimi_metrics::ErrorRecord>>, StatusCode> {
     use hakimi_metrics::ErrorCategory;
-    
+
     let category = match category.as_str() {
         "network" => ErrorCategory::Network,
         "database" => ErrorCategory::Database,
@@ -6574,7 +6575,7 @@ pub async fn get_errors_by_category(
         "unknown" => ErrorCategory::Unknown,
         _ => return Err(StatusCode::BAD_REQUEST),
     };
-    
+
     let errors = hakimi_metrics::error_tracker::global().get_errors_by_category(category);
     Ok(Json(errors))
 }
@@ -6584,7 +6585,9 @@ pub async fn attempt_error_recovery(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     match hakimi_metrics::error_tracker::global().attempt_recovery(&id) {
-        Ok(()) => Ok(Json(json!({"success": true, "message": "Recovery successful"}))),
+        Ok(()) => Ok(Json(
+            json!({"success": true, "message": "Recovery successful"}),
+        )),
         Err(e) => Ok(Json(json!({"success": false, "error": e}))),
     }
 }

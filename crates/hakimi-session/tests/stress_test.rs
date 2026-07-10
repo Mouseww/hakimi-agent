@@ -105,7 +105,7 @@ fn test_10k_messages_search_performance() {
     if let Some(result) = search_results.first() {
         let around_start = Instant::now();
         let (around_results, _, _) = db
-            .get_messages_around(&session_id, result.message_id, 50)
+            .get_messages_around(&session_id, result.message_id, 50, None)
             .expect("Failed to get messages around");
 
         let around_duration = around_start.elapsed();
@@ -130,7 +130,7 @@ fn test_10k_messages_search_performance() {
     let bookends_start = Instant::now();
 
     let (first, last) = db
-        .get_bookends(&session_id, 1)
+        .get_bookends(&session_id, 1, None)
         .expect("Failed to get bookends");
 
     let bookends_duration = bookends_start.elapsed();
@@ -257,7 +257,7 @@ fn test_boundary_empty_session() {
     assert!(messages.is_empty(), "Empty session should have no messages");
 
     let (first, last) = db
-        .get_bookends(&session_id, 1)
+        .get_bookends(&session_id, 1, None)
         .expect("Failed to get bookends");
     assert!(
         first.is_empty() && last.is_empty(),
@@ -292,13 +292,13 @@ fn test_boundary_single_message_session() {
     let search_results = db.search_messages("only", 1).expect("Failed to search");
     if let Some(result) = search_results.first() {
         let (around, _, _) = db
-            .get_messages_around(&session_id, result.message_id, 10)
+            .get_messages_around(&session_id, result.message_id, 10, None)
             .expect("Failed");
         assert_eq!(around.len(), 1, "Should return only the single message");
     }
 
     // Test bookends with single message
-    let (first, last) = db.get_bookends(&session_id, 1).expect("Failed");
+    let (first, last) = db.get_bookends(&session_id, 1, None).expect("Failed");
     assert_eq!(first.len(), 1, "Should return single message");
     assert_eq!(last.len(), 1, "Should return single message");
 }
