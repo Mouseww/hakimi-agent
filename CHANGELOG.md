@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.5.82] - 2026-07-10
+
+### Added
+- 插件市场原型系统 (TASK_4.1.3) ✅
+  - 新增 `PluginMarketplace` - 插件市场管理器
+  - 新增 `PluginMetadata`, `PluginRegistry`, `InstalledPlugin` 数据模型
+  - 支持从远程 URL 拉取插件注册表
+  - 支持从 GitHub Releases 下载插件
+  - SHA256 校验和验证机制
+  - 插件版本管理和更新检查
+  - 插件搜索功能（名称、描述模糊匹配）
+  - 本地插件清单管理（installed.yaml）
+  - 跨平台支持（Linux/macOS/Windows）
+  - CLI 示例工具（plugin_manager example）
+  - 官方插件注册表（registry/plugins_registry.yaml）
+
+### Technical Details
+- **models.rs** (180+ 行): 插件市场数据模型
+- **marketplace.rs** (300+ 行): 市场管理器核心逻辑
+- **examples/plugin_manager.rs** (240+ 行): CLI 工具示例
+- **registry/plugins_registry.yaml**: 官方插件注册表
+- 新增依赖: reqwest, anyhow, chrono
+- 单元测试: 31 passed
+- 测试覆盖: marketplace 功能完整测试
+
+### Usage
+```bash
+# 列出可用插件
+cargo run --example plugin_manager available
+
+# 安装插件
+cargo run --example plugin_manager install logger
+
+# 检查更新
+cargo run --example plugin_manager updates
+```
+
 ## [0.5.81] - 2026-07-10
 
 ### Added

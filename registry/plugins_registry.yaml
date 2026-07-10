@@ -1,0 +1,49 @@
+version: "1.0"
+plugins:
+  - name: logger
+    display_name: "Session Logger"
+    description: "Records all session events to structured log files for auditing and analysis"
+    author: "Hakimi Team"
+    version: "0.1.0"
+    repository: "https://github.com/hakimi-team/plugin-logger"
+    release_url: "https://github.com/hakimi-team/plugin-logger/releases/download/v0.1.0"
+    platforms:
+      linux: "liblogger.so"
+      macos: "liblogger.dylib"
+      windows: "logger.dll"
+    checksum:
+      linux: "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+      macos: "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+      windows: "sha256:0000000000000000000000000000000000000000000000000000000000000003"
+  
+  - name: analytics
+    display_name: "Usage Analytics"
+    description: "Collects anonymous usage statistics and generates insights about agent interactions"
+    author: "Community Contributors"
+    version: "0.2.1"
+    repository: "https://github.com/hakimi-community/plugin-analytics"
+    release_url: "https://github.com/hakimi-community/plugin-analytics/releases/download/v0.2.1"
+    platforms:
+      linux: "libanalytics.so"
+      macos: "libanalytics.dylib"
+      windows: "analytics.dll"
+    checksum:
+      linux: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      macos: "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      windows: "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  
+  - name: notification
+    display_name: "Smart Notifications"
+    description: "Sends desktop notifications for important events and long-running tasks"
+    author: "Hakimi Team"
+    version: "0.3.0"
+    repository: "https://github.com/hakimi-team/plugin-notification"
+    release_url: "https://github.com/hakimi-team/plugin-notification/releases/download/v0.3.0"
+    platforms:
+      linux: "libnotification.so"
+      macos: "libnotification.dylib"
+      windows: "notification.dll"
+    checksum:
+      linux: "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      macos: "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+      windows: "sha256:6666666666666666666666666666666666666666666666666666666666666666"
