@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.5.89] - 2026-07-10
+
+### Added
+- **WASM Plugin SDK (TASK 5.1.2)** — 简化 WASM 插件开发 ✅
+  - `hakimi-plugin-sdk` crate：高级插件开发 SDK
+  - `hakimi-plugin-sdk-macro` crate：`#[hakimi_plugin]` 过程宏
+  - `#[hakimi_plugin]` 宏自动生成：
+    - `__hakimi_plugin_metadata()` 元数据导出函数
+    - `__hakimi_plugin_init/execute/shutdown()` 生命周期函数
+    - 零样板代码插件定义
+  - `PluginContext` 提供宿主功能访问：
+    - `log(level, message)` 日志记录（已实现）
+    - `http_get(url)` HTTP 请求（接口预留）
+  - `PluginResult<T>` 标准返回类型 (`Result<T, String>`)
+  - 非 WASM 环境测试支持（模拟宿主函数输出到 stderr）
+  - 示例插件：`examples/hello-wasm-plugin`
+    - 完整构建文档和 README
+    - 48KB 优化后体积（wasm32-wasip1 + release + strip）
+    - 工作区排除配置（独立构建）
+  
+### Technical Details
+- **文件**: 
+  - `crates/hakimi-plugin-sdk/src/lib.rs` (186 行)
+  - `crates/hakimi-plugin-sdk-macro/src/lib.rs` (141 行)
+  - `examples/hello-wasm-plugin/` (示例)
+- **依赖**: 
+  - serde 1.0, serde_json 1.0
+  - syn 2.0, quote 1.0, proc-macro2 1.0
+- **测试覆盖**: 3个单元测试全部通过
+- **构建目标**: wasm32-wasip1（Rust 新标准，替代 wasm32-wasi）
+- **特性**: cdylib + rlib 混合类型，支持库复用
+
+### Developer Experience
+- 插件开发从 ~200 行模板代码简化到 ~15 行
+- 完整类型安全：编译时检查宿主函数签名
+- 文档友好：`cargo doc` 生成完整 API 文档
+- 示例驱动：hello-wasm-plugin 可作为模板快速开始
+
+### Next Steps
+- TASK 5.2.1: Plugin CLI 命令（install/uninstall/list/test）
+- TASK 5.1.3: 更多示例插件（天气、翻译、代码格式化）
+- TASK 5.3.1: 插件权限系统
+
 ## [0.5.88] - 2026-07-10
 
 ### Fixed

@@ -60,7 +60,7 @@ impl PluginMetadata {
         } else {
             return None;
         };
-        
+
         self.platforms.get(platform).map(|s| s.as_str())
     }
 
@@ -75,7 +75,7 @@ impl PluginMetadata {
         } else {
             return None;
         };
-        
+
         self.checksum.get(platform).map(|s| s.as_str())
     }
 
@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn test_installed_manifest_operations() {
         let mut manifest = InstalledManifest::empty();
-        
+
         let plugin1 = InstalledPlugin {
             name: "logger".to_string(),
             version: "0.1.0".to_string(),

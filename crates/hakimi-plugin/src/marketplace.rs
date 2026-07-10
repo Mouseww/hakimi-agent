@@ -1,4 +1,6 @@
-use crate::models::{InstalledManifest, InstalledPlugin, PluginMetadata, PluginRegistry, UpdateInfo};
+use crate::models::{
+    InstalledManifest, InstalledPlugin, PluginMetadata, PluginRegistry, UpdateInfo,
+};
 use anyhow::{anyhow, Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -19,11 +21,7 @@ pub struct PluginMarketplace {
 
 impl PluginMarketplace {
     /// 创建新的市场管理器
-    pub fn new(
-        registry_url: String,
-        cache_dir: PathBuf,
-        plugins_dir: PathBuf,
-    ) -> Result<Self> {
+    pub fn new(registry_url: String, cache_dir: PathBuf, plugins_dir: PathBuf) -> Result<Self> {
         // 确保目录存在
         fs::create_dir_all(&cache_dir)?;
         fs::create_dir_all(&plugins_dir)?;
@@ -61,10 +59,7 @@ impl PluginMarketplace {
         let registry: PluginRegistry =
             serde_yaml::from_str(&content).context("Failed to parse registry YAML")?;
 
-        info!(
-            "Fetched registry with {} plugins",
-            registry.plugins.len()
-        );
+        info!("Fetched registry with {} plugins", registry.plugins.len());
 
         // 缓存到本地
         let cache_path = self.cache_dir.join("registry.yaml");
@@ -288,8 +283,7 @@ impl PluginMarketplace {
 
     /// 保存已安装清单
     fn save_installed_manifest(&self, manifest: &InstalledManifest) -> Result<()> {
-        let content =
-            serde_yaml::to_string(manifest).context("Failed to serialize manifest")?;
+        let content = serde_yaml::to_string(manifest).context("Failed to serialize manifest")?;
 
         // 确保父目录存在
         if let Some(parent) = self.installed_manifest_path.parent() {
@@ -375,9 +369,7 @@ mod tests {
 
         // 测试带前缀的校验和
         let hash_with_prefix = format!("sha256:{}", hash);
-        assert!(marketplace
-            .verify_checksum(data, &hash_with_prefix)
-            .is_ok());
+        assert!(marketplace.verify_checksum(data, &hash_with_prefix).is_ok());
 
         // 测试错误校验和
         assert!(marketplace.verify_checksum(data, "wrong_hash").is_err());

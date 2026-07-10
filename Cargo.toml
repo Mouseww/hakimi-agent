@@ -16,15 +16,20 @@ members = [
     "crates/hakimi-common",
     "crates/hakimi-mcp",
     "crates/hakimi-plugin",
+    "crates/hakimi-plugin-sdk",
+    "crates/hakimi-plugin-sdk-macro",
     "crates/hakimi-tui",
     "crates/hakimi-skills",
     "crates/hakimi-batch",
     "crates/hakimi-i18n",
     "qq-bot-sdk", "crates/hakimi-metrics",
 ]
+exclude = [
+    "examples/hello-wasm-plugin",
+]
 
 [workspace.package]
-version = "0.5.88"
+version = "0.5.89"
 edition = "2024"
 
 [workspace.dependencies]

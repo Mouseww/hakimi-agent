@@ -30,9 +30,33 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.87)
+## ✨ Recent Updates (v0.5.89)
 
-**🎨 WASM 插件运行时 (TASK 5.1.1) — 进行中：**
+**🔌 WASM Plugin SDK (TASK 5.1.2) — 完成：**
+
+**核心功能：**
+- ✨ **#[hakimi_plugin] 宏** — 自动生成插件导出函数和元数据
+  - 零样板代码：一行宏声明插件
+  - 自动元数据导出（JSON 格式）
+  - 类型安全的插件接口
+- 📦 **hakimi-plugin-sdk** — 高级 SDK  crate
+  - `PluginContext` 访问宿主功能
+  - `log()` 日志记录（已实现）
+  - `http_get()` HTTP 请求（接口预留）
+  - `PluginResult<T>` 标准返回类型
+- 📚 **示例插件** — hello-wasm-plugin
+  - 完整构建文档
+  - 48KB 优化后体积
+  - wasm32-wasip1 目标编译
+
+**技术细节：**
+- 过程宏 crate: `hakimi-plugin-sdk-macro`
+- 非 WASM 环境测试支持（模拟宿主函数）
+- 3个单元测试覆盖核心功能
+- PR: #47（待创建）
+
+**v0.5.88 更新：**
+**🎨 WASM 插件运行时 (TASK 5.1.1) — 完成：**
 
 **核心功能：**
 - ✨ **WasmPluginLoader** — 基于 Wasmtime 16.0 的安全 WASM 运行时

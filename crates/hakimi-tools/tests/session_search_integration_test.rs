@@ -243,7 +243,6 @@ async fn test_discovery_chinese_search() {
 
 #[tokio::test]
 async fn test_scroll_mode_basic() {
-
     let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-scroll-1";
 
@@ -287,7 +286,6 @@ async fn test_scroll_mode_basic() {
 
 #[tokio::test]
 async fn test_scroll_mode_at_start() {
-
     let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-scroll-start";
 
@@ -430,7 +428,6 @@ async fn test_error_scroll_nonexistent_session() {
 
 #[tokio::test]
 async fn test_parameter_window_clamping() {
-
     let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-window";
 

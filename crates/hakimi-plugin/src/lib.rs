@@ -1,8 +1,8 @@
-pub mod manager;
-pub mod registry;
 pub mod config;
-pub mod models;
+pub mod manager;
 pub mod marketplace;
+pub mod models;
+pub mod registry;
 
 // Legacy plugin loader stub for backward compatibility
 pub mod loader;
@@ -24,19 +24,19 @@ use thiserror::Error;
 pub enum PluginError {
     #[error("Plugin load error: {0}")]
     LoadError(String),
-    
+
     #[error("Plugin not found: {0}")]
     NotFound(String),
-    
+
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
-    
+
     #[error("Configuration error: {0}")]
     ConfigError(String),
-    
+
     #[error("Initialization error: {0}")]
     InitError(String),
-    
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -45,7 +45,7 @@ pub enum PluginError {
 pub type PluginResult<T> = std::result::Result<T, PluginError>;
 
 // 重新导出 config
-pub use config::{PluginsConfig, PluginEntry};
+pub use config::{PluginEntry, PluginsConfig};
 
 /// 插件元数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,22 +53,22 @@ pub use config::{PluginsConfig, PluginEntry};
 pub struct PluginMetadata {
     /// 插件唯一标识（建议使用反向域名，如 com.example.my-plugin）
     pub id: String,
-    
+
     /// 插件显示名称
     pub name: String,
-    
+
     /// 插件版本（遵循 semver）
     pub version: String,
-    
+
     /// 插件作者
     pub author: String,
-    
+
     /// 插件描述
     pub description: String,
-    
+
     /// 插件依赖（其他插件 ID）
     pub dependencies: Vec<String>,
-    
+
     /// 最低 Hakimi 版本要求
     pub min_hakimi_version: Option<String>,
 }
@@ -78,10 +78,10 @@ pub struct PluginMetadata {
 pub struct PluginContext {
     /// 当前会话 ID
     pub session_id: String,
-    
+
     /// 用户 ID（如果可用）
     pub user_id: Option<String>,
-    
+
     /// 插件配置（从 config.yaml 读取）
     pub config: serde_json::Value,
 }
@@ -108,33 +108,33 @@ pub struct Session {
 pub trait HakimiPlugin: Send + Sync {
     /// 获取插件元数据
     fn metadata(&self) -> &PluginMetadata;
-    
+
     /// 插件初始化（系统启动时调用一次）
     async fn initialize(&mut self) -> Result<()> {
         Ok(())
     }
-    
+
     /// 插件清理（系统关闭时调用）
     async fn shutdown(&mut self) -> Result<()> {
         Ok(())
     }
-    
+
     // === 会话钩子 ===
-    
+
     /// 会话开始时触发
     async fn on_session_start(&self, ctx: &PluginContext, session: &Session) -> Result<()> {
         let _ = (ctx, session);
         Ok(())
     }
-    
+
     /// 会话结束时触发
     async fn on_session_end(&self, ctx: &PluginContext, session: &Session) -> Result<()> {
         let _ = (ctx, session);
         Ok(())
     }
-    
+
     // === 消息钩子 ===
-    
+
     /// 消息发送前触发（可修改消息或拒绝发送）
     async fn on_message_before_send(
         &self,
@@ -144,17 +144,13 @@ pub trait HakimiPlugin: Send + Sync {
         let _ = ctx;
         Ok(MessageAction::Continue(message))
     }
-    
+
     /// 消息发送后触发（只读，用于日志/分析）
-    async fn on_message_after_send(
-        &self,
-        ctx: &PluginContext,
-        message: &Message,
-    ) -> Result<()> {
+    async fn on_message_after_send(&self, ctx: &PluginContext, message: &Message) -> Result<()> {
         let _ = (ctx, message);
         Ok(())
     }
-    
+
     /// 消息接收时触发（可修改消息或过滤）
     async fn on_message_received(
         &self,
@@ -164,9 +160,9 @@ pub trait HakimiPlugin: Send + Sync {
         let _ = ctx;
         Ok(MessageAction::Continue(message))
     }
-    
+
     // === 工具调用钩子 ===
-    
+
     /// 工具调用前触发（可修改参数或拒绝调用）
     async fn on_tool_call_before(
         &self,
@@ -177,7 +173,7 @@ pub trait HakimiPlugin: Send + Sync {
         let _ = (ctx, tool_name);
         Ok(ToolCallAction::Continue(params))
     }
-    
+
     /// 工具调用后触发（可修改结果）
     async fn on_tool_call_after(
         &self,
@@ -195,10 +191,10 @@ pub trait HakimiPlugin: Send + Sync {
 pub enum MessageAction {
     /// 继续处理（可能已修改消息）
     Continue(Message),
-    
+
     /// 拒绝消息（附带原因）
     Reject(String),
-    
+
     /// 替换为自定义响应
     Replace(Message),
 }
@@ -208,7 +204,7 @@ pub enum MessageAction {
 pub enum ToolCallAction {
     /// 继续调用（可能已修改参数）
     Continue(serde_json::Value),
-    
+
     /// 取消调用（附带原因）
     Cancel(String),
 }
@@ -218,10 +214,10 @@ pub enum ToolCallAction {
 pub enum ToolCallResultAction {
     /// 继续返回结果（可能已修改）
     Continue(serde_json::Value),
-    
+
     /// 替换为自定义结果
     Replace(serde_json::Value),
-    
+
     /// 标记为失败
     Error(String),
 }
@@ -244,7 +240,7 @@ mod tests {
 
         let json = serde_json::to_string(&metadata).unwrap();
         let deserialized: PluginMetadata = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(metadata.id, deserialized.id);
         assert_eq!(metadata.name, deserialized.name);
     }
@@ -260,7 +256,7 @@ mod tests {
 
         let json = serde_json::to_string(&message).unwrap();
         let deserialized: Message = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(message.id, deserialized.id);
         assert_eq!(message.content, deserialized.content);
     }

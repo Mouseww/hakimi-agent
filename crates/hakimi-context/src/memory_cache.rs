@@ -53,7 +53,10 @@ impl MemoryCache {
                     file_size: 0,
                     mtime: std::time::SystemTime::now(),
                 };
-                self.cache.write().await.insert(file_path.to_path_buf(), entry);
+                self.cache
+                    .write()
+                    .await
+                    .insert(file_path.to_path_buf(), entry);
                 return Ok(());
             }
             Err(e) => return Err(e),
@@ -64,7 +67,9 @@ impl MemoryCache {
             content: content.clone(),
             loaded_at: Instant::now(),
             file_size: metadata.len(),
-            mtime: metadata.modified().unwrap_or_else(|_| std::time::SystemTime::now()),
+            mtime: metadata
+                .modified()
+                .unwrap_or_else(|_| std::time::SystemTime::now()),
         };
 
         // Check total cache size
