@@ -3,6 +3,14 @@
 ## [0.5.84] - 2026-07-10
 
 ### Added
+- API 参考文档系统 (TASK 4.2.2) ✅
+  - 配置 GitHub Actions 自动部署 API 文档
+  - 新增 `.github/workflows/docs.yml` - 文档部署工作流
+  - 在 README 中添加 API 文档链接
+  - 修复插件加载器 API 兼容性问题
+  - 导出 `PluginLoaderConfig`
+  - 添加 `plugin_dir()`, `plugins()`, `load_all()` 方法
+  
 - 架构设计文档 (TASK 4.2.1) ✅
   - 新增 `docs/ARCHITECTURE.md` - 完整架构设计文档
   - 模块依赖架构图（Mermaid）
@@ -17,12 +25,16 @@
   - 贡献设计原则
   - 30 分钟快速阅读路径
 
+### Fixed
+- 插件加载器编译错误
+- CLI 中插件相关命令的类型错误
+
 ### Technical Details
-- **docs/ARCHITECTURE.md** (13KB+): 完整架构文档
-- 包含 5 个 Mermaid 图表
-- 覆盖入口层、核心能力层、基础设施层
-- 新贡献者可在 30 分钟内理解整体架构
-- 任务文档: `tasks/TASK_4.2.1_architecture_doc.md`
+- **docs.yml**: GitHub Pages 自动部署配置
+- **PluginLoader API**: 添加同步访问方法
+- **版本更新**: 所有 crate 版本号递增至 0.5.84
+- **文档覆盖**: cargo doc 成功构建，仅有少量文档警告
+- 任务文档: `tasks/TASK_4.2.2_api_reference_doc.md`
 
 ## [0.5.82] - 2026-07-10
 

@@ -18,6 +18,7 @@
   <a href="#why-hakimi">Why Hakimi</a> ·
   <a href="#capabilities">Capabilities</a> ·
   <a href="#architecture">Architecture</a> ·
+  <a href="https://yourusername.github.io/hakimi-agent/">API Docs</a> ·
   <a href="#compare">Compare</a> ·
   <a href="README_CN.md">中文</a>
 </p>
