@@ -660,3 +660,43 @@ async function streamAgentChat(
   }
   return final;
 }
+
+// Session Tree Types
+export interface SessionMetadata {
+  id: string;
+  created_at: string;
+  title?: string;
+  message_count: number;
+  parent_id?: string;
+  root_id?: string;
+}
+
+export interface SessionTreeNode {
+  session: SessionMetadata;
+  children: SessionTreeNode[];
+}
+
+export interface SessionTreeResponse {
+  current: SessionMetadata;
+  root: SessionMetadata;
+  lineage: SessionMetadata[];
+  children: SessionTreeNode[];
+}
+
+export async function fetchSessionTree(sessionId: string): Promise<SessionTreeResponse> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(`/api/sessions/${sessionId}/tree`, {
+    headers,
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch session tree: ${response.status}`);
+  }
+  
+  return await response.json();
+}

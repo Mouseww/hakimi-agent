@@ -27,6 +27,7 @@ import PersonaConfigForm from './PersonaConfigForm';
 import InstanceSettings from './InstanceSettings';
 import WorkspacePanel from './WorkspacePanel';
 import OfficeView from './OfficeView';
+import { SessionTree } from './SessionTree';
 import { useI18n } from './i18n';
 import {
   api,
@@ -138,6 +139,7 @@ function App() {
   const [view, setView] = useState<'chat' | 'config' | 'instance' | 'workspace' | 'office'>('office');
   const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
   const [showSessions, setShowSessions] = useState(true);
+  const [showSessionTree, setShowSessionTree] = useState(false);
   const [agentSessionList, setAgentSessionList] = useState<SessionInfo[]>([]);
   const [personaSessionMap, setPersonaSessionMap] = useState<Record<string, string | null>>({});
   const [delegateStatuses, setDelegateStatuses] = useState<DelegateStatus[]>([]);
@@ -811,14 +813,26 @@ function App() {
                 <p className="eyebrow">{t('sessions.title')}</p>
                 <h2>{t('sessions.recentWork')}</h2>
               </div>
-              <button
-                type="button"
-                className="icon-button"
-                title={t('sessions.newSession')}
-                onClick={handleNewSession}
-              >
-                <Plus size={16} aria-hidden="true" />
-              </button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {selectedSessionId && (
+                  <button
+                    type="button"
+                    className={`icon-button ${showSessionTree ? 'is-active' : ''}`}
+                    title="会话树"
+                    onClick={() => setShowSessionTree(!showSessionTree)}
+                  >
+                    <FolderTree size={16} aria-hidden="true" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="icon-button"
+                  title={t('sessions.newSession')}
+                  onClick={handleNewSession}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                </button>
+              </div>
             </div>
             <div className="search-field">
               <Search size={15} aria-hidden="true" />
@@ -828,6 +842,14 @@ function App() {
                 placeholder={t('sessions.filter')}
               />
             </div>
+            {showSessionTree && selectedSessionId && (
+              <div style={{ marginBottom: '16px', maxHeight: '400px', overflowY: 'auto' }}>
+                <SessionTree
+                  sessionId={selectedSessionId}
+                  onSessionClick={(sid) => void loadSessionMessages(sid)}
+                />
+              </div>
+            )}
             <div className="session-list">
               {visibleSessions.map((session) => (
                 <div className="session-row-wrap" key={session.id}>
