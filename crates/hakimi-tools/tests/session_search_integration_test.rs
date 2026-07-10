@@ -2,14 +2,15 @@ use hakimi_common::{Message, ToolContext};
 use hakimi_session::{MessageOps, SessionDB, SessionOps};
 use hakimi_tools::{SessionSearchTool, Tool};
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tempfile::TempDir;
 
 // Global lock to serialize tests that modify HAKIMI_HOME
 static TEST_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 /// Helper: Create a test database with HAKIMI_HOME set
-fn setup_test_db() -> (TempDir, SessionDB) {
+fn setup_test_db() -> (MutexGuard<'static, ()>, TempDir, SessionDB) {
+    let lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = TempDir::new().unwrap();
 
     // Set HAKIMI_HOME to temp dir for this test
@@ -20,7 +21,7 @@ fn setup_test_db() -> (TempDir, SessionDB) {
     let db_path = tmp.path().join("sessions.db");
     let db = SessionDB::new(&db_path).unwrap();
     db.initialize().unwrap();
-    (tmp, db)
+    (lock, tmp, db)
 }
 
 /// Helper: Insert test messages into a session
@@ -44,7 +45,7 @@ fn insert_test_messages(db: &SessionDB, session_id: &str, count: usize) {
 
 #[tokio::test]
 async fn test_browse_mode_empty_database() {
-    let (_tmp, _db) = setup_test_db();
+    let (_lock, _tmp, _db) = setup_test_db();
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
     let ctx = ToolContext::default();
@@ -60,7 +61,7 @@ async fn test_browse_mode_empty_database() {
 
 #[tokio::test]
 async fn test_browse_mode_shows_recent_sessions() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
 
     // Create multiple sessions
     for i in 0..3 {
@@ -86,7 +87,7 @@ async fn test_browse_mode_shows_recent_sessions() {
 
 #[tokio::test]
 async fn test_browse_mode_respects_limit() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
 
     // Create 10 sessions
     for i in 0..10 {
@@ -110,7 +111,7 @@ async fn test_browse_mode_respects_limit() {
 
 #[tokio::test]
 async fn test_discovery_mode_basic_search() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-1";
 
     insert_test_messages(&db, session_id, 5);
@@ -135,7 +136,7 @@ async fn test_discovery_mode_basic_search() {
 
 #[tokio::test]
 async fn test_discovery_mode_no_results() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-2";
 
     insert_test_messages(&db, session_id, 5);
@@ -158,7 +159,7 @@ async fn test_discovery_mode_no_results() {
 
 #[tokio::test]
 async fn test_discovery_mode_with_bookends() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-3";
 
     // Insert enough messages to test bookends
@@ -179,7 +180,7 @@ async fn test_discovery_mode_with_bookends() {
 
 #[tokio::test]
 async fn test_discovery_fts5_multiple_keywords() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-4";
 
     // Insert messages with specific keywords
@@ -210,7 +211,7 @@ async fn test_discovery_fts5_multiple_keywords() {
 
 #[tokio::test]
 async fn test_discovery_chinese_search() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-chinese";
 
     db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None)
@@ -242,8 +243,8 @@ async fn test_discovery_chinese_search() {
 
 #[tokio::test]
 async fn test_scroll_mode_basic() {
-    let _lock = TEST_LOCK.lock().unwrap();
-    let (_tmp, db) = setup_test_db();
+
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-scroll-1";
 
     insert_test_messages(&db, session_id, 20);
@@ -286,8 +287,8 @@ async fn test_scroll_mode_basic() {
 
 #[tokio::test]
 async fn test_scroll_mode_at_start() {
-    let _lock = TEST_LOCK.lock().unwrap();
-    let (_tmp, db) = setup_test_db();
+
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-scroll-start";
 
     insert_test_messages(&db, session_id, 10);
@@ -320,7 +321,7 @@ async fn test_scroll_mode_at_start() {
 
 #[tokio::test]
 async fn test_scroll_mode_at_end() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-scroll-end";
 
     insert_test_messages(&db, session_id, 10);
@@ -353,7 +354,7 @@ async fn test_scroll_mode_at_end() {
 
 #[tokio::test]
 async fn test_scroll_mode_invalid_message_id() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-scroll-invalid";
 
     insert_test_messages(&db, session_id, 10);
@@ -380,7 +381,7 @@ async fn test_scroll_mode_invalid_message_id() {
 
 #[tokio::test]
 async fn test_error_empty_session() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "empty-session";
 
     // Create empty session
@@ -405,7 +406,7 @@ async fn test_error_empty_session() {
 
 #[tokio::test]
 async fn test_error_scroll_nonexistent_session() {
-    let (_tmp, _db) = setup_test_db();
+    let (_lock, _tmp, _db) = setup_test_db();
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
     let mut ctx = ToolContext::default();
@@ -429,8 +430,8 @@ async fn test_error_scroll_nonexistent_session() {
 
 #[tokio::test]
 async fn test_parameter_window_clamping() {
-    let _lock = TEST_LOCK.lock().unwrap();
-    let (_tmp, db) = setup_test_db();
+
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-window";
 
     insert_test_messages(&db, session_id, 20);
@@ -461,7 +462,7 @@ async fn test_parameter_window_clamping() {
 
 #[tokio::test]
 async fn test_parameter_limit_clamping() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-limit";
 
     insert_test_messages(&db, session_id, 10);
@@ -498,7 +499,7 @@ async fn test_tool_metadata() {
 
 #[tokio::test]
 async fn test_multiple_sessions_discovery() {
-    let (_tmp, db) = setup_test_db();
+    let (_lock, _tmp, db) = setup_test_db();
 
     // Create multiple sessions with shared keyword
     for i in 0..3 {
