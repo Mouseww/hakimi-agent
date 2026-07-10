@@ -2534,8 +2534,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/errors", delete(clear_errors))
         .route("/errors/unrecovered", get(get_unrecovered_errors))
         .route("/errors/recovered", delete(clear_recovered_errors))
-        .route("/errors/category/:category", get(get_errors_by_category))
-        .route("/errors/:id/recover", post(attempt_error_recovery))
+        .route("/errors/category/{category}", get(get_errors_by_category))
+        .route("/errors/{id}/recover", post(attempt_error_recovery))
         // Agent-dimension (persona) endpoints
         .route("/agents", get(list_agents))
         .route("/agents", post(create_agent))
