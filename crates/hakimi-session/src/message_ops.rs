@@ -342,7 +342,8 @@ impl MessageOps for SessionDB {
                 stmt.raw_bind_parameter(idx, param)?;
                 idx += 1;
             }
-            stmt.raw_query().next()?.unwrap().get(0)?
+            let value = stmt.raw_query().next()?.unwrap().get(0)?;
+            value
         };
 
         let count_after_sql = format!(
@@ -360,7 +361,8 @@ impl MessageOps for SessionDB {
                 stmt.raw_bind_parameter(idx, param)?;
                 idx += 1;
             }
-            stmt.raw_query().next()?.unwrap().get(0)?
+            let value = stmt.raw_query().next()?.unwrap().get(0)?;
+            value
         };
 
         // Fetch window: anchor ± window messages (with role filter)
