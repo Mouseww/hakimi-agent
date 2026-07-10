@@ -2,8 +2,8 @@
 
 > **目标**: 让 Hakimi 在功能深度、稳定性和多平台支持上全面超越 Hermes Agent
 
-**当前版本**: v0.5.56  
-**上次更新**: 2026-07-09  
+**当前版本**: v0.5.73  
+**上次更新**: 2026-07-10  
 **维护模式**: 自动化进化引擎（Always Approve 技术性修复）
 
 ---
@@ -24,34 +24,37 @@
 
 ## 📅 迭代计划（3个月窗口）
 
-### Phase 1: 稳定性与可观测性 (Week 1-2)
+### Phase 1: 稳定性与可观测性 ✅ 已完成 (Week 1-2)
 
 **目标**: 生产级质量保障，防止静默失败
 
-#### 里程碑 1.1: 日志与监控增强 (3天)
-- [ ] **任务 1.1.1**: 为所有核心路径添加 tracing spans
+#### 里程碑 1.1: 日志与监控增强 ✅ 已完成 (3天)
+- [x] **任务 1.1.1**: 为所有核心路径添加 tracing spans ✅
   - 文件: `crates/hakimi-session/src/message_ops.rs`
   - 方法: `get_messages_around()`, `get_bookends()`, `search_messages()`
   - 指标: 查询耗时、结果数量、会话ID
   - 验收: 日志可通过 `RUST_LOG=hakimi_session=debug` 观察
+  - **完成**: v0.5.69
 
-- [ ] **任务 1.1.2**: 添加关键性能 metrics
-  - 文件: 新建 `crates/hakimi-telemetry/`
+- [x] **任务 1.1.2**: 添加关键性能 metrics ✅
+  - 文件: 新建 `crates/hakimi-metrics/`
   - 集成: Prometheus + OpenTelemetry (可选)
   - 指标: 
     - `session_search_duration_seconds{mode="discovery|scroll|browse"}`
     - `memory_load_bytes{target="user|memory|working"}`
     - `context_compression_ratio`
   - 验收: `/metrics` 端点返回 Prometheus 格式
+  - **完成**: v0.5.70
 
-- [ ] **任务 1.1.3**: 错误追踪与报警
+- [x] **任务 1.1.3**: 错误追踪与报警 ✅
   - 文件: `crates/hakimi-common/src/error.rs`
   - 定义: `SessionError`, `MemoryError`, `ContextError` 自定义类型
   - 上下文: 所有错误携带 `session_id`, `user_id`, `timestamp`
   - 验收: 错误日志包含完整调试信息
+  - **完成**: v0.5.71, PR #29
 
-#### 里程碑 1.2: 工作记忆生命周期管理 (2天)
-- [ ] **任务 1.2.1**: 实现会话结束时自动清理
+#### 里程碑 1.2: 工作记忆生命周期管理 ✅ 已完成 (2天)
+- [x] **任务 1.2.1**: 实现会话结束时自动清理 ✅
   - 文件: `crates/hakimi-context/src/memory.rs`
   - 逻辑: 
     ```rust
@@ -64,23 +67,26 @@
     ```
   - 触发点: Gateway 收到 `/new` 命令或会话超时
   - 验收: 新会话开始时 working_memory.md 为空
+  - **完成**: v0.5.66
 
-- [ ] **任务 1.2.2**: 添加记忆容量监控
+- [x] **任务 1.2.2**: 添加记忆容量监控 ✅
   - 文件: `crates/hakimi-context/src/memory.rs`
   - 逻辑: 
     - 每次加载记忆时检查文件大小
     - `> 60KB`: WARN 日志
     - `> 64KB`: 拒绝加载 + 返回错误提示用户清理
   - 验收: 测试用例验证限制生效
+  - **完成**: v0.5.67
 
-- [x] **任务 1.2.3**: 记忆归档机制
+- [x] **任务 1.2.3**: 记忆归档机制 ✅
   - 文件: 新建 `~/.hakimi/memory/archive/`
   - 命令: `hakimi memory archive [--before 2026-06-01]`
   - 逻辑: 移动指定日期前的记忆到归档，保留引用索引
   - 验收: CLI 命令成功归档并显示统计
+  - **完成**: v0.5.68
 
-#### 里程碑 1.3: 测试覆盖率提升到 80% (2天)
-- [ ] **任务 1.3.1**: 补充 session_search 工具集成测试
+#### 里程碑 1.3: 测试覆盖率提升到 80% ✅ 已完成 (2天)
+- [x] **任务 1.3.1**: 补充 session_search 工具集成测试 ✅
   - 文件: `crates/hakimi-tools/src/builtin_session_search.rs`
   - 测试: 
     - Discovery 模式 + bookends 完整性
@@ -88,8 +94,9 @@
     - Browse 排序正确性
     - FTS5 中文分词（如适用）
   - 验收: `cargo test --package hakimi-tools session_search` 全通过
+  - **完成**: v0.5.69
 
-- [x] **任务 1.3.2**: 添加 memory 工具错误路径测试
+- [x] **任务 1.3.2**: 添加 memory 工具错误路径测试 ✅
   - 文件: `crates/hakimi-tools/src/builtin_memory.rs`
   - 测试:
     - 记忆文件不存在
@@ -97,6 +104,7 @@
     - 内容超大（>64KB）
     - 并发写入冲突
   - 验收: 错误处理优雅（不 panic）
+  - **完成**: v0.5.69
 
 - [x] **任务 1.3.3**: 压力测试与边界测试
   - 文件: `crates/hakimi-session/tests/stress_test.rs`
@@ -148,18 +156,20 @@
   - 验收: 浏览器正确渲染 3 层嵌套
   - **完成**: v0.5.70, PR #28, 2026-07-10
 
-#### 里程碑 2.2: 角色过滤动态化 (2天)
-- [ ] **任务 2.2.1**: SQL 查询参数化
+#### 里程碑 2.2: 角色过滤动态化 ✅ 已完成 (2天)
+- [x] **任务 2.2.1**: SQL 查询参数化 ✅
   - 文件: `crates/hakimi-session/src/message_ops.rs`
   - 重构: `get_bookends()` 接受 `roles: &[&str]` 参数
   - 逻辑: 动态构建 `WHERE role IN (?, ?, ...)`
   - 验收: 支持任意角色组合
+  - **完成**: v0.5.72, PR #30, 2026-07-10
 
-- [ ] **任务 2.2.2**: session_search 工具暴露参数
+- [x] **任务 2.2.2**: session_search 工具暴露参数 ✅
   - 文件: `crates/hakimi-tools/src/builtin_session_search.rs`
-  - 参数: `role_filter: Option<String>` (逗号分隔)
-  - 默认: Discovery 默认 `user,assistant`，Scroll 默认全部
-  - 验收: 可搜索纯工具输出
+  - 参数: `roles: Option<Vec<String>>` (数组形式)
+  - 默认: `None` 使用底层默认 (user + assistant)
+  - 验收: 可搜索任意角色组合，包括纯工具输出
+  - **完成**: v0.5.73, PR #31, 2026-07-10
 
 #### 里程碑 2.3: 异步 prefetch 记忆 (3天)
 - [ ] **任务 2.3.1**: 实现后台预取任务
