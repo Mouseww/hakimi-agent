@@ -694,11 +694,32 @@ dependencies = [
 
 [[package]]
 name = "dirs"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
+dependencies = [
+ "dirs-sys 0.4.1",
+]
+
+[[package]]
+name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
 dependencies = [
- "dirs-sys",
+ "dirs-sys 0.5.0",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
+dependencies = [
+ "libc",
+ "option-ext",
+ "redox_users 0.4.6",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -709,7 +730,7 @@ checksum = "e01a3366d27ee9890022452ee61b2b63a67e6f13f58900b651ff5665f0bb1fab"
 dependencies = [
  "libc",
  "option-ext",
- "redox_users",
+ "redox_users 0.5.2",
  "windows-sys 0.61.2",
 ]
 
@@ -1060,12 +1081,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glob"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
-
-[[package]]
 name = "hakimi-agent"
 version = "0.5.79"
 dependencies = [
@@ -1103,7 +1118,7 @@ dependencies = [
  "clap",
  "crossterm",
  "dialoguer",
- "dirs",
+ "dirs 6.0.0",
  "flate2",
  "fs2",
  "hakimi-common",
@@ -1144,7 +1159,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "dirs",
+ "dirs 6.0.0",
  "regex",
  "rusqlite",
  "serde",
@@ -1161,7 +1176,7 @@ name = "hakimi-config"
 version = "0.5.79"
 dependencies = [
  "anyhow",
- "dirs",
+ "dirs 6.0.0",
  "hakimi-common",
  "serde",
  "serde_json",
@@ -1244,7 +1259,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64",
- "dirs",
+ "dirs 6.0.0",
  "hakimi-common",
  "hmac",
  "lettre",
@@ -1298,7 +1313,7 @@ version = "0.5.79"
 dependencies = [
  "anyhow",
  "async-trait",
- "dirs",
+ "dirs 6.0.0",
  "hakimi-common",
  "hakimi-tools",
  "hakimi-transports",
@@ -1325,21 +1340,16 @@ dependencies = [
 
 [[package]]
 name = "hakimi-plugin"
-version = "0.5.79"
+version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
- "dirs",
- "glob",
+ "dirs 5.0.1",
  "hakimi-common",
- "hakimi-tools",
- "reqwest",
  "serde",
  "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
  "tokio",
+ "tokio-test",
  "tracing",
 ]
 
@@ -1352,7 +1362,7 @@ dependencies = [
  "axum",
  "chrono",
  "clap",
- "dirs",
+ "dirs 6.0.0",
  "futures",
  "hakimi-common",
  "hakimi-config",
@@ -1404,7 +1414,7 @@ version = "0.5.79"
 dependencies = [
  "anyhow",
  "chrono",
- "dirs",
+ "dirs 6.0.0",
  "reqwest",
  "serde",
  "serde_json",
@@ -1423,7 +1433,7 @@ dependencies = [
  "base64",
  "chromiumoxide",
  "chrono",
- "dirs",
+ "dirs 6.0.0",
  "futures",
  "hakimi-common",
  "hakimi-cron",
@@ -1476,7 +1486,7 @@ dependencies = [
  "base64",
  "chrono",
  "crossterm",
- "dirs",
+ "dirs 6.0.0",
  "hakimi-common",
  "hakimi-config",
  "hakimi-context",
@@ -2595,6 +2605,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "redox_users"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
+dependencies = [
+ "getrandom 0.2.17",
+ "libredox",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
