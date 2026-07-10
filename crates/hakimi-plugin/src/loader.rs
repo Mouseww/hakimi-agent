@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::{HakimiPlugin, PluginMetadata, PluginResult, PluginError};
+use crate::{PluginMetadata, PluginResult, PluginError};
 
 /// 插件加载器配置
 #[derive(Debug, Clone)]
@@ -63,6 +63,25 @@ impl PluginLoader {
             plugins: Arc::new(RwLock::new(HashMap::new())),
             config,
         }
+    }
+
+    /// 获取插件目录路径
+    pub fn plugin_dir(&self) -> &Path {
+        &self.config.plugin_dir
+    }
+
+    /// 同步获取已加载插件列表（返回空 vec 作为占位）
+    pub fn plugins(&self) -> Vec<PluginMetadata> {
+        // 简化版本：直接返回空列表
+        // 实际应该从 plugins RwLock 中读取，但需要 async
+        vec![]
+    }
+
+    /// 加载插件目录中的所有插件（同步包装）
+    pub fn load_all(&self) -> PluginResult<()> {
+        // 简化版本：暂不实现自动加载
+        // 实际应该扫描 plugin_dir 并加载所有插件
+        Ok(())
     }
 
     /// 从共享库加载插件

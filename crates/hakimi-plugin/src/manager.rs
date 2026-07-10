@@ -245,7 +245,7 @@ impl PluginManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{HakimiPlugin, PluginMetadata};
+    use crate::{PluginMetadata, HakimiPlugin};
     use async_trait::async_trait;
     use hakimi_common::error::HakimiError;
     

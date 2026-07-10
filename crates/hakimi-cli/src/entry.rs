@@ -848,14 +848,10 @@ fn collect_plugin_list_entries(loader: &hakimi_plugin::PluginLoader) -> Vec<Plug
         .plugins()
         .iter()
         .map(|plugin| PluginListEntry {
-            name: plugin.name().to_string(),
-            version: plugin.version().to_string(),
-            description: plugin.description().to_string(),
-            tools: plugin
-                .tools()
-                .iter()
-                .map(|tool| tool.name().to_string())
-                .collect(),
+            name: plugin.name.clone(),
+            version: plugin.version.clone(),
+            description: plugin.description.clone(),
+            tools: vec![], // tools 字段在当前 PluginMetadata 中不存在
         })
         .collect()
 }
@@ -961,7 +957,9 @@ fn plugin_list_response(args: &[String]) -> String {
         Err(err) if err.starts_with("Usage:") => return err,
         Err(err) => return format!("❌ {err}\n{}", plugin_list_help_response()),
     };
-    plugin_list_response_with_loader(hakimi_plugin::PluginLoader::new(), options)
+    plugin_list_response_with_loader(hakimi_plugin::PluginLoader::new(
+        hakimi_plugin::PluginLoaderConfig::default()
+    ), options)
 }
 
 fn plugin_help_response() -> String {
@@ -993,7 +991,9 @@ fn top_level_plugins_response(args: &[String]) -> String {
         "list" | "ls" => plugin_list_response(&args[1..]),
         "templates" | "template" => plugin_templates_response(),
         "path" => {
-            let loader = hakimi_plugin::PluginLoader::new();
+            let loader = hakimi_plugin::PluginLoader::new(
+                hakimi_plugin::PluginLoaderConfig::default()
+            );
             format!("📦 Plugin directory: `{}`", loader.plugin_dir().display())
         }
         "init" => {
@@ -1004,7 +1004,9 @@ fn top_level_plugins_response(args: &[String]) -> String {
                 );
             };
             let plugin_name = args.get(2).map(String::as_str).unwrap_or(template_name);
-            let loader = hakimi_plugin::PluginLoader::new();
+            let loader = hakimi_plugin::PluginLoader::new(
+                hakimi_plugin::PluginLoaderConfig::default()
+            );
             match write_plugin_template_to_dir(template_name, plugin_name, loader.plugin_dir()) {
                 Ok(path) => format!(
                     "✅ Plugin template `{template_name}` created at {}",

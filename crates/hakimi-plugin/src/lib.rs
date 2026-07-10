@@ -6,7 +6,7 @@ pub mod marketplace;
 
 // Legacy plugin loader stub for backward compatibility
 pub mod loader;
-pub use loader::PluginLoader;
+pub use loader::{PluginLoader, PluginLoaderConfig};
 
 use async_trait::async_trait;
 use hakimi_common::error::Result;
