@@ -15,6 +15,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+rusqlite = { workspace = true }
 
 [lints]
 workspace = true

@@ -3,6 +3,14 @@
 //! Loads datasets, processes prompts in parallel, with checkpointing
 //! and trajectory saving for evaluation/benchmarking workflows.
 
+pub mod progress;
+pub mod progress_notifier;
+pub mod progress_store;
+
+pub use progress::{JobProgress, StageProgress, StageStatus};
+pub use progress_notifier::{ProgressNotifier, ProgressUpdate};
+pub use progress_store::ProgressStore;
+
 use anyhow::Result;
 use chrono::Utc;
 use futures::StreamExt;
@@ -79,6 +87,10 @@ pub struct BatchConfig {
     pub save_trajectories: bool,
     /// Batch metadata.
     pub metadata: Option<serde_json::Value>,
+    /// Whether to enable progress tracking.
+    pub progress_tracking_enabled: bool,
+    /// Progress database path (None for in-memory).
+    pub progress_db_path: Option<PathBuf>,
 }
 
 impl Default for BatchConfig {
@@ -90,6 +102,8 @@ impl Default for BatchConfig {
             output_dir: PathBuf::from("./batch-output"),
             save_trajectories: false,
             metadata: None,
+            progress_tracking_enabled: true,
+            progress_db_path: None, // Use in-memory by default
         }
     }
 }
@@ -149,11 +163,58 @@ pub fn load_checkpoint(path: &Path) -> Option<BatchCheckpoint> {
 pub struct BatchProcessor {
     builder: AIAgentBuilder,
     config: BatchConfig,
+    progress_store: Option<ProgressStore>,
+    progress_notifier: Option<ProgressNotifier>,
 }
 
 impl BatchProcessor {
     pub fn new(builder: AIAgentBuilder, config: BatchConfig) -> Self {
-        Self { builder, config }
+        let progress_store = if config.progress_tracking_enabled {
+            let db_path = config
+                .progress_db_path
+                .as_ref()
+                .and_then(|p| p.to_str())
+                .unwrap_or(":memory:");
+            ProgressStore::new(db_path).ok()
+        } else {
+            None
+        };
+
+        let progress_notifier = if config.progress_tracking_enabled {
+            Some(ProgressNotifier::new())
+        } else {
+            None
+        };
+
+        Self {
+            builder,
+            config,
+            progress_store,
+            progress_notifier,
+        }
+    }
+
+    /// Get a reference to the progress notifier.
+    pub fn progress_notifier(&self) -> Option<&ProgressNotifier> {
+        self.progress_notifier.as_ref()
+    }
+
+    /// Get a reference to the progress store.
+    pub fn progress_store(&self) -> Option<&ProgressStore> {
+        self.progress_store.as_ref()
+    }
+
+    /// Save and notify progress for a job.
+    fn save_and_notify_progress(&self, job_id: &str, progress: &JobProgress) -> Result<()> {
+        if let Some(store) = &self.progress_store {
+            store.save_progress(job_id, progress)?;
+        }
+
+        if let Some(notifier) = &self.progress_notifier {
+            notifier.notify(job_id, progress)?;
+        }
+
+        Ok(())
     }
 
     /// Process a dataset.
@@ -189,6 +250,26 @@ impl BatchProcessor {
         }
 
         let total = items.len();
+
+        // Initialize progress tracking
+        let job_id = format!("batch-{}", uuid::Uuid::new_v4());
+        if self.progress_store.is_some() || self.progress_notifier.is_some() {
+            let mut progress = JobProgress::new(
+                total,
+                vec![
+                    "initialization".to_string(),
+                    "processing".to_string(),
+                    "finalization".to_string(),
+                ],
+            );
+            progress.items_total = total;
+            progress.items_processed = start_index;
+            progress.start_stage("initialization");
+            progress.complete_stage("initialization");
+            progress.start_stage("processing");
+            self.save_and_notify_progress(&job_id, &progress)?;
+        }
+
         let stream = futures::stream::iter(items.into_iter().enumerate().skip(start_index))
             .map(|(_idx, item)| {
                 let builder = self.builder.clone();
@@ -256,10 +337,60 @@ impl BatchProcessor {
             })
             .buffer_unordered(self.config.concurrency);
 
-        let mut current_results = stream.collect::<Vec<_>>().await;
+        let mut current_results = Vec::new();
+        let mut stream = std::pin::pin!(stream);
+        let mut processed_count = start_index;
+
+        // Collect results and update progress
+        while let Some(result) = futures::StreamExt::next(&mut stream).await {
+            current_results.push(result);
+            processed_count += 1;
+
+            // Update progress periodically
+            if self.progress_store.is_some() || self.progress_notifier.is_some() {
+                if let Some(store) = &self.progress_store {
+                    if let Ok(Some(mut progress)) = store.get_progress(&job_id) {
+                        progress.items_processed = processed_count;
+                        progress.update_stage_items("processing", processed_count, total);
+                        let _ = self.save_and_notify_progress(&job_id, &progress);
+                    }
+                } else if self.progress_notifier.is_some() {
+                    // Fallback if progress not in store yet
+                    let mut progress = JobProgress::new(
+                        total,
+                        vec![
+                            "initialization".to_string(),
+                            "processing".to_string(),
+                            "finalization".to_string(),
+                        ],
+                    );
+                    progress.items_total = total;
+                    progress.items_processed = processed_count;
+                    progress.start_stage("processing");
+                    progress.update_stage_items("processing", processed_count, total);
+                    let _ = self.save_and_notify_progress(&job_id, &progress);
+                }
+            }
+        }
+
         // Sort results to match input order if possible, though buffer_unordered loses it.
         // For simplicity, we'll just append.
         results.append(&mut current_results);
+
+        // Complete processing stage and start finalization
+        if self.progress_store.is_some() || self.progress_notifier.is_some() {
+            if let Ok(Some(mut progress)) = self
+                .progress_store
+                .as_ref()
+                .map(|store| store.get_progress(&job_id))
+                .transpose()
+                .and_then(|opt| opt.ok_or(anyhow::anyhow!("No progress found")))
+            {
+                progress.complete_stage("processing");
+                progress.start_stage("finalization");
+                let _ = self.save_and_notify_progress(&job_id, &progress);
+            }
+        }
 
         if self.config.checkpoint_enabled {
             let checkpoint = BatchCheckpoint {
@@ -272,6 +403,21 @@ impl BatchProcessor {
         }
 
         save_results(&results_path, &results)?;
+
+        // Complete finalization stage
+        if self.progress_store.is_some() || self.progress_notifier.is_some() {
+            if let Ok(Some(mut progress)) = self
+                .progress_store
+                .as_ref()
+                .map(|store| store.get_progress(&job_id))
+                .transpose()
+                .and_then(|opt| opt.ok_or(anyhow::anyhow!("No progress found")))
+            {
+                progress.complete_stage("finalization");
+                progress.percentage = 100.0;
+                let _ = self.save_and_notify_progress(&job_id, &progress);
+            }
+        }
 
         Ok(results)
     }
