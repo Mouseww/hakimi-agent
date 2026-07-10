@@ -144,7 +144,7 @@ impl Tool for SessionSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search past sessions and messages with three modes: (1) Discovery - FTS5 search with session bookends (first/last 3 messages), (2) Scroll - window around a specific message ID, (3) Browse - recent sessions. Use for 'what did we do about X' or 'where did we leave Y' questions."
+        "Search past sessions and messages with three modes: (1) Discovery - FTS5 search with session bookends (first/last 3 messages), (2) Scroll - window around a specific message ID, (3) Browse - recent sessions. Use for 'what did we do about X' or 'where did we leave Y' questions. Supports role filtering via 'roles' parameter to show specific message types (user, assistant, tool, system)."
     }
 
     fn emoji(&self) -> &str {
@@ -184,6 +184,14 @@ impl Tool for SessionSearchTool {
                     "description": "For discovery: filter by message role (user, assistant, tool, system).",
                     "enum": ["user", "assistant", "tool", "system"]
                 },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["user", "assistant", "tool", "system"]
+                    },
+                    "description": "Filter messages by role in scroll/discovery mode. Default: [\"user\", \"assistant\"]. Pass [] to include all roles. Example: [\"user\", \"tool\"] shows user inputs and tool outputs."
+                },
                 "include_lineage": {
                     "type": "boolean",
                     "description": "Include session lineage information (parent/root session). Default: true.",
@@ -218,6 +226,15 @@ impl Tool for SessionSearchTool {
             .get("include_lineage")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
+        
+        // Extract roles parameter (array of strings)
+        let roles: Option<Vec<String>> = args.get("roles").and_then(|v| {
+            if let Some(arr) = v.as_array() {
+                Some(arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
+            } else {
+                None
+            }
+        });
 
         let db_path = session_db_path();
         debug!(
@@ -244,7 +261,7 @@ impl Tool for SessionSearchTool {
         // SCROLL MODE: session_id + around_message_id
         if let (Some(sid), Some(anchor_id)) = (session_id, around_msg_id) {
             debug!(mode = "scroll", "Executing Scroll mode");
-            let result = self.scroll_mode(&db, sid, anchor_id, window);
+            let result = self.scroll_mode(&db, sid, anchor_id, window, roles.as_ref());
             let elapsed = start.elapsed();
             hakimi_metrics::global().record_duration("session_search.scroll", elapsed);
             return result;
@@ -253,7 +270,7 @@ impl Tool for SessionSearchTool {
         // DISCOVERY MODE: query provided
         if !query.is_empty() {
             debug!(mode = "discovery", "Executing Discovery mode");
-            let result = self.discovery_mode(&db, query, limit, role_filter, include_lineage);
+            let result = self.discovery_mode(&db, query, limit, role_filter, include_lineage, roles.as_ref());
             let elapsed = start.elapsed();
             hakimi_metrics::global().record_duration("session_search.discovery", elapsed);
             return result;
@@ -324,6 +341,7 @@ impl SessionSearchTool {
         limit: i64,
         role_filter: Option<&str>,
         include_lineage: bool,
+        roles: Option<&Vec<String>>,
     ) -> Result<String> {
         let search_limit = if role_filter.is_some() {
             limit * 3 // fetch extra for filtering
@@ -376,6 +394,7 @@ impl SessionSearchTool {
                     &session,
                     &results,
                     include_lineage,
+                    roles,
                 )?);
                 output.push_str("\n---\n\n");
             }
@@ -391,6 +410,7 @@ impl SessionSearchTool {
         session_id: &str,
         anchor_id: i64,
         window: i64,
+        roles: Option<&Vec<String>>,
     ) -> Result<String> {
         let session = db
             .get_session(session_id)
@@ -399,8 +419,14 @@ impl SessionSearchTool {
                 session_error(format!("session not found: {}", session_id), "scroll_mode")
             })?;
 
+        // Convert Vec<String> to Vec<&str> for database call
+        let roles_slice: Option<Vec<&str>> = roles.map(|v| {
+            v.iter().map(|s| s.as_str()).collect()
+        });
+        let roles_ref = roles_slice.as_ref().map(|v| v.as_slice());
+
         let (messages, before, after) = db
-            .get_messages_around(session_id, anchor_id, window, None)
+            .get_messages_around(session_id, anchor_id, window, roles_ref)
             .map_err(|e| {
                 session_error(
                     format!("failed to get messages around anchor: {e}"),
@@ -446,6 +472,7 @@ impl SessionSearchTool {
         session: &SessionMeta,
         match_results: &[hakimi_session::SearchResult],
         include_lineage: bool,
+        roles: Option<&Vec<String>>,
     ) -> Result<String> {
         let title = session.title.as_deref().unwrap_or("untitled");
         let started = session
@@ -470,8 +497,14 @@ impl SessionSearchTool {
 
         output.push('\n');
 
+        // Convert Vec<String> to Vec<&str> for database call
+        let roles_slice: Option<Vec<&str>> = roles.map(|v| {
+            v.iter().map(|s| s.as_str()).collect()
+        });
+        let roles_ref = roles_slice.as_ref().map(|v| v.as_slice());
+
         // Get bookends
-        let (start_msgs, end_msgs) = db.get_bookends(&session.id, 3, None).unwrap_or_default();
+        let (start_msgs, end_msgs) = db.get_bookends(&session.id, 3, roles_ref).unwrap_or_default();
 
         if !start_msgs.is_empty() {
             output.push_str("**Session Start (first 3 messages):**\n");

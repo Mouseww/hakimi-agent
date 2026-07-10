@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.70-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.73-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,9 +29,40 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.72)
+## ✨ Recent Updates (v0.5.73)
 
-**🔍 SQL 查询角色过滤动态化 (任务 2.2.1) — 完成：**
+**🔍 session_search 工具暴露 roles 参数 (任务 2.2.2) — 完成：**
+
+**核心功能：**
+- ✅ **roles 参数暴露** — 在 `session_search` 工具的 JSON 参数中添加 `roles` 数组字段
+- ✅ **Discovery 模式支持** — bookends 消息支持角色过滤
+- ✅ **Scroll 模式支持** — 窗口消息支持角色过滤
+- ✅ **灵活过滤选项** — 默认 `None` 使用 user+assistant，传 `[]` 查看所有角色，传 `["user", "tool"]` 只看用户输入和工具输出
+- ✅ **JSON Schema 更新** — 添加 `roles` 字段文档和示例
+- ✅ **向后兼容** — 现有工具调用无需修改，默认行为不变
+
+**使用示例：**
+```json
+// 查看所有角色的消息
+{"mode": "browse", "session_id": "abc", "anchor_id": 42, "roles": []}
+
+// 只查看工具输出
+{"mode": "browse", "session_id": "abc", "anchor_id": 42, "roles": ["tool"]}
+
+// 查看用户输入和工具输出（调试工具调用链）
+{"mode": "browse", "session_id": "abc", "anchor_id": 42, "roles": ["user", "tool"]}
+```
+
+**API 变化：**
+- `scroll_mode()` 新增 `roles: Option<&Vec<String>>` 参数
+- `discovery_mode()` 新增 `roles: Option<&Vec<String>>` 参数
+- `format_session_with_bookends()` 新增 `roles: Option<&Vec<String>>` 参数
+
+---
+
+## ✨ Previous Updates (v0.5.72)
+
+**🔍 SQL 查询角色过滤动态化 (任务 2.2.1)：**
 
 **核心功能：**
 - ✅ **动态角色过滤** — `get_bookends()` 和 `get_messages_around()` 支持任意角色组合查询

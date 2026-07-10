@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.73] - 2026-07-10
+
+### Added
+- session_search 工具暴露 roles 参数 (TASK_2.2.2) ✅
+  - 在 `session_search` 工具的 JSON 参数中添加 `roles` 数组参数
+  - 支持在 Discovery 模式下过滤 bookends 消息的角色
+  - 支持在 Scroll 模式下过滤窗口消息的角色
+  - 默认值为 `None`（使用底层默认的 user + assistant）
+  - 用户可传 `[]` 查看所有角色的消息
+  - 用户可传 `["user", "tool"]` 只查看用户输入和工具输出
+  
+### Changed
+- `session_search` 工具 JSON Schema 更新，添加 `roles` 字段说明
+- 工具描述更新，说明支持角色过滤
+- `scroll_mode` 方法签名添加 `roles` 参数
+- `discovery_mode` 方法签名添加 `roles` 参数
+- `format_session_with_bookends` 方法签名添加 `roles` 参数
+
 ## [0.5.72] - 2026-07-10
 
 ### Added
