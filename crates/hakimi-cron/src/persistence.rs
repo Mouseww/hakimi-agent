@@ -45,6 +45,7 @@ impl PersistentCronStore {
         ensure_column(&conn, "deliver", "TEXT")?;
         ensure_column(&conn, "repeat_times", "INTEGER")?;
         ensure_column(&conn, "repeat_completed", "INTEGER")?;
+        ensure_column(&conn, "retry_config", "TEXT")?;
 
         info!(path = %path.display(), "Persistent cron store opened");
         Ok(Self {
@@ -73,12 +74,17 @@ impl PersistentCronStore {
         let repeat_times = job.repeat.times.map(i64::from);
         let repeat_completed = i64::from(job.repeat.completed);
 
+        let retry_config_json = job
+            .retry_config
+            .as_ref()
+            .and_then(|rc| serde_json::to_string(rc).ok());
+
         conn.execute(
             "INSERT OR REPLACE INTO cron_jobs (
                 id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run,
-                toolsets, skills, context_from, deliver, repeat_times, repeat_completed
+                toolsets, skills, context_from, deliver, repeat_times, repeat_completed, retry_config
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 job.id,
                 job.name,
@@ -94,6 +100,7 @@ impl PersistentCronStore {
                 job.deliver.as_deref(),
                 repeat_times,
                 repeat_completed,
+                retry_config_json,
             ],
         )?;
 
@@ -105,7 +112,7 @@ impl PersistentCronStore {
     pub fn load_all(&self) -> anyhow::Result<Vec<CronJob>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run, toolsets, skills, context_from, deliver, repeat_times, repeat_completed FROM cron_jobs",
+            "SELECT id, name, schedule_type, schedule_value, prompt, enabled, last_run, next_run, toolsets, skills, context_from, deliver, repeat_times, repeat_completed, retry_config FROM cron_jobs",
         )?;
 
         let jobs = stmt
@@ -124,6 +131,7 @@ impl PersistentCronStore {
                 let deliver: Option<String> = row.get(11)?;
                 let repeat_times: Option<i64> = row.get(12)?;
                 let repeat_completed: Option<i64> = row.get(13)?;
+                let retry_config: Option<String> = row.get(14)?;
 
                 let schedule = match schedule_type.as_str() {
                     "minutes" => {
@@ -161,6 +169,7 @@ impl PersistentCronStore {
                             .and_then(|completed| u32::try_from(completed).ok())
                             .unwrap_or(0),
                     },
+                    retry_config: retry_config.and_then(|s| serde_json::from_str(&s).ok()),
                 })
             })?
             .filter_map(|r| r.ok())
@@ -346,22 +355,23 @@ impl FileLock {
     /// Acquire a file lock at the given path.
     pub fn acquire(path: &Path) -> anyhow::Result<Self> {
         // Create a lock file. If it exists and is recent, another process holds it.
-        if path.exists()
-            && let Ok(metadata) = std::fs::metadata(path)
-            && let Ok(modified) = metadata.modified()
-        {
-            let age = std::time::SystemTime::now()
-                .duration_since(modified)
-                .unwrap_or_default();
-            // If lock is older than 60 seconds, consider it stale.
-            if age < std::time::Duration::from_secs(60) {
-                anyhow::bail!(
-                    "Cron lock file exists at {} (held by another process)",
-                    path.display()
-                );
+        if path.exists() {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                if let Ok(modified) = metadata.modified() {
+                    let age = std::time::SystemTime::now()
+                        .duration_since(modified)
+                        .unwrap_or_default();
+                    // If lock is older than 60 seconds, consider it stale.
+                    if age < std::time::Duration::from_secs(60) {
+                        anyhow::bail!(
+                            "Cron lock file exists at {} (held by another process)",
+                            path.display()
+                        );
+                    }
+                    warn!("Removing stale lock file at {}", path.display());
+                    let _ = std::fs::remove_file(path);
+                }
             }
-            warn!("Removing stale lock file at {}", path.display());
-            let _ = std::fs::remove_file(path);
         }
         let mut file = std::fs::OpenOptions::new()
             .write(true)

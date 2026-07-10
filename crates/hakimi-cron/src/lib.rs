@@ -5,6 +5,8 @@
 //! Supports SQLite persistent storage with file-based locking.
 
 pub mod persistence;
+pub mod retry;
+pub mod run_store;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -556,6 +558,8 @@ pub struct CronJob {
     pub deliver: Option<String>,
     #[serde(default)]
     pub repeat: CronRepeat,
+    #[serde(default)]
+    pub retry_config: Option<retry::RetryConfig>,
 }
 
 impl CronJob {
@@ -576,6 +580,7 @@ impl CronJob {
             context_from: Vec::new(),
             deliver: None,
             repeat: CronRepeat::default(),
+            retry_config: None,
         }
     }
 }

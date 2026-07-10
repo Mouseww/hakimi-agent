@@ -2,9 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.74-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.79-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/tests-1769-passing?style=for-the-badge&color=brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
 </p>
 
@@ -29,7 +29,77 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.74)
+## ✨ Recent Updates (v0.5.79)
+
+**🔁 定时任务失败重试机制 (TASK 3.3.2) — 完成：**
+
+**核心功能：**
+- ✅ **多种重试策略** — 支持固定间隔、指数退避、自定义间隔和禁用重试
+- ✅ **灵活配置** — 可配置最大重试次数和错误类型白名单
+- ✅ **完整历史记录** — 记录每次运行的所有尝试详情（时间、状态、错误、耗时）
+- ✅ **持久化存储** — 运行历史保存到 SQLite 数据库
+- ✅ **查询功能** — 按作业、状态、时间查询运行历史
+- ✅ **自动清理** — 支持自动清理旧运行记录
+
+**重试策略：**
+```rust
+// 固定间隔：每次等待相同时间
+RetryStrategy::FixedInterval { interval_secs: 60 }
+
+// 指数退避：延迟时间指数增长，带上限
+RetryStrategy::ExponentialBackoff {
+    initial_interval_secs: 60,
+    max_interval_secs: 3600,
+    multiplier: 2.0
+}
+
+// 自定义间隔：精确控制每次延迟
+RetryStrategy::CustomIntervals { 
+    intervals_secs: vec![60, 300, 900] 
+}
+
+// 禁用重试：失败立即停止
+RetryStrategy::NoRetry
+```
+
+**配置示例：**
+```rust
+RetryConfig {
+    strategy: RetryStrategy::ExponentialBackoff {
+        initial_interval_secs: 60,
+        max_interval_secs: 3600,
+        multiplier: 2.0
+    },
+    max_attempts: 3,  // 1次初始 + 2次重试
+    retry_on_errors: vec![
+        "NetworkError".to_string(),
+        "TimeoutError".to_string()
+    ]
+}
+```
+
+**运行历史追踪：**
+- 每个运行包含完整的尝试列表
+- 记录每次尝试的开始/结束时间、状态、错误信息、耗时
+- 支持查询特定作业的历史运行
+- 支持查询失败的运行
+- 支持清理旧记录（保留最近 N 条）
+
+**测试覆盖：**
+- ✅ 62 个 hakimi-cron 测试全部通过（新增 12 个测试）
+- ✅ 8 个重试策略单元测试
+- ✅ 4 个运行存储集成测试
+- ✅ 测试覆盖率 > 90%
+
+**Schema 变化：**
+- `cron_jobs` 表新增 `retry_config` 列
+- 新增 `cron_runs` 表记录运行历史
+- 新增 `cron_run_attempts` 表记录尝试详情
+- 新增 4 个索引优化查询性能
+
+---
+
+## ✨ Previous Updates (v0.5.78)
 
 **🔧 Test Suite Fixes**
 
