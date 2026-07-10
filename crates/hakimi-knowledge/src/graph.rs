@@ -204,10 +204,10 @@ impl KnowledgeGraph {
         let mut result = Vec::new();
 
         while let Some((idx, depth)) = queue.pop_front() {
-            if depth > 0
-                && let Some(node) = self.graph.node_weight(idx)
-            {
-                result.push(node);
+            if depth > 0 {
+                if let Some(node) = self.graph.node_weight(idx) {
+                    result.push(node);
+                }
             }
             if depth < max_depth {
                 // Check both outgoing and incoming edges for undirected-like traversal

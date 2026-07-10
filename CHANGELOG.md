@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.75] - 2026-07-10
+
+### Added
+- 知识库版本控制系统 (TASK_3.1.1) ✅
+  - 新增 `KnowledgeVersion` 结构体记录版本快照
+  - 新增 `VersionStore` 基于 SQLite 存储版本历史
+  - 新增 `VersionedKnowledgeStore` 提供版本化知识图操作
+  - 支持版本历史查询和浏览
+  - 支持回滚到任意历史版本
+  - 支持版本间差异对比
+  - 自动版本创建机制
+  - 10 个单元测试全部通过
+
+### Technical Details
+- **version.rs**: 版本数据结构定义
+- **version_store.rs**: SQLite 版本存储实现，6 个测试
+- **versioned_store.rs**: 版本化知识图封装，4 个测试
+- 版本号自动递增机制
+- 完整的 CRUD 操作支持
+- 版本元数据包含节点/边数统计
+
+### Tests
+- hakimi-knowledge: 47 tests passing (新增 10 个版本控制测试)
+- Build: Release compilation successful
+
 ## [0.5.74] - 2026-07-10
 
 ### Fixed
