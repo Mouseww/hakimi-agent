@@ -226,14 +226,14 @@ impl Tool for SessionSearchTool {
             .get("include_lineage")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        
+
         // Extract roles parameter (array of strings)
         let roles: Option<Vec<String>> = args.get("roles").and_then(|v| {
-            if let Some(arr) = v.as_array() {
-                Some(arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
-            } else {
-                None
-            }
+            v.as_array().map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
         });
 
         let db_path = session_db_path();
@@ -270,7 +270,14 @@ impl Tool for SessionSearchTool {
         // DISCOVERY MODE: query provided
         if !query.is_empty() {
             debug!(mode = "discovery", "Executing Discovery mode");
-            let result = self.discovery_mode(&db, query, limit, role_filter, include_lineage, roles.as_ref());
+            let result = self.discovery_mode(
+                &db,
+                query,
+                limit,
+                role_filter,
+                include_lineage,
+                roles.as_ref(),
+            );
             let elapsed = start.elapsed();
             hakimi_metrics::global().record_duration("session_search.discovery", elapsed);
             return result;
@@ -420,10 +427,8 @@ impl SessionSearchTool {
             })?;
 
         // Convert Vec<String> to Vec<&str> for database call
-        let roles_slice: Option<Vec<&str>> = roles.map(|v| {
-            v.iter().map(|s| s.as_str()).collect()
-        });
-        let roles_ref = roles_slice.as_ref().map(|v| v.as_slice());
+        let roles_slice: Option<Vec<&str>> = roles.map(|v| v.iter().map(|s| s.as_str()).collect());
+        let roles_ref = roles_slice.as_deref();
 
         let (messages, before, after) = db
             .get_messages_around(session_id, anchor_id, window, roles_ref)
@@ -498,13 +503,13 @@ impl SessionSearchTool {
         output.push('\n');
 
         // Convert Vec<String> to Vec<&str> for database call
-        let roles_slice: Option<Vec<&str>> = roles.map(|v| {
-            v.iter().map(|s| s.as_str()).collect()
-        });
-        let roles_ref = roles_slice.as_ref().map(|v| v.as_slice());
+        let roles_slice: Option<Vec<&str>> = roles.map(|v| v.iter().map(|s| s.as_str()).collect());
+        let roles_ref = roles_slice.as_deref();
 
         // Get bookends
-        let (start_msgs, end_msgs) = db.get_bookends(&session.id, 3, roles_ref).unwrap_or_default();
+        let (start_msgs, end_msgs) = db
+            .get_bookends(&session.id, 3, roles_ref)
+            .unwrap_or_default();
 
         if !start_msgs.is_empty() {
             output.push_str("**Session Start (first 3 messages):**\n");

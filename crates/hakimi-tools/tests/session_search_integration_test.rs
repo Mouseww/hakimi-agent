@@ -103,7 +103,7 @@ async fn test_browse_mode_respects_limit() {
     let result = tool.execute(&args, &ctx).await.unwrap();
 
     // Result should not be empty
-    assert!(result.len() > 0, "Result should not be empty");
+    assert!(!result.is_empty(), "Result should not be empty");
 }
 
 // ==================== DISCOVERY MODE TESTS ====================
@@ -174,7 +174,7 @@ async fn test_discovery_mode_with_bookends() {
     let result = tool.execute(&args, &ctx).await.unwrap();
 
     // Should include search results (may be minimal if no FTS5 matches)
-    assert!(result.len() > 0, "Result should not be empty");
+    assert!(!result.is_empty(), "Result should not be empty");
 }
 
 #[tokio::test]
@@ -313,7 +313,7 @@ async fn test_scroll_mode_at_start() {
 
     // Should handle boundary gracefully
     assert!(
-        result.len() > 0,
+        !result.is_empty(),
         "Result should not be empty at start boundary"
     );
 }
@@ -346,7 +346,7 @@ async fn test_scroll_mode_at_end() {
 
     // Should handle boundary gracefully
     assert!(
-        result.len() > 0,
+        !result.is_empty(),
         "Result should not be empty at end boundary"
     );
 }

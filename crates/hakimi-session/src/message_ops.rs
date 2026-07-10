@@ -379,16 +379,16 @@ impl MessageOps for SessionDB {
         let mut idx = 1;
         stmt.raw_bind_parameter(idx, session_id)?;
         idx += 1;
-        stmt.raw_bind_parameter(idx, &lower_bound)?;
+        stmt.raw_bind_parameter(idx, lower_bound)?;
         idx += 1;
-        stmt.raw_bind_parameter(idx, &upper_bound)?;
+        stmt.raw_bind_parameter(idx, upper_bound)?;
         idx += 1;
         for param in &role_params {
             stmt.raw_bind_parameter(idx, param)?;
             idx += 1;
         }
 
-        let rows = stmt.raw_query().mapped(|row| row_to_message(row));
+        let rows = stmt.raw_query().mapped(row_to_message);
 
         let messages: Vec<Message> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -446,7 +446,7 @@ impl MessageOps for SessionDB {
         }
         start_stmt.raw_bind_parameter(idx, count)?;
 
-        let start_rows = start_stmt.raw_query().mapped(|row| row_to_message(row));
+        let start_rows = start_stmt.raw_query().mapped(row_to_message);
         let start_messages: Vec<Message> = start_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
         // Last N messages (with role filter)
@@ -469,7 +469,7 @@ impl MessageOps for SessionDB {
         }
         end_stmt.raw_bind_parameter(idx, count)?;
 
-        let end_rows = end_stmt.raw_query().mapped(|row| row_to_message(row));
+        let end_rows = end_stmt.raw_query().mapped(row_to_message);
         let mut end_messages: Vec<Message> = end_rows.collect::<rusqlite::Result<Vec<_>>>()?;
         // Reverse to maintain chronological order
         end_messages.reverse();
@@ -1110,7 +1110,7 @@ mod tests {
         .unwrap();
 
         // 只查询 tool 角色
-        let (start, end) = db.get_bookends(&sid, 10, Some(&["tool"])).unwrap();
+        let (start, _end) = db.get_bookends(&sid, 10, Some(&["tool"])).unwrap();
 
         assert_eq!(start.len(), 1);
         assert_eq!(start[0].role, MessageRole::Tool);
@@ -1134,7 +1134,7 @@ mod tests {
             .unwrap();
 
         // 传空数组 = 不过滤角色
-        let (start, end) = db.get_bookends(&sid, 10, Some(&[])).unwrap();
+        let (start, _end) = db.get_bookends(&sid, 10, Some(&[])).unwrap();
 
         assert_eq!(start.len(), 4);
     }
