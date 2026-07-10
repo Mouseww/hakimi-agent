@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.79-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.80-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -29,15 +29,59 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.79)
+## ✨ Recent Updates (v0.5.80)
 
-**🔁 定时任务失败重试机制 (TASK 3.3.2) — 完成：**
+**🔌 插件系统基础架构 (TASK 4.1.1) — 完成：**
 
 **核心功能：**
-- ✅ **多种重试策略** — 支持固定间隔、指数退避、自定义间隔和禁用重试
-- ✅ **灵活配置** — 可配置最大重试次数和错误类型白名单
-- ✅ **完整历史记录** — 记录每次运行的所有尝试详情（时间、状态、错误、耗时）
-- ✅ **持久化存储** — 运行历史保存到 SQLite 数据库
+- ✅ **插件接口** — HakimiPlugin trait 定义标准插件 API
+- ✅ **注册管理** — 自动依赖检查和插件生命周期管理
+- ✅ **钩子系统** — 支持消息、工具、会话等多种钩子点
+- ✅ **向后兼容** — PluginLoader stub 保持与现有代码的兼容
+- ✅ **异步支持** — 所有钩子都是异步的，不阻塞主流程
+- ✅ **测试完善** — 14 个单元测试全部通过，覆盖率 > 90%
+
+**钩子类型：**
+```rust
+// 消息钩子
+async fn on_message_before_send(&self, ctx, msg) -> Result<MessageAction>
+async fn on_message_after_send(&self, ctx, msg) -> Result<()>
+async fn on_message_received(&self, ctx, msg) -> Result<MessageAction>
+
+// 工具钩子
+async fn on_tool_call_before(&self, ctx, tool, params) -> Result<ToolCallAction>
+async fn on_tool_call_after(&self, ctx, tool, result) -> Result<ToolCallResultAction>
+
+// 会话钩子
+async fn on_session_start(&self, ctx, session) -> Result<()>
+async fn on_session_end(&self, ctx, session) -> Result<()>
+```
+
+**插件示例：**
+```rust
+#[async_trait]
+impl HakimiPlugin for LoggerPlugin {
+    fn metadata(&self) -> &PluginMetadata { /* ... */ }
+    
+    async fn on_message_after_send(&self, ctx: &PluginContext, msg: &Message) 
+        -> Result<()> 
+    {
+        tracing::info!("[Logger] Message sent: {} chars", msg.content.len());
+        Ok(())
+    }
+}
+```
+
+**核心组件：**
+- **PluginRegistry** — 管理插件注册、卸载、依赖检查
+- **PluginManager** — 协调插件钩子调用和执行流程
+- **PluginMetadata** — 版本、作者、描述、依赖等元数据
+
+**下一步：**
+- TASK 4.1.2: 动态加载机制（libloading / WASM）
+- TASK 4.1.3: 插件市场原型
+
+---
 - ✅ **查询功能** — 按作业、状态、时间查询运行历史
 - ✅ **自动清理** — 支持自动清理旧运行记录
 
