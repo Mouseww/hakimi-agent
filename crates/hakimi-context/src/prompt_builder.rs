@@ -212,11 +212,12 @@ pub fn build_context_files_prompt(cwd: &str) -> String {
     while let Some(current) = dir {
         for name in CONTEXT_FILENAMES {
             let path = current.join(name);
-            if path.exists()
-                && let Some(context_file) =
+            if path.exists() {
+                if let Some(context_file) =
                     read_context_file(&path, format!("{} ({})", name, current.display()))
-            {
-                collected.push(context_file);
+                {
+                    collected.push(context_file);
+                }
             }
         }
         collect_cursor_rule_files(&current, &mut collected);
