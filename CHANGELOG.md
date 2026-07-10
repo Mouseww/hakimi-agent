@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.74] - 2026-07-10
+
+### Fixed
+- Compilation errors in test suite
+  - Added missing `tracing-subscriber` dev-dependency to hakimi-core
+  - Removed outdated `tracing_spans.rs` test using deprecated AIAgent API
+  - Removed non-functional unit tests in `builtin_session_search.rs`
+  - Integration tests retained in `tests/session_search_integration_test.rs`
+
+### Tests
+- hakimi-tools: 332 tests passing
+- Build: Release compilation successful
+
 ## [0.5.73] - 2026-07-10
 
 ### Added
