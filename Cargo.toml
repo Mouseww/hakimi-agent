@@ -22,15 +22,20 @@ members = [
     "crates/hakimi-skills",
     "crates/hakimi-batch",
     "crates/hakimi-i18n",
-    "qq-bot-sdk", "crates/hakimi-metrics",
+    "qq-bot-sdk",
+    "crates/hakimi-metrics",
 ]
 exclude = [
     "examples/hello-wasm-plugin",
+    "examples/json-formatter-plugin",
+    "examples/weather-plugin",
+    "examples/markdown-plugin",
+    "examples/snippet-store-plugin",
 ]
 
 [workspace.package]
-version = "0.5.90"
-edition = "2024"
+version = "0.5.91"
+edition = "2021"
 
 [workspace.dependencies]
 # Async runtime

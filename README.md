@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.90-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.91-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -30,8 +30,50 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.90)
+## ✨ Recent Updates (v0.5.91)
 
+**📦 示例 WASM 插件集合 (TASK 5.1.3) — 完成：**
+
+**核心功能：**
+- ✨ **5 个实用插件示例** — 覆盖不同应用场景
+  - **Hello WASM Plugin** (47 KB) — 基础示例，展示插件结构
+  - **Weather Plugin** (67 KB) — 天气查询，演示结构化数据处理
+  - **JSON Formatter Plugin** (101 KB) — JSON 格式化和验证
+  - **Markdown Plugin** (69 KB) — Markdown 文本转换
+  - **Snippet Store Plugin** (54 KB) — 代码片段存储管理
+- 🛠️ **统一构建脚本** — `build_all_plugins.sh`
+  - 一键构建所有插件
+  - 显示大小统计和构建摘要
+  - 自动检测构建错误
+- 📚 **完整开发指南** — `examples/README.md`
+  - 插件开发最佳实践
+  - 代码模板和示例
+  - 性能优化技巧
+  - 故障排除指南
+
+**技术细节：**
+- 文件: `examples/weather-plugin/`, `examples/json-formatter-plugin/`, 
+  `examples/markdown-plugin/`, `examples/snippet-store-plugin/`
+- 构建: 所有 5 个插件成功编译，总大小 339 KB
+- 优化: `opt-level = "z"`, `lto = true`, `strip = true`
+- 测试: 每个插件都有单元测试 ✅
+
+**使用示例：**
+```bash
+# 构建所有插件
+cd examples && ./build_all_plugins.sh
+
+# 安装插件
+hakimi plugin install examples/weather-plugin/target/wasm32-wasip1/release/weather_plugin.wasm
+
+# 执行插件
+hakimi plugin execute weather-plugin
+
+# 查看插件信息
+hakimi plugin info weather-plugin
+```
+
+**v0.5.90 更新：**
 **🔌 Plugin CLI 命令 (TASK 5.2.1) — 完成：**
 
 **核心功能：**

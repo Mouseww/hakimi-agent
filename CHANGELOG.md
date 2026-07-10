@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.5.91] - 2026-07-10
+
+### Added
+- **示例 WASM 插件集合 (TASK 5.1.3)** — 5 个实用插件示例 ✅
+  - **Hello WASM Plugin** — 基础示例，展示插件结构 (47 KB)
+  - **Weather Plugin** — 天气查询示例，演示结构化数据 (67 KB)
+  - **JSON Formatter Plugin** — JSON 格式化和验证 (101 KB)
+  - **Markdown Plugin** — Markdown 文本处理 (69 KB)
+  - **Snippet Store Plugin** — 代码片段存储管理 (54 KB)
+  - 统一构建脚本 `build_all_plugins.sh`
+  - 完整的 `examples/README.md` 开发指南
+  - 每个插件都有独立的 README 和示例
+
+### Technical Details
+- **文件**:
+  - `examples/weather-plugin/` — 新增天气查询插件
+  - `examples/json-formatter-plugin/` — 完善 JSON 格式化插件
+  - `examples/markdown-plugin/` — 新增 Markdown 处理插件
+  - `examples/snippet-store-plugin/` — 新增代码片段插件
+  - `examples/build_all_plugins.sh` — 统一构建脚本
+  - `examples/README.md` — 完整开发文档
+- **构建**: 所有 5 个插件编译成功，总大小 339 KB
+- **优化**: 使用 `opt-level = "z"`, `lto = true`, `strip = true`
+- **依赖**: hakimi-plugin-sdk, serde, serde_json
+
+### Developer Experience
+- 多场景插件示例，涵盖不同应用类型
+- 完整的插件开发指南和最佳实践
+- 快速构建和测试工具
+- 清晰的代码结构和注释
+
+### Next Steps
+- TASK 5.2.2: Plugin Marketplace 完整实现
+- TASK 5.3.1: 插件权限和沙箱系统
+- TASK 5.1.4: 更多高级插件示例
+
 ## [0.5.90] - 2026-07-10
 
 ### Added
