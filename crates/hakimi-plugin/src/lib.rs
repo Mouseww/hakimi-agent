@@ -1,6 +1,8 @@
 pub mod manager;
 pub mod registry;
 pub mod config;
+pub mod models;
+pub mod marketplace;
 
 // Legacy plugin loader stub for backward compatibility
 pub mod loader;

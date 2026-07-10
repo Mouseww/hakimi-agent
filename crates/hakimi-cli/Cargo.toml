@@ -37,6 +37,7 @@ tokio-util = { workspace = true }
 dirs = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
+tabled = "0.15"
 dialoguer = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = "3"
