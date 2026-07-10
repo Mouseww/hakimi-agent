@@ -30,6 +30,7 @@ base64 = { workspace = true }
 scraper = { workspace = true }
 chromiumoxide = { version = "0.7", features = ["tokio-runtime"], default-features = false, optional = true }
 futures = { workspace = true }
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

@@ -30,6 +30,8 @@ mod builtin_voice_capture;
 mod builtin_web_extract;
 mod builtin_web_search;
 mod builtin_write_file;
+pub mod cache;
+pub mod cache_key;
 mod command_safety;
 mod context;
 mod fts_search;
