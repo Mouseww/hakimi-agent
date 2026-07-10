@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.72] - 2026-07-10
+
+### Added
+- SQL 查询角色过滤动态化 (TASK_2.2.1) ✅
+  - `get_bookends()` 和 `get_messages_around()` 支持动态角色过滤
+  - 新增 `roles: Option<&[&str]>` 参数，默认值为 `['user', 'assistant']`
+  - 实现 `build_role_filter_sql()` 辅助函数动态构建 SQL WHERE 子句
+  - 支持任意角色组合查询（user, assistant, tool, system）
+  - 支持空数组参数禁用角色过滤
+  - 向后兼容：现有调用传 `None` 使用默认行为
+
+### Changed
+- `MessageOps` trait 方法签名更新
+- `session_search` 工具调用适配新签名
+
+### Tests
+- 新增 6 个单元测试覆盖角色过滤场景
+- 所有 34 个 message_ops 测试通过
+
 ## [0.5.71] - 2026-07-10
 
 ### Added

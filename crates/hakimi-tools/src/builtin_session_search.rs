@@ -400,7 +400,7 @@ impl SessionSearchTool {
             })?;
 
         let (messages, before, after) = db
-            .get_messages_around(session_id, anchor_id, window)
+            .get_messages_around(session_id, anchor_id, window, None)
             .map_err(|e| {
                 session_error(
                     format!("failed to get messages around anchor: {e}"),
@@ -471,7 +471,7 @@ impl SessionSearchTool {
         output.push('\n');
 
         // Get bookends
-        let (start_msgs, end_msgs) = db.get_bookends(&session.id, 3).unwrap_or_default();
+        let (start_msgs, end_msgs) = db.get_bookends(&session.id, 3, None).unwrap_or_default();
 
         if !start_msgs.is_empty() {
             output.push_str("**Session Start (first 3 messages):**\n");

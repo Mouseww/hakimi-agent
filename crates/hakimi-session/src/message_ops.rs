@@ -34,15 +34,50 @@ pub trait MessageOps {
     fn delete_message(&self, session_id: &str, message_id: &str) -> Result<bool>;
     /// Get a window of messages around an anchor message ID.
     /// Returns (window, messages_before, messages_after) where window includes the anchor.
+    ///
+    /// # Arguments
+    /// * `roles` - Optional role filter. If `None`, defaults to `["user", "assistant"]`.
+    ///             Pass `Some(&[])` to disable role filtering.
     fn get_messages_around(
         &self,
         session_id: &str,
         anchor_id: i64,
         window: i64,
+        roles: Option<&[&str]>,
     ) -> Result<(Vec<Message>, i64, i64)>;
-    /// Get bookend messages: first N and last N user+assistant messages of a session.
+    /// Get bookend messages: first N and last N messages of a session.
     /// Returns (start_messages, end_messages).
-    fn get_bookends(&self, session_id: &str, count: i64) -> Result<(Vec<Message>, Vec<Message>)>;
+    ///
+    /// # Arguments
+    /// * `roles` - Optional role filter. If `None`, defaults to `["user", "assistant"]`.
+    ///             Pass `Some(&[])` to disable role filtering.
+    fn get_bookends(
+        &self,
+        session_id: &str,
+        count: i64,
+        roles: Option<&[&str]>,
+    ) -> Result<(Vec<Message>, Vec<Message>)>;
+}
+
+/// Build a dynamic SQL role filter clause and collect bind parameters.
+///
+/// # Arguments
+/// * `roles` - Slice of role strings to filter by. Empty slice means no role filtering.
+///
+/// # Returns
+/// * `clause` - SQL WHERE clause fragment like "AND role IN (?, ?, ?)" or empty string
+/// * `params` - Vector of role strings to bind to the placeholders
+fn build_role_filter_sql(roles: &[&str]) -> (String, Vec<String>) {
+    if roles.is_empty() {
+        // No role filtering
+        return (String::new(), vec![]);
+    }
+
+    let placeholders = roles.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let clause = format!("AND role IN ({})", placeholders);
+    let params = roles.iter().map(|r| r.to_string()).collect();
+
+    (clause, params)
 }
 
 impl MessageOps for SessionDB {
@@ -264,10 +299,15 @@ impl MessageOps for SessionDB {
         session_id: &str,
         anchor_id: i64,
         window: i64,
+        roles: Option<&[&str]>,
     ) -> Result<(Vec<Message>, i64, i64)> {
         let start = Instant::now();
         debug!("Starting get_messages_around");
         let conn = self.conn().lock().unwrap();
+
+        // Default role filter
+        let role_filter = roles.unwrap_or(&["user", "assistant"]);
+        let (role_clause, role_params) = build_role_filter_sql(role_filter);
 
         // First, verify the anchor exists and belongs to this session
         let anchor_exists: bool = conn
@@ -286,37 +326,69 @@ impl MessageOps for SessionDB {
             );
         }
 
-        // Count messages before and after the anchor
-        let messages_before: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages WHERE session_id = ?1 AND id < ?2",
-                params![session_id, anchor_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        // Count messages before and after the anchor (with role filter)
+        let count_before_sql = format!(
+            "SELECT COUNT(*) FROM messages WHERE session_id = ? AND id < ? {}",
+            role_clause
+        );
+        let messages_before: i64 = {
+            let mut stmt = conn.prepare(&count_before_sql)?;
+            let mut idx = 1;
+            stmt.raw_bind_parameter(idx, session_id)?;
+            idx += 1;
+            stmt.raw_bind_parameter(idx, anchor_id)?;
+            idx += 1;
+            for param in &role_params {
+                stmt.raw_bind_parameter(idx, param)?;
+                idx += 1;
+            }
+            stmt.raw_query().next()?.unwrap().get(0)?
+        };
 
-        let messages_after: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages WHERE session_id = ?1 AND id > ?2",
-                params![session_id, anchor_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let count_after_sql = format!(
+            "SELECT COUNT(*) FROM messages WHERE session_id = ? AND id > ? {}",
+            role_clause
+        );
+        let messages_after: i64 = {
+            let mut stmt = conn.prepare(&count_after_sql)?;
+            let mut idx = 1;
+            stmt.raw_bind_parameter(idx, session_id)?;
+            idx += 1;
+            stmt.raw_bind_parameter(idx, anchor_id)?;
+            idx += 1;
+            for param in &role_params {
+                stmt.raw_bind_parameter(idx, param)?;
+                idx += 1;
+            }
+            stmt.raw_query().next()?.unwrap().get(0)?
+        };
 
-        // Fetch window: anchor ± window messages
+        // Fetch window: anchor ± window messages (with role filter)
         let lower_bound = anchor_id - window;
         let upper_bound = anchor_id + window;
 
-        let mut stmt = conn.prepare(
+        let fetch_sql = format!(
             "SELECT role, content, tool_call_id, tool_calls, tool_name, timestamp, token_count, finish_reason, reasoning
              FROM messages
-             WHERE session_id = ?1 AND id >= ?2 AND id <= ?3
+             WHERE session_id = ? AND id >= ? AND id <= ? {}
              ORDER BY id ASC",
-        )?;
+            role_clause
+        );
 
-        let rows = stmt.query_map(params![session_id, lower_bound, upper_bound], |row| {
-            row_to_message(row)
-        })?;
+        let mut stmt = conn.prepare(&fetch_sql)?;
+        let mut idx = 1;
+        stmt.raw_bind_parameter(idx, session_id)?;
+        idx += 1;
+        stmt.raw_bind_parameter(idx, &lower_bound)?;
+        idx += 1;
+        stmt.raw_bind_parameter(idx, &upper_bound)?;
+        idx += 1;
+        for param in &role_params {
+            stmt.raw_bind_parameter(idx, param)?;
+            idx += 1;
+        }
+
+        let rows = stmt.raw_query().mapped(|row| row_to_message(row));
 
         let messages: Vec<Message> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -341,34 +413,63 @@ impl MessageOps for SessionDB {
             count = count,
         )
     )]
-    fn get_bookends(&self, session_id: &str, count: i64) -> Result<(Vec<Message>, Vec<Message>)> {
+    fn get_bookends(
+        &self,
+        session_id: &str,
+        count: i64,
+        roles: Option<&[&str]>,
+    ) -> Result<(Vec<Message>, Vec<Message>)> {
         debug!("Fetching session bookends");
         let conn = self.conn().lock().unwrap();
 
-        // First N user+assistant messages
-        let mut start_stmt = conn.prepare(
+        // Default role filter
+        let role_filter = roles.unwrap_or(&["user", "assistant"]);
+        let (role_clause, role_params) = build_role_filter_sql(role_filter);
+
+        // First N messages (with role filter)
+        let start_sql = format!(
             "SELECT role, content, tool_call_id, tool_calls, tool_name, timestamp, token_count, finish_reason, reasoning
              FROM messages
-             WHERE session_id = ?1 AND role IN ('user', 'assistant')
+             WHERE session_id = ? {}
              ORDER BY id ASC
-             LIMIT ?2",
-        )?;
+             LIMIT ?",
+            role_clause
+        );
 
-        let start_rows = start_stmt.query_map(params![session_id, count], row_to_message)?;
+        let mut start_stmt = conn.prepare(&start_sql)?;
+        let mut idx = 1;
+        start_stmt.raw_bind_parameter(idx, session_id)?;
+        idx += 1;
+        for param in &role_params {
+            start_stmt.raw_bind_parameter(idx, param)?;
+            idx += 1;
+        }
+        start_stmt.raw_bind_parameter(idx, count)?;
 
+        let start_rows = start_stmt.raw_query().mapped(|row| row_to_message(row));
         let start_messages: Vec<Message> = start_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
-        // Last N user+assistant messages
-        let mut end_stmt = conn.prepare(
+        // Last N messages (with role filter)
+        let end_sql = format!(
             "SELECT role, content, tool_call_id, tool_calls, tool_name, timestamp, token_count, finish_reason, reasoning
              FROM messages
-             WHERE session_id = ?1 AND role IN ('user', 'assistant')
+             WHERE session_id = ? {}
              ORDER BY id DESC
-             LIMIT ?2",
-        )?;
+             LIMIT ?",
+            role_clause
+        );
 
-        let end_rows = end_stmt.query_map(params![session_id, count], row_to_message)?;
+        let mut end_stmt = conn.prepare(&end_sql)?;
+        let mut idx = 1;
+        end_stmt.raw_bind_parameter(idx, session_id)?;
+        idx += 1;
+        for param in &role_params {
+            end_stmt.raw_bind_parameter(idx, param)?;
+            idx += 1;
+        }
+        end_stmt.raw_bind_parameter(idx, count)?;
 
+        let end_rows = end_stmt.raw_query().mapped(|row| row_to_message(row));
         let mut end_messages: Vec<Message> = end_rows.collect::<rusqlite::Result<Vec<_>>>()?;
         // Reverse to maintain chronological order
         end_messages.reverse();
@@ -899,7 +1000,7 @@ mod tests {
         }
 
         // 获取消息 5 前后 2 条（应返回 3-7）
-        let (window, before, after) = db.get_messages_around(&sid, 5, 2).unwrap();
+        let (window, before, after) = db.get_messages_around(&sid, 5, 2, None).unwrap();
 
         assert_eq!(before, 4); // 消息 1-4 在前面
         assert_eq!(after, 5); // 消息 6-10 在后面
@@ -917,11 +1018,11 @@ mod tests {
         }
 
         // anchor 在开头
-        let (_, before, _) = db.get_messages_around(&sid, 1, 2).unwrap();
+        let (_, before, _) = db.get_messages_around(&sid, 1, 2, None).unwrap();
         assert_eq!(before, 0);
 
         // anchor 在末尾
-        let (_, _, after) = db.get_messages_around(&sid, 5, 2).unwrap();
+        let (_, _, after) = db.get_messages_around(&sid, 5, 2, None).unwrap();
         assert_eq!(after, 0);
     }
 
@@ -933,7 +1034,7 @@ mod tests {
         db.save_message(&sid, &Message::user("msg 1")).unwrap();
 
         // 不存在的 anchor
-        let result = db.get_messages_around(&sid, 999, 5);
+        let result = db.get_messages_around(&sid, 999, 5, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
     }
@@ -955,7 +1056,7 @@ mod tests {
         db.save_message(&sid, &Message::user("Q3")).unwrap();
         db.save_message(&sid, &Message::assistant("A3")).unwrap();
 
-        let (start, end) = db.get_bookends(&sid, 2).unwrap();
+        let (start, end) = db.get_bookends(&sid, 2, None).unwrap();
 
         // 前 2 条 user+assistant
         assert_eq!(start.len(), 2);
@@ -977,7 +1078,7 @@ mod tests {
         db.save_message(&sid, &Message::assistant("A1")).unwrap();
 
         // 请求 5 条，但只有 2 条
-        let (start, end) = db.get_bookends(&sid, 5).unwrap();
+        let (start, end) = db.get_bookends(&sid, 5, None).unwrap();
 
         assert_eq!(start.len(), 2);
         assert_eq!(end.len(), 2);
@@ -988,9 +1089,139 @@ mod tests {
         let db = test_db();
         let sid = create_test_session(&db);
 
-        let (start, end) = db.get_bookends(&sid, 3).unwrap();
+        let (start, end) = db.get_bookends(&sid, 3, None).unwrap();
 
         assert!(start.is_empty());
         assert!(end.is_empty());
+    }
+
+    #[test]
+    fn test_get_bookends_custom_roles() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("user msg")).unwrap();
+        db.save_message(&sid, &Message::assistant("assistant msg"))
+            .unwrap();
+        db.save_message(
+            &sid,
+            &Message::tool_result("call_1", "test_tool", "tool output"),
+        )
+        .unwrap();
+
+        // 只查询 tool 角色
+        let (start, end) = db.get_bookends(&sid, 10, Some(&["tool"])).unwrap();
+
+        assert_eq!(start.len(), 1);
+        assert_eq!(start[0].role, MessageRole::Tool);
+        assert_eq!(start[0].content.as_deref(), Some("tool output"));
+    }
+
+    #[test]
+    fn test_get_bookends_all_roles() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("user msg")).unwrap();
+        db.save_message(&sid, &Message::assistant("assistant msg"))
+            .unwrap();
+        db.save_message(
+            &sid,
+            &Message::tool_result("call_1", "test_tool", "tool output"),
+        )
+        .unwrap();
+        db.save_message(&sid, &Message::system("system prompt"))
+            .unwrap();
+
+        // 传空数组 = 不过滤角色
+        let (start, end) = db.get_bookends(&sid, 10, Some(&[])).unwrap();
+
+        assert_eq!(start.len(), 4);
+    }
+
+    #[test]
+    fn test_get_bookends_multiple_custom_roles() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("user msg")).unwrap();
+        db.save_message(&sid, &Message::assistant("assistant msg"))
+            .unwrap();
+        db.save_message(
+            &sid,
+            &Message::tool_result("call_1", "test_tool", "tool output"),
+        )
+        .unwrap();
+        db.save_message(&sid, &Message::system("system prompt"))
+            .unwrap();
+
+        // 查询 user + tool
+        let (start, _end) = db.get_bookends(&sid, 10, Some(&["user", "tool"])).unwrap();
+
+        assert_eq!(start.len(), 2);
+        assert!(
+            start
+                .iter()
+                .all(|m| m.role == MessageRole::User || m.role == MessageRole::Tool)
+        );
+    }
+
+    #[test]
+    fn test_get_bookends_nonexistent_role() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("user msg")).unwrap();
+
+        // 过滤不存在的角色
+        let (start, end) = db.get_bookends(&sid, 10, Some(&["nonexistent"])).unwrap();
+
+        assert_eq!(start.len(), 0);
+        assert_eq!(end.len(), 0);
+    }
+
+    #[test]
+    fn test_get_messages_around_custom_roles() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("Q1")).unwrap();
+        db.save_message(&sid, &Message::assistant("A1")).unwrap();
+        db.save_message(
+            &sid,
+            &Message::tool_result("call_1", "test_tool", "tool output"),
+        )
+        .unwrap();
+        db.save_message(&sid, &Message::user("Q2")).unwrap();
+
+        // 以消息 3 (tool) 为锚点，只查询 tool 角色
+        let (window, before, after) = db.get_messages_around(&sid, 3, 1, Some(&["tool"])).unwrap();
+
+        assert_eq!(window.len(), 1);
+        assert_eq!(window[0].role, MessageRole::Tool);
+        assert_eq!(before, 0); // 前面没有 tool 消息
+        assert_eq!(after, 0); // 后面没有 tool 消息
+    }
+
+    #[test]
+    fn test_get_messages_around_all_roles() {
+        let db = test_db();
+        let sid = create_test_session(&db);
+
+        db.save_message(&sid, &Message::user("Q1")).unwrap();
+        db.save_message(&sid, &Message::assistant("A1")).unwrap();
+        db.save_message(
+            &sid,
+            &Message::tool_result("call_1", "test_tool", "tool output"),
+        )
+        .unwrap();
+        db.save_message(&sid, &Message::user("Q2")).unwrap();
+
+        // 以消息 2 为锚点，不过滤角色
+        let (window, before, after) = db.get_messages_around(&sid, 2, 1, Some(&[])).unwrap();
+
+        assert_eq!(window.len(), 3); // 消息 1, 2, 3
+        assert_eq!(before, 1); // 消息 1
+        assert_eq!(after, 2); // 消息 3, 4
     }
 }
