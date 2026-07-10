@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.92] - 2026-07-10
+
+### Added
+- **WASM 插件宿主函数完整实现 (TASK 5.1.4)** ✅
+  - **日志功能** — 从 WASM 内存正确读取字符串并记录
+    - 支持多个日志级别（trace, debug, info, warn, error）
+    - 正确显示插件日志到宿主日志系统
+  - **HTTP 请求功能** — 插件可通过宿主执行外部 HTTP GET 请求
+    - 阻塞式请求设计，简化 WASM 端异步处理
+    - 完整的错误处理和响应传递
+    - 支持最大 4KB 响应（可扩展）
+  - **SDK 更新** — `PluginContext` API 完善
+    - 类型安全的宿主函数调用接口
+    - 统一错误处理机制
+  - **示例插件更新** — 所有插件重新编译并验证
+
+### Fixed
+- **Cargo 依赖重复** — 移除 `hakimi-plugin` 中重复的 reqwest 依赖
+- **数据库查询生命周期** — 修复 `hakimi-session` 中的临时值生命周期问题
+
+### Technical Details
+- **修改文件**:
+  - `crates/hakimi-plugin/src/wasm_loader.rs` — 实现 `host_log` 和 `host_http_request` 宿主函数
+  - `crates/hakimi-plugin-sdk/src/lib.rs` — 更新 SDK 以使用正确的类型签名（i32）
+  - `crates/hakimi-plugin/Cargo.toml` — 添加 reqwest 依赖，移除重复项
+  - `crates/hakimi-session/src/message_ops.rs` — 修复数据库查询的生命周期问题
+- **验证**: 
+  - 34 个单元测试全部通过
+  - 所有示例插件（weather, json-formatter, markdown, snippet-store）编译成功
+- **版本**: 0.5.91 → 0.5.92
+
 ## [0.5.91] - 2026-07-10
 
 ### Added

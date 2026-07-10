@@ -63,7 +63,7 @@ impl PluginContext {
     pub fn log(&self, level: &str, message: &str) {
         #[cfg(target_arch = "wasm32")]
         unsafe {
-            host_log(level.as_ptr(), level.len(), message.as_ptr(), message.len());
+            host_log(level.as_ptr(), level.len() as i32, message.as_ptr(), message.len() as i32);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -94,7 +94,7 @@ impl PluginContext {
         {
             let mut buf = vec![0u8; 4096];
             let len =
-                unsafe { host_http_request(url.as_ptr(), url.len(), buf.as_mut_ptr(), buf.len()) };
+                unsafe { host_http_request(url.as_ptr(), url.len() as i32, buf.as_mut_ptr(), buf.len() as i32) };
 
             if len < 0 {
                 return Err(format!("HTTP request failed with code: {}", len));
@@ -123,12 +123,12 @@ impl Default for PluginContext {
 #[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "hakimi")]
 extern "C" {
-    fn host_log(level_ptr: *const u8, level_len: usize, msg_ptr: *const u8, msg_len: usize);
+    fn host_log(level_ptr: *const u8, level_len: i32, msg_ptr: *const u8, msg_len: i32);
     fn host_http_request(
         url_ptr: *const u8,
-        url_len: usize,
+        url_len: i32,
         out_ptr: *mut u8,
-        out_len: usize,
+        out_len: i32,
     ) -> i32;
 }
 

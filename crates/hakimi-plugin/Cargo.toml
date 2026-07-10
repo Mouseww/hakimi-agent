@@ -21,10 +21,10 @@ tokio = { version = "1.35", features = ["full"] }
 tracing = "0.1"
 dirs = "5.0"
 libloading = "0.8"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 notify = "6.0"
 sha2 = "0.10"
 anyhow = "1.0"
-reqwest = { version = "0.11", features = ["json"] }
 chrono = "0.4"
 
 # WASM runtime (optional feature)
