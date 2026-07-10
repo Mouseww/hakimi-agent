@@ -1,5 +1,80 @@
 # Changelog
 
+## [0.5.79] - 2026-07-10
+
+### Added
+- 定时任务失败重试机制 (TASK_3.3.2) ✅
+  - 新增 `RetryStrategy` 支持多种重试策略（固定间隔、指数退避、自定义间隔）
+  - 新增 `RetryConfig` 配置重试行为和错误白名单
+  - 新增 `CronJobRun` 记录完整的任务运行历史
+  - 新增 `RunAttempt` 追踪每次执行尝试
+  - 新增 `CronRunStore` 持久化运行历史到 SQLite
+  - 支持运行状态跟踪（Running → Success/FailedAfterRetries/Cancelled）
+  - 支持每次尝试的详细记录（开始时间、结束时间、错误信息、耗时）
+  - 支持按作业、状态、时间查询运行历史
+  - 支持自动清理旧运行记录
+
+### Technical Details
+- **retry.rs**: 重试策略和配置模型（420+ 行，16个单元测试）
+- **run_store.rs**: SQLite 运行历史存储（410+ 行，4个集成测试）
+- **CronJob**: 新增 `retry_config: Option<RetryConfig>` 字段
+- **persistence.rs**: 更新 schema 支持 retry_config 持久化
+- 所有测试通过（62 个 hakimi-cron 测试，包括 4 个新增运行存储测试）
+
+### Features
+- **多种重试策略**：
+  - `FixedInterval`: 固定间隔重试
+  - `ExponentialBackoff`: 指数退避（带最大延迟上限）
+  - `CustomIntervals`: 自定义间隔序列
+  - `NoRetry`: 禁用重试
+- **灵活配置**：
+  - `max_attempts`: 最大尝试次数（包括初始尝试）
+  - `retry_on_errors`: 错误类型白名单（支持部分匹配）
+  - 空白名单表示重试所有错误
+- **完整历史记录**：
+  - 每个运行记录包含所有尝试细节
+  - 记录每次尝试的开始/结束时间、状态、错误、耗时
+  - 支持按作业 ID、状态、时间范围查询
+- **存储管理**：
+  - 自动创建索引优化查询性能
+  - 支持自动清理旧记录（保留最近 N 条）
+  - 外键级联删除保持数据一致性
+
+### API Features
+- `RetryStrategy::next_retry_delay(attempt)`: 计算下次重试延迟
+- `RetryConfig::should_retry_error(error)`: 判断是否应重试
+- `CronJobRun::new(job_id)`: 创建新运行记录
+- `CronJobRun::complete(status, error)`: 完成运行
+- `RunAttempt::new(attempt_number)`: 创建新尝试记录
+- `RunAttempt::complete(status, error)`: 完成尝试
+- `CronRunStore::save_run(run)`: 保存运行记录
+- `CronRunStore::get_run(run_id)`: 获取运行详情
+- `CronRunStore::get_job_runs(job_id, limit)`: 获取作业历史
+- `CronRunStore::get_recent_runs(limit)`: 获取最近运行
+- `CronRunStore::get_failed_runs(limit)`: 获取失败运行
+- `CronRunStore::prune_old_runs(keep_per_job)`: 清理旧记录
+
+### Schema Changes
+- `cron_jobs` 表新增 `retry_config` TEXT 列（JSON 存储）
+- 新增 `cron_runs` 表记录运行历史
+- 新增 `cron_run_attempts` 表记录尝试详情
+- 新增 4 个索引优化查询性能
+
+### Tests
+- retry 模块: 8 个单元测试全部通过
+  - 测试固定间隔策略
+  - 测试指数退避策略
+  - 测试自定义间隔策略
+  - 测试 NoRetry 策略
+  - 测试错误匹配逻辑
+  - 测试运行/尝试生命周期
+- run_store 模块: 4 个集成测试全部通过
+  - 测试保存和加载运行记录
+  - 测试按作业查询历史
+  - 测试失败运行查询
+  - 测试旧记录清理
+- hakimi-cron: 62 个测试全部通过（新增 12 个测试）
+
 ## [0.5.78] - 2026-07-10
 
 ### Added
