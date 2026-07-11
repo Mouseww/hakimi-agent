@@ -14,16 +14,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             target: x86_64-unknown-linux-musl
             artifact: hakimi-x86_64-unknown-linux-musl
             ext: tar.gz
             install_deps: musl-tools
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             artifact: hakimi-x86_64-unknown-linux-gnu
             ext: tar.gz
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             artifact: hakimi-aarch64-unknown-linux-gnu
             cross: true
