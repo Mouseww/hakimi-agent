@@ -247,17 +247,21 @@ impl PluginMarketplace {
     /// 启用/禁用插件
     pub fn set_plugin_enabled(&self, name: &str, enabled: bool) -> Result<()> {
         let mut manifest = self.load_installed_manifest()?;
-        
+
         let plugin = manifest
             .installed
             .iter_mut()
             .find(|p| p.name == name)
             .ok_or_else(|| anyhow!("Plugin '{}' not installed", name))?;
-        
+
         plugin.enabled = enabled;
         self.save_installed_manifest(&manifest)?;
-        
-        info!("Plugin '{}' {}", name, if enabled { "enabled" } else { "disabled" });
+
+        info!(
+            "Plugin '{}' {}",
+            name,
+            if enabled { "enabled" } else { "disabled" }
+        );
         Ok(())
     }
 
