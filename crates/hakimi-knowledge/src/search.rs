@@ -202,10 +202,10 @@ impl SearchEngine {
 
         // Find all matches and wrap them with markers
         for term in &normalized_terms {
-            if text.contains(term) {
+                if text.contains(term) {
                 // Simplified: just wrap matching term
                 highlighted_text = highlighted_text.replace(
-                    &key[..],
+                    key,
                     &key.replace(term, &format!("<mark>{}</mark>", term)),
                 );
             }
@@ -220,6 +220,7 @@ impl SearchEngine {
     }
 
     /// Calculate Levenshtein distance for fuzzy matching
+    #[allow(clippy::needless_range_loop)]
     fn levenshtein_distance(s1: &str, s2: &str) -> usize {
         let len1 = s1.len();
         let len2 = s2.len();

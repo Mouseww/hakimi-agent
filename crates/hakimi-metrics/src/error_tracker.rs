@@ -115,7 +115,7 @@ impl ErrorRecord {
 }
 
 /// 错误统计
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ErrorStats {
     /// 总错误数
     pub total_errors: u64,
@@ -127,18 +127,6 @@ pub struct ErrorStats {
     pub recovered_errors: u64,
     /// 未恢复错误数
     pub unrecovered_errors: u64,
-}
-
-impl Default for ErrorStats {
-    fn default() -> Self {
-        Self {
-            total_errors: 0,
-            by_category: HashMap::new(),
-            by_severity: HashMap::new(),
-            recovered_errors: 0,
-            unrecovered_errors: 0,
-        }
-    }
 }
 
 /// 错误恢复策略
@@ -256,8 +244,10 @@ impl ErrorTracker {
     pub fn get_stats(&self) -> ErrorStats {
         let errors = self.errors.lock().unwrap();
 
-        let mut stats = ErrorStats::default();
-        stats.total_errors = errors.len() as u64;
+        let mut stats = ErrorStats {
+            total_errors: errors.len() as u64,
+            ..Default::default()
+        };
 
         for error in errors.iter() {
             *stats.by_category.entry(error.category).or_insert(0) += 1;

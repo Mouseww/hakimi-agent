@@ -229,15 +229,11 @@ impl Tool for SessionSearchTool {
 
         // Extract roles parameter (array of strings)
         let roles: Option<Vec<String>> = args.get("roles").and_then(|v| {
-            if let Some(arr) = v.as_array() {
-                Some(
-                    arr.iter()
-                        .filter_map(|s| s.as_str().map(|s| s.to_string()))
-                        .collect(),
-                )
-            } else {
-                None
-            }
+            v.as_array().map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
         });
 
         let db_path = session_db_path();
@@ -432,7 +428,7 @@ impl SessionSearchTool {
 
         // Convert Vec<String> to Vec<&str> for database call
         let roles_slice: Option<Vec<&str>> = roles.map(|v| v.iter().map(|s| s.as_str()).collect());
-        let roles_ref = roles_slice.as_ref().map(|v| v.as_slice());
+        let roles_ref = roles_slice.as_deref();
 
         let (messages, before, after) = db
             .get_messages_around(session_id, anchor_id, window, roles_ref)
@@ -508,7 +504,7 @@ impl SessionSearchTool {
 
         // Convert Vec<String> to Vec<&str> for database call
         let roles_slice: Option<Vec<&str>> = roles.map(|v| v.iter().map(|s| s.as_str()).collect());
-        let roles_ref = roles_slice.as_ref().map(|v| v.as_slice());
+        let roles_ref = roles_slice.as_deref();
 
         // Get bookends
         let (start_msgs, end_msgs) = db

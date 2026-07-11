@@ -1,0 +1,342 @@
+/* ========================================
+   Marvis-style Office View
+   ======================================== */
+
+/* 工位容器 */
+.workstation-marvis {
+  position: absolute;
+  width: 220px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  padding-top: 5px;
+}
+
+.workstation-marvis:hover {
+  transform: translateY(-8px);
+  z-index: 100;
+}
+
+.workstation-marvis:hover .shadow-marvis {
+  width: 240px;
+  height: 12px;
+  opacity: 0.25;
+}
+
+.workstation-marvis:focus-visible {
+  outline: 2px solid var(--accent, #c98a2b);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+/* 状态色条 */
+.status-bar-marvis {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 8px;
+  border-radius: 4px;
+  box-shadow: 
+    0 3px 12px rgba(0, 0, 0, 0.2),
+    0 1px 3px rgba(0, 0, 0, 0.1);
+  animation: pulseGlowMarvis 2s ease-in-out infinite;
+  z-index: 10;
+}
+
+@keyframes pulseGlowMarvis {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 桌面容器 */
+.desk-container-marvis {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+/* 办公桌 */
+.desk-marvis {
+  width: 220px;
+  height: 160px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 12px;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  position: relative;
+  overflow: visible;
+  padding-top: 15px;
+}
+
+/* 显示器 */
+.monitor-marvis {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 85px;
+  background: #1e293b;
+  border-radius: 8px;
+  border: 4px solid #334155;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.screen-marvis {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 屏幕内容 - 文档模式 */
+.screen-document {
+  background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%);
+  padding: 8px;
+  height: 100%;
+}
+
+.screen-document .line {
+  height: 4px;
+  background: rgba(30, 64, 175, 0.3);
+  margin-bottom: 4px;
+  border-radius: 2px;
+  animation: typeLineMarvis 2s ease-in-out infinite;
+}
+
+.screen-document .line:nth-child(2) { width: 90%; animation-delay: 0.3s; }
+.screen-document .line:nth-child(3) { width: 75%; animation-delay: 0.6s; }
+.screen-document .line:nth-child(4) { width: 85%; animation-delay: 0.9s; }
+
+@keyframes typeLineMarvis {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* 屏幕内容 - 代码模式 */
+.screen-code {
+  background: #0f172a;
+  padding: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 6px;
+  color: #22d3ee;
+  height: 100%;
+}
+
+.code-line {
+  margin-bottom: 3px;
+  opacity: 0.7;
+  animation: codeGlowMarvis 3s ease-in-out infinite;
+}
+
+.code-line:nth-child(odd) { color: #34d399; }
+.code-line:nth-child(3n) { color: #f472b6; }
+
+@keyframes codeGlowMarvis {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* 屏幕内容 - 看板模式 */
+.screen-kanban {
+  background: #f8fafc;
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  height: 100%;
+}
+
+.kanban-card {
+  height: 20px;
+  border-radius: 3px;
+  animation: cardPulseMarvis 2s ease-in-out infinite;
+}
+
+.kanban-card:nth-child(1) { background: #fef3c7; animation-delay: 0s; }
+.kanban-card:nth-child(2) { background: #fecdd3; animation-delay: 0.2s; }
+.kanban-card:nth-child(3) { background: #ddd6fe; animation-delay: 0.4s; }
+.kanban-card:nth-child(4) { background: #cffafe; animation-delay: 0.6s; }
+
+@keyframes cardPulseMarvis {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* 屏幕内容 - 休息模式 */
+.screen-off {
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  height: 100%;
+}
+
+.zzz {
+  animation: floatMarvis 1.5s ease-in-out infinite;
+  opacity: 0.6;
+}
+
+@keyframes floatMarvis {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* 屏幕内容 - 图片网格 */
+.screen-gallery {
+  background: #f1f5f9;
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  height: 100%;
+}
+
+.gallery-thumb {
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  border-radius: 2px;
+  animation: thumbShimmerMarvis 3s ease-in-out infinite;
+}
+
+.gallery-thumb:nth-child(2) { background: linear-gradient(135deg, #3b82f6, #06b6d4); animation-delay: 0.3s; }
+.gallery-thumb:nth-child(3) { background: linear-gradient(135deg, #10b981, #84cc16); animation-delay: 0.6s; }
+.gallery-thumb:nth-child(4) { background: linear-gradient(135deg, #f59e0b, #ef4444); animation-delay: 0.9s; }
+
+@keyframes thumbShimmerMarvis {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* 角色 */
+.character-marvis {
+  position: absolute;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 60px;
+}
+
+/* 椅子 */
+.chair-marvis {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50px;
+  height: 20px;
+  background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+  border-radius: 8px 8px 4px 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 阴影 */
+.shadow-marvis {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 8px;
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.15) 0%, transparent 70%);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  z-index: -1;
+}
+
+/* 标签 */
+.desk-label-marvis {
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.desk-name-marvis {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground, #1e293b);
+  margin-bottom: 3px;
+}
+
+.desk-state-marvis {
+  font-size: 11px;
+  color: var(--muted, #64748b);
+  font-weight: 500;
+  padding: 2px 8px;
+  background: rgba(100, 116, 139, 0.08);
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Tooltip */
+.tooltip-marvis {
+  position: absolute;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%) scale(0);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  opacity: 0;
+  z-index: 1000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.tooltip-marvis::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid rgba(0, 0, 0, 0.9);
+}
+
+.workstation-marvis:hover .tooltip-marvis {
+  transform: translateX(-50%) scale(1);
+  opacity: 1;
+}
+
+/* 打字动画 */
+.typing-arms line {
+  animation: armBobMarvis 0.5s ease-in-out infinite alternate;
+}
+
+.typing-arms line:nth-child(2) {
+  animation-delay: 0.25s;
+}
+
+@keyframes armBobMarvis {
+  from { transform: translateY(0); }
+  to { transform: translateY(2px); }
+}
+
+/* 减少动画 (可访问性) */
+@media (prefers-reduced-motion: reduce) {
+  .status-bar-marvis,
+  .screen-document .line,
+  .code-line,
+  .kanban-card,
+  .zzz,
+  .gallery-thumb,
+  .typing-arms line {
+    animation: none !important;
+    transition: none !important;
+  }
+}

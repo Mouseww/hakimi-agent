@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.91-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.93-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,41 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.93)
+
+**🎨 Marvis 风格 Office View — WebUI 视觉升级：**
+
+**核心功能：**
+- ✨ **6 种工作状态可视化系统** — 细粒度状态识别
+  - 🟢 正常工作 (Working) — 绿色状态条，文档模式屏幕
+  - 🔴 高负载 (Busy) — 红色状态条，代码模式屏幕
+  - 🟣 项目规划 (Planning) — 紫色状态条，看板模式屏幕
+  - 🔵 离线/休息 (Away) — 蓝色状态条，黑屏 + 💤
+  - 🟡 创意设计 (Creative) — 黄色状态条，图片网格屏幕
+  - 🔷 深度专注 (Focused) — 青色状态条，文档模式屏幕
+- 🖥️ **Marvis 风格视觉设计** — 参考业界最佳实践
+  - 顶部彩色状态条（不遮挡，不跨界）
+  - 柔和径向渐变阴影
+  - 显示器屏幕内容动画（文档打字、代码闪烁、看板脉冲等）
+  - 角色表情匹配状态（😊 工作中、🤓 高负载、😴 休息等）
+- 🎭 **视图切换按钮** — 经典视图 ↔ Marvis 视图
+  - 保留原有经典风格组件
+  - 一键切换视觉风格
+  - 用户偏好本地保存（未来）
+- ✨ **微交互动画**
+  - 打字时手臂上下动画
+  - 状态条柔和脉冲呼吸
+  - Hover 悬浮 tooltip 显示详细信息
+  - 响应式动画（支持 `prefers-reduced-motion`）
+
+**开发细节：**
+- 新组件：`PersonaDeskMarvis.tsx` (7.1 KB)
+- 新样式：`office-marvis.css` (7.3 KB)
+- 状态推断逻辑：基于 `taskHint` 智能分类
+- 保持后向兼容：不影响现有经典视图
 
 ---
 

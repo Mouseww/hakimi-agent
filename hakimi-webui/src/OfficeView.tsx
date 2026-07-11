@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './office.css';
+import './office-marvis.css';
 import PersonaDesk from './PersonaDesk';
+import PersonaDeskMarvis from './PersonaDeskMarvis';
 import { useActivityStream } from './useActivityStream';
 import { assignSeats, CELL_H, CELL_W, type OfficeLayout, type Seat } from './officeLayout';
 import { displayedState, type DeskState } from './officeState';
@@ -150,6 +152,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
   const { t } = useI18n();
   const { office, connected } = useActivityStream(true);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [useMarvisStyle, setUseMarvisStyle] = useState(true); // Toggle Marvis style
   const { anims, startDelegation, endDelegation } = useDelegationAnims();
 
   const ids = useMemo(() => Array.from(office.keys()).sort(), [office]);
@@ -213,6 +216,21 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
     <div className="office-view">
       <div className="office-hint">
         {connected ? t('office.live') : t('office.offline')} · {t('office.clickHint')}
+        {' · '}
+        <button 
+          onClick={() => setUseMarvisStyle(!useMarvisStyle)}
+          style={{ 
+            background: 'none', 
+            border: '1px solid var(--accent, #c98a2b)', 
+            borderRadius: '4px',
+            padding: '2px 8px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            color: 'var(--accent, #c98a2b)'
+          }}
+        >
+          {useMarvisStyle ? '经典视图' : 'Marvis 视图'}
+        </button>
       </div>
       <div className="office-floor" style={{ width, height }}>
         {/* team rings (behind desks) */}
@@ -240,7 +258,9 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
         {desks.map((d) => {
           const seat = layout.seats.get(d.id);
           if (!seat) return null;
-          return (
+          return useMarvisStyle ? (
+            <PersonaDeskMarvis key={d.id} desk={d} x={seat.x} y={seat.y} onOpen={onOpenPersona} onHover={setHoverId} />
+          ) : (
             <PersonaDesk key={d.id} desk={d} x={seat.x} y={seat.y} onOpen={onOpenPersona} onHover={setHoverId} />
           );
         })}

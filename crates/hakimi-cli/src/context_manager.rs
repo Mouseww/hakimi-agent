@@ -71,7 +71,8 @@ pub fn compress_history(messages: Vec<Message>, config: &ContextConfig) -> Vec<M
 /// - Assistant messages (reasoning)
 /// - Tool invocation messages (what was called)
 /// - First and last tool result in a sequence
-/// Drop:
+///
+///   Drop:
 /// - Verbose middle tool results in a sequence
 fn compress_tool_heavy_section(messages: Vec<Message>) -> Vec<Message> {
     let mut result = Vec::new();
