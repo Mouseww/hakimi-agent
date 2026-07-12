@@ -1,0 +1,44 @@
+## 🧹 发现未使用依赖
+unused dependencies:
+`hakimi-cli v0.5.96 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-cli)`
+└─── dependencies
+     ├─── "crossterm"
+     └─── "ratatui"
+`hakimi-core v0.5.96 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-core)`
+└─── dev-dependencies
+     └─── "tracing-subscriber"
+`hakimi-cron v0.5.96 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-cron)`
+└─── dependencies
+     ├─── "hakimi-common"
+     ├─── "serde_yaml"
+     └─── "tokio"
+`hakimi-i18n v0.5.96 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-i18n)`
+└─── dependencies
+     └─── "serde_json"
+`hakimi-metrics v0.5.57 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-metrics)`
+└─── dependencies
+     └─── "serde_json"
+`hakimi-plugin v0.1.0 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-plugin)`
+├─── dependencies
+│    └─── "notify"
+└─── dev-dependencies
+     ├─── "tokio-test"
+     └─── "tracing-subscriber"
+`hakimi-session v0.5.96 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-session)`
+└─── dev-dependencies
+     └─── "futures"
+`hakimi-skills v0.5.96 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-skills)`
+└─── dependencies
+     └─── "dirs"
+`hakimi-transports v0.5.96 (/home/runner/work/hakimi-agent/hakimi-agent/crates/hakimi-transports)`
+└─── dependencies
+     ├─── "fancy-regex"
+     └─── "pin-project"
+`qq-bot-sdk v0.1.0 (/home/runner/work/hakimi-agent/hakimi-agent/qq-bot-sdk)`
+├─── dependencies
+│    └─── "anyhow"
+└─── dev-dependencies
+     └─── "tokio-test"
+Note: They might be false-positive.
+      For example, `cargo-udeps` cannot detect usage of crates that are only used in doc-tests.
+      To ignore some dependencies, write `package.metadata.cargo-udeps.ignore` in Cargo.toml.
