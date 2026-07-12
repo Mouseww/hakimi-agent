@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { DeskState } from './officeState';
 import { displayedState } from './officeState';
 
@@ -7,6 +8,12 @@ interface PersonaDeskMarvisProps {
   y: number;
   onOpen: (id: string) => void;
   onHover: (id: string | null) => void;
+}
+
+// 截取任务提示的前 N 个字符
+function truncateTask(task: string | undefined, maxLength: number = 30): string {
+  if (!task) return '';
+  return task.length > maxLength ? task.substring(0, maxLength) + '...' : task;
 }
 
 // Marvis-style status mapping
@@ -74,12 +81,13 @@ function avatarEmoji(desk: DeskState): string {
   return emojiMap[status];
 }
 
-export default function PersonaDeskMarvis({ desk, x, y, onOpen, onHover }: PersonaDeskMarvisProps) {
+export default function PersonaDeskMarvis({ desk, x, y, onHover }: Omit<PersonaDeskMarvisProps, 'onOpen'>) {
+  const [showModal, setShowModal] = useState(false);
   const status = inferMarvisStatus(desk);
   const statusColor = STATUS_COLORS[status];
   const statusLabel = STATUS_LABELS[status];
-  const working = displayedState(desk) === 'working';
   const emoji = avatarEmoji(desk);
+  const working = displayedState(desk) === 'working';
   
   return (
     <div
@@ -87,11 +95,11 @@ export default function PersonaDeskMarvis({ desk, x, y, onOpen, onHover }: Perso
       style={{ left: x, top: y }}
       role="button"
       tabIndex={0}
-      onClick={() => onOpen(desk.id)}
+      onClick={() => setShowModal(true)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onOpen(desk.id);
+          setShowModal(true);
         }
       }}
       onMouseEnter={() => onHover(desk.id)}
@@ -106,6 +114,7 @@ export default function PersonaDeskMarvis({ desk, x, y, onOpen, onHover }: Perso
           {/* 显示器 */}
           <div className="monitor-marvis">
             <div className={`screen-marvis screen-${status}`}>
+              {/* 背景装饰（根据状态） */}
               {status === 'working' && (
                 <div className="screen-document">
                   <div className="line" />
@@ -156,6 +165,13 @@ export default function PersonaDeskMarvis({ desk, x, y, onOpen, onHover }: Perso
                   <div className="line" />
                 </div>
               )}
+              
+              {/* 任务文字叠加层 */}
+              {desk.taskHint && status !== 'away' && (
+                <div className="task-overlay">
+                  <div className="task-text">{truncateTask(desk.taskHint, 35)}</div>
+                </div>
+              )}
             </div>
           </div>
           
@@ -165,26 +181,28 @@ export default function PersonaDeskMarvis({ desk, x, y, onOpen, onHover }: Perso
           {/* 角色 */}
           <div className="character-marvis">
             <svg viewBox="0 0 60 60" width="60" height="60">
-              {/* 头部 */}
-              <circle cx="30" cy="20" r="14" fill="#fef3e2" stroke="#c98a2b" strokeWidth="2" />
+              {/* 头部 - 圆角方块 */}
+              <rect x="16" y="8" width="28" height="28" rx="6" fill="#fef3e2" stroke="#c98a2b" strokeWidth="2" />
               {/* 表情 */}
-              <text x="30" y="24" textAnchor="middle" fontSize="16">{emoji}</text>
-              {/* 身体 */}
-              <ellipse 
-                cx="30" cy="42" rx="16" ry="12" 
+              <text x="30" y="26" textAnchor="middle" fontSize="16">{emoji}</text>
+              
+              {/* 身体 - 方块 */}
+              <rect 
+                x="18" y="38" width="24" height="14" rx="2"
                 fill={statusColor} 
-                opacity="0.3" 
+                opacity="0.8" 
                 stroke={statusColor} 
                 strokeWidth="1.5" 
               />
-              {/* 手臂 - 工作时打字动画 */}
+              
+              {/* 手臂 - 小方块 */}
               <g className={working ? 'typing-arms' : ''}>
-                <line x1="18" y1="38" x2="12" y2="50" stroke="#c98a2b" strokeWidth="2.5" strokeLinecap="round">
-                  {working && <animate attributeName="y2" values="50;52;50" dur="0.6s" repeatCount="indefinite" />}
-                </line>
-                <line x1="42" y1="38" x2="48" y2="50" stroke="#c98a2b" strokeWidth="2.5" strokeLinecap="round">
-                  {working && <animate attributeName="y2" values="50;52;50" dur="0.6s" begin="0.3s" repeatCount="indefinite" />}
-                </line>
+                <rect x="10" y="42" width="6" height="10" rx="1" fill="#c98a2b">
+                  {working && <animate attributeName="y" values="42;44;42" dur="0.6s" repeatCount="indefinite" />}
+                </rect>
+                <rect x="44" y="42" width="6" height="10" rx="1" fill="#c98a2b">
+                  {working && <animate attributeName="y" values="42;44;42" dur="0.6s" begin="0.3s" repeatCount="indefinite" />}
+                </rect>
               </g>
             </svg>
           </div>
@@ -207,6 +225,70 @@ export default function PersonaDeskMarvis({ desk, x, y, onOpen, onHover }: Perso
         {desk.taskHint && `任务: ${desk.taskHint}`}
         {desk.model && <><br />模型: {desk.model}</>}
       </div>
+      
+      {/* 任务详情模态框 */}
+      {showModal && (
+        <div 
+          className="task-modal-overlay" 
+          onClick={() => setShowModal(false)}
+        >
+          <div 
+            className="task-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="task-modal-header">
+              <h3>{emoji} {desk.name || desk.id}</h3>
+              <button 
+                className="task-modal-close"
+                onClick={() => setShowModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="task-modal-body">
+              <div className="task-modal-section">
+                <label>状态</label>
+                <div className="task-modal-status" style={{ color: statusColor }}>
+                  {statusLabel}
+                </div>
+              </div>
+              
+              {desk.taskHint && (
+                <div className="task-modal-section">
+                  <label>当前任务</label>
+                  <div className="task-modal-task">{desk.taskHint}</div>
+                </div>
+              )}
+              
+              {desk.model && (
+                <div className="task-modal-section">
+                  <label>模型</label>
+                  <div>{desk.model}</div>
+                </div>
+              )}
+              
+              {desk.consultingTo && (
+                <div className="task-modal-section">
+                  <label>协作对象</label>
+                  <div>正在咨询: {desk.consultingTo}</div>
+                </div>
+              )}
+              
+              {desk.delegatedFrom && (
+                <div className="task-modal-section">
+                  <label>委托来源</label>
+                  <div>来自: {desk.delegatedFrom}</div>
+                </div>
+              )}
+            </div>
+            
+            <div className="task-modal-footer">
+              <button onClick={() => setShowModal(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

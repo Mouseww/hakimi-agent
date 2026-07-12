@@ -259,7 +259,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
           const seat = layout.seats.get(d.id);
           if (!seat) return null;
           return useMarvisStyle ? (
-            <PersonaDeskMarvis key={d.id} desk={d} x={seat.x} y={seat.y} onOpen={onOpenPersona} onHover={setHoverId} />
+            <PersonaDeskMarvis key={d.id} desk={d} x={seat.x} y={seat.y} onHover={setHoverId} />
           ) : (
             <PersonaDesk key={d.id} desk={d} x={seat.x} y={seat.y} onOpen={onOpenPersona} onHover={setHoverId} />
           );
