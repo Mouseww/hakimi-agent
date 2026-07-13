@@ -53,6 +53,7 @@ pub trait SessionOps {
         model: Option<&str>,
         system_prompt: Option<&str>,
         parent_session_id: Option<&str>,
+        persona_id: Option<&str>,
     ) -> Result<String>;
 
     fn get_session(&self, id: &str) -> Result<Option<SessionMeta>>;
@@ -134,10 +135,10 @@ impl SessionOps for SessionDB {
         system_prompt: Option<&str>,
     ) -> Result<String> {
         let id = Uuid::new_v4().to_string();
-        self.create_session_with_id(&id, source, user_id, model, system_prompt, None)
+        self.create_session_with_id(&id, source, user_id, model, system_prompt, None, None)
     }
 
-    fn create_session_with_id(
+fn create_session_with_id(
         &self,
         id: &str,
         source: &str,
@@ -145,6 +146,7 @@ impl SessionOps for SessionDB {
         model: Option<&str>,
         system_prompt: Option<&str>,
         parent_session_id: Option<&str>,
+        persona_id: Option<&str>,
     ) -> Result<String> {
         let now = Utc::now().to_rfc3339();
 
@@ -160,8 +162,8 @@ impl SessionOps for SessionDB {
         let conn = self.conn().lock().unwrap();
         conn.execute(
             "INSERT INTO sessions
-                (id, source, user_id, model, system_prompt, parent_session_id, root_session_id, started_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                (id, source, user_id, model, system_prompt, parent_session_id, root_session_id, persona_id, started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id,
                 source,
@@ -170,18 +172,19 @@ impl SessionOps for SessionDB {
                 system_prompt,
                 parent_session_id,
                 root_session_id,
+                persona_id,
                 now
             ],
         )
         .context("Failed to create session")?;
 
         debug!(
-            "Created session {id} from source={source}, parent={:?}, root={:?}",
-            parent_session_id, root_session_id
+            "Created session {id} from source={source}, parent={:?}, root={:?}, persona={:?}",
+            parent_session_id, root_session_id, persona_id
         );
+
         Ok(id.to_string())
     }
-
     /// Fetch a single session by ID.
     fn get_session(&self, id: &str) -> Result<Option<SessionMeta>> {
         let conn = self.conn().lock().unwrap();

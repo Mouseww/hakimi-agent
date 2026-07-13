@@ -4522,6 +4522,7 @@ async fn agent_chat_stream(
             Some(cloned_agent.model()),
             None,
             None,
+            Some(&id),
         ) {
             let _ = tx_for_handler
                 .send(format!("__ERROR__Failed to create session: {e}"))
@@ -5228,6 +5229,7 @@ async fn create_session(
         Some(model),
         req.system_prompt.as_deref(),
         None,
+        None,  // persona_id: not set for manual session creation
     )
     .map_err(|e| {
         api_error(
@@ -5557,6 +5559,7 @@ async fn fork_session(
         source.model.as_deref(),
         source.system_prompt.as_deref(),
         Some(&source_id),
+        None,
     )
     .map_err(|e| {
         api_error(
@@ -6538,6 +6541,141 @@ pub async fn get_metrics() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(serde_json::to_value(snapshot).unwrap_or_else(
         |_| json!({"error": "serialization failed"}),
     )))
+}
+
+/// GET /api/persona/:id/messages — Get all messages for a persona
+async fn get_persona_messages(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let db = state.session_db.lock().await;
+    let conn = db.conn().lock().unwrap();
+    
+    // Query messages from sessions where persona_id = id
+    let mut stmt = match conn.prepare(
+        "SELECT m.id, m.role, m.content, m.timestamp 
+         FROM messages m 
+         JOIN sessions s ON m.session_id = s.id 
+         WHERE s.persona_id = ? 
+         ORDER BY s.started_at DESC, m.sequence ASC 
+         LIMIT 1000"
+    ) {
+        Ok(s) => s,
+        Err(e) => return Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to prepare query: {e}"),
+        )),
+    };
+    
+    let messages: Vec<serde_json::Value> = match stmt.query_map([id.as_str()], |row| {
+        Ok(json!({
+            "id": row.get::<_, i64>(0)?,
+            "role": row.get::<_, String>(1)?,
+            "content": row.get::<_, Option<String>>(2)?,
+            "timestamp": row.get::<_, String>(3)?,
+        }))
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => return Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to query messages: {e}"),
+        )),
+    };
+    
+    Ok(Json(json!({
+        "messages": messages,
+        "count": messages.len(),
+    })))
+}
+
+/// DELETE /api/persona/:id/messages — Clear all messages for a persona
+async fn clear_persona_messages(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let db = state.session_db.lock().await;
+    let conn = db.conn().lock().unwrap();
+    
+    // Get all session IDs for this persona
+    let mut stmt = match conn.prepare("SELECT id FROM sessions WHERE persona_id = ?") {
+        Ok(s) => s,
+        Err(e) => return Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to prepare query: {e}"),
+        )),
+    };
+    
+    let session_ids: Vec<String> = match stmt.query_map([&id], |row| row.get(0)) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => return Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to query sessions: {e}"),
+        )),
+    };
+    drop(stmt);
+    
+    // Delete messages for each session
+    let mut deleted_count = 0;
+    for session_id in &session_ids {
+        match conn.execute("DELETE FROM messages WHERE session_id = ?", [session_id]) {
+            Ok(n) => deleted_count += n,
+            Err(e) => return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to delete messages: {e}"),
+            )),
+        }
+    }
+    
+    // Delete the sessions themselves
+    for session_id in &session_ids {
+        let _ = conn.execute("DELETE FROM sessions WHERE id = ?", [session_id]);
+    }
+    
+    Ok(Json(json!({
+        "deleted_count": deleted_count,
+        "sessions_cleared": session_ids.len(),
+    })))
+}
+
+/// DELETE /api/persona/:id/messages/:message_id — Delete a specific message
+async fn delete_persona_message(
+    State(state): State<AppState>,
+    Path((persona_id, message_id)): Path<(String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let db = state.session_db.lock().await;
+    let conn = db.conn().lock().unwrap();
+    
+    // Verify the message belongs to a session owned by this persona
+    let verified: bool = match conn.query_row(
+        "SELECT 1 FROM messages m JOIN sessions s ON m.session_id = s.id 
+         WHERE m.id = ? AND s.persona_id = ?",
+        rusqlite::params![message_id, &persona_id],
+        |_| Ok(true),
+    ) {
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            return Err(api_error(
+                StatusCode::NOT_FOUND,
+                "Message not found or does not belong to this persona".to_string(),
+            ));
+        }
+        Err(e) => return Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to verify message: {e}"),
+        )),
+    };
+    
+    if verified {
+        match conn.execute("DELETE FROM messages WHERE id = ?", [message_id]) {
+            Ok(_) => Ok(Json(json!({"success": true}))),
+            Err(e) => Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to delete message: {e}"),
+            )),
+        }
+    } else {
+        Err(api_error(StatusCode::FORBIDDEN, "Access denied".to_string()))
+    }
 }
 
 /// GET /api/errors/stats — Error tracking statistics
@@ -7807,6 +7945,7 @@ mod tests {
                 "webui",
                 None,
                 Some("test-model"),
+                None,
                 None,
                 None,
             )

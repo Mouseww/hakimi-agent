@@ -5766,7 +5766,7 @@ async fn gateway_persist_session(
             }
         };
         if let Ok(id) =
-            db.create_session_with_id(session_id, source, user_id, Some(model), None, None)
+            db.create_session_with_id(session_id, source, user_id, Some(model), None, None, None)
         {
             let _ = db.set_title(&id, &auto_title);
         }
