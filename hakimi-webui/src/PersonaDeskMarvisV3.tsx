@@ -111,13 +111,13 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
                 {/* 鼻尖（小黑点） */}
                 <circle cx="56" cy="30" r="1.5" fill="#334155" />
                 
-                {/* 身体 */}
-                <ellipse cx="41" cy="52" rx="15" ry="20" fill="#94a3b8" />
+                {/* 身体（加宽） */}
+                <ellipse cx="41" cy="52" rx="17" ry="20" fill="#94a3b8" />
                 
-                {/* 围脖/领带（独立颜色） */}
+                {/* 围脖/领带（独立颜色，向上提） */}
                 <ellipse
                   cx="41"
-                  cy="40"
+                  cy="38"
                   rx="10"
                   ry="5"
                   fill={scarfColor}
