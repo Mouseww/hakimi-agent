@@ -1,0 +1,288 @@
+/* Monitor Screen Content Styles */
+
+.screen-content {
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 5px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+/* ===== 代码编辑器风格 ===== */
+.code-editor {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #e2e8f0;
+}
+
+.code-line {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1px;
+}
+
+.line-num {
+  color: #64748b;
+  margin-right: 6px;
+  min-width: 8px;
+  text-align: right;
+  font-size: 4px;
+}
+
+.code-keyword {
+  color: #c084fc;
+}
+
+.code-var {
+  color: #60a5fa;
+}
+
+.code-string {
+  color: #34d399;
+}
+
+.code-func {
+  color: #fbbf24;
+}
+
+.code-tag {
+  color: #fb7185;
+}
+
+.code-indent {
+  color: transparent;
+}
+
+.cursor-blink {
+  color: #f59e0b;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ===== 终端输出风格 ===== */
+.terminal-output {
+  background: #0a0e14;
+  color: #c7c7c7;
+}
+
+.terminal-line {
+  margin-bottom: 1px;
+}
+
+.terminal-prompt {
+  color: #4ade80;
+  margin-right: 4px;
+}
+
+.terminal-cmd {
+  color: #fbbf24;
+}
+
+.terminal-output-text {
+  color: #94a3b8;
+  padding-left: 2px;
+}
+
+/* ===== 看板风格 ===== */
+.kanban-board {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.kanban-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kanban-card {
+  border-radius: 2px;
+  padding: 3px 2px;
+  font-size: 4px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.kanban-card.yellow {
+  background: #fef08a;
+  border-left: 2px solid #fbbf24;
+}
+
+.kanban-card.pink {
+  background: #fbcfe8;
+  border-left: 2px solid #ec4899;
+}
+
+.kanban-card.blue {
+  background: #bfdbfe;
+  border-left: 2px solid #3b82f6;
+}
+
+.kanban-card.green {
+  background: #bbf7d0;
+  border-left: 2px solid #10b981;
+}
+
+.card-title {
+  color: #334155;
+  font-size: 3.5px;
+}
+
+/* ===== 休眠模式 ===== */
+.sleep-mode {
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zzz-container {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+
+.zzz {
+  position: absolute;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: bold;
+  opacity: 0;
+  animation: float-up 3s infinite;
+}
+
+.z1 {
+  left: 10px;
+  bottom: 0;
+  animation-delay: 0s;
+}
+
+.z2 {
+  left: 14px;
+  bottom: 0;
+  animation-delay: 1s;
+  font-size: 10px;
+}
+
+.z3 {
+  left: 18px;
+  bottom: 0;
+  animation-delay: 2s;
+  font-size: 8px;
+}
+
+@keyframes float-up {
+  0% {
+    bottom: 0;
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.8;
+  }
+  100% {
+    bottom: 25px;
+    opacity: 0;
+  }
+}
+
+/* ===== 图库/色板风格 ===== */
+.image-gallery {
+  background: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+}
+
+.gallery-row {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+
+.gallery-item {
+  flex: 1;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.gallery-item.purple {
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+}
+
+.gallery-item.blue {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+}
+
+.gallery-item.orange {
+  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+}
+
+.gallery-item.green {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+}
+
+/* ===== 深度专注模式 ===== */
+.focused-view {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.focused-window {
+  width: 100%;
+  height: 100%;
+  background: #0f172a;
+  border-radius: 2px;
+  border: 1px solid #334155;
+  overflow: hidden;
+}
+
+.window-header {
+  height: 4px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+
+.window-content {
+  padding: 4px;
+}
+
+.content-line {
+  height: 2px;
+  background: #475569;
+  margin-bottom: 2px;
+  border-radius: 1px;
+}
+
+.content-line.short {
+  width: 60%;
+}
+
+/* ===== 默认视图 ===== */
+.default-view {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 6px;
+}
+
+.task-text {
+  text-align: center;
+  padding: 4px;
+}

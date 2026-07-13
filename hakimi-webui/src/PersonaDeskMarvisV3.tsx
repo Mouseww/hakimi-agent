@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { MonitorScreenContent } from './MonitorScreenContent';
 
 interface PersonaDeskMarvisV3Props {
   name: string;
@@ -61,16 +62,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
             {/* 显示器（缩小） */}
             <div className="monitor-marvis-v3">
               <div className="screen-marvis-v3">
-                {status !== 'away' && taskHint && (
-                  <div className="task-overlay-v3">
-                    <div className="task-text-v3">{taskHint}</div>
-                  </div>
-                )}
-                {status === 'away' && (
-                  <div className="task-overlay-v3">
-                    <div className="task-text-v3" style={{ color: '#64748b' }}>😴 Zzz...</div>
-                  </div>
-                )}
+                <MonitorScreenContent status={status} taskHint={taskHint} />
               </div>
             </div>
 

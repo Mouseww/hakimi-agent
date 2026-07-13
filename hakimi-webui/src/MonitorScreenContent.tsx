@@ -1,0 +1,148 @@
+import React from 'react';
+import './monitor-screen-content.css';
+
+interface MonitorScreenContentProps {
+  status: 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused';
+  taskHint?: string;
+}
+
+export const MonitorScreenContent: React.FC<MonitorScreenContentProps> = ({ status, taskHint }) => {
+  // 工作中 - 代码编辑器风格
+  if (status === 'working') {
+    return (
+      <div className="screen-content code-editor">
+        <div className="code-line">
+          <span className="line-num">1</span>
+          <span className="code-keyword">import</span> <span className="code-var">React</span> <span className="code-keyword">from</span> <span className="code-string">'react'</span>;
+        </div>
+        <div className="code-line">
+          <span className="line-num">2</span>
+        </div>
+        <div className="code-line">
+          <span className="line-num">3</span>
+          <span className="code-keyword">function</span> <span className="code-func">App</span>() {'{'}
+        </div>
+        <div className="code-line">
+          <span className="line-num">4</span>
+          <span className="code-indent">  </span><span className="code-keyword">return</span> (
+        </div>
+        <div className="code-line">
+          <span className="line-num">5</span>
+          <span className="code-indent">    </span>&lt;<span className="code-tag">div</span>&gt;...&lt;/<span className="code-tag">div</span>&gt;
+        </div>
+        <div className="code-line">
+          <span className="line-num">6</span>
+          <span className="code-indent">  </span>);
+        </div>
+        <div className="code-line">
+          <span className="line-num">7</span>
+          <span className="cursor-blink">|</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 高负载 - 多窗口/终端
+  if (status === 'busy') {
+    return (
+      <div className="screen-content terminal-output">
+        <div className="terminal-line">
+          <span className="terminal-prompt">$</span> <span className="terminal-cmd">npm run build</span>
+        </div>
+        <div className="terminal-line terminal-output-text">
+          ✓ Compiled successfully
+        </div>
+        <div className="terminal-line terminal-output-text">
+          ✓ 127 modules transformed
+        </div>
+        <div className="terminal-line">
+          <span className="terminal-prompt">$</span> <span className="terminal-cmd">cargo test</span>
+        </div>
+        <div className="terminal-line terminal-output-text">
+          running 42 tests...
+        </div>
+        <div className="terminal-line">
+          <span className="cursor-blink">▊</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 项目规划 - 看板风格
+  if (status === 'planning') {
+    return (
+      <div className="screen-content kanban-board">
+        <div className="kanban-column">
+          <div className="kanban-card yellow">
+            <div className="card-title">Task #1</div>
+          </div>
+          <div className="kanban-card pink">
+            <div className="card-title">Task #2</div>
+          </div>
+        </div>
+        <div className="kanban-column">
+          <div className="kanban-card blue">
+            <div className="card-title">In Progress</div>
+          </div>
+        </div>
+        <div className="kanban-column">
+          <div className="kanban-card green">
+            <div className="card-title">✓ Done</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 离线/休息 - 黑屏 + 飘动的 zzz
+  if (status === 'away') {
+    return (
+      <div className="screen-content sleep-mode">
+        <div className="zzz-container">
+          <span className="zzz z1">z</span>
+          <span className="zzz z2">z</span>
+          <span className="zzz z3">z</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 创意设计 - 图库/色板风格
+  if (status === 'creative') {
+    return (
+      <div className="screen-content image-gallery">
+        <div className="gallery-row">
+          <div className="gallery-item purple"></div>
+          <div className="gallery-item blue"></div>
+        </div>
+        <div className="gallery-row">
+          <div className="gallery-item orange"></div>
+          <div className="gallery-item green"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // 深度专注 - 单一窗口
+  if (status === 'focused') {
+    return (
+      <div className="screen-content focused-view">
+        <div className="focused-window">
+          <div className="window-header"></div>
+          <div className="window-content">
+            <div className="content-line"></div>
+            <div className="content-line short"></div>
+            <div className="content-line"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 默认：显示 taskHint
+  return (
+    <div className="screen-content default-view">
+      {taskHint && <div className="task-text">{taskHint}</div>}
+    </div>
+  );
+};
