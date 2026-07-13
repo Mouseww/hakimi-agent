@@ -9,12 +9,12 @@ interface PersonaDeskMarvisV3Props {
 }
 
 const STATUS_CONFIG = {
-  working: { color: '#10b981', label: '工作中', emoji: '💼' },
-  busy: { color: '#ef4444', label: '高负载', emoji: '🔥' },
-  planning: { color: '#a855f7', label: '项目规划', emoji: '📋' },
-  away: { color: '#3b82f6', label: '离线/休息', emoji: '😴' },
-  creative: { color: '#f59e0b', label: '创意设计', emoji: '🎨' },
-  focused: { color: '#06b6d4', label: '深度专注', emoji: '🎯' },
+  working: { color: '#10b981', tailColor: '#34d399', label: '工作中', emoji: '💼' },
+  busy: { color: '#ef4444', tailColor: '#f87171', label: '高负载', emoji: '🔥' },
+  planning: { color: '#a855f7', tailColor: '#c084fc', label: '项目规划', emoji: '📋' },
+  away: { color: '#3b82f6', tailColor: '#60a5fa', label: '离线/休息', emoji: '😴' },
+  creative: { color: '#f59e0b', tailColor: '#fbbf24', label: '创意设计', emoji: '🎨' },
+  focused: { color: '#06b6d4', tailColor: '#22d3ee', label: '深度专注', emoji: '🎯' },
 };
 
 export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
@@ -40,14 +40,11 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
       <div
         className="workstation-marvis-v3"
         onClick={handleClick}
-        style={{ '--status-color': config.color } as React.CSSProperties}
+        style={{ '--status-color': config.color, '--tail-color': config.tailColor } as React.CSSProperties}
         tabIndex={0}
         role="button"
         aria-label={`${name} - ${role} - ${config.label}`}
       >
-        {/* 状态条 */}
-        <div className="status-bar-marvis-v3" style={{ background: config.color }} />
-
         {/* 工位卡片 */}
         <div className="desk-container-marvis-v3">
           <div className="desk-marvis-v3">
@@ -70,52 +67,56 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
             {/* 显示器支架 */}
             <div className="monitor-stand-v3" />
 
-            {/* 猫咪侧面剪影 SVG */}
+            {/* 猫咪侧面剪影 SVG - 优化版 */}
             <svg
               className="cat-silhouette-marvis-v3"
-              viewBox="0 0 80 80"
+              viewBox="0 0 90 90"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
-              {/* 猫咪侧面剪影 - 灰白色（与黑色屏幕形成对比） */}
               <g className="cat-body">
-                {/* 左耳 */}
+                {/* 左耳 - 更尖锐 */}
                 <path
-                  d="M 32 18 L 28 10 L 36 14 Z"
+                  d="M 34 20 L 30 10 L 38 16 Z"
+                  fill="#8b9bb0"
+                />
+                {/* 右耳 - 更尖锐 */}
+                <path
+                  d="M 48 20 L 44 8 L 52 14 Z"
+                  fill="#8b9bb0"
+                />
+                {/* 头部 - 略微调整 */}
+                <ellipse cx="41" cy="28" rx="12" ry="11" fill="#94a3b8" />
+                {/* 吻部 - 更明显 */}
+                <path
+                  d="M 52 28 Q 57 28 57 30 Q 57 32 52 32 L 50 30 Z"
                   fill="#94a3b8"
                 />
-                {/* 右耳 */}
-                <path
-                  d="M 44 18 L 40 8 L 48 12 Z"
-                  fill="#94a3b8"
-                />
-                {/* 头部 */}
-                <ellipse cx="38" cy="26" rx="11" ry="10" fill="#94a3b8" />
-                {/* 吻部 */}
-                <path
-                  d="M 48 26 Q 52 26 52 28 Q 52 30 48 30 L 46 28 Z"
-                  fill="#94a3b8"
-                />
+                {/* 鼻尖（小黑点） */}
+                <circle cx="56" cy="30" r="1.5" fill="#334155" />
+                
                 {/* 身体 */}
-                <ellipse cx="38" cy="48" rx="14" ry="18" fill="#94a3b8" />
-                {/* 彩色状态条 */}
-                <rect
-                  x="28"
-                  y="44"
-                  width="20"
-                  height="8"
-                  rx="2"
+                <ellipse cx="41" cy="52" rx="15" ry="20" fill="#94a3b8" />
+                
+                {/* 围脖/领带（状态色） */}
+                <ellipse
+                  cx="41"
+                  cy="40"
+                  rx="10"
+                  ry="5"
                   fill={config.color}
-                  className="status-badge-v3"
+                  className="status-scarf-v3"
                 />
+                
                 {/* 前肢（打字姿势） */}
-                <rect x="32" y="62" width="4" height="10" rx="2" fill="#94a3b8" className="cat-arm-left" />
-                <rect x="40" y="62" width="4" height="10" rx="2" fill="#94a3b8" className="cat-arm-right" />
-                {/* 尾巴 */}
+                <rect x="34" y="68" width="4" height="11" rx="2" fill="#8b9bb0" className="cat-arm-left" />
+                <rect x="43" y="68" width="4" height="11" rx="2" fill="#8b9bb0" className="cat-arm-right" />
+                
+                {/* 尾巴（独立颜色） */}
                 <path
-                  d="M 50 55 Q 58 58 60 48 Q 61 42 58 38"
-                  stroke="#94a3b8"
-                  strokeWidth="4"
+                  d="M 54 58 Q 64 62 66 50 Q 67 43 64 38"
+                  stroke={config.tailColor}
+                  strokeWidth="4.5"
                   strokeLinecap="round"
                   fill="none"
                   className="cat-tail"
@@ -131,7 +132,6 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
         {/* 工位标签 */}
         <div className="desk-label-v3">
           <div className="desk-name-v3">{name}</div>
-          <div className="desk-role-v3">{role}</div>
           <div className="desk-status-v3">
             <span>{config.emoji}</span> {config.label}
           </div>

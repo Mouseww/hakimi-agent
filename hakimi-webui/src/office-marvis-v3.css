@@ -1,16 +1,18 @@
 /**
- * Marvis Office View V3 - 猫咪侧面剪影风格（优化版）
+ * Marvis Office View V3 - 猫咪侧面剪影风格（最终优化版）
  * 修复：
- * 1. 猫咪颜色改为灰白色（#94a3b8），与黑色屏幕形成对比
- * 2. 缩小屏幕（140x78 → 比例更协调），增大猫咪（100x100）
- * 3. 去除卡片边框，增大间距，营造办公室整体感
+ * 1. 去除顶部长状态条
+ * 2. 大幅降低工位高度（220px → 160px）
+ * 3. 增大工位间距，避免重叠
+ * 4. 围脖/领带设计（状态色在脖子上）
+ * 5. 每只猫独立的尾巴颜色
  */
 
-/* ==================== 工位布局（无卡片） ==================== */
+/* ==================== 工位布局（紧凑版） ==================== */
 
 .workstation-marvis-v3 {
   position: absolute;
-  width: 260px;
+  width: 220px;
   padding: 0;
   cursor: pointer;
   transition: transform 0.3s ease, filter 0.2s ease;
@@ -18,44 +20,18 @@
 }
 
 .workstation-marvis-v3:hover {
-  transform: translateY(-6px) scale(1.02);
+  transform: translateY(-5px) scale(1.02);
   z-index: 100;
-  filter: drop-shadow(0 10px 25px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.12));
 }
 
 .workstation-marvis-v3:focus-visible {
   outline: 3px solid var(--status-color, #475569);
-  outline-offset: 8px;
-  border-radius: 16px;
+  outline-offset: 6px;
+  border-radius: 12px;
 }
 
-/* 状态条 - 突出在顶部 */
-.status-bar-marvis-v3 {
-  position: absolute;
-  top: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 140px;
-  height: 5px;
-  border-radius: 2.5px;
-  opacity: 0.85;
-  z-index: 50;
-  animation: pulseGlowV3 2.5s ease-in-out infinite;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), 0 3px 16px var(--status-color);
-}
-
-@keyframes pulseGlowV3 {
-  0%, 100% {
-    opacity: 0.85;
-    transform: translateX(-50%) scaleX(1);
-  }
-  50% {
-    opacity: 0.65;
-    transform: translateX(-50%) scaleX(0.92);
-  }
-}
-
-/* ==================== 桌面容器（无背景卡片） ==================== */
+/* ==================== 桌面容器（无背景卡片，降低高度） ==================== */
 
 .desk-container-marvis-v3 {
   position: relative;
@@ -64,37 +40,37 @@
 
 .desk-marvis-v3 {
   background: transparent;
-  width: 260px;
-  height: 220px;
+  width: 220px;
+  height: 160px;
   padding: 0;
   position: relative;
   overflow: visible;
 }
 
-/* ==================== 显示器（缩小） ==================== */
+/* ==================== 显示器 ==================== */
 
 .monitor-marvis-v3 {
   position: absolute;
-  top: 20px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
-  width: 140px;
-  height: 78px;
+  width: 130px;
+  height: 72px;
   background: #0f172a;
   border: 2px solid #1e293b;
-  border-radius: 6px;
+  border-radius: 5px;
   overflow: hidden;
   z-index: 20;
   box-shadow: 
-    0 6px 16px rgba(0, 0, 0, 0.35),
-    0 2px 6px rgba(0, 0, 0, 0.2),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    0 5px 14px rgba(0, 0, 0, 0.32),
+    0 2px 5px rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .screen-marvis-v3 {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, #0f172a 100%);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.92) 0%, #0f172a 100%);
   position: relative;
   overflow: hidden;
 }
@@ -106,8 +82,8 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 40%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 100%);
+  height: 38%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
   pointer-events: none;
 }
 
@@ -115,74 +91,74 @@
 .task-overlay-v3 {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(1px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 7px;
   z-index: 10;
 }
 
 .task-text-v3 {
   color: #4ade80;
   font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: 500;
   text-align: center;
-  line-height: 1.4;
-  letter-spacing: 0.2px;
+  line-height: 1.35;
+  letter-spacing: 0.15px;
   word-break: break-word;
   max-width: 100%;
   text-shadow: 
-    0 0 5px rgba(74, 222, 128, 0.8),
-    0 0 10px rgba(74, 222, 128, 0.4);
+    0 0 4px rgba(74, 222, 128, 0.75),
+    0 0 8px rgba(74, 222, 128, 0.35);
 }
 
 /* ==================== 显示器支架 ==================== */
 
 .monitor-stand-v3 {
   position: absolute;
-  bottom: 112px;
+  bottom: 70px;
   left: 50%;
   transform: translateX(-50%);
-  width: 28px;
-  height: 8px;
+  width: 24px;
+  height: 7px;
   background: linear-gradient(180deg, #64748b, #475569);
-  border-radius: 4px 4px 0 0;
+  border-radius: 3.5px 3.5px 0 0;
   z-index: 15;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
 .monitor-stand-v3::before {
   content: '';
   position: absolute;
-  bottom: -6px;
+  bottom: -5px;
   left: 50%;
   transform: translateX(-50%);
-  width: 52px;
-  height: 6px;
+  width: 46px;
+  height: 5px;
   background: linear-gradient(180deg, #475569, #334155);
-  border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
 }
 
-/* ==================== 猫咪侧面剪影 SVG（灰白色，放大） ==================== */
+/* ==================== 猫咪侧面剪影 SVG（优化版） ==================== */
 
 .cat-silhouette-marvis-v3 {
   position: absolute;
-  bottom: 10px;
+  bottom: 5px;
   left: 50%;
   transform: translateX(-50%);
-  width: 100px;
-  height: 100px;
+  width: 90px;
+  height: 90px;
   z-index: 30;
-  filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18));
 }
 
 /* 工作状态动画 */
 .workstation-marvis-v3:not([aria-label*="离线"]) .cat-silhouette-marvis-v3 {
-  animation: catWorkingV3 2.2s ease-in-out infinite;
+  animation: catWorkingV3 2s ease-in-out infinite;
 }
 
 @keyframes catWorkingV3 {
@@ -190,17 +166,17 @@
     transform: translateX(-50%) translateY(0);
   }
   50% {
-    transform: translateX(-50%) translateY(-3px);
+    transform: translateX(-50%) translateY(-2.5px);
   }
 }
 
 /* 打字动画 - 前肢 */
 .workstation-marvis-v3:not([aria-label*="离线"]) .cat-arm-left {
-  animation: typingLeftV3 0.65s ease-in-out infinite;
+  animation: typingLeftV3 0.6s ease-in-out infinite;
 }
 
 .workstation-marvis-v3:not([aria-label*="离线"]) .cat-arm-right {
-  animation: typingRightV3 0.65s ease-in-out infinite 0.325s;
+  animation: typingRightV3 0.6s ease-in-out infinite 0.3s;
 }
 
 @keyframes typingLeftV3 {
@@ -208,7 +184,7 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(2.5px);
+    transform: translateY(2px);
   }
 }
 
@@ -217,14 +193,14 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(2.5px);
+    transform: translateY(2px);
   }
 }
 
 /* 尾巴摇摆动画 */
 .workstation-marvis-v3:not([aria-label*="离线"]) .cat-tail {
-  transform-origin: 50px 55px;
-  animation: tailWagV3 2s ease-in-out infinite;
+  transform-origin: 54px 58px;
+  animation: tailWagV3 1.8s ease-in-out infinite;
 }
 
 @keyframes tailWagV3 {
@@ -232,24 +208,24 @@
     transform: rotate(0deg);
   }
   25% {
-    transform: rotate(5deg);
+    transform: rotate(4deg);
   }
   75% {
-    transform: rotate(-5deg);
+    transform: rotate(-4deg);
   }
 }
 
-/* 状态条脉冲 */
-.status-badge-v3 {
-  animation: badgePulseV3 1.6s ease-in-out infinite;
+/* 围脖/领带脉冲动画 */
+.status-scarf-v3 {
+  animation: scarfPulseV3 1.5s ease-in-out infinite;
 }
 
-@keyframes badgePulseV3 {
+@keyframes scarfPulseV3 {
   0%, 100% {
     opacity: 1;
   }
   50% {
-    opacity: 0.8;
+    opacity: 0.75;
   }
 }
 
@@ -260,52 +236,52 @@
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 200px;
-  height: 8px;
-  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.14) 0%, transparent 70%);
+  width: 180px;
+  height: 7px;
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.12) 0%, transparent 70%);
   z-index: 5;
   transition: all 0.3s ease;
 }
 
 .workstation-marvis-v3:hover .shadow-marvis-v3 {
-  width: 240px;
-  height: 12px;
-  opacity: 0.3;
+  width: 210px;
+  height: 10px;
+  opacity: 0.25;
 }
 
-/* ==================== 工位标签 ==================== */
+/* ==================== 工位标签（紧凑） ==================== */
 
 .desk-label-v3 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  margin-top: 4px;
+  gap: 2px;
+  margin-top: 3px;
 }
 
 .desk-name-v3 {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--foreground, #1e293b);
   text-align: center;
   white-space: nowrap;
   text-overflow: ellipsis;
-  max-width: 220px;
+  max-width: 200px;
   overflow: hidden;
   letter-spacing: -0.01em;
 }
 
 .desk-role-v3 {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.55;
+  letter-spacing: 0.4px;
+  opacity: 0.5;
   color: var(--foreground, #475569);
 }
 
 .desk-status-v3 {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   color: var(--status-color, #64748b);
   display: flex;
@@ -319,14 +295,14 @@
 .task-modal-overlay-v3 {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(5px);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 28px;
+  padding: 24px;
   z-index: 9999;
-  animation: fadeInV3 0.22s ease-out;
+  animation: fadeInV3 0.2s ease-out;
 }
 
 @keyframes fadeInV3 {
@@ -340,24 +316,24 @@
 
 .task-modal-content-v3 {
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 18px;
+  border-radius: 16px;
   width: 95%;
-  max-width: 720px;
-  max-height: 86vh;
+  max-width: 680px;
+  max-height: 84vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: 
-    0 22px 64px rgba(0, 0, 0, 0.55),
-    0 9px 28px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  animation: slideUpV3 0.3s ease-out;
+    0 20px 56px rgba(0, 0, 0, 0.5),
+    0 8px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  animation: slideUpV3 0.28s ease-out;
 }
 
 @keyframes slideUpV3 {
   from {
     opacity: 0;
-    transform: translateY(24px) scale(0.95);
+    transform: translateY(20px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -369,26 +345,26 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 28px;
-  background: rgba(15, 23, 42, 0.5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 22px 26px;
+  background: rgba(15, 23, 42, 0.45);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .task-modal-title-v3 {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex: 1;
 }
 
 .task-modal-emoji-v3 {
-  font-size: 36px;
+  font-size: 32px;
   line-height: 1;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 .task-modal-name-v3 {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: #f1f5f9;
   letter-spacing: -0.02em;
@@ -398,50 +374,50 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 36px;
-  height: 36px;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.28);
-  border-radius: 9px;
+  width: 34px;
+  height: 34px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
   color: #fca5a5;
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .task-modal-close-v3:hover {
-  background: rgba(239, 68, 68, 0.22);
-  border-color: rgba(239, 68, 68, 0.45);
-  transform: scale(1.05);
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  transform: scale(1.04);
 }
 
 .task-modal-body-v3 {
   flex: 1;
-  padding: 28px;
+  padding: 24px;
   overflow-y: auto;
-  max-height: calc(86vh - 200px);
+  max-height: calc(84vh - 180px);
 }
 
 .task-modal-body-v3::-webkit-scrollbar {
-  width: 9px;
+  width: 8px;
 }
 
 .task-modal-body-v3::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 4.5px;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 4px;
 }
 
 .task-modal-body-v3::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.11);
-  border-radius: 4.5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 .task-modal-body-v3::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .task-info-row-v3 {
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
 .task-info-row-v3:last-child {
@@ -449,78 +425,78 @@
 }
 
 .task-info-label-v3 {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   color: #94a3b8;
-  margin-bottom: 10px;
+  margin-bottom: 9px;
 }
 
 .task-info-value-v3 {
-  font-size: 16px;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.6;
   color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: 10px;
-  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  padding: 12px 14px;
   word-break: break-word;
 }
 
 .task-info-value-v3 code {
   font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 14px;
+  font-size: 13px;
   color: #7dd3fc;
-  background: rgba(0, 0, 0, 0.28);
-  padding: 3px 7px;
-  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px 6px;
+  border-radius: 4px;
 }
 
 .status-badge-v3 {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 11px 16px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 10px;
-  font-size: 15px;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .status-dot-v3 {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  box-shadow: 0 0 9px currentColor;
+  box-shadow: 0 0 8px currentColor;
 }
 
 .task-modal-footer-v3 {
   display: flex;
   justify-content: flex-end;
-  padding: 20px 28px;
-  background: rgba(15, 23, 42, 0.5);
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 18px 26px;
+  background: rgba(15, 23, 42, 0.45);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .task-modal-button-v3 {
-  padding: 12px 28px;
+  padding: 11px 24px;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   border: none;
-  border-radius: 10px;
+  border-radius: 9px;
   color: #ffffff;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 5px 14px rgba(59, 130, 246, 0.32);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .task-modal-button-v3:hover {
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 7px 18px rgba(59, 130, 246, 0.42);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
 }
 
 .task-modal-button-v3:active {
@@ -532,34 +508,33 @@
 @media (max-width: 768px) {
   .task-modal-content-v3 {
     max-width: 100%;
-    max-height: 90vh;
-    margin: 18px;
+    max-height: 88vh;
+    margin: 16px;
   }
 
   .task-modal-header-v3,
   .task-modal-body-v3,
   .task-modal-footer-v3 {
-    padding: 20px;
+    padding: 18px;
   }
 
   .task-modal-name-v3 {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   .task-info-value-v3 {
-    font-size: 14px;
+    font-size: 13px;
   }
 }
 
 /* ==================== 无障碍和性能优化 ==================== */
 
 @media (prefers-reduced-motion: reduce) {
-  .status-bar-marvis-v3,
   .cat-silhouette-marvis-v3,
   .cat-arm-left,
   .cat-arm-right,
   .cat-tail,
-  .status-badge-v3,
+  .status-scarf-v3,
   .task-modal-overlay-v3,
   .task-modal-content-v3 {
     animation: none;
