@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './office.css';
-import './office-marvis.css';
+import './office-marvis-v2.css';
 import PersonaDesk from './PersonaDesk';
 import PersonaDeskMarvis from './PersonaDeskMarvis';
 import { useActivityStream } from './useActivityStream';

@@ -1,0 +1,459 @@
+/* ========================================
+   Marvis Office View v2 - 优化版
+   Layer stack (back to front):
+   1. 阴影 (desk-shadow)
+   2. 桌面 (desk-marvis)
+   3. 显示器底座 (monitor-stand)
+   4. 显示器边框 (monitor-marvis)
+   5. 屏幕内容 (screen-marvis)
+   6. 任务叠加层 (task-overlay)
+   7. 人物 (person-marvis)
+   8. 状态条 (status-bar-marvis)
+   ======================================== */
+
+/* 工位容器 - 增加间距 */
+.workstation-marvis {
+  position: absolute;
+  width: 240px;
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  padding: 0;
+}
+
+.workstation-marvis:hover {
+  transform: translateY(-6px) scale(1.02);
+  z-index: 100;
+}
+
+.workstation-marvis:focus-visible {
+  outline: 3px solid var(--accent, #c98a2b);
+  outline-offset: 6px;
+  border-radius: 16px;
+}
+
+/* 状态色条 - 移到最上层 */
+.status-bar-marvis {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 6px;
+  border-radius: 3px;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.25),
+    0 4px 16px currentColor;
+  animation: pulseGlowMarvis 2.5s ease-in-out infinite;
+  z-index: 50;
+  opacity: 0.95;
+}
+
+@keyframes pulseGlowMarvis {
+  0%, 100% { opacity: 0.95; transform: translateX(-50%) scaleX(1); }
+  50% { opacity: 0.75; transform: translateX(-50%) scaleX(0.95); }
+}
+
+/* 桌面容器 */
+.desk-container-marvis {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+/* 办公桌 - 增加内边距 */
+.desk-marvis {
+  width: 240px;
+  height: 180px;
+  background: linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%);
+  border-radius: 16px;
+  box-shadow: 
+    0 6px 24px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  position: relative;
+  overflow: visible;
+  padding: 24px 20px 20px;
+}
+
+/* 显示器底座 - 新增 */
+.monitor-stand {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 8px;
+  background: linear-gradient(to bottom, #64748b, #475569);
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 15;
+}
+
+.monitor-stand::before {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 6px;
+  background: linear-gradient(to bottom, #475569, #334155);
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* 显示器 - 细边框，16:9 比例 */
+.monitor-marvis {
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 90px; /* 16:9 ratio */
+  background: #0f172a;
+  border-radius: 6px;
+  border: 2px solid #1e293b; /* 边框从 4px 减到 2px */
+  box-shadow: 
+    0 6px 16px rgba(0, 0, 0, 0.25),
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  z-index: 20;
+}
+
+/* 屏幕 - 玻璃光泽效果 */
+.screen-marvis {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, 
+    rgba(30, 41, 59, 0.95) 0%, 
+    rgba(15, 23, 42, 1) 100%);
+}
+
+.screen-marvis::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(to bottom, 
+    rgba(255, 255, 255, 0.08) 0%, 
+    transparent 100%);
+  pointer-events: none;
+}
+
+/* 任务文字叠加层 - 调整字体大小和样式 */
+.task-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  padding: 8px;
+  z-index: 10;
+}
+
+.task-text {
+  font-size: 8px;
+  line-height: 1.4;
+  color: #4ade80;
+  text-align: center;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  text-shadow: 
+    0 0 4px rgba(74, 222, 128, 0.9),
+    0 0 8px rgba(74, 222, 128, 0.5);
+  word-break: break-word;
+  max-width: 100%;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+/* 人物 - 增大尺寸，添加猫特征和阴影 */
+.person-marvis {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 72px;
+  z-index: 30;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+}
+
+/* 工作动画 */
+.person-marvis.working {
+  animation: bounceWork 2s ease-in-out infinite;
+}
+
+@keyframes bounceWork {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-3px); }
+}
+
+/* 阴影 */
+.shadow-marvis {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 8px;
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.15) 0%, transparent 70%);
+  transition: all 0.3s ease;
+  z-index: 5;
+}
+
+.workstation-marvis:hover .shadow-marvis {
+  width: 240px;
+  height: 12px;
+  opacity: 0.3;
+}
+
+/* ========================================
+   任务详情模态框 - 大幅增大尺寸
+   ======================================== */
+
+.task-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease;
+  padding: 24px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.task-modal-content {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-radius: 16px;
+  width: 95%;
+  max-width: 720px; /* 从 500px 增大到 720px */
+  max-height: 85vh;
+  overflow: hidden;
+  box-shadow: 
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 8px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: slideUp 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(20px) scale(0.95); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0) scale(1); 
+  }
+}
+
+/* 模态框头部 */
+.task-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px; /* 增加内边距 */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.task-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 14px; /* 增加间距 */
+  flex: 1;
+}
+
+.task-modal-emoji {
+  font-size: 36px; /* 从 28px 增大 */
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.task-modal-name {
+  font-size: 22px; /* 从 18px 增大 */
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: -0.02em;
+}
+
+.task-modal-close {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  width: 36px; /* 从 32px 增大 */
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 20px; /* 从 18px 增大 */
+}
+
+.task-modal-close:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+  transform: scale(1.05);
+}
+
+/* 模态框内容区 */
+.task-modal-body {
+  padding: 28px; /* 从 20px 增加 */
+  overflow-y: auto;
+  flex: 1;
+  max-height: calc(85vh - 180px);
+}
+
+.task-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.task-modal-body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+
+.task-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+
+.task-modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* 信息行 */
+.task-info-row {
+  margin-bottom: 22px; /* 从 16px 增加 */
+}
+
+.task-info-row:last-child {
+  margin-bottom: 0;
+}
+
+.task-info-label {
+  font-size: 13px; /* 从 12px 增大 */
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px; /* 从 8px 增加 */
+  font-weight: 600;
+}
+
+.task-info-value {
+  font-size: 16px; /* 从 14px 增大 */
+  line-height: 1.6; /* 从 1.5 增加 */
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 14px 16px; /* 从 12px 14px 增加 */
+  border-radius: 10px; /* 从 8px 增大 */
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  word-break: break-word;
+}
+
+.task-info-value code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 3px 7px; /* 从 2px 6px 增加 */
+  border-radius: 5px; /* 从 4px 增大 */
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  font-size: 14px; /* 从 13px 增大 */
+  color: #7dd3fc;
+}
+
+/* 状态标签 */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px; /* 从 6px 增加 */
+  padding: 10px 16px; /* 从 8px 12px 增加 */
+  border-radius: 10px; /* 从 8px 增大 */
+  font-size: 15px; /* 从 14px 增大 */
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.status-dot {
+  width: 10px; /* 从 8px 增大 */
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor; /* 从 6px 增大 */
+}
+
+/* 模态框底部 */
+.task-modal-footer {
+  padding: 20px 28px; /* 增加内边距 */
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.task-modal-button {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  padding: 12px 28px; /* 从 10px 24px 增加 */
+  border-radius: 10px; /* 从 8px 增大 */
+  font-size: 15px; /* 从 14px 增大 */
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.task-modal-button:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.task-modal-button:active {
+  transform: translateY(0);
+}
+
+/* 响应式 - 平板和手机 */
+@media (max-width: 768px) {
+  .task-modal-content {
+    max-width: 100%;
+    margin: 16px;
+    max-height: 90vh;
+  }
+  
+  .task-modal-header,
+  .task-modal-body,
+  .task-modal-footer {
+    padding: 20px;
+  }
+  
+  .task-modal-name {
+    font-size: 18px;
+  }
+  
+  .task-info-value {
+    font-size: 14px;
+  }
+}

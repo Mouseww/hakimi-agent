@@ -111,6 +111,9 @@ export default function PersonaDeskMarvis({ desk, x, y, onHover }: Omit<PersonaD
       <div className="desk-container-marvis">
         {/* 卡片主体 */}
         <div className="desk-marvis">
+          {/* 显示器底座 */}
+          <div className="monitor-stand" />
+          
           {/* 显示器 */}
           <div className="monitor-marvis">
             <div className={`screen-marvis screen-${status}`}>
@@ -178,32 +181,123 @@ export default function PersonaDeskMarvis({ desk, x, y, onHover }: Omit<PersonaD
           {/* 椅子 */}
           <div className="chair-marvis" />
           
-          {/* 角色 */}
-          <div className="character-marvis">
-            <svg viewBox="0 0 60 60" width="60" height="60">
-              {/* 头部 - 圆角方块 */}
-              <rect x="16" y="8" width="28" height="28" rx="6" fill="#fef3e2" stroke="#c98a2b" strokeWidth="2" />
-              {/* 表情 */}
-              <text x="30" y="26" textAnchor="middle" fontSize="16">{emoji}</text>
+          {/* 猫咪角色 */}
+          <div className={`person-marvis ${working ? 'working' : ''}`}>
+            <svg viewBox="0 0 60 72" width="60" height="72">
+              {/* 猫耳朵（左） */}
+              <path 
+                d="M 12 16 L 8 6 L 18 10 Z" 
+                fill="#fef3e2" 
+                stroke="#c98a2b" 
+                strokeWidth="1.5"
+              />
+              {/* 猫耳朵（右） */}
+              <path 
+                d="M 48 16 L 52 6 L 42 10 Z" 
+                fill="#fef3e2" 
+                stroke="#c98a2b" 
+                strokeWidth="1.5"
+              />
               
-              {/* 身体 - 方块 */}
+              {/* 猫头 - 圆润方块 */}
               <rect 
-                x="18" y="38" width="24" height="14" rx="2"
+                x="14" y="12" width="32" height="28" rx="8" 
+                fill="#fef3e2" 
+                stroke="#c98a2b" 
+                strokeWidth="2" 
+              />
+              
+              {/* 猫眼睛（左） */}
+              <ellipse cx="23" cy="24" rx="3" ry="4" fill="#2d3748" />
+              <ellipse cx="23" cy="23" rx="1.5" ry="2" fill="#ffffff" opacity="0.6" />
+              
+              {/* 猫眼睛（右） */}
+              <ellipse cx="37" cy="24" rx="3" ry="4" fill="#2d3748" />
+              <ellipse cx="37" cy="23" rx="1.5" ry="2" fill="#ffffff" opacity="0.6" />
+              
+              {/* 猫鼻子 */}
+              <path 
+                d="M 30 28 L 28 32 L 32 32 Z" 
+                fill="#ff8fb1" 
+              />
+              
+              {/* 猫胡须（左侧） */}
+              <line x1="12" y1="26" x2="4" y2="24" stroke="#c98a2b" strokeWidth="1" opacity="0.6" />
+              <line x1="12" y1="30" x2="4" y2="30" stroke="#c98a2b" strokeWidth="1" opacity="0.6" />
+              <line x1="12" y1="34" x2="4" y2="36" stroke="#c98a2b" strokeWidth="1" opacity="0.6" />
+              
+              {/* 猫胡须（右侧） */}
+              <line x1="48" y1="26" x2="56" y2="24" stroke="#c98a2b" strokeWidth="1" opacity="0.6" />
+              <line x1="48" y1="30" x2="56" y2="30" stroke="#c98a2b" strokeWidth="1" opacity="0.6" />
+              <line x1="48" y1="34" x2="56" y2="36" stroke="#c98a2b" strokeWidth="1" opacity="0.6" />
+              
+              {/* 猫嘴巴 */}
+              <path 
+                d="M 25 34 Q 30 36 35 34" 
+                stroke="#c98a2b" 
+                strokeWidth="1.5" 
+                fill="none"
+                strokeLinecap="round"
+              />
+              
+              {/* 猫身体（穿工作服） */}
+              <rect 
+                x="16" y="42" width="28" height="18" rx="3"
                 fill={statusColor} 
-                opacity="0.8" 
+                opacity="0.9" 
                 stroke={statusColor} 
                 strokeWidth="1.5" 
               />
               
-              {/* 手臂 - 小方块 */}
+              {/* 工牌/徽章 */}
+              <rect 
+                x="26" y="48" width="8" height="6" rx="1"
+                fill="#ffffff" 
+                opacity="0.8"
+              />
+              <text 
+                x="30" y="52.5" 
+                textAnchor="middle" 
+                fontSize="4" 
+                fill={statusColor}
+                fontWeight="bold"
+              >
+                {emoji}
+              </text>
+              
+              {/* 猫前爪（左） */}
               <g className={working ? 'typing-arms' : ''}>
-                <rect x="10" y="42" width="6" height="10" rx="1" fill="#c98a2b">
-                  {working && <animate attributeName="y" values="42;44;42" dur="0.6s" repeatCount="indefinite" />}
-                </rect>
-                <rect x="44" y="42" width="6" height="10" rx="1" fill="#c98a2b">
-                  {working && <animate attributeName="y" values="42;44;42" dur="0.6s" begin="0.3s" repeatCount="indefinite" />}
+                <rect x="8" y="50" width="7" height="12" rx="2" fill="#fef3e2" stroke="#c98a2b" strokeWidth="1">
+                  {working && <animate attributeName="y" values="50;52;50" dur="0.6s" repeatCount="indefinite" />}
                 </rect>
               </g>
+              
+              {/* 猫前爪（右） */}
+              <g className={working ? 'typing-arms' : ''}>
+                <rect x="45" y="50" width="7" height="12" rx="2" fill="#fef3e2" stroke="#c98a2b" strokeWidth="1">
+                  {working && <animate attributeName="y" values="50;52;50" dur="0.6s" repeatCount="indefinite" begin="0.3s" />}
+                </rect>
+              </g>
+              
+              {/* 猫尾巴 */}
+              <path 
+                d="M 44 54 Q 52 58 54 64 Q 56 68 52 70" 
+                stroke={statusColor}
+                strokeWidth="4"
+                fill="none"
+                strokeLinecap="round"
+                opacity="0.8"
+              >
+                {working && (
+                  <animateTransform
+                    attributeName="transform"
+                    type="rotate"
+                    values="0 44 54; 5 44 54; 0 44 54; -5 44 54; 0 44 54"
+                    dur="2s"
+                    repeatCount="indefinite"
+                  />
+                )}
+              </path>
             </svg>
           </div>
         </div>
