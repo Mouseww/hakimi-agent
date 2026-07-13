@@ -1,57 +1,63 @@
-/**
- * Marvis Office View V3 - 猫咪侧面剪影风格（最终优化版）
- * 修复：
- * 1. 去除顶部长状态条
- * 2. 大幅降低工位高度（220px → 160px）
- * 3. 增大工位间距，避免重叠
- * 4. 围脖/领带设计（状态色在脖子上）
- * 5. 每只猫独立的尾巴颜色
- */
+/* ==================== Marvis Office View V3 样式 ==================== */
 
-/* ==================== 工位布局（紧凑版） ==================== */
+.office-container-marvis-v3 {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  overflow: auto;
+  padding: 30px;
+}
+
+.office-grid-marvis-v3 {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ==================== 工位卡片 ==================== */
 
 .workstation-marvis-v3 {
-  position: absolute;
+  position: relative;
   width: 220px;
-  padding: 0;
+  height: 190px;
+  background: transparent;
   cursor: pointer;
-  transition: transform 0.3s ease, filter 0.2s ease;
-  will-change: transform;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
 }
 
 .workstation-marvis-v3:hover {
-  transform: translateY(-5px) scale(1.02);
-  z-index: 100;
-  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.12));
+  transform: scale(1.03);
 }
 
 .workstation-marvis-v3:focus-visible {
-  outline: 3px solid var(--status-color, #475569);
-  outline-offset: 6px;
-  border-radius: 12px;
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 3px;
+  border-radius: 8px;
 }
-
-/* ==================== 桌面容器（无背景卡片，降低高度） ==================== */
 
 .desk-container-marvis-v3 {
   position: relative;
-  transform-style: preserve-3d;
+  width: 100%;
+  height: 100%;
 }
 
 .desk-marvis-v3 {
-  background: transparent;
-  width: 220px;
-  height: 170px;
-  padding: 0;
   position: relative;
-  overflow: visible;
+  width: 100%;
+  height: 100%;
 }
 
-/* ==================== 电脑桌 ==================== */
+/* ==================== 电脑桌（提高高度）==================== */
 
 .computer-desk-v3 {
   position: absolute;
-  bottom: 40px;
+  bottom: 68px;
   left: 50%;
   transform: translateX(-50%);
   width: 160px;
@@ -62,14 +68,14 @@
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
 }
 
-/* 桌子腿 */
+/* 桌子腿（加长）*/
 .computer-desk-v3::before,
 .computer-desk-v3::after {
   content: '';
   position: absolute;
-  bottom: -18px;
+  bottom: -30px;
   width: 5px;
-  height: 18px;
+  height: 30px;
   background: linear-gradient(180deg, #6b5845, #5a4735);
   border-radius: 0 0 2px 2px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -83,11 +89,11 @@
   right: 15px;
 }
 
-/* ==================== 椅子 ==================== */
+/* ==================== 椅子（前移） ==================== */
 
 .chair-v3 {
   position: absolute;
-  bottom: 12px;
+  bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
   width: 50px;
@@ -138,11 +144,11 @@
   border-radius: 0 0 3px 3px;
 }
 
-/* ==================== 显示器（进一步缩小） ==================== */
+/* ==================== 显示器（放在桌面上） ==================== */
 
 .monitor-marvis-v3 {
   position: absolute;
-  top: 18px;
+  bottom: 84px;
   left: 50%;
   transform: translateX(-50%);
   width: 100px;
@@ -188,13 +194,12 @@
   align-items: center;
   justify-content: center;
   padding: 7px;
-  z-index: 10;
+  z-index: 1;
 }
 
 .task-text-v3 {
   color: #4ade80;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 7.5px;
+  font-size: 9px;
   font-weight: 500;
   text-align: center;
   line-height: 1.35;
@@ -206,15 +211,15 @@
     0 0 8px rgba(74, 222, 128, 0.35);
 }
 
-/* ==================== 显示器支架 ==================== */
+/* ==================== 显示器支架（底座在桌面上） ==================== */
 
 .monitor-stand-v3 {
   position: absolute;
-  bottom: 48px;
+  bottom: 76px;
   left: 50%;
   transform: translateX(-50%);
   width: 18px;
-  height: 6px;
+  height: 8px;
   background: linear-gradient(180deg, #64748b, #475569);
   border-radius: 3px 3px 0 0;
   z-index: 15;
@@ -234,11 +239,11 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* ==================== 猫咪侧面剪影 SVG（优化版，坐椅子上） ==================== */
+/* ==================== 猫咪侧面剪影 SVG（坐在椅面上） ==================== */
 
 .cat-silhouette-marvis-v3 {
   position: absolute;
-  bottom: 32px;
+  bottom: 48px;
   left: 50%;
   transform: translateX(-50%);
   width: 80px;
@@ -289,8 +294,8 @@
 }
 
 /* 尾巴摇摆动画 */
-.workstation-marvis-v3:not([aria-label*="离线"]) .cat-tail {
-  transform-origin: 54px 58px;
+.cat-tail {
+  transform-origin: 10% 20%;
   animation: tailWagV3 1.8s ease-in-out infinite;
 }
 
@@ -299,132 +304,102 @@
     transform: rotate(0deg);
   }
   25% {
-    transform: rotate(4deg);
+    transform: rotate(-5deg);
   }
   75% {
-    transform: rotate(-4deg);
+    transform: rotate(5deg);
   }
 }
 
-/* 围脖/领带脉冲动画 */
-.status-scarf-v3 {
-  animation: scarfPulseV3 1.5s ease-in-out infinite;
+/* 围脖呼吸动画 */
+.cat-scarf {
+  animation: scarfBreathV3 1.5s ease-in-out infinite;
 }
 
-@keyframes scarfPulseV3 {
+@keyframes scarfBreathV3 {
   0%, 100% {
-    opacity: 1;
+    transform: scale(1);
   }
   50% {
-    opacity: 0.75;
+    transform: scale(1.08);
   }
 }
 
-/* ==================== 阴影 ==================== */
+/* 耳朵轻微抖动 */
+.cat-ear-left,
+.cat-ear-right {
+  transform-origin: 50% 100%;
+  animation: earTwitchV3 3s ease-in-out infinite;
+}
 
-.shadow-marvis-v3 {
+.cat-ear-right {
+  animation-delay: 0.4s;
+}
+
+@keyframes earTwitchV3 {
+  0%, 90%, 100% {
+    transform: rotate(0deg);
+  }
+  92%, 96% {
+    transform: rotate(-3deg);
+  }
+  94%, 98% {
+    transform: rotate(3deg);
+  }
+}
+
+/* ==================== 名字标签 ==================== */
+
+.name-label-marvis-v3 {
   position: absolute;
-  bottom: 0;
+  bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
-  width: 180px;
-  height: 7px;
-  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.12) 0%, transparent 70%);
-  z-index: 5;
-  transition: all 0.3s ease;
-}
-
-.workstation-marvis-v3:hover .shadow-marvis-v3 {
-  width: 210px;
-  height: 10px;
-  opacity: 0.25;
-}
-
-/* ==================== 工位标签（紧凑） ==================== */
-
-.desk-label-v3 {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  margin-top: 3px;
-}
-
-.desk-name-v3 {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--foreground, #1e293b);
-  text-align: center;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  max-width: 200px;
-  overflow: hidden;
-  letter-spacing: -0.01em;
-}
-
-.desk-role-v3 {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  opacity: 0.5;
-  color: var(--foreground, #475569);
-}
-
-.desk-status-v3 {
-  font-size: 10px;
+  padding: 3px 10px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  font-size: 11px;
   font-weight: 500;
-  color: var(--status-color, #64748b);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-top: 1px;
+  border-radius: 6px;
+  white-space: nowrap;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 35;
+  backdrop-filter: blur(4px);
 }
 
-/* ==================== 任务模态框 ==================== */
+/* ==================== 模态框 ==================== */
 
-.task-modal-overlay-v3 {
+.persona-modal-marvis-v3 {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.75);
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
   padding: 24px;
-  z-index: 9999;
-  animation: fadeInV3 0.2s ease-out;
 }
 
-@keyframes fadeInV3 {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.task-modal-content-v3 {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 16px;
-  width: 95%;
-  max-width: 680px;
-  max-height: 84vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.modal-content-marvis-v3 {
+  background: white;
+  border-radius: 12px;
+  padding: 28px;
+  width: 100%;
+  max-width: 720px;
+  max-height: 85vh;
+  overflow-y: auto;
   box-shadow: 
-    0 20px 56px rgba(0, 0, 0, 0.5),
-    0 8px 24px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  animation: slideUpV3 0.28s ease-out;
+    0 20px 48px rgba(0, 0, 0, 0.35),
+    0 8px 16px rgba(0, 0, 0, 0.2);
+  animation: modalSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes slideUpV3 {
+@keyframes modalSlideIn {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.96);
+    transform: translateY(24px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -432,203 +407,146 @@
   }
 }
 
-.task-modal-header-v3 {
+.modal-header-marvis-v3 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 22px 26px;
-  background: rgba(15, 23, 42, 0.45);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1.5px solid #e2e8f0;
 }
 
-.task-modal-title-v3 {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
+.modal-header-marvis-v3 h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
 }
 
-.task-modal-emoji-v3 {
-  font-size: 32px;
-  line-height: 1;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-
-.task-modal-name-v3 {
-  font-size: 20px;
-  font-weight: 700;
-  color: #f1f5f9;
-  letter-spacing: -0.02em;
-}
-
-.task-modal-close-v3 {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 34px;
-  height: 34px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+.modal-close-btn-marvis-v3 {
+  background: #f1f5f9;
+  border: none;
+  font-size: 24px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
-  color: #fca5a5;
-  font-size: 18px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: all 0.18s;
 }
 
-.task-modal-close-v3:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.4);
-  transform: scale(1.04);
+.modal-close-btn-marvis-v3:hover {
+  background: #e2e8f0;
+  color: #334155;
 }
 
-.task-modal-body-v3 {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
-  max-height: calc(84vh - 180px);
+.modal-body-marvis-v3 p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #475569;
+  margin: 0 0 14px 0;
 }
 
-.task-modal-body-v3::-webkit-scrollbar {
-  width: 8px;
-}
-
-.task-modal-body-v3::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.035);
-  border-radius: 4px;
-}
-
-.task-modal-body-v3::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-.task-modal-body-v3::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.task-info-row-v3 {
-  margin-bottom: 20px;
-}
-
-.task-info-row-v3:last-child {
+.modal-body-marvis-v3 p:last-child {
   margin-bottom: 0;
 }
 
-.task-info-label-v3 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: #94a3b8;
-  margin-bottom: 9px;
+.modal-body-marvis-v3 strong {
+  color: #0f172a;
+  font-weight: 600;
 }
 
-.task-info-value-v3 {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 9px;
-  padding: 12px 14px;
-  word-break: break-word;
+/* ==================== 行走中的猫咪动画 ==================== */
+
+.walking-cat-v3 {
+  will-change: transform;
 }
 
-.task-info-value-v3 code {
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 13px;
-  color: #7dd3fc;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 3px 6px;
-  border-radius: 4px;
+/* 行走时的呼吸动画 */
+.walking-cat-scarf {
+  animation: walkingScarfBreath 0.6s ease-in-out infinite;
 }
 
-.status-badge-v3 {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.065);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 9px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.status-dot-v3 {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  box-shadow: 0 0 8px currentColor;
-}
-
-.task-modal-footer-v3 {
-  display: flex;
-  justify-content: flex-end;
-  padding: 18px 26px;
-  background: rgba(15, 23, 42, 0.45);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.task-modal-button-v3 {
-  padding: 11px 24px;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  border: none;
-  border-radius: 9px;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.task-modal-button-v3:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  transform: translateY(-1.5px);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
-}
-
-.task-modal-button-v3:active {
-  transform: translateY(0);
-}
-
-/* ==================== 响应式 ==================== */
-
-@media (max-width: 768px) {
-  .task-modal-content-v3 {
-    max-width: 100%;
-    max-height: 88vh;
-    margin: 16px;
+@keyframes walkingScarfBreath {
+  0%, 100% {
+    transform: scale(1);
   }
-
-  .task-modal-header-v3,
-  .task-modal-body-v3,
-  .task-modal-footer-v3 {
-    padding: 18px;
-  }
-
-  .task-modal-name-v3 {
-    font-size: 17px;
-  }
-
-  .task-info-value-v3 {
-    font-size: 13px;
+  50% {
+    transform: scale(1.1);
   }
 }
 
-/* ==================== 无障碍和性能优化 ==================== */
+/* 行走时的尾巴摆动 */
+.walking-cat-tail {
+  transform-origin: 0% 50%;
+  animation: walkingTailSwing 0.5s ease-in-out infinite;
+}
 
-@media (prefers-reduced-motion: reduce) {
-  .cat-silhouette-marvis-v3,
-  .cat-arm-left,
-  .cat-arm-right,
-  .cat-tail,
-  .status-scarf-v3,
-  .task-modal-overlay-v3,
-  .task-modal-content-v3 {
-    animation: none;
-    transition: none;
+@keyframes walkingTailSwing {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-8deg);
+  }
+  75% {
+    transform: rotate(8deg);
+  }
+}
+
+/* 前腿行走动画 */
+.walking-cat-front-legs line:nth-child(1) {
+  animation: walkingLegFront1 0.6s ease-in-out infinite;
+}
+
+.walking-cat-front-legs line:nth-child(2) {
+  animation: walkingLegFront2 0.6s ease-in-out infinite;
+}
+
+@keyframes walkingLegFront1 {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes walkingLegFront2 {
+  0%, 100% {
+    transform: translateY(-4px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+}
+
+/* 后腿行走动画 */
+.walking-cat-back-legs line:nth-child(1) {
+  animation: walkingLegBack1 0.6s ease-in-out infinite 0.1s;
+}
+
+.walking-cat-back-legs line:nth-child(2) {
+  animation: walkingLegBack2 0.6s ease-in-out infinite 0.1s;
+}
+
+@keyframes walkingLegBack1 {
+  0%, 100% {
+    transform: translateY(-3px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes walkingLegBack2 {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
   }
 }

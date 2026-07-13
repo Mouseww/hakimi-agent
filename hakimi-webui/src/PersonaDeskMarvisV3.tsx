@@ -8,6 +8,7 @@ interface PersonaDeskMarvisV3Props {
   onClick?: () => void;
   scarfColor?: string;  // 独立围脖颜色
   tailColor?: string;   // 独立尾巴颜色
+  hideCat?: boolean;    // 隐藏猫咪（行走时）
 }
 
 const STATUS_CONFIG = {
@@ -27,6 +28,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
   onClick,
   scarfColor = '#10b981',
   tailColor = '#34d399',
+  hideCat = false,
 }) => {
   const [showModal, setShowModal] = useState(false);
   const config = STATUS_CONFIG[status];
@@ -81,13 +83,14 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
               <div className="chair-seat-v3" />
             </div>
 
-            {/* 猫咪侧面剪影 SVG - 坐在椅子上 */}
-            <svg
-              className="cat-silhouette-marvis-v3"
-              viewBox="0 0 90 90"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            {/* 猫咪侧面剪影 SVG - 坐在椅子上（行走时隐藏） */}
+            {!hideCat && (
+              <svg
+                className="cat-silhouette-marvis-v3"
+                viewBox="0 0 90 90"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
               <g className="cat-body">
                 {/* 左耳 - 更尖锐 */}
                 <path
@@ -137,6 +140,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
                 />
               </g>
             </svg>
+            )}
 
             {/* 阴影 */}
             <div className="shadow-marvis-v3" />

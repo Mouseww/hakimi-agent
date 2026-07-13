@@ -7,7 +7,8 @@ import { useActivityStream } from './useActivityStream';
 import { assignSeats, CELL_H, CELL_W, type OfficeLayout, type Seat } from './officeLayout';
 import { displayedState, type DeskState } from './officeState';
 import { useI18n } from './i18n';
-import { useDelegationAnims, type DelegationAnim } from './useDelegationAnims';
+import { useDelegationAnims, type DelegationAnim, type DelegationPhase } from './useDelegationAnims';
+import { WalkingCat } from './WalkingCat';
 
 interface OfficeViewProps {
   onOpenPersona: (id: string) => void;
@@ -15,9 +16,12 @@ interface OfficeViewProps {
 
 const COLS = 4;
 
-// 根据 taskHint 推断状态
-function inferStatus(taskHint: string): 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused' {
-  const hint = taskHint.toLowerCase();
+// 根据 DeskState 推断状态
+function inferStatus(desk: { taskHint?: string; consultingTo?: string; delegatedFrom?: string }): 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused' {
+  // 正在委派任务（consultingTo）或接受委派（delegatedFrom）都应该是工作状态
+  if (desk.consultingTo || desk.delegatedFrom) return 'busy';
+  
+  const hint = (desk.taskHint || '').toLowerCase();
   if (!hint || hint.includes('离线') || hint.includes('休息') || hint.includes('offline')) return 'away';
   if (hint.includes('忙碌') || hint.includes('busy') || hint.includes('负载')) return 'busy';
   if (hint.includes('规划') || hint.includes('planning') || hint.includes('设计')) return 'planning';
@@ -68,43 +72,6 @@ function DelegationLine({ from, to }: { from: Seat; to: Seat }) {
   );
 }
 
-function WalkingFigure({ fromSeat, toSeat, avatar, phase }: {
-  fromSeat: Seat;
-  toSeat: Seat;
-  avatar: string;
-  phase: 'going' | 'returning';
-}) {
-  const from = phase === 'going' ? fromSeat : toSeat;
-  const to = phase === 'going' ? toSeat : fromSeat;
-  const [arrived, setArrived] = useState(false);
-
-  useEffect(() => {
-    setArrived(false);
-    const t = requestAnimationFrame(() => setArrived(true));
-    return () => cancelAnimationFrame(t);
-  }, [from.x, from.y, to.x, to.y, phase]);
-
-  const x = arrived ? to.x + 50 : from.x + 50;
-  const y = arrived ? to.y + 70 : from.y + 70;
-
-  return (
-    <div
-      className="delegation-walker"
-      style={{ transform: `translate(${x}px, ${y}px)` }}
-    >
-      <svg viewBox="0 0 40 48" width="36" height="44">
-        <circle cx="14" cy="12" r="10" fill="#fef3e2" stroke="#c98a2b" strokeWidth="1" />
-        <text x="14" y="16" textAnchor="middle" fontSize="10">{avatar || '🏃'}</text>
-        <rect x="4" y="22" width="20" height="14" rx="6" fill="#c98a2b" fillOpacity="0.3" stroke="#c98a2b" strokeWidth="0.8" />
-        <g className="walker-legs">
-          <line x1="10" y1="36" x2="6" y2="46" stroke="#c98a2b" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1="18" y1="36" x2="22" y2="46" stroke="#c98a2b" strokeWidth="1.5" strokeLinecap="round" />
-        </g>
-      </svg>
-    </div>
-  );
-}
-
 function TalkBubble({ seat, side }: { seat: Seat; side: 'left' | 'right' }) {
   const x = side === 'right' ? seat.x + 150 : seat.x + 10;
   const y = seat.y + 20;
@@ -119,17 +86,35 @@ function TalkBubble({ seat, side }: { seat: Seat; side: 'left' | 'right' }) {
   );
 }
 
-function DelegationOverlay({ anim, seats }: { anim: DelegationAnim; seats: Map<string, Seat> }) {
+function DelegationOverlay({ 
+  anim, 
+  seats 
+}: { 
+  anim: DelegationAnim; 
+  seats: Map<string, Seat>;
+}) {
   const fromSeat = seats.get(anim.fromId);
   const toSeat = seats.get(anim.toId);
   if (!fromSeat || !toSeat) return null;
 
   const fromDesk = { ...fromSeat };
   const toDesk = { ...toSeat };
+  
+  // 获取委派方的颜色
+  const fromColors = generateAgentColors(anim.fromId);
+  const toColors = generateAgentColors(anim.toId);
 
   switch (anim.phase) {
     case 'walk_to':
-      return <WalkingFigure fromSeat={fromDesk} toSeat={toDesk} avatar="" phase="going" />;
+      return (
+        <WalkingCat 
+          fromSeat={fromDesk} 
+          toSeat={toDesk} 
+          phase="going" 
+          scarfColor={fromColors.scarf}
+          tailColor={fromColors.tail}
+        />
+      );
 
     case 'talk_assign':
       return (
@@ -142,7 +127,13 @@ function DelegationOverlay({ anim, seats }: { anim: DelegationAnim; seats: Map<s
     case 'walk_back':
       return (
         <>
-          <WalkingFigure fromSeat={toDesk} toSeat={fromDesk} avatar="" phase="going" />
+          <WalkingCat 
+            fromSeat={toDesk} 
+            toSeat={fromDesk} 
+            phase="going" 
+            scarfColor={fromColors.scarf}
+            tailColor={fromColors.tail}
+          />
           <DelegationLine from={fromSeat} to={toSeat} />
         </>
       );
@@ -154,7 +145,13 @@ function DelegationOverlay({ anim, seats }: { anim: DelegationAnim; seats: Map<s
       return (
         <>
           <DelegationLine from={fromSeat} to={toSeat} />
-          <WalkingFigure fromSeat={toDesk} toSeat={fromDesk} avatar="" phase="going" />
+          <WalkingCat 
+            fromSeat={toDesk} 
+            toSeat={fromDesk} 
+            phase="going" 
+            scarfColor={toColors.scarf}
+            tailColor={toColors.tail}
+          />
         </>
       );
 
@@ -167,7 +164,15 @@ function DelegationOverlay({ anim, seats }: { anim: DelegationAnim; seats: Map<s
       );
 
     case 'return_walk':
-      return <WalkingFigure fromSeat={fromDesk} toSeat={toDesk} avatar="" phase="going" />;
+      return (
+        <WalkingCat 
+          fromSeat={fromDesk} 
+          toSeat={toDesk} 
+          phase="going" 
+          scarfColor={toColors.scarf}
+          tailColor={toColors.tail}
+        />
+      );
 
     default:
       return null;
@@ -224,6 +229,25 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
   const desks = Array.from(office.values());
   const width = COLS * CELL_W + 64;
   const height = layout.rows * CELL_H + 80;
+  
+  // 计算哪些 Agent 正在行走（需要隐藏工位猫咪）
+  const walkingAgents = useMemo(() => {
+    const walking = new Set<string>();
+    for (const anim of anims.values()) {
+      const walkPhases: DelegationPhase[] = ['walk_to', 'walk_back', 'report_walk', 'return_walk'];
+      if (walkPhases.includes(anim.phase)) {
+        // walk_to 和 walk_back: 委派方在行走
+        if (anim.phase === 'walk_to' || anim.phase === 'walk_back') {
+          walking.add(anim.fromId);
+        }
+        // report_walk 和 return_walk: 被委派方在行走
+        if (anim.phase === 'report_walk' || anim.phase === 'return_walk') {
+          walking.add(anim.toId);
+        }
+      }
+    }
+    return walking;
+  }, [anims]);
 
   // team clusters: group desks by teamId
   const teams = new Map<string, DeskState[]>();
@@ -285,16 +309,18 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
           const seat = layout.seats.get(d.id);
           if (!seat) return null;
           const colors = generateAgentColors(d.id);
+          const isWalking = walkingAgents.has(d.id);
           return useMarvisStyle ? (
             <div key={d.id} style={{ position: 'absolute', left: seat.x, top: seat.y }}>
               <PersonaDeskMarvisV3
                 name={d.name}
                 role={d.name}
-                status={inferStatus(d.taskHint || '')}
+                status={inferStatus(d)}
                 taskHint={d.taskHint}
                 onClick={() => onOpenPersona(d.id)}
                 scarfColor={colors.scarf}
                 tailColor={colors.tail}
+                hideCat={isWalking}
               />
             </div>
           ) : (
