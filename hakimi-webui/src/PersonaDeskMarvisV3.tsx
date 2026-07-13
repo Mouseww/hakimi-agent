@@ -77,27 +77,27 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
-              {/* 猫咪侧面剪影 - 纯黑色 */}
+              {/* 猫咪侧面剪影 - 灰白色（与黑色屏幕形成对比） */}
               <g className="cat-body">
                 {/* 左耳 */}
                 <path
                   d="M 32 18 L 28 10 L 36 14 Z"
-                  fill="#000000"
+                  fill="#94a3b8"
                 />
                 {/* 右耳 */}
                 <path
                   d="M 44 18 L 40 8 L 48 12 Z"
-                  fill="#000000"
+                  fill="#94a3b8"
                 />
                 {/* 头部 */}
-                <ellipse cx="38" cy="26" rx="11" ry="10" fill="#000000" />
+                <ellipse cx="38" cy="26" rx="11" ry="10" fill="#94a3b8" />
                 {/* 吻部 */}
                 <path
                   d="M 48 26 Q 52 26 52 28 Q 52 30 48 30 L 46 28 Z"
-                  fill="#000000"
+                  fill="#94a3b8"
                 />
                 {/* 身体 */}
-                <ellipse cx="38" cy="48" rx="14" ry="18" fill="#000000" />
+                <ellipse cx="38" cy="48" rx="14" ry="18" fill="#94a3b8" />
                 {/* 彩色状态条 */}
                 <rect
                   x="28"
@@ -109,12 +109,12 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
                   className="status-badge-v3"
                 />
                 {/* 前肢（打字姿势） */}
-                <rect x="32" y="62" width="4" height="10" rx="2" fill="#000000" className="cat-arm-left" />
-                <rect x="40" y="62" width="4" height="10" rx="2" fill="#000000" className="cat-arm-right" />
+                <rect x="32" y="62" width="4" height="10" rx="2" fill="#94a3b8" className="cat-arm-left" />
+                <rect x="40" y="62" width="4" height="10" rx="2" fill="#94a3b8" className="cat-arm-right" />
                 {/* 尾巴 */}
                 <path
                   d="M 50 55 Q 58 58 60 48 Q 61 42 58 38"
-                  stroke="#000000"
+                  stroke="#94a3b8"
                   strokeWidth="4"
                   strokeLinecap="round"
                   fill="none"
