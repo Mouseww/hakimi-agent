@@ -235,18 +235,20 @@ impl MemoryProvider for FileMemoryProvider {
                 .unwrap_or("unknown");
 
             // Try to get content from cache first
-            let content = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                // We're in an async context, use the cache
+            let content = if let Ok(_handle) = tokio::runtime::Handle::try_current() {
+                // We're in an async context, spawn a blocking task to avoid nested runtime
                 let cache = self.cache.clone();
                 let path_clone = path.clone();
-                handle.block_on(async move {
-                    // Try cache first
-                    if let Some(cached) = cache.get_cached(&path_clone).await {
-                        Ok(cached)
-                    } else {
-                        // Cache miss, read directly
-                        std::fs::read_to_string(&path_clone)
-                    }
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async move {
+                        // Try cache first
+                        if let Some(cached) = cache.get_cached(&path_clone).await {
+                            Ok(cached)
+                        } else {
+                            // Cache miss, read directly
+                            std::fs::read_to_string(&path_clone)
+                        }
+                    })
                 })
             } else {
                 // No async runtime available, read directly
