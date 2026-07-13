@@ -18,17 +18,10 @@ export function AgentProgressModal({ agentId, agentName, onClose }: AgentProgres
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 获取 agent 的对话历史
-    fetch(`/api/persona/${agentId}/messages`)
-      .then(res => res.json())
-      .then(data => {
-        setMessages(data.messages || []);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to load agent messages:', err);
-        setLoading(false);
-      });
+    // TODO: 实现 persona 工作记录持久化和查询API
+    // 暂时显示占位信息
+    setMessages([]);
+    setLoading(false);
   }, [agentId]);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -37,14 +30,28 @@ export function AgentProgressModal({ agentId, agentName, onClose }: AgentProgres
     }
   };
 
+  const handleClearAll = () => {
+    if (confirm(`确定要清空 ${agentName} 的所有工作记录吗？`)) {
+      // TODO: 调用 DELETE /api/persona/:id/messages
+      setMessages([]);
+    }
+  };
+
   return (
     <div className="agent-progress-modal-backdrop" onClick={handleBackdropClick}>
       <div className="agent-progress-modal">
         <div className="agent-progress-modal-header">
           <h2>{agentName} 工作进度</h2>
-          <button className="agent-progress-modal-close" onClick={onClose}>
-            ✕
-          </button>
+          <div className="agent-progress-modal-actions">
+            {messages.length > 0 && (
+              <button className="agent-progress-btn-clear" onClick={handleClearAll} title="清空所有记录">
+                🗑️ 清空
+              </button>
+            )}
+            <button className="agent-progress-modal-close" onClick={onClose}>
+              ✕
+            </button>
+          </div>
         </div>
         <div className="agent-progress-modal-body">
           {loading ? (

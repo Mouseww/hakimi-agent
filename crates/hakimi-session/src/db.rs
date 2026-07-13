@@ -48,6 +48,28 @@ impl SessionDB {
             .context("Failed to create core tables")?;
         conn.execute_batch(schema::FTS_SQL)
             .context("Failed to create FTS tables")?;
+
+        // Migration: add persona_id column if it doesn't exist
+        let has_persona_id: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'persona_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0)
+            > 0;
+
+        if !has_persona_id {
+            conn.execute("ALTER TABLE sessions ADD COLUMN persona_id TEXT", [])
+                .context("Failed to add persona_id column")?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_persona ON sessions(persona_id, started_at DESC)",
+                [],
+            )
+            .context("Failed to create persona index")?;
+            info!("Migration: Added persona_id column to sessions table");
+        }
+
         info!("Session database schema initialized");
         Ok(())
     }

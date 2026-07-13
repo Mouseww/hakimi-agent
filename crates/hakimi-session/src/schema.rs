@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     reasoning_tokens INTEGER DEFAULT 0,
     title TEXT,
     api_call_count INTEGER DEFAULT 0,
-    workdir TEXT
+    workdir TEXT,
+    persona_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -44,6 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_root ON sessions(root_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_lineage ON sessions(parent_session_id, root_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_persona ON sessions(persona_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_title_unique
     ON sessions(title) WHERE title IS NOT NULL;

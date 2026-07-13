@@ -2528,6 +2528,10 @@ pub fn build_router(state: AppState) -> Router {
         )
         // Metrics endpoint
         .route("/metrics", get(get_metrics))
+        // Persona work history
+        .route("/persona/:id/messages", get(get_persona_messages))
+        .route("/persona/:id/messages", delete(clear_persona_messages))
+        .route("/persona/:id/messages/:message_id", delete(delete_persona_message))
         // Error tracking endpoints
         .route("/errors/stats", get(get_error_stats))
         .route("/errors", get(get_errors))

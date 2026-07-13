@@ -39,6 +39,28 @@
   color: #fff;
 }
 
+.agent-progress-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-progress-btn-clear {
+  padding: 6px 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-progress-btn-clear:hover {
+  background: rgba(220, 38, 38, 0.2);
+  border-color: rgba(220, 38, 38, 0.5);
+}
+
 .agent-progress-modal-close {
   background: transparent;
   border: none;
