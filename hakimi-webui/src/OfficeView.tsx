@@ -26,6 +26,21 @@ function inferStatus(taskHint: string): 'working' | 'busy' | 'planning' | 'away'
   return 'working';
 }
 
+// 为每个 agent 生成唯一的颜色（基于 ID 哈希）
+function generateAgentColors(id: string): { scarf: string; tail: string } {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash) + id.charCodeAt(i);
+    hash |= 0;
+  }
+  
+  const hue = Math.abs(hash) % 360;
+  const scarf = `hsl(${hue}, 70%, 55%)`;
+  const tail = `hsl(${hue}, 65%, 68%)`;
+  
+  return { scarf, tail };
+}
+
 function deskCenter(seat: Seat): { x: number; y: number } {
   return { x: seat.x + 90, y: seat.y + 70 };
 }
@@ -269,14 +284,17 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
         {desks.map((d) => {
           const seat = layout.seats.get(d.id);
           if (!seat) return null;
+          const colors = generateAgentColors(d.id);
           return useMarvisStyle ? (
             <div key={d.id} style={{ position: 'absolute', left: seat.x, top: seat.y }}>
               <PersonaDeskMarvisV3
                 name={d.name}
-                role={d.name} // 使用 name 作为 role，或后续扩展 DeskState
+                role={d.name}
                 status={inferStatus(d.taskHint || '')}
                 taskHint={d.taskHint}
                 onClick={() => onOpenPersona(d.id)}
+                scarfColor={colors.scarf}
+                tailColor={colors.tail}
               />
             </div>
           ) : (

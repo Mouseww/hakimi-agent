@@ -6,15 +6,17 @@ interface PersonaDeskMarvisV3Props {
   status: 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused';
   taskHint?: string;
   onClick?: () => void;
+  scarfColor?: string;  // 独立围脖颜色
+  tailColor?: string;   // 独立尾巴颜色
 }
 
 const STATUS_CONFIG = {
-  working: { color: '#10b981', tailColor: '#34d399', label: '工作中', emoji: '💼' },
-  busy: { color: '#ef4444', tailColor: '#f87171', label: '高负载', emoji: '🔥' },
-  planning: { color: '#a855f7', tailColor: '#c084fc', label: '项目规划', emoji: '📋' },
-  away: { color: '#3b82f6', tailColor: '#60a5fa', label: '离线/休息', emoji: '😴' },
-  creative: { color: '#f59e0b', tailColor: '#fbbf24', label: '创意设计', emoji: '🎨' },
-  focused: { color: '#06b6d4', tailColor: '#22d3ee', label: '深度专注', emoji: '🎯' },
+  working: { label: '工作中', emoji: '💼' },
+  busy: { label: '高负载', emoji: '🔥' },
+  planning: { label: '项目规划', emoji: '📋' },
+  away: { label: '离线/休息', emoji: '😴' },
+  creative: { label: '创意设计', emoji: '🎨' },
+  focused: { label: '深度专注', emoji: '🎯' },
 };
 
 export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
@@ -23,6 +25,8 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
   status,
   taskHint,
   onClick,
+  scarfColor = '#10b981',
+  tailColor = '#34d399',
 }) => {
   const [showModal, setShowModal] = useState(false);
   const config = STATUS_CONFIG[status];
@@ -40,7 +44,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
       <div
         className="workstation-marvis-v3"
         onClick={handleClick}
-        style={{ '--status-color': config.color, '--tail-color': config.tailColor } as React.CSSProperties}
+        style={{ '--scarf-color': scarfColor, '--tail-color': tailColor } as React.CSSProperties}
         tabIndex={0}
         role="button"
         aria-label={`${name} - ${role} - ${config.label}`}
@@ -48,7 +52,11 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
         {/* 工位卡片 */}
         <div className="desk-container-marvis-v3">
           <div className="desk-marvis-v3">
-            {/* 显示器 */}
+            
+            {/* 电脑桌 */}
+            <div className="computer-desk-v3" />
+            
+            {/* 显示器（缩小） */}
             <div className="monitor-marvis-v3">
               <div className="screen-marvis-v3">
                 {status !== 'away' && taskHint && (
@@ -67,7 +75,13 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
             {/* 显示器支架 */}
             <div className="monitor-stand-v3" />
 
-            {/* 猫咪侧面剪影 SVG - 优化版 */}
+            {/* 椅子 */}
+            <div className="chair-v3">
+              <div className="chair-back-v3" />
+              <div className="chair-seat-v3" />
+            </div>
+
+            {/* 猫咪侧面剪影 SVG - 坐在椅子上 */}
             <svg
               className="cat-silhouette-marvis-v3"
               viewBox="0 0 90 90"
@@ -98,13 +112,13 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
                 {/* 身体 */}
                 <ellipse cx="41" cy="52" rx="15" ry="20" fill="#94a3b8" />
                 
-                {/* 围脖/领带（状态色） */}
+                {/* 围脖/领带（独立颜色） */}
                 <ellipse
                   cx="41"
                   cy="40"
                   rx="10"
                   ry="5"
-                  fill={config.color}
+                  fill={scarfColor}
                   className="status-scarf-v3"
                 />
                 
@@ -115,7 +129,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
                 {/* 尾巴（独立颜色） */}
                 <path
                   d="M 54 58 Q 64 62 66 50 Q 67 43 64 38"
-                  stroke={config.tailColor}
+                  stroke={tailColor}
                   strokeWidth="4.5"
                   strokeLinecap="round"
                   fill="none"
@@ -158,8 +172,8 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
               </div>
               <div className="task-info-row-v3">
                 <div className="task-info-label-v3">状态</div>
-                <div className="status-badge-v3" style={{ background: `${config.color}22`, borderColor: config.color }}>
-                  <div className="status-dot-v3" style={{ background: config.color }} />
+                <div className="status-badge-v3" style={{ background: `${scarfColor}22`, borderColor: scarfColor }}>
+                  <div className="status-dot-v3" style={{ background: scarfColor }} />
                   <span>{config.label}</span>
                 </div>
               </div>

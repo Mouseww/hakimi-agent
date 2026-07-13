@@ -41,30 +41,121 @@
 .desk-marvis-v3 {
   background: transparent;
   width: 220px;
-  height: 160px;
+  height: 170px;
   padding: 0;
   position: relative;
   overflow: visible;
 }
 
-/* ==================== 显示器 ==================== */
+/* ==================== 电脑桌 ==================== */
+
+.computer-desk-v3 {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 8px;
+  background: linear-gradient(180deg, #8b7355 0%, #6b5845 100%);
+  border-radius: 2px;
+  z-index: 10;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* 桌子腿 */
+.computer-desk-v3::before,
+.computer-desk-v3::after {
+  content: '';
+  position: absolute;
+  bottom: -18px;
+  width: 5px;
+  height: 18px;
+  background: linear-gradient(180deg, #6b5845, #5a4735);
+  border-radius: 0 0 2px 2px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.computer-desk-v3::before {
+  left: 15px;
+}
+
+.computer-desk-v3::after {
+  right: 15px;
+}
+
+/* ==================== 椅子 ==================== */
+
+.chair-v3 {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50px;
+  height: 60px;
+  z-index: 25;
+}
+
+/* 椅背 */
+.chair-back-v3 {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 35px;
+  background: linear-gradient(135deg, #475569 0%, #334155 100%);
+  border-radius: 8px 8px 2px 2px;
+  box-shadow: 
+    0 2px 6px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* 椅面 */
+.chair-seat-v3 {
+  position: absolute;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 18px;
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+  border-radius: 6px;
+  box-shadow: 
+    0 3px 8px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* 椅子柱子 */
+.chair-seat-v3::after {
+  content: '';
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 12px;
+  background: linear-gradient(180deg, #475569, #334155);
+  border-radius: 0 0 3px 3px;
+}
+
+/* ==================== 显示器（进一步缩小） ==================== */
 
 .monitor-marvis-v3 {
   position: absolute;
-  top: 12px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
-  width: 130px;
-  height: 72px;
+  width: 100px;
+  height: 56px;
   background: #0f172a;
   border: 2px solid #1e293b;
-  border-radius: 5px;
+  border-radius: 4px;
   overflow: hidden;
   z-index: 20;
   box-shadow: 
-    0 5px 14px rgba(0, 0, 0, 0.32),
-    0 2px 5px rgba(0, 0, 0, 0.18),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .screen-marvis-v3 {
@@ -119,41 +210,41 @@
 
 .monitor-stand-v3 {
   position: absolute;
-  bottom: 70px;
+  bottom: 48px;
   left: 50%;
   transform: translateX(-50%);
-  width: 24px;
-  height: 7px;
+  width: 18px;
+  height: 6px;
   background: linear-gradient(180deg, #64748b, #475569);
-  border-radius: 3.5px 3.5px 0 0;
+  border-radius: 3px 3px 0 0;
   z-index: 15;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.16);
 }
 
 .monitor-stand-v3::before {
   content: '';
   position: absolute;
-  bottom: -5px;
+  bottom: -4px;
   left: 50%;
   transform: translateX(-50%);
-  width: 46px;
-  height: 5px;
+  width: 34px;
+  height: 4px;
   background: linear-gradient(180deg, #475569, #334155);
-  border-radius: 8px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* ==================== 猫咪侧面剪影 SVG（优化版） ==================== */
+/* ==================== 猫咪侧面剪影 SVG（优化版，坐椅子上） ==================== */
 
 .cat-silhouette-marvis-v3 {
   position: absolute;
-  bottom: 5px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
-  width: 90px;
-  height: 90px;
+  width: 80px;
+  height: 80px;
   z-index: 30;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.18));
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.15));
 }
 
 /* 工作状态动画 */
