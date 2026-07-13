@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './office.css';
-import './office-marvis-v2.css';
+import './office-marvis-v3.css';
 import PersonaDesk from './PersonaDesk';
-import PersonaDeskMarvis from './PersonaDeskMarvis';
+import { PersonaDeskMarvisV3 } from './PersonaDeskMarvisV3';
 import { useActivityStream } from './useActivityStream';
 import { assignSeats, CELL_H, CELL_W, type OfficeLayout, type Seat } from './officeLayout';
 import { displayedState, type DeskState } from './officeState';
@@ -14,6 +14,17 @@ interface OfficeViewProps {
 }
 
 const COLS = 4;
+
+// 根据 taskHint 推断状态
+function inferStatus(taskHint: string): 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused' {
+  const hint = taskHint.toLowerCase();
+  if (!hint || hint.includes('离线') || hint.includes('休息') || hint.includes('offline')) return 'away';
+  if (hint.includes('忙碌') || hint.includes('busy') || hint.includes('负载')) return 'busy';
+  if (hint.includes('规划') || hint.includes('planning') || hint.includes('设计')) return 'planning';
+  if (hint.includes('创意') || hint.includes('creative') || hint.includes('艺术')) return 'creative';
+  if (hint.includes('专注') || hint.includes('focused') || hint.includes('深度')) return 'focused';
+  return 'working';
+}
 
 function deskCenter(seat: Seat): { x: number; y: number } {
   return { x: seat.x + 90, y: seat.y + 70 };
@@ -259,7 +270,15 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
           const seat = layout.seats.get(d.id);
           if (!seat) return null;
           return useMarvisStyle ? (
-            <PersonaDeskMarvis key={d.id} desk={d} x={seat.x} y={seat.y} onHover={setHoverId} />
+            <div key={d.id} style={{ position: 'absolute', left: seat.x, top: seat.y }}>
+              <PersonaDeskMarvisV3
+                name={d.name}
+                role={d.name} // 使用 name 作为 role，或后续扩展 DeskState
+                status={inferStatus(d.taskHint || '')}
+                taskHint={d.taskHint}
+                onClick={() => onOpenPersona(d.id)}
+              />
+            </div>
           ) : (
             <PersonaDesk key={d.id} desk={d} x={seat.x} y={seat.y} onOpen={onOpenPersona} onHover={setHoverId} />
           );
