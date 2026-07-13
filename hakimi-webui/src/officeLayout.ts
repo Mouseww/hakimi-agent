@@ -13,7 +13,7 @@ export interface OfficeLayout {
 }
 
 export const CELL_W = 220;
-export const CELL_H = 200;
+export const CELL_H = 240;
 const PAD = 32;
 
 function coords(row: number, col: number): { x: number; y: number } {

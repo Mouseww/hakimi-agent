@@ -12,7 +12,7 @@ interface WalkingCatProps {
 function catPosition(seat: { x: number; y: number }): { x: number; y: number } {
   return {
     x: seat.x + 110,  // 工位宽度 220px，中心在 110px
-    y: seat.y + 142,  // 工位高度 190px，猫咪 bottom: 48px，所以 y = 190 - 48 = 142
+    y: seat.y + 195,  // 工位高度 230px，猫咪 bottom: 35px，所以 y = 230 - 35 = 195
   };
 }
 

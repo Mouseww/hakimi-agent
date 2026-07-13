@@ -77,9 +77,8 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
             {/* 显示器支架 */}
             <div className="monitor-stand-v3" />
 
-            {/* 椅子 */}
+            {/* 椅子（无靠背） */}
             <div className="chair-v3">
-              <div className="chair-back-v3" />
               <div className="chair-seat-v3" />
             </div>
 

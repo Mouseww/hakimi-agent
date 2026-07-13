@@ -24,7 +24,7 @@
 .workstation-marvis-v3 {
   position: relative;
   width: 220px;
-  height: 190px;
+  height: 230px;
   background: transparent;
   cursor: pointer;
   transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
@@ -89,7 +89,7 @@
   right: 15px;
 }
 
-/* ==================== 椅子（前移） ==================== */
+/* ==================== 椅子（无靠背，简化版） ==================== */
 
 .chair-v3 {
   position: absolute;
@@ -97,29 +97,14 @@
   left: 50%;
   transform: translateX(-50%);
   width: 50px;
-  height: 60px;
+  height: 20px;
   z-index: 25;
-}
-
-/* 椅背 */
-.chair-back-v3 {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 28px;
-  height: 35px;
-  background: linear-gradient(135deg, #475569 0%, #334155 100%);
-  border-radius: 8px 8px 2px 2px;
-  box-shadow: 
-    0 2px 6px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* 椅面 */
 .chair-seat-v3 {
   position: absolute;
-  bottom: 15px;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   width: 40px;
@@ -243,7 +228,7 @@
 
 .cat-silhouette-marvis-v3 {
   position: absolute;
-  bottom: 48px;
+  bottom: 35px;
   left: 50%;
   transform: translateX(-50%);
   width: 80px;
@@ -366,6 +351,53 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   z-index: 35;
   backdrop-filter: blur(4px);
+}
+
+/* ==================== 工位标签（名称 + 状态） ==================== */
+
+.desk-label-v3 {
+  position: absolute;
+  bottom: -35px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 35;
+  min-width: 120px;
+}
+
+.desk-name-v3 {
+  padding: 4px 12px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(4px);
+}
+
+.desk-status-v3 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: rgba(51, 65, 85, 0.85);
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 5px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(3px);
+}
+
+.desk-status-v3 span {
+  font-size: 12px;
+  line-height: 1;
 }
 
 /* ==================== 模态框 ==================== */
