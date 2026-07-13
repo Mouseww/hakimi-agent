@@ -9,6 +9,7 @@ import { displayedState, type DeskState } from './officeState';
 import { useI18n } from './i18n';
 import { useDelegationAnims, type DelegationAnim, type DelegationPhase } from './useDelegationAnims';
 import { WalkingCat } from './WalkingCat';
+import { AgentProgressModal } from './AgentProgressModal';
 
 interface OfficeViewProps {
   onOpenPersona: (id: string) => void;
@@ -17,9 +18,20 @@ interface OfficeViewProps {
 const COLS = 4;
 
 // 根据 DeskState 推断状态
-function inferStatus(desk: { taskHint?: string; consultingTo?: string; delegatedFrom?: string }): 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused' {
-  // 正在委派任务（consultingTo）或接受委派（delegatedFrom）都应该是工作状态
-  if (desk.consultingTo || desk.delegatedFrom) return 'busy';
+function inferStatus(
+  desk: { id: string; taskHint?: string; consultingTo?: string; delegatedFrom?: string },
+  anims: Map<string, DelegationAnim>
+): 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused' {
+  // 检查是否正在委派任务（consultingTo）或接受委派（delegatedFrom）
+  // 但排除"正在回家路上"的阶段（委派已经结束，只是动画尚未完成）
+  const endingPhases: DelegationPhase[] = ['report_walk', 'report_talk', 'return_walk'];
+  const isEnding = Array.from(anims.values()).some(
+    anim => (anim.fromId === desk.id || anim.toId === desk.id) && endingPhases.includes(anim.phase)
+  );
+  
+  if (!isEnding && (desk.consultingTo || desk.delegatedFrom)) {
+    return 'busy';
+  }
   
   const hint = (desk.taskHint || '').toLowerCase();
   if (!hint || hint.includes('离线') || hint.includes('休息') || hint.includes('offline')) return 'away';
@@ -184,6 +196,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
   const { office, connected } = useActivityStream(true);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [useMarvisStyle, setUseMarvisStyle] = useState(true); // Toggle Marvis style
+  const [modalAgentId, setModalAgentId] = useState<string | null>(null); // Agent progress modal
   const { anims, startDelegation, endDelegation } = useDelegationAnims();
 
   const ids = useMemo(() => Array.from(office.keys()).sort(), [office]);
@@ -315,9 +328,9 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
               <PersonaDeskMarvisV3
                 name={d.name}
                 role={d.name}
-                status={inferStatus(d)}
+                status={inferStatus(d, anims)}
                 taskHint={d.taskHint}
-                onClick={() => onOpenPersona(d.id)}
+                onClick={() => setModalAgentId(d.id)}
                 scarfColor={colors.scarf}
                 tailColor={colors.tail}
                 hideCat={isWalking}
@@ -341,6 +354,15 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
 
         {desks.length === 0 && <div className="office-hint">{t('office.empty')}</div>}
       </div>
+
+      {/* Agent progress modal */}
+      {modalAgentId && (
+        <AgentProgressModal
+          agentId={modalAgentId}
+          agentName={office.get(modalAgentId)?.name || modalAgentId}
+          onClose={() => setModalAgentId(null)}
+        />
+      )}
     </div>
   );
 }

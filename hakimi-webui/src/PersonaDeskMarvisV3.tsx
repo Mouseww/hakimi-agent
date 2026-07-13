@@ -117,7 +117,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
                 {/* 围脖/领带（独立颜色，向上提） */}
                 <ellipse
                   cx="41"
-                  cy="38"
+                  cy="35"
                   rx="10"
                   ry="5"
                   fill={scarfColor}

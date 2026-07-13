@@ -16,18 +16,25 @@ function catPosition(seat: { x: number; y: number }): { x: number; y: number } {
   };
 }
 
-// 生成走廊路径（贝塞尔曲线，避开工位）
+// 生成走廊路径（贝塞尔曲线，从工位侧面绕行）
 function calculatePath(from: { x: number; y: number }, to: { x: number; y: number }): string {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
   
-  // 控制点：在起点和终点之间，稍微偏向下方（走廊）
-  const controlOffset = Math.min(distance * 0.3, 80);
-  const midX = (from.x + to.x) / 2;
-  const midY = Math.max(from.y, to.y) + controlOffset;
+  // 检测是否在同一行（垂直距离小于工位高度）
+  const sameRow = Math.abs(dy) < 100;
   
-  return `M ${from.x} ${from.y} Q ${midX} ${midY}, ${to.x} ${to.y}`;
+  if (sameRow) {
+    // 同一行：从工位下方绕行（走廊路径）
+    const detourY = Math.max(from.y, to.y) + 60; // 工位下方 60px
+    return `M ${from.x} ${from.y} L ${from.x} ${detourY} L ${to.x} ${detourY} L ${to.x} ${to.y}`;
+  } else {
+    // 不同行：从工位侧面绕行
+    const sideOffset = dx > 0 ? -50 : 50; // 向外侧偏移
+    const midX = (from.x + to.x) / 2 + sideOffset;
+    const midY = (from.y + to.y) / 2;
+    return `M ${from.x} ${from.y} Q ${midX} ${from.y}, ${midX} ${midY} Q ${midX} ${to.y}, ${to.x} ${to.y}`;
+  }
 }
 
 export const WalkingCat: React.FC<WalkingCatProps> = ({ 
@@ -61,20 +68,65 @@ export const WalkingCat: React.FC<WalkingCatProps> = ({
     return () => cancelAnimationFrame(id);
   }, [start.x, start.y, end.x, end.y, phase]);
   
-  // 使用二次贝塞尔曲线插值
+  // 路径插值计算
   const dx = end.x - start.x;
   const dy = end.y - start.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  const controlOffset = Math.min(distance * 0.3, 80);
-  const midX = (start.x + end.x) / 2;
-  const midY = Math.max(start.y, end.y) + controlOffset;
+  const sameRow = Math.abs(dy) < 100;
   
-  const t = progress;
-  const x = (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * midX + t * t * end.x;
-  const y = (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * midY + t * t * end.y;
+  let x: number, y: number, tangentX: number;
   
-  // 计算朝向（基于切线方向）
-  const tangentX = 2 * (1 - t) * (midX - start.x) + 2 * t * (end.x - midX);
+  if (sameRow) {
+    // 同一行：折线路径（直线插值）
+    const detourY = Math.max(start.y, end.y) + 60;
+    const t = progress;
+    
+    if (t < 0.25) {
+      // 第一段：垂直向下
+      const t1 = t / 0.25;
+      x = start.x;
+      y = start.y + (detourY - start.y) * t1;
+      tangentX = 0;
+    } else if (t < 0.75) {
+      // 第二段：水平移动
+      const t2 = (t - 0.25) / 0.5;
+      x = start.x + (end.x - start.x) * t2;
+      y = detourY;
+      tangentX = end.x - start.x;
+    } else {
+      // 第三段：垂直向上
+      const t3 = (t - 0.75) / 0.25;
+      x = end.x;
+      y = detourY + (end.y - detourY) * t3;
+      tangentX = 0;
+    }
+  } else {
+    // 不同行：S形曲线（两段二次贝塞尔）
+    const sideOffset = dx > 0 ? -50 : 50;
+    const midX = (start.x + end.x) / 2 + sideOffset;
+    const midY = (start.y + end.y) / 2;
+    const t = progress;
+    
+    if (t < 0.5) {
+      // 第一段贝塞尔：start -> (midX, start.y) -> (midX, midY)
+      const t1 = t / 0.5;
+      const p0x = start.x, p0y = start.y;
+      const p1x = midX, p1y = start.y;
+      const p2x = midX, p2y = midY;
+      x = (1 - t1) * (1 - t1) * p0x + 2 * (1 - t1) * t1 * p1x + t1 * t1 * p2x;
+      y = (1 - t1) * (1 - t1) * p0y + 2 * (1 - t1) * t1 * p1y + t1 * t1 * p2y;
+      tangentX = 2 * (1 - t1) * (p1x - p0x) + 2 * t1 * (p2x - p1x);
+    } else {
+      // 第二段贝塞尔：(midX, midY) -> (midX, end.y) -> end
+      const t2 = (t - 0.5) / 0.5;
+      const p0x = midX, p0y = midY;
+      const p1x = midX, p1y = end.y;
+      const p2x = end.x, p2y = end.y;
+      x = (1 - t2) * (1 - t2) * p0x + 2 * (1 - t2) * t2 * p1x + t2 * t2 * p2x;
+      y = (1 - t2) * (1 - t2) * p0y + 2 * (1 - t2) * t2 * p1y + t2 * t2 * p2y;
+      tangentX = 2 * (1 - t2) * (p1x - p0x) + 2 * t2 * (p2x - p1x);
+    }
+  }
+  
   const facingRight = tangentX > 0;
   
   return (
