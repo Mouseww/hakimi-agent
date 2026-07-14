@@ -286,3 +286,82 @@
   text-align: center;
   padding: 4px;
 }
+
+/* ===== TODO 列表视图 ===== */
+.todo-list {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  padding: 4px;
+  overflow: hidden;
+}
+
+.todo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 3px;
+  border-bottom: 1px solid #334155;
+  margin-bottom: 3px;
+  font-size: 5px;
+  color: #94a3b8;
+}
+
+.todo-title {
+  font-weight: 600;
+}
+
+.todo-progress {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.todo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 3px;
+  background: rgba(51, 65, 85, 0.3);
+  border-radius: 2px;
+  font-size: 5px;
+  color: #cbd5e1;
+}
+
+.todo-item.done {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.todo-item.in_progress {
+  background: rgba(59, 130, 246, 0.15);
+  border-left: 2px solid #3b82f6;
+}
+
+.todo-item.pending {
+  border-left: 2px solid #64748b;
+}
+
+.todo-item.more {
+  background: transparent;
+  opacity: 0.6;
+  justify-content: center;
+  font-style: italic;
+}
+
+.todo-icon {
+  flex-shrink: 0;
+  font-size: 6px;
+  line-height: 1;
+}
+
+.todo-content {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}

@@ -1,4 +1,5 @@
 import type { ActivityEvent, PersonaActivity, PersonaState } from './activityTypes';
+import type { TodoItem } from './types/todo';
 
 export interface DeskState {
   id: string;
@@ -10,6 +11,7 @@ export interface DeskState {
   teamId?: string;             // overlay
   taskHint?: string;
   model?: string;
+  todos?: TodoItem[];          // task tracking list
 }
 
 export type OfficeState = Map<string, DeskState>;

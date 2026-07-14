@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.118-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.119-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,36 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.119)
+
+**任务追踪机制（Todo Tool）+ Office View 可视化**
+
+- 📋 **Todo 工具对齐 Hermes 设计**
+  - 实现 Hermes 风格的 todo 工具：提供 `todos` 参数写入，省略参数读取
+  - 支持两种模式：`merge=false`（替换整个列表）、`merge=true`（按 id 合并更新）
+  - 自动验证和规范化：状态、内容截断（4000 字符）、列表上限（256 项）
+  - JSON 结果包含 todos 列表和 summary（total、pending、in_progress、completed、cancelled）
+
+- 🖥️ **Office View 任务可视化**
+  - 显示器屏幕新增 todo 列表视图（优先于代码编辑器等状态）
+  - 任务项显示：状态图标（○ ◐ ● ×）、内容预览（最多 30 字符）、完成状态样式
+  - 头部显示任务进度（已完成/总数）
+  - 最多显示 5 条任务，超出部分显示"+ N 更多..."
+
+- 🎨 **UI 组件和样式**
+  - `MonitorScreenContent.tsx`：新增 `todos` 参数，优先渲染任务列表
+  - `PersonaDeskMarvisV3.tsx`：新增 `todos` 属性，传递给显示器组件
+  - `OfficeState.ts`：`DeskState` 接口新增 `todos?: TodoItem[]` 字段
+  - `monitor-screen-content.css`：新增 `.todo-list`、`.todo-item` 等样式
+
+- 🔧 **技术细节**
+  - `TodoToolV2`：替换旧的基于 action 的 todo 工具
+  - `TodoItem`：`{id, content, status}` 结构，状态枚举验证
+  - 类型安全：新增 `types/todo.ts`、`lib/todoParser.ts`、`components/TodoList.tsx`
+  - 未来计划：通过 SSE 实时同步 todo 状态（当前为静态传递）
 
 ---
 

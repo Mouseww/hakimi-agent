@@ -5393,7 +5393,7 @@ async fn build_agent(
         .register(std::sync::Arc::new(hakimi_tools::SearchFilesTool))
         .await;
     tool_registry
-        .register(std::sync::Arc::new(hakimi_tools::TodoTool))
+        .register(std::sync::Arc::new(hakimi_tools::TodoToolV2))
         .await;
     for tool in hakimi_tools::kanban_tools() {
         tool_registry.register(tool).await;

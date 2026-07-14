@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MonitorScreenContent } from './MonitorScreenContent';
+import type { TodoItem } from './types/todo';
 
 interface PersonaDeskMarvisV3Props {
   name: string;
@@ -10,6 +11,7 @@ interface PersonaDeskMarvisV3Props {
   scarfColor?: string;  // 独立围脖颜色
   tailColor?: string;   // 独立尾巴颜色
   hideCat?: boolean;    // 隐藏猫咪（行走时）
+  todos?: TodoItem[];   // 任务追踪列表
 }
 
 const STATUS_CONFIG = {
@@ -30,6 +32,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
   scarfColor = '#10b981',
   tailColor = '#34d399',
   hideCat = false,
+  todos,
 }) => {
   const [showModal, setShowModal] = useState(false);
   const config = STATUS_CONFIG[status];
@@ -62,7 +65,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
             {/* 显示器（缩小） */}
             <div className="monitor-marvis-v3">
               <div className="screen-marvis-v3">
-                <MonitorScreenContent status={status} taskHint={taskHint} />
+                <MonitorScreenContent status={status} taskHint={taskHint} todos={todos} />
               </div>
             </div>
 

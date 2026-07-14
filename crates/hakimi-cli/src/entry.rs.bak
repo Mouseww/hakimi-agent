@@ -526,7 +526,7 @@ async fn build_agent(
     tool_registry.register(std::sync::Arc::new(hakimi_tools::WriteFileTool)).await;
     tool_registry.register(std::sync::Arc::new(hakimi_tools::PatchTool)).await;
     tool_registry.register(std::sync::Arc::new(hakimi_tools::SearchFilesTool)).await;
-    tool_registry.register(std::sync::Arc::new(hakimi_tools::TodoTool)).await;
+    tool_registry.register(std::sync::Arc::new(hakimi_tools::TodoToolV2)).await;
     tool_registry.register(std::sync::Arc::new(hakimi_tools::ProcessTool)).await;
     tool_registry.register(std::sync::Arc::new(hakimi_tools::CodeExecTool)).await;
 

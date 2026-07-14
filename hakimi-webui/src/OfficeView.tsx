@@ -335,6 +335,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
                 scarfColor={colors.scarf}
                 tailColor={colors.tail}
                 hideCat={isWalking}
+                todos={d.todos}
               />
             </div>
           ) : (

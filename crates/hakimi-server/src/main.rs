@@ -342,7 +342,7 @@ async fn build_agent(
         Arc::new(hakimi_tools::HaListServicesTool),
         Arc::new(hakimi_tools::HaCallServiceTool),
         Arc::new(hakimi_tools::MemoryTool::new()),
-        Arc::new(hakimi_tools::TodoTool),
+        Arc::new(hakimi_tools::TodoToolV2),
         Arc::new(hakimi_tools::ProcessTool),
         Arc::new(hakimi_tools::ImageDescribeTool),
         Arc::new(hakimi_tools::VideoAnalyzeTool),

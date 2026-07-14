@@ -1,12 +1,49 @@
 import React from 'react';
 import './monitor-screen-content.css';
+import type { TodoItem } from './types/todo';
 
 interface MonitorScreenContentProps {
   status: 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused';
   taskHint?: string;
+  todos?: TodoItem[];
 }
 
-export const MonitorScreenContent: React.FC<MonitorScreenContentProps> = ({ status, taskHint }) => {
+export const MonitorScreenContent: React.FC<MonitorScreenContentProps> = ({ status, taskHint, todos }) => {
+  // 如果有 todos，优先显示任务列表
+  if (todos && todos.length > 0) {
+    const completed = todos.filter((t) => t.status === 'completed' || t.status === 'cancelled').length;
+
+    return (
+      <div className="screen-content todo-list">
+        <div className="todo-header">
+          <span className="todo-title">📋 任务追踪</span>
+          <span className="todo-progress">{completed}/{todos.length}</span>
+        </div>
+        <div className="todo-items">
+          {todos.slice(0, 5).map((todo) => {
+            const icons = {
+              pending: '○',
+              in_progress: '◐',
+              completed: '●',
+              cancelled: '×',
+            };
+            const isDone = todo.status === 'completed' || todo.status === 'cancelled';
+
+            return (
+              <div key={todo.id} className={`todo-item ${isDone ? 'done' : todo.status}`}>
+                <span className="todo-icon">{icons[todo.status]}</span>
+                <span className="todo-content">{todo.content.slice(0, 30)}{todo.content.length > 30 ? '...' : ''}</span>
+              </div>
+            );
+          })}
+          {todos.length > 5 && (
+            <div className="todo-item more">+ {todos.length - 5} 更多...</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // 工作中 - 代码编辑器风格
   if (status === 'working') {
     return (
