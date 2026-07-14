@@ -53,6 +53,7 @@ struct TgMessage {
     chat: TgChat,
     text: Option<String>,
     photo: Option<Vec<TgPhotoSize>>,
+    reply_to_message: Option<Box<TgMessage>>,
 }
 
 /// The sender of a Telegram message.
@@ -1242,11 +1243,22 @@ fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
     let chat_id = msg.chat.id.to_string();
 
     // Prefer text; fall back to a photo marker.
-    let text = msg
+    let mut text = msg
         .text
         .clone()
         .or_else(|| msg.photo.as_ref().map(|_| "[photo]".to_owned()))
         .unwrap_or_default();
+
+    // If this message is replying to another message, prepend the quoted content
+    if let Some(reply_msg) = &msg.reply_to_message {
+        let quoted_text = reply_msg
+            .text
+            .as_deref()
+            .unwrap_or("[media or unsupported content]");
+        
+        // Format: > [Quoted] original text\n\nuser's reply
+        text = format!("> [引用] {}\n\n{}", quoted_text, text);
+    }
 
     if text.is_empty() {
         return None;

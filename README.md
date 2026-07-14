@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.112-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.113-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,26 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.113)
+
+**新增：Telegram 引用消息支持**
+
+- ✅ **现在可以看到引用的消息内容**
+  - Telegram 消息结构体增加 `reply_to_message` 字段
+  - 引用内容以 `> [引用] 原消息` 格式前置显示
+  - 支持文本引用，媒体消息显示为 `[media or unsupported content]`
+- 🔧 **消息解析增强**
+  - `convert_message` 函数自动提取引用消息文本
+  - 引用格式：`> [引用] {原消息}\n\n{用户回复}`
+  - 引用内容与回复内容间有明确分隔
+
+**技术细节：**
+- 后端修改：`crates/hakimi-gateway/src/telegram.rs`
+- `TgMessage` 结构体新增 `reply_to_message: Option<Box<TgMessage>>`
+- 引用消息内容自动合并到 `GatewayMessage.text` 字段
 
 ---
 
