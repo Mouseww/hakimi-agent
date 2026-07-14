@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.119-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.120-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,32 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.120)
+
+**实时任务追踪（SSE）+ 工具调用可视化**
+
+- 🔄 **SSE 实时同步**
+  - 新增 `ToolCallStarted` 和 `ToolCallCompleted` 活动事件
+  - 工具调用时自动发布 SSE 事件（工具名称、调用 ID、结果）
+  - WebUI 订阅 activity stream，实时更新 todos 状态（无需刷新）
+
+- 📡 **前端实时订阅**
+  - `OfficeView` 新增 `todosMap` 状态，追踪每个 Agent 的 todos
+  - EventSource 订阅 `/api/activity/stream`，过滤 `tool_call_completed` 事件
+  - 自动解析 todo 工具结果，实时更新显示器屏幕
+
+- 🛠️ **后端事件发布**
+  - `loop_impl.rs/dispatch_tool`：工具执行前后发布 activity 事件
+  - `ActivityEvent` 新增 `persona_id`、`tool_name`、`call_id`、`result` 字段
+  - 成功/失败均发布事件（result 为 Some/None）
+
+- 🎯 **技术亮点**
+  - 零轮询：基于 SSE 推送，减少网络开销
+  - 类型安全：`ToolCallCompletedEvent` 接口 + TypeScript 严格检查
+  - 扩展性：activity stream 可承载任意工具调用事件（不限于 todo）
 
 ---
 
@@ -56,7 +82,7 @@
   - `TodoToolV2`：替换旧的基于 action 的 todo 工具
   - `TodoItem`：`{id, content, status}` 结构，状态枚举验证
   - 类型安全：新增 `types/todo.ts`、`lib/todoParser.ts`、`components/TodoList.tsx`
-  - 未来计划：通过 SSE 实时同步 todo 状态（当前为静态传递）
+  - v0.5.120 已实现 SSE 实时同步
 
 ---
 

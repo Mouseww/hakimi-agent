@@ -71,6 +71,19 @@ pub enum ActivityEvent {
     TeamDisbanded {
         team_id: String,
     },
+    /// Tool call started (for tracking tool execution like todo)
+    ToolCallStarted {
+        persona_id: String,
+        tool_name: String,
+        call_id: String,
+    },
+    /// Tool call completed with result
+    ToolCallCompleted {
+        persona_id: String,
+        tool_name: String,
+        call_id: String,
+        result: Option<String>,
+    },
 }
 
 /// Internal per-persona tracking: base (working) + overlays (consulting/team/delegation).
@@ -209,6 +222,10 @@ pub(crate) fn apply(map: &mut HashMap<String, HubEntry>, event: &ActivityEvent) 
                     entry.team_id = None;
                 }
             }
+        }
+        // Tool call events don't affect persona state, they're only for client-side tracking
+        ActivityEvent::ToolCallStarted { .. } | ActivityEvent::ToolCallCompleted { .. } => {
+            // No-op: tool call events are streamed to clients but don't modify hub state
         }
     }
 }

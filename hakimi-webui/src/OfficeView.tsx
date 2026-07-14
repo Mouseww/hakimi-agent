@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import './office.css';
 import './office-marvis-v3.css';
 import PersonaDesk from './PersonaDesk';
@@ -10,6 +10,7 @@ import { useI18n } from './i18n';
 import { useDelegationAnims, type DelegationAnim, type DelegationPhase } from './useDelegationAnims';
 import { WalkingCat } from './WalkingCat';
 import { AgentProgressModal } from './AgentProgressModal';
+import type { TodoItem } from './types/todo';
 
 interface OfficeViewProps {
   onOpenPersona: (id: string) => void;
@@ -200,6 +201,54 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
   const [modalAgentId, setModalAgentId] = useState<string | null>(null); // Agent progress modal
   const { anims, startDelegation, endDelegation } = useDelegationAnims();
 
+  // Track todos for each persona
+  const [todosMap, setTodosMap] = useState<Map<string, TodoItem[]>>(new Map());
+
+  // Subscribe to todo updates for all personas
+  const handleTodoUpdate = useCallback((personaId: string, todos: TodoItem[]) => {
+    setTodosMap(prev => {
+      const next = new Map(prev);
+      next.set(personaId, todos);
+      return next;
+    });
+  }, []);
+
+  // Setup todo stream subscription for each persona
+  useEffect(() => {
+    const ids = Array.from(office.keys());
+    const eventSources: EventSource[] = [];
+    
+    // Note: For production, consider a single activity stream with filtering
+    // instead of multiple EventSource instances
+    ids.forEach(id => {
+      const eventSource = new EventSource("/api/activity/stream");
+      const handler = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (
+            data.type === "tool_call_completed" &&
+            data.persona_id === id &&
+            data.tool_name === "todo" &&
+            data.result
+          ) {
+            const result = JSON.parse(data.result);
+            if (result.todos && Array.isArray(result.todos)) {
+              handleTodoUpdate(id, result.todos);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to parse activity event:", err);
+        }
+      };
+      eventSource.addEventListener("message", handler);
+      eventSources.push(eventSource);
+    });
+
+    return () => {
+      eventSources.forEach(es => es.close());
+    };
+  }, [office, handleTodoUpdate]);
+
   const ids = useMemo(() => Array.from(office.keys()).sort(), [office]);
   const idKey = ids.join(',');
   const [layoutState, setLayoutState] = useState<{ idKey: string; layout: OfficeLayout }>(() => ({
@@ -324,6 +373,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
           if (!seat) return null;
           const colors = generateAgentColors(d.id);
           const isWalking = walkingAgents.has(d.id);
+          const todos = todosMap.get(d.id) || d.todos || [];
           return useMarvisStyle ? (
             <div key={d.id} style={{ position: 'absolute', left: seat.x, top: seat.y }}>
               <PersonaDeskMarvisV3
@@ -335,7 +385,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
                 scarfColor={colors.scarf}
                 tailColor={colors.tail}
                 hideCat={isWalking}
-                todos={d.todos}
+                todos={todos}
               />
             </div>
           ) : (

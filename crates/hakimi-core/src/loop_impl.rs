@@ -944,6 +944,15 @@ async fn dispatch_tool(
 
     debug!(tool = %tc.name, call_id = %tc.id, "Dispatching tool");
 
+    // Publish tool call started event (for WebUI tracking)
+    if let Some(persona_id) = tool_ctx.session_id.split('_').next() {
+        hakimi_common::publish(hakimi_common::ActivityEvent::ToolCallStarted {
+            persona_id: persona_id.to_string(),
+            tool_name: tc.name.clone(),
+            call_id: tc.id.clone(),
+        });
+    }
+
     match tool_registry.dispatch(&tc.name, &args, tool_ctx).await {
         Ok(content) => {
             debug!(
@@ -951,10 +960,32 @@ async fn dispatch_tool(
                 result_len = content.len(),
                 "Tool executed successfully"
             );
+
+            // Publish tool call completed event with result
+            if let Some(persona_id) = tool_ctx.session_id.split('_').next() {
+                hakimi_common::publish(hakimi_common::ActivityEvent::ToolCallCompleted {
+                    persona_id: persona_id.to_string(),
+                    tool_name: tc.name.clone(),
+                    call_id: tc.id.clone(),
+                    result: Some(content.clone()),
+                });
+            }
+
             Message::tool_result(&tc.id, &tc.name, content)
         }
         Err(e) => {
             warn!(tool = %tc.name, error = %e, "Tool execution failed");
+
+            // Publish tool call completed event with error
+            if let Some(persona_id) = tool_ctx.session_id.split('_').next() {
+                hakimi_common::publish(hakimi_common::ActivityEvent::ToolCallCompleted {
+                    persona_id: persona_id.to_string(),
+                    tool_name: tc.name.clone(),
+                    call_id: tc.id.clone(),
+                    result: None,
+                });
+            }
+
             Message::tool_result(&tc.id, &tc.name, format!("Error: {e}"))
         }
     }
