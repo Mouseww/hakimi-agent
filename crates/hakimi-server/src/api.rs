@@ -6547,44 +6547,81 @@ pub async fn get_metrics() -> Result<Json<serde_json::Value>, StatusCode> {
 async fn get_persona_messages(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.session_db.lock().await;
     let conn = db.conn().lock().unwrap();
     
-    // Query messages from sessions where persona_id = id
-    let mut stmt = match conn.prepare(
-        "SELECT m.id, m.role, m.content, m.timestamp 
-         FROM messages m 
-         JOIN sessions s ON m.session_id = s.id 
-         WHERE s.persona_id = ? 
-         ORDER BY s.started_at DESC, m.sequence ASC 
-         LIMIT 1000"
-    ) {
-        Ok(s) => s,
-        Err(e) => return Err(api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to prepare query: {e}"),
-        )),
-    };
+    // Check if 'current=true' query param is set (only show current session)
+    let current_only = params.get("current").map(|v| v == "true").unwrap_or(false);
     
-    let messages: Vec<serde_json::Value> = match stmt.query_map([id.as_str()], |row| {
-        Ok(json!({
-            "id": row.get::<_, i64>(0)?,
-            "role": row.get::<_, String>(1)?,
-            "content": row.get::<_, Option<String>>(2)?,
-            "timestamp": row.get::<_, String>(3)?,
-        }))
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return Err(api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to query messages: {e}"),
-        )),
+    let messages: Vec<serde_json::Value> = if current_only {
+        // Only messages from the most recent session
+        let mut stmt = match conn.prepare(
+            "SELECT m.id, m.role, m.content, m.timestamp \
+             FROM messages m \
+             JOIN sessions s ON m.session_id = s.id \
+             WHERE s.persona_id = ?1 \
+             AND s.id = (SELECT id FROM sessions WHERE persona_id = ?2 ORDER BY started_at DESC LIMIT 1) \
+             ORDER BY m.sequence ASC \
+             LIMIT 1000"
+        ) {
+            Ok(s) => s,
+            Err(e) => return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to prepare query: {e}"),
+            )),
+        };
+        match stmt.query_map([id.as_str(), id.as_str()], |row| {
+            Ok(json!({
+                "id": row.get::<_, i64>(0)?,
+                "role": row.get::<_, String>(1)?,
+                "content": row.get::<_, Option<String>>(2)?,
+                "timestamp": row.get::<_, String>(3)?,
+            }))
+        }) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to query messages: {e}"),
+            )),
+        }
+    } else {
+        // All messages from all sessions
+        let mut stmt = match conn.prepare(
+            "SELECT m.id, m.role, m.content, m.timestamp \
+             FROM messages m \
+             JOIN sessions s ON m.session_id = s.id \
+             WHERE s.persona_id = ? \
+             ORDER BY s.started_at DESC, m.sequence ASC \
+             LIMIT 1000"
+        ) {
+            Ok(s) => s,
+            Err(e) => return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to prepare query: {e}"),
+            )),
+        };
+        match stmt.query_map([id.as_str()], |row| {
+            Ok(json!({
+                "id": row.get::<_, i64>(0)?,
+                "role": row.get::<_, String>(1)?,
+                "content": row.get::<_, Option<String>>(2)?,
+                "timestamp": row.get::<_, String>(3)?,
+            }))
+        }) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to query messages: {e}"),
+            )),
+        }
     };
     
     Ok(Json(json!({
         "messages": messages,
         "count": messages.len(),
+        "current_session_only": current_only,
     })))
 }
 

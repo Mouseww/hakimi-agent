@@ -356,13 +356,17 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
       </div>
 
       {/* Agent progress modal */}
-      {modalAgentId && (
-        <AgentProgressModal
-          agentId={modalAgentId}
-          agentName={office.get(modalAgentId)?.name || modalAgentId}
-          onClose={() => setModalAgentId(null)}
-        />
-      )}
+      {modalAgentId && (() => {
+        const desk = office.get(modalAgentId);
+        return (
+          <AgentProgressModal
+            agentId={modalAgentId}
+            agentName={desk?.name || modalAgentId}
+            agentState={desk ? displayedState(desk) : 'idle'}
+            onClose={() => setModalAgentId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

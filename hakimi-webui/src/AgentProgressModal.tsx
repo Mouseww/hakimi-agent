@@ -10,12 +10,15 @@ interface Message {
 interface AgentProgressModalProps {
   agentId: string;
   agentName: string;
+  agentState: 'idle' | 'working' | 'consulting' | 'in_team';
   onClose: () => void;
 }
 
-export function AgentProgressModal({ agentId, agentName, onClose }: AgentProgressModalProps) {
+export function AgentProgressModal({ agentId, agentName, agentState, onClose }: AgentProgressModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const isWorking = agentState === 'working' || agentState === 'consulting' || agentState === 'in_team';
 
   useEffect(() => {
     let cancelled = false;
@@ -23,7 +26,12 @@ export function AgentProgressModal({ agentId, agentName, onClose }: AgentProgres
     const fetchMessages = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`/api/persona/${encodeURIComponent(agentId)}/messages`);
+        // For working agents, only fetch current session messages
+        const url = isWorking 
+          ? `/api/persona/${encodeURIComponent(agentId)}/messages?current=true`
+          : `/api/persona/${encodeURIComponent(agentId)}/messages`;
+        
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -53,7 +61,7 @@ export function AgentProgressModal({ agentId, agentName, onClose }: AgentProgres
     return () => {
       cancelled = true;
     };
-  }, [agentId]);
+  }, [agentId, isWorking]);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {

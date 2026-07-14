@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.111-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.112-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,22 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.112)
+
+**新增：Office View 显示器内容智能区分（当前会话 vs 历史记录）**
+
+根据 agent 工作状态智能显示任务内容：
+
+- **正在工作的 agent（working/consulting/in_team）**：点击显示器显示**当前会话**的消息（`?current=true` query参数过滤）
+- **休息状态的 agent（idle）**：点击显示器显示**所有历史**消息
+
+**技术实现：**
+- 后端 API：`get_persona_messages` 新增 `current` query参数，仅返回最新会话的消息（通过 SQL子查询过滤 `session_id`）
+- 前端：`AgentProgressModal` 组件新增 `agentState` prop，根据 `displayedState(desk)` 动态构建 API URL
+- 用户体验：清晰区分"当前任务进度"与"历史工作记录"，避免混淆
 
 ---
 
