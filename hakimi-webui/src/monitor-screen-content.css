@@ -365,3 +365,58 @@
   white-space: nowrap;
   line-height: 1.3;
 }
+
+/* ===== 工具调用进度 ===== */
+.tool-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  gap: 4px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+.tool-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 5px;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.tool-icon {
+  font-size: 6px;
+  line-height: 1;
+}
+
+.tool-name {
+  color: #e5e7eb;
+}
+
+.tool-progress-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.progress-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.tool-elapsed {
+  font-size: 4px;
+  color: #9ca3af;
+  font-family: 'Monaco', 'Courier New', monospace;
+}

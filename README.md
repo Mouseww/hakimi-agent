@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.120-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.121-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,34 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.121)
+
+**工具调用实时进度可视化**
+
+- 🎯 **活跃工具调用追踪**
+  - Office View 实时显示正在执行的工具（terminal、read_file、search_files 等）
+  - 显示器屏幕新增工具进度视图（工具图标 + 名称 + 旋转动画 + 执行时长）
+  - 优先级：活跃工具 > todos > 默认状态
+
+- 🔄 **SSE 事件扩展**
+  - 监听 `tool_call_started` 事件：工具执行开始时立即显示
+  - 监听 `tool_call_completed` 事件：工具执行完成后清除进度
+  - 活跃工具状态存储在 `activeToolsMap`（Map<persona_id, ActiveToolCall>）
+
+- 🎨 **UI 增强**
+  - 工具图标映射：terminal 🖥️、read_file 📖、patch 🔧、delegate_task 👥 等
+  - 旋转 spinner 动画（12px，蓝色边框）
+  - 执行时长显示（秒为单位，等宽字体）
+  - 响应式布局，与 todo 列表、代码编辑器风格一致
+
+- 🛠️ **技术细节**
+  - 新增 `types/toolCall.ts`：ActiveToolCall 接口
+  - `MonitorScreenContent` 优先级：activeToolCall > todos > status
+  - 实时计算 elapsed time（Date.now() - started_at）
+  - EventSource 单一订阅流，处理 started/completed 两种事件
 
 ---
 

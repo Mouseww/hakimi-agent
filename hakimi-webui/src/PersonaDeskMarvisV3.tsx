@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MonitorScreenContent } from './MonitorScreenContent';
 import type { TodoItem } from './types/todo';
+import type { ActiveToolCall } from './types/toolCall';
 
 interface PersonaDeskMarvisV3Props {
   name: string;
@@ -12,6 +13,7 @@ interface PersonaDeskMarvisV3Props {
   tailColor?: string;   // 独立尾巴颜色
   hideCat?: boolean;    // 隐藏猫咪（行走时）
   todos?: TodoItem[];   // 任务追踪列表
+  activeToolCall?: ActiveToolCall | null;  // 当前执行的工具
 }
 
 const STATUS_CONFIG = {
@@ -33,6 +35,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
   tailColor = '#34d399',
   hideCat = false,
   todos,
+  activeToolCall,
 }) => {
   const [showModal, setShowModal] = useState(false);
   const config = STATUS_CONFIG[status];
@@ -65,7 +68,7 @@ export const PersonaDeskMarvisV3: React.FC<PersonaDeskMarvisV3Props> = ({
             {/* 显示器（缩小） */}
             <div className="monitor-marvis-v3">
               <div className="screen-marvis-v3">
-                <MonitorScreenContent status={status} taskHint={taskHint} todos={todos} />
+                <MonitorScreenContent status={status} taskHint={taskHint} todos={todos} activeToolCall={activeToolCall} />
               </div>
             </div>
 

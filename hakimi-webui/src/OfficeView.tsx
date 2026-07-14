@@ -11,6 +11,7 @@ import { useDelegationAnims, type DelegationAnim, type DelegationPhase } from '.
 import { WalkingCat } from './WalkingCat';
 import { AgentProgressModal } from './AgentProgressModal';
 import type { TodoItem } from './types/todo';
+import type { ActiveToolCall } from './types/toolCall';
 
 interface OfficeViewProps {
   onOpenPersona: (id: string) => void;
@@ -204,6 +205,9 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
   // Track todos for each persona
   const [todosMap, setTodosMap] = useState<Map<string, TodoItem[]>>(new Map());
 
+  // Track active tool calls for each persona (for progress display)
+  const [activeToolsMap, setActiveToolsMap] = useState<Map<string, ActiveToolCall | null>>(new Map());
+
   // Subscribe to todo updates for all personas
   const handleTodoUpdate = useCallback((personaId: string, todos: TodoItem[]) => {
     setTodosMap(prev => {
@@ -213,7 +217,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
     });
   }, []);
 
-  // Setup todo stream subscription for each persona
+  // Setup activity stream subscription for tool calls and todos
   useEffect(() => {
     const ids = Array.from(office.keys());
     const eventSources: EventSource[] = [];
@@ -225,15 +229,35 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
       const handler = (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
-          if (
-            data.type === "tool_call_completed" &&
-            data.persona_id === id &&
-            data.tool_name === "todo" &&
-            data.result
-          ) {
-            const result = JSON.parse(data.result);
-            if (result.todos && Array.isArray(result.todos)) {
-              handleTodoUpdate(id, result.todos);
+
+          // Handle tool call started - show progress
+          if (data.type === "tool_call_started" && data.persona_id === id) {
+            setActiveToolsMap(prev => {
+              const next = new Map(prev);
+              next.set(id, {
+                tool_name: data.tool_name,
+                call_id: data.call_id,
+                started_at: Date.now(),
+              });
+              return next;
+            });
+          }
+
+          // Handle tool call completed
+          if (data.type === "tool_call_completed" && data.persona_id === id) {
+            // Clear active tool call
+            setActiveToolsMap(prev => {
+              const next = new Map(prev);
+              next.set(id, null);
+              return next;
+            });
+
+            // If it's a todo tool, update todos
+            if (data.tool_name === "todo" && data.result) {
+              const result = JSON.parse(data.result);
+              if (result.todos && Array.isArray(result.todos)) {
+                handleTodoUpdate(id, result.todos);
+              }
             }
           }
         } catch (err) {
@@ -374,6 +398,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
           const colors = generateAgentColors(d.id);
           const isWalking = walkingAgents.has(d.id);
           const todos = todosMap.get(d.id) || d.todos || [];
+          const activeToolCall = activeToolsMap.get(d.id) || null;
           return useMarvisStyle ? (
             <div key={d.id} style={{ position: 'absolute', left: seat.x, top: seat.y }}>
               <PersonaDeskMarvisV3
@@ -386,6 +411,7 @@ export default function OfficeView({ onOpenPersona }: OfficeViewProps) {
                 tailColor={colors.tail}
                 hideCat={isWalking}
                 todos={todos}
+                activeToolCall={activeToolCall}
               />
             </div>
           ) : (

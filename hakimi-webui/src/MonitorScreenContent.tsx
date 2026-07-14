@@ -1,15 +1,45 @@
 import React from 'react';
 import './monitor-screen-content.css';
 import type { TodoItem } from './types/todo';
+import type { ActiveToolCall } from './types/toolCall';
 
 interface MonitorScreenContentProps {
   status: 'working' | 'busy' | 'planning' | 'away' | 'creative' | 'focused';
   taskHint?: string;
   todos?: TodoItem[];
+  activeToolCall?: ActiveToolCall | null;
 }
 
-export const MonitorScreenContent: React.FC<MonitorScreenContentProps> = ({ status, taskHint, todos }) => {
-  // 如果有 todos，优先显示任务列表
+export const MonitorScreenContent: React.FC<MonitorScreenContentProps> = ({ status, taskHint, todos, activeToolCall }) => {
+  // 如果有活跃的工具调用，最高优先级显示
+  if (activeToolCall) {
+    const elapsed = Math.floor((Date.now() - activeToolCall.started_at) / 1000);
+    const toolDisplayName: Record<string, string> = {
+      terminal: '🖥️ 执行命令',
+      read_file: '📖 读取文件',
+      write_file: '📝 写入文件',
+      search_files: '🔍 搜索文件',
+      patch: '🔧 修改文件',
+      delegate_task: '👥 委派任务',
+      todo: '📋 更新任务',
+      web_search: '🌐 网络搜索',
+    };
+
+    return (
+      <div className="screen-content tool-progress">
+        <div className="tool-progress-header">
+          <span className="tool-icon">⚙️</span>
+          <span className="tool-name">{toolDisplayName[activeToolCall.tool_name] || `🛠️ ${activeToolCall.tool_name}`}</span>
+        </div>
+        <div className="tool-progress-body">
+          <div className="progress-spinner"></div>
+          <div className="tool-elapsed">{elapsed}s</div>
+        </div>
+      </div>
+    );
+  }
+
+  // 如果有 todos，第二优先级显示任务列表
   if (todos && todos.length > 0) {
     const completed = todos.filter((t) => t.status === 'completed' || t.status === 'cancelled').length;
 
