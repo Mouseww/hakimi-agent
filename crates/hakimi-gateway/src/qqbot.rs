@@ -288,7 +288,9 @@ impl QQBotAdapter {
                     text: msg.content,
                     media: None,
                     callback_data: None,
-                };
+                reply_to_message_id: None,
+                reply_to_text: None,
+            };
                 sender.send(gateway_msg)?;
             }
             GatewayEvent::GroupAtMessageCreate(msg) => {
@@ -310,7 +312,9 @@ impl QQBotAdapter {
                     text: msg.content,
                     media: None,
                     callback_data: None,
-                };
+                reply_to_message_id: None,
+                reply_to_text: None,
+            };
                 sender.send(gateway_msg)?;
             }
             _ => {

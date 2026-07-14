@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.113-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.114-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,27 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.114)
+
+**优化：Telegram 引用消息 — 对齐 Hermes 架构**
+
+- ✅ **Hermes 风格的引用消息处理**
+  - `GatewayMessage` 增加 `reply_to_message_id` 和 `reply_to_text` 字段
+  - 引用内容截断至 500 字符（避免长引用污染上下文）
+  - 使用 Hermes 格式：`[Replying to: "{quoted_text}"]\n\n{user_message}`
+- 🔧 **架构改进**
+  - 引用数据在 Gateway 层提取并存储到独立字段
+  - 在构建消息时自动注入引用前缀到 text
+  - 支持引用图片消息（显示为 `[photo]`）
+
+**技术细节：**
+- 对比 Hermes Agent 源码，采用相同的引用消息提取和格式化逻辑
+- `TgMessage` 结构体：`reply_to_message: Option<Box<TgMessage>>`
+- 引用内容长度限制：500 字符 + "..." 截断标记
+- 所有平台适配器已更新以支持新字段
 
 ---
 

@@ -187,7 +187,9 @@ impl MattermostAdapter {
                         text: post.message.clone(),
                         media: None,
                         callback_data: None,
-                    };
+                reply_to_message_id: None,
+                reply_to_text: None,
+            };
 
                     if sender.send(message).is_err() {
                         warn!("Mattermost receiver dropped; stopping poll loop");

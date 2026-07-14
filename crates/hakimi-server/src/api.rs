@@ -6221,7 +6221,9 @@ fn setup_tool_separation_callback(
                                 text: buf.clone(),
                                 media: None,
                                 callback_data: None,
-                            };
+                    reply_to_message_id: None,
+                    reply_to_text: None,
+                };
                             buf.clear();
 
                             if let Err(e) = gateway.route_message(&msg).await {
@@ -6240,7 +6242,9 @@ fn setup_tool_separation_callback(
                                 text: format!("🔧 调用工具: {}", tool_name),
                                 media: None,
                                 callback_data: None,
-                            };
+                    reply_to_message_id: None,
+                    reply_to_text: None,
+                };
 
                             if let Err(e) = gateway.route_message(&tool_msg).await {
                                 warn!("Failed to send tool notification: {}", e);
@@ -6290,6 +6294,8 @@ fn create_progress_aware_streaming_callback(
                     text: tool_notice.trim().to_string(),
                     media: None,
                     callback_data: None,
+                    reply_to_message_id: None,
+                    reply_to_text: None,
                 };
                 if let Err(e) = gateway.route_message(&msg).await {
                     warn!("Failed to send tool progress: {}", e);
@@ -6321,7 +6327,9 @@ fn create_progress_aware_streaming_callback(
                             text: format!("🤝 {} · {}", title, line),
                             media: None,
                             callback_data: None,
-                        };
+                    reply_to_message_id: None,
+                    reply_to_text: None,
+                };
                         if let Err(e) = gateway.route_message(&msg).await {
                             warn!("Failed to send delegation progress: {}", e);
                         }
@@ -6438,7 +6446,9 @@ async fn teams_webhook_inbound(
                 text: response.clone(),
                 media: None,
                 callback_data: None,
-            };
+                    reply_to_message_id: None,
+                    reply_to_text: None,
+                };
 
             match gateway.route_message(&msg).await {
                 Ok(()) => info!("Teams response sent successfully via Gateway"),
@@ -6497,7 +6507,9 @@ async fn teams_webhook_inbound(
                         text: remaining,
                         media: None,
                         callback_data: None,
-                    };
+                    reply_to_message_id: None,
+                    reply_to_text: None,
+                };
 
                     if let Err(e) = gateway.route_message(&msg).await {
                         warn!("Failed to send final Teams chunk: {}", e);
@@ -6516,6 +6528,8 @@ async fn teams_webhook_inbound(
                     text: "抱歉，处理您的消息时遇到错误。".to_string(),
                     media: None,
                     callback_data: None,
+                    reply_to_message_id: None,
+                    reply_to_text: None,
                 };
                 let _ = gateway.route_message(&error_msg).await;
             }

@@ -600,7 +600,9 @@ async fn deliver_pending_gateway_update_notification(
         text: format_gateway_update_notification(&notification),
         media: None,
         callback_data: None,
-    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
     match gateway.route_message(&msg).await {
         Ok(()) => info!(
             platform = %notification.platform,
@@ -2602,7 +2604,9 @@ async fn send_gateway_text(
         text: text.into(),
         media: None,
         callback_data: None,
-    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
     let _ = gateway.route_message(&msg).await;
 }
 
@@ -4079,7 +4083,9 @@ async fn render_gateway_stream_content(
                     text,
                     media: None,
                     callback_data: None,
-                };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                 *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
                 result.rendered_any = true;
                 backoff_state.record_edit_success();
@@ -4110,7 +4116,9 @@ async fn commit_gateway_stream_draft_segment(
         text: ui_state.current_text.clone(),
         media: None,
         callback_data: None,
-    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
     *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
     *rendered_content = true;
     first_rendered_at.get_or_insert_with(std::time::Instant::now);
@@ -5930,7 +5938,9 @@ async fn process_gateway_messages_loop(
                         text: confirmation_text.to_string(),
                         media: None,
                         callback_data: None,
-                    })
+            reply_to_message_id: None,
+            reply_to_text: None,
+        })
                     .await;
             }
             // Skip further processing for callbacks
@@ -6335,7 +6345,9 @@ Just send a message to chat with me!"
                                 text: "🔄 System is updating and restarting, please hold on...".to_string(),
                                 media: None,
                                 callback_data: None,
-                            };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                             let _ = gateway.route_message(&msg).await;
 
                             let update_platform = plat.clone();
@@ -6366,7 +6378,9 @@ Just send a message to chat with me!"
                                 },
                                 media: None,
                                 callback_data: None,
-                            };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                             let _ = gateway.route_message(&result_msg).await;
 
                             if success {
@@ -6554,7 +6568,9 @@ Just send a message to chat with me!"
                         text: response,
                         media: None,
                         callback_data: None,
-                    })
+            reply_to_message_id: None,
+            reply_to_text: None,
+        })
                     .await;
                 return;
             }
@@ -6850,7 +6866,9 @@ Just send a message to chat with me!"
                                         text,
                                         media: None,
                                         callback_data: None,
-                                    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                                     let _ = gateway_cb.route_message(&msg).await;
                                 }
 
@@ -6893,7 +6911,9 @@ Just send a message to chat with me!"
                                         text: String::new(),
                                         media: Some(media),
                                         callback_data: None,
-                                    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                                     let _ = gateway_cb.route_message(&msg).await;
                                 }
 
@@ -6948,7 +6968,9 @@ Just send a message to chat with me!"
                                         text: rendered,
                                         media: None,
                                         callback_data: None,
-                                    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                                     bubble.message_id =
                                         gateway_cb.route_message_get_id(&msg).await.ok().flatten();
                                 }
@@ -7197,7 +7219,9 @@ Just send a message to chat with me!"
                         text,
                         media: None,
                         callback_data: None,
-                    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                     if gateway_clone.route_message(&reply).await.is_ok() {
                         let _ = gateway_clone
                             .delete_message(&platform, &bot_id, &chat_id, old_message_id)
@@ -7213,7 +7237,9 @@ Just send a message to chat with me!"
                         text,
                         media: None,
                         callback_data: None,
-                    };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                     let _ = gateway_clone.route_message(&reply).await;
                 }
             }
@@ -7375,7 +7401,9 @@ async fn start_gateway(
                     text: queued.message,
                     media: None,
                     callback_data: None,
-                };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                 let _ = gateway_queue.route_message(&msg).await;
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -7727,7 +7755,9 @@ async fn start_unified_server(
                     text: queued.message,
                     media: None,
                     callback_data: None,
-                };
+            reply_to_message_id: None,
+            reply_to_text: None,
+        };
                 let _ = gateway_queue.route_message(&msg).await;
             }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -8837,6 +8867,8 @@ mod tests {
             text: "hello".to_string(),
             media: None,
             callback_data: None,
+            reply_to_message_id: None,
+            reply_to_text: None,
         }
     }
 

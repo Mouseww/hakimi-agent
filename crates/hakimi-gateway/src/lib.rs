@@ -149,6 +149,10 @@ pub struct GatewayMessage {
     /// Optional callback data (for inline button presses).
     /// Format: "dispatch_lighter", "dispatch_stronger", "dispatch_justright"
     pub callback_data: Option<String>,
+    /// Reply context: message ID being replied to.
+    pub reply_to_message_id: Option<String>,
+    /// Reply context: text content of the replied-to message (truncated to 500 chars).
+    pub reply_to_text: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

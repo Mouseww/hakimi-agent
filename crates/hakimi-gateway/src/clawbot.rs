@@ -633,7 +633,9 @@ fn notify_ilink_login_qr(
         ),
         media: Some(qrcode_img_url.to_string()),
         callback_data: None,
-    };
+                reply_to_message_id: None,
+                reply_to_text: None,
+            };
     let _ = msg_tx.send(msg);
 }
 
@@ -664,7 +666,9 @@ fn notify_ilink_login_complete(
         ),
         media: None,
         callback_data: None,
-    };
+                reply_to_message_id: None,
+                reply_to_text: None,
+            };
     let _ = msg_tx.send(msg);
 }
 
@@ -740,7 +744,9 @@ fn convert_bridge_message(
         text,
         media,
         callback_data: None,
-    })
+                reply_to_message_id: None,
+                reply_to_text: None,
+            })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -922,7 +928,9 @@ fn parse_ilink_updates(platform_name: &str, bot_id: &str, body: &Value) -> Ilink
             text,
             media: None,
             callback_data: None,
-        });
+                reply_to_message_id: None,
+                reply_to_text: None,
+            });
     }
     (next_cursor, out, contexts, typing_tickets)
 }

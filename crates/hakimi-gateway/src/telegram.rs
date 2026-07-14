@@ -415,6 +415,8 @@ impl TelegramAdapter {
                                     text: String::new(), // Callbacks have no text body
                                     media: None,
                                     callback_data: Some(data.clone()),
+                                    reply_to_message_id: None,
+                                    reply_to_text: None,
                                 };
 
                                 if msg_tx.send(gw_msg).is_err() {
@@ -1249,16 +1251,39 @@ fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
         .or_else(|| msg.photo.as_ref().map(|_| "[photo]".to_owned()))
         .unwrap_or_default();
 
-    // If this message is replying to another message, prepend the quoted content
-    if let Some(reply_msg) = &msg.reply_to_message {
-        let quoted_text = reply_msg
+    // Extract reply context if this message is a reply.
+    // Following Hermes pattern but inject directly into text for simplicity.
+    let (reply_to_message_id, reply_to_text) = if let Some(reply_msg) = &msg.reply_to_message {
+        let reply_id = Some(reply_msg.message_id.to_string());
+        let reply_text = reply_msg
             .text
             .as_deref()
-            .unwrap_or("[media or unsupported content]");
+            .or_else(|| {
+                // Fall back to photo marker if replying to a photo
+                if reply_msg.photo.is_some() {
+                    Some("[photo]")
+                } else {
+                    None
+                }
+            })
+            .map(|t| {
+                // Truncate to 500 chars like Hermes does
+                if t.len() > 500 {
+                    format!("{}...", &t[..500])
+                } else {
+                    t.to_owned()
+                }
+            });
         
-        // Format: > [Quoted] original text\n\nuser's reply
-        text = format!("> [引用] {}\n\n{}", quoted_text, text);
-    }
+        // Inject reply context into text (Hermes-style formatting)
+        if let Some(ref quoted) = reply_text {
+            text = format!("[Replying to: \"{}\"]\n\n{}", quoted, text);
+        }
+        
+        (reply_id, reply_text)
+    } else {
+        (None, None)
+    };
 
     if text.is_empty() {
         return None;
@@ -1277,6 +1302,8 @@ fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
         text,
         media,
         callback_data: None,
+        reply_to_message_id,
+        reply_to_text,
     })
 }
 
