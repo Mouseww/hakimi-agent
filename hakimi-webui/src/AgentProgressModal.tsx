@@ -18,10 +18,41 @@ export function AgentProgressModal({ agentId, agentName, onClose }: AgentProgres
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // TODO: 实现 persona 工作记录持久化和查询API
-    // 暂时显示占位信息
-    setMessages([]);
-    setLoading(false);
+    let cancelled = false;
+    
+    const fetchMessages = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/persona/${encodeURIComponent(agentId)}/messages`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          const messages = (data.messages || []).map((m: any) => ({
+            role: m.role as 'user' | 'assistant' | 'tool',
+            content: m.content || '',
+            timestamp: m.timestamp ? new Date(m.timestamp).getTime() : undefined,
+          }));
+          setMessages(messages);
+        }
+      } catch (error) {
+        console.error('Failed to fetch persona messages:', error);
+        if (!cancelled) {
+          setMessages([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    fetchMessages();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [agentId]);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -30,10 +61,20 @@ export function AgentProgressModal({ agentId, agentName, onClose }: AgentProgres
     }
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (confirm(`确定要清空 ${agentName} 的所有工作记录吗？`)) {
-      // TODO: 调用 DELETE /api/persona/:id/messages
-      setMessages([]);
+      try {
+        const response = await fetch(`/api/persona/${encodeURIComponent(agentId)}/messages`, {
+          method: 'DELETE',
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        setMessages([]);
+      } catch (error) {
+        console.error('Failed to clear persona messages:', error);
+        alert('清空失败，请查看控制台日志');
+      }
     }
   };
 

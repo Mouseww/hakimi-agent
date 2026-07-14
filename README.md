@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.110-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.111-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,27 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.111)
+
+**🐛 WebUI Office View 显示器内容显示修复：**
+
+- ✅ **点击显示器弹窗现在能正确显示工作记录**
+  - 前端已连接到后端 `/api/persona/:id/messages` API
+  - 自动从 session DB 加载 persona 的完整消息历史
+  - 支持按时间戳排序和分页（最多 1000 条）
+  - 清空功能已集成 `DELETE` API
+- 🎯 **移除了 TODO 占位符**
+  - `AgentProgressModal.tsx` 完整实现
+  - 错误处理和加载状态优化
+  - 取消异步请求的清理逻辑
+
+**技术细节：**
+- 后端 API 已在 v0.5.x 存在（从 session DB 查询）
+- 前端实现缺失导致点击后显示"暂无工作记录"
+- 本次修复仅涉及前端集成，无后端变更
 
 ---
 
