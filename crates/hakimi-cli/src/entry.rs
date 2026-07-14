@@ -5754,6 +5754,7 @@ async fn gateway_persist_session(
     title: Option<&str>,
     user_text: &str,
     _assistant_text: &str,
+    persona_id: Option<&str>,
 ) {
     use hakimi_session::SessionOps;
     let db = session_db.lock().await;
@@ -5774,7 +5775,7 @@ async fn gateway_persist_session(
             }
         };
         if let Ok(id) =
-            db.create_session_with_id(session_id, source, user_id, Some(model), None, None, None)
+            db.create_session_with_id(session_id, source, user_id, Some(model), None, None, persona_id)
         {
             let _ = db.set_title(&id, &auto_title);
         }
@@ -7143,6 +7144,7 @@ Just send a message to chat with me!"
                                 None,
                                 &text,
                                 &res.final_response,
+                                Some(&persona_id),
                             )
                             .await;
                         }

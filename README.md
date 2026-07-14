@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.114-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.115-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,29 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.115)
+
+**核心修复：Persona Agent 任务执行记录**
+
+- 🔧 **修复 Telegram/Gateway 任务不被记录的根本问题**
+  - 修改 `gateway_persist_session` 函数，添加 `persona_id` 参数
+  - Session 创建时正确设置 `persona_id` 字段
+  - 消息现在能够正确关联到 persona agent 的 session
+  
+- 📊 **WebUI Office View 工作进度窗口现已可用**
+  - 点击显示器后可查看 agent 的任务执行历史
+  - 支持查看当前会话 vs 历史所有记录
+  - API 查询逻辑已完整实现并可用
+
+- ⚙️ **数据库关联修复**
+  - `sessions` 表的 `persona_id` 现在会被正确填充
+  - `GET /api/persona/:id/messages` 可以返回真实数据
+  - 前端弹窗不再显示空白内容
+
+**技术细节：** 之前 Gateway 消息路由能够正确识别 persona，但在持久化 session 时未传入 `persona_id`，导致所有记录的 `persona_id` 字段为 `NULL`，使得前端查询始终返回空结果。v0.5.115 修复了完整的数据流。
 
 ---
 
