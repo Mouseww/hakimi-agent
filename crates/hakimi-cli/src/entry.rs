@@ -8,6 +8,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::io::{self, Write};
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -5233,6 +5234,7 @@ async fn build_agent(
     args: &Args,
     config: &hakimi_config::HakimiConfig,
     runtime_home: &hakimi_common::RuntimeHome,
+    session_db: Option<Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>>,
 ) -> Result<hakimi_core::AIAgent> {
     let model = resolve_model(args.model.as_deref(), config);
     let base_url = resolve_base_url(args.base_url.as_deref(), config);
@@ -5618,6 +5620,7 @@ async fn build_agent(
         .with_context_engine(context_engine)
         .with_embedding_provider(embedding_provider)
         .with_knowledge_searcher(Some(knowledge_searcher))
+        .with_session_db(session_db)
         .with_tool_search_settings(
             config.tools.tool_search.clone(),
             resolved_context.context_length,
@@ -7611,6 +7614,9 @@ async fn start_unified_server(
     .await??;
     let session_db = Arc::new(Mutex::new(db));
 
+    // Inject session_db into agent's shared runtime
+    let agent = agent.with_session_db(Some(session_db.clone()));
+
     // Initialize Gateway
     let mut gateway = hakimi_gateway::Gateway::new();
     gateway.set_filter_silence_narration(config.gateways.filter_silence_narration);
@@ -8666,7 +8672,7 @@ pub async fn run() -> Result<()> {
         maybe_show_startup_onboarding_hints(&mut config, &runtime_home);
     }
 
-    let agent = build_agent(&args, &config, &runtime_home).await?;
+    let agent = build_agent(&args, &config, &runtime_home, None).await?;
 
     if let Some(TopLevelCommand::Cron(cron_args)) = &args.command
         && is_top_level_cron_tick(&cron_args.args)

@@ -22,4 +22,7 @@ pub struct SharedRuntime {
     pub knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
     /// Optional embedding provider, shared across personas.
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Optional session database for persisting conversation history.
+    /// Used by PersonaTeamExecutor to record teammate sessions.
+    pub session_db: Option<Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>>,
 }

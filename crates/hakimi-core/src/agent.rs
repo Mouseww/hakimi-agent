@@ -153,6 +153,15 @@ impl AIAgent {
         self
     }
 
+    /// Set or replace the session database (stored in the shared runtime).
+    pub fn with_session_db(
+        mut self,
+        db: Option<Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>>,
+    ) -> Self {
+        Arc::make_mut(&mut self.shared).session_db = db;
+        self
+    }
+
     /// Apply runtime voice settings used by TTS and transcription tools.
     #[allow(clippy::too_many_arguments)]
     pub fn with_voice_settings(
@@ -218,6 +227,7 @@ pub struct AIAgentBuilder {
     tool_search_config: Option<ToolSearchConfig>,
     tool_search_context_length: Option<usize>,
     trajectory_config: Option<TrajectoryConfig>,
+    session_db: Option<Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>>,
 }
 
 impl AIAgentBuilder {
@@ -254,6 +264,7 @@ impl AIAgentBuilder {
             tool_search_config: None,
             tool_search_context_length: None,
             trajectory_config: None,
+            session_db: None,
         }
     }
 
@@ -367,6 +378,12 @@ impl AIAgentBuilder {
         self
     }
 
+    /// Set the session database for persisting conversation history.
+    pub fn session_db(mut self, db: Arc<tokio::sync::Mutex<hakimi_session::SessionDB>>) -> Self {
+        self.session_db = Some(db);
+        self
+    }
+
     /// Set progressive tool-disclosure behavior.
     pub fn tool_search(mut self, config: ToolSearchConfig, context_length: usize) -> Self {
         self.tool_search_config = Some(config.normalized());
@@ -410,6 +427,7 @@ impl AIAgentBuilder {
             tool_registry,
             knowledge_searcher: self.knowledge_searcher,
             embedding_provider: self.embedding_provider,
+            session_db: self.session_db,
         });
 
         info!(

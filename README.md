@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.115-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.116-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,36 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.116)
+
+**核心功能：Teammate/Delegation 任务 Session 持久化**
+
+- 🔥 **Team 协作链路完整记录**
+  - `PersonaTeamExecutor` 在 teammate 完成后持久化 session 到数据库
+  - Session 记录包含正确的 persona_id（teammate 的 ID）
+  - 支持嵌套调用链路（A → B → C）的完整追踪
+  
+- 🛠 **架构升级**
+  - `SharedRuntime` 添加 `session_db` 字段（共享资源）
+  - `AIAgentBuilder` 和 `AIAgent` 支持 `.session_db()` 和 `.with_session_db()` 方法
+  - Unified Server 和 Gateway 模式下自动注入 session_db
+  
+- 📊 **WebUI Office View 数据源完整**
+  - 点击 Teammate 显示器，可查看该 agent 的完整工作记录
+  - 显示任务标题（60 字符自动截断）、工具使用统计、token 消耗
+  - 支持查看"当前会话" vs "历史所有记录"
+  
+- ⚙️ **Session 元数据记录**
+  - `source`: `team:{lead_agent_id}`（标识调用来源）
+  - `model`: teammate 使用的模型
+  - `persona_id`: teammate 的 persona ID
+  - `session_id`: `task_id`（与任务关联）
+  - Usage 统计：prompt/completion/total/cached/reasoning tokens
+
+**技术细节：** v0.5.115 修复了 Gateway 顶层任务的 persona_id 持久化，v0.5.116 补全了 Team 内部协作链路的 session 记录。现在无论是用户发起的任务还是 agent 之间的内部协作，都能在 Office View 中查看完整的执行历史。
 
 ---
 

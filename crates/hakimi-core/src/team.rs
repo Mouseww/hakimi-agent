@@ -283,6 +283,45 @@ impl TeamExecutor for PersonaTeamExecutor {
                     };
 
                     emit_team_progress(&call.progress, &task_id, &title, summary);
+
+                    // Persist teammate session to database if available
+                    if let Some(session_db) = &teammate.shared.session_db {
+                        let db = session_db.lock().await;
+                        let source = format!("team:{}", from_id);
+                        let model = teammate.model.clone();
+                        
+                        use hakimi_session::SessionOps;
+                        if db.get_session(&task_id).ok().flatten().is_none() {
+                            let auto_title = if title.chars().count() <= 60 {
+                                title.clone()
+                            } else {
+                                format!("{}...", title.chars().take(60).collect::<String>().trim_end())
+                            };
+                            
+                            if let Ok(id) = db.create_session_with_id(
+                                &task_id,
+                                &source,
+                                None, // user_id
+                                Some(&model),
+                                None, // system_prompt
+                                None, // parent_session_id
+                                Some(&cfg.id), // persona_id: teammate's persona ID
+                            ) {
+                                let _ = db.set_title(&id, &auto_title);
+                            }
+                        }
+                        
+                        // Update session totals (basic usage tracking)
+                        let usage = hakimi_common::Usage {
+                            prompt_tokens: res.usage.prompt_tokens,
+                            completion_tokens: res.usage.completion_tokens,
+                            total_tokens: res.usage.total_tokens,
+                            cached_tokens: res.usage.cached_tokens,
+                            reasoning_tokens: res.usage.reasoning_tokens,
+                        };
+                        let _ = db.update_session_totals(&task_id, &usage, 1);
+                    }
+
                     hakimi_common::publish(hakimi_common::ActivityEvent::ConsultEnded {
                         from_id: from_id.clone(),
                         to_id: cfg.id.clone(),
