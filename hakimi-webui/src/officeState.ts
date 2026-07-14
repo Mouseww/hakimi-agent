@@ -77,8 +77,17 @@ export function reduceActivity(state: OfficeState, event: ActivityEvent): Office
       });
       break;
     case 'consult_ended':
-      set(event.from_id, { consultingTo: undefined });
-      set(event.to_id, { delegatedFrom: undefined });
+      // 清除委派状态，并恢复空闲状态
+      set(event.from_id, { 
+        consultingTo: undefined,
+        working: false,         // 委派者恢复休息
+        taskHint: undefined,
+      });
+      set(event.to_id, { 
+        delegatedFrom: undefined,
+        working: false,         // 被委派者完成任务，恢复休息
+        taskHint: undefined,
+      });
       break;
     case 'team_formed':
       for (const id of [event.lead_id, ...event.member_ids]) {

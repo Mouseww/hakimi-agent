@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.117-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.118-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -30,16 +30,33 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.117)
+## ✨ Recent Updates (v0.5.118)
 
-**UI 修复：Office View 委派连线对齐**
+**委派系统全面升级 + UX 改进**
 
-- 🎨 **虚线连接点位置修正**
-  - 委派连线（dotted line）起点从桌子中心调整到桌子底部
-  - 视觉上更自然，连接点不再悬空
-  
-- 📐 **技术细节**
-  - `deskCenter()` 函数 y 坐标从 `seat.y + 70`（桌子中心）改为 `seat.y + 120`（桌子底部）
+- 🚀 **多轮委派支持 (Multi-Level Delegation)**
+  - 子 Agent 现在可以继续委派任务给其他 Agent（最大深度 2 层）
+  - 动态工具过滤：根据委派深度自动启用/禁用 `delegate_task` 工具
+  - 深度追踪：`CoreDelegateExecutor` 新增 `delegation_depth` 字段
+
+- 🐱 **委派动画优化**
+  - 猫咪行走速度放慢一倍（2800ms），更自然流畅
+  - 猫头部方向改进：添加眼睛，根据运动方向动态调整透明度
+  - 不再"一直朝一个方向"或"都朝一个方向"
+
+- 🎯 **Agent 状态管理修复**
+  - 修复委派任务完成后 Agent 无法恢复休息状态的 bug
+  - `consult_ended` 事件现在正确清除 `working` 和 `taskHint` 状态
+  - 状态推断逻辑 (`inferStatus`) 优化，排除"正在回家路上"阶段
+
+- 📋 **任务追踪机制（规划中）**
+  - 后续版本将实现类似 Hermes 的 todo 工具
+  - 提供多步骤任务的可视化进度追踪
+
+- 🔧 **技术细节**
+  - `DELEGATION_BLOCKED_TOOLS` 移除 `delegate_task`（改为动态控制）
+  - `delegation_allows_tool()` 新增 `can_delegate` 参数
+  - `MAX_DELEGATION_DEPTH` 常量：控制委派深度上限
   - 对应 AgentDeskView 桌面位置（y=114）+ 桌面高度（6px）
 
 ---

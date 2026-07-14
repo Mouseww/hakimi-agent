@@ -18,13 +18,13 @@ export interface DelegationAnim {
 }
 
 const PHASE_DURATIONS: Record<DelegationPhase, number> = {
-  walk_to: 1400,
-  talk_assign: 1500,
-  walk_back: 1400,
+  walk_to: 2800,      // 放慢一倍，让猫正常跑过去
+  talk_assign: 2000,
+  walk_back: 2800,
   connected: Infinity,
-  report_walk: 1400,
-  report_talk: 1500,
-  return_walk: 1400,
+  report_walk: 2800,
+  report_talk: 2000,
+  return_walk: 2800,
 };
 
 const START_SEQUENCE: DelegationPhase[] = ['walk_to', 'talk_assign', 'walk_back', 'connected'];

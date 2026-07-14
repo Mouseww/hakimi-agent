@@ -11,7 +11,6 @@ use tokio::sync::{RwLock, Semaphore};
 use tracing::info;
 
 const DELEGATION_BLOCKED_TOOLS: &[&str] = &[
-    "delegate_task",
     "clarify",
     "memory",
     "send_message",
@@ -22,7 +21,12 @@ fn is_delegation_blocked_tool(tool_name: &str) -> bool {
     DELEGATION_BLOCKED_TOOLS.contains(&tool_name)
 }
 
-fn delegation_allows_tool(tool: &dyn Tool, toolsets: &[String]) -> bool {
+fn delegation_allows_tool(tool: &dyn Tool, toolsets: &[String], can_delegate: bool) -> bool {
+    // Block delegate_task if delegation depth limit is reached
+    if tool.name() == "delegate_task" && !can_delegate {
+        return false;
+    }
+    
     !is_delegation_blocked_tool(tool.name())
         && (toolsets.is_empty() || toolsets.iter().any(|toolset| toolset == tool.toolset()))
 }
@@ -75,6 +79,10 @@ const CHILD_MAX_ITERATIONS: usize = 10;
 /// Maximum number of concurrent child agents.
 const MAX_CONCURRENT_DELEGATIONS: usize = 5;
 
+/// Maximum delegation depth (how many levels deep delegation can go).
+/// Depth 0 = root agent, Depth 1 = first-level delegate, Depth 2 = nested delegate, etc.
+const MAX_DELEGATION_DEPTH: usize = 2;
+
 /// Task queue for internal coordination.
 pub struct TaskQueue {
     tasks: VecDeque<QueuedTask>,
@@ -124,6 +132,8 @@ pub struct CoreDelegateExecutor {
     progress_callback: Option<ToolProgressCallback>,
     task_queue: Arc<RwLock<TaskQueue>>,
     semaphore: Arc<Semaphore>,
+    /// Current delegation depth (0 = root agent, 1 = first-level delegate, etc.)
+    delegation_depth: usize,
 }
 
 impl CoreDelegateExecutor {
@@ -147,7 +157,29 @@ impl CoreDelegateExecutor {
             progress_callback,
             task_queue: Arc::new(RwLock::new(TaskQueue::new())),
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_DELEGATIONS)),
+            delegation_depth: 0,  // Root agent starts at depth 0
         }
+    }
+    
+    /// Create a child executor with incremented delegation depth.
+    fn child(&self) -> Self {
+        Self {
+            transport: self.transport.clone(),
+            context_engine: self.context_engine.clone(),
+            model: self.model.clone(),
+            tool_registry: self.tool_registry.clone(),
+            workdir: self.workdir.clone(),
+            skill_store: self.skill_store.clone(),
+            progress_callback: self.progress_callback.clone(),
+            task_queue: self.task_queue.clone(),
+            semaphore: self.semaphore.clone(),
+            delegation_depth: self.delegation_depth + 1,
+        }
+    }
+    
+    /// Check if this executor can delegate further.
+    fn can_delegate(&self) -> bool {
+        self.delegation_depth < MAX_DELEGATION_DEPTH
     }
 }
 
@@ -190,9 +222,10 @@ impl DelegateExecutor for CoreDelegateExecutor {
 
             // Build a filtered tool registry for this child
             let child_registry = ToolRegistry::new();
+            let can_delegate = self.can_delegate();  // Check delegation depth
             for tool_name in &all_tool_names {
                 if let Some(tool) = self.tool_registry.get(tool_name).await
-                    && delegation_allows_tool(tool.as_ref(), &toolsets)
+                    && delegation_allows_tool(tool.as_ref(), &toolsets, can_delegate)
                 {
                     child_registry.register(tool).await;
                 }
@@ -416,11 +449,11 @@ mod tests {
         }
     }
 
-    async fn filtered_child_registry(parent: &ToolRegistry, toolsets: &[String]) -> ToolRegistry {
+    async fn filtered_child_registry(parent: &ToolRegistry, toolsets: &[String], can_delegate: bool) -> ToolRegistry {
         let child = ToolRegistry::new();
         for tool_name in parent.list().await {
             if let Some(tool) = parent.get(&tool_name).await
-                && delegation_allows_tool(tool.as_ref(), toolsets)
+                && delegation_allows_tool(tool.as_ref(), toolsets, can_delegate)
             {
                 child.register(tool).await;
             }
@@ -447,6 +480,12 @@ mod tests {
                 toolset: "file",
             }))
             .await;
+        parent
+            .register(Arc::new(NamedTool {
+                name: "delegate_task",
+                toolset: "core",
+            }))
+            .await;
         for tool_name in DELEGATION_BLOCKED_TOOLS {
             parent
                 .register(Arc::new(NamedTool {
@@ -456,12 +495,14 @@ mod tests {
                 .await;
         }
 
-        let child = filtered_child_registry(&parent, &[]).await;
+        let child = filtered_child_registry(&parent, &[], true).await;  // can_delegate = true
 
         assert!(child.get("read_file").await.is_some());
         for tool_name in DELEGATION_BLOCKED_TOOLS {
             assert!(child.get(tool_name).await.is_none());
         }
+        // delegate_task should be allowed when can_delegate=true
+        assert!(child.get("delegate_task").await.is_some());
     }
 
     #[tokio::test]
@@ -487,7 +528,7 @@ mod tests {
             .await;
 
         let child =
-            filtered_child_registry(&parent, &["shell".to_string(), "communication".to_string()])
+            filtered_child_registry(&parent, &["shell".to_string(), "communication".to_string()], false)
                 .await;
 
         assert!(child.get("terminal").await.is_some());

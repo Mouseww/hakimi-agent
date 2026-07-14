@@ -52,7 +52,7 @@ export const WalkingCat: React.FC<WalkingCatProps> = ({
   useEffect(() => {
     setProgress(0);
     const startTime = Date.now();
-    const duration = 1400; // 与 PHASE_DURATIONS 一致
+    const duration = 2800; // 与 PHASE_DURATIONS 一致（放慢一倍）
     
     const animate = () => {
       const elapsed = Date.now() - startTime;
@@ -179,12 +179,15 @@ export const WalkingCat: React.FC<WalkingCatProps> = ({
             {/* 身体 */}
             <ellipse cx="40" cy="45" rx="18" ry="14" fill="#94a3b8" />
             
-            {/* 头部 */}
-            <circle cx="28" cy="38" r="12" fill="#94a3b8" />
+            {/* 头部（根据方向微调朝向）*/}
+            <circle cx={facingRight ? "28" : "28"} cy="38" r="12" fill="#94a3b8" />
             
             {/* 耳朵 */}
             <path d="M 22 30 L 18 22 L 26 28 Z" fill="#94a3b8" />
             <path d="M 32 30 L 36 22 L 28 28 Z" fill="#94a3b8" />
+            
+            {/* 眼睛（面向前方时显示）*/}
+            <circle cx="24" cy="36" r="1.8" fill="#334155" opacity={facingRight ? 0.8 : 0.4} />
             
             {/* 吻部 */}
             <ellipse cx="20" cy="40" rx="5" ry="4" fill="#94a3b8" />
