@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.116-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.117-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -27,6 +27,20 @@
 <img width="1916" height="958" alt="AnythingAgentRecord" src="https://github.com/user-attachments/assets/64c1e6bb-2835-4a27-9e6c-fd5f49618695" />
 
 <img width="1160" height="896" alt="image" src="https://github.com/user-attachments/assets/713b3a8f-1d5a-40bb-9e9f-7b771869ed12" />
+
+---
+
+## ✨ Recent Updates (v0.5.117)
+
+**UI 修复：Office View 委派连线对齐**
+
+- 🎨 **虚线连接点位置修正**
+  - 委派连线（dotted line）起点从桌子中心调整到桌子底部
+  - 视觉上更自然，连接点不再悬空
+  
+- 📐 **技术细节**
+  - `deskCenter()` 函数 y 坐标从 `seat.y + 70`（桌子中心）改为 `seat.y + 120`（桌子底部）
+  - 对应 AgentDeskView 桌面位置（y=114）+ 桌面高度（6px）
 
 ---
 

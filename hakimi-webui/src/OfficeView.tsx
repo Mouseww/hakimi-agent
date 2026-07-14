@@ -58,7 +58,8 @@ function generateAgentColors(id: string): { scarf: string; tail: string } {
 }
 
 function deskCenter(seat: Seat): { x: number; y: number } {
-  return { x: seat.x + 90, y: seat.y + 70 };
+  // 桌子底部位置：桌面 y=114 + 高度 6 = 120
+  return { x: seat.x + 90, y: seat.y + 120 };
 }
 
 function DelegationLine({ from, to }: { from: Seat; to: Seat }) {
