@@ -2531,7 +2531,10 @@ pub fn build_router(state: AppState) -> Router {
         // Persona work history
         .route("/persona/{id}/messages", get(get_persona_messages))
         .route("/persona/{id}/messages", delete(clear_persona_messages))
-        .route("/persona/{id}/messages/{message_id}", delete(delete_persona_message))
+        .route(
+            "/persona/{id}/messages/{message_id}",
+            delete(delete_persona_message),
+        )
         // Error tracking endpoints
         .route("/errors/stats", get(get_error_stats))
         .route("/errors", get(get_errors))
@@ -5229,7 +5232,7 @@ async fn create_session(
         Some(model),
         req.system_prompt.as_deref(),
         None,
-        None,  // persona_id: not set for manual session creation
+        None, // persona_id: not set for manual session creation
     )
     .map_err(|e| {
         api_error(
@@ -6551,10 +6554,10 @@ async fn get_persona_messages(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.session_db.lock().await;
     let conn = db.conn().lock().unwrap();
-    
+
     // Check if 'current=true' query param is set (only show current session)
     let current_only = params.get("current").map(|v| v == "true").unwrap_or(false);
-    
+
     let messages: Vec<serde_json::Value> = if current_only {
         // Only messages from the most recent session
         let mut stmt = match conn.prepare(
@@ -6581,10 +6584,12 @@ async fn get_persona_messages(
             }))
         }) {
             Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-            Err(e) => return Err(api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to query messages: {e}"),
-            )),
+            Err(e) => {
+                return Err(api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to query messages: {e}"),
+                ));
+            }
         }
     } else {
         // All messages from all sessions
@@ -6594,13 +6599,15 @@ async fn get_persona_messages(
              JOIN sessions s ON m.session_id = s.id \
              WHERE s.persona_id = ? \
              ORDER BY s.started_at DESC, m.sequence ASC \
-             LIMIT 1000"
+             LIMIT 1000",
         ) {
             Ok(s) => s,
-            Err(e) => return Err(api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to prepare query: {e}"),
-            )),
+            Err(e) => {
+                return Err(api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to prepare query: {e}"),
+                ));
+            }
         };
         match stmt.query_map([id.as_str()], |row| {
             Ok(json!({
@@ -6611,13 +6618,15 @@ async fn get_persona_messages(
             }))
         }) {
             Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-            Err(e) => return Err(api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to query messages: {e}"),
-            )),
+            Err(e) => {
+                return Err(api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to query messages: {e}"),
+                ));
+            }
         }
     };
-    
+
     Ok(Json(json!({
         "messages": messages,
         "count": messages.len(),
@@ -6632,42 +6641,48 @@ async fn clear_persona_messages(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.session_db.lock().await;
     let conn = db.conn().lock().unwrap();
-    
+
     // Get all session IDs for this persona
     let mut stmt = match conn.prepare("SELECT id FROM sessions WHERE persona_id = ?") {
         Ok(s) => s,
-        Err(e) => return Err(api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to prepare query: {e}"),
-        )),
+        Err(e) => {
+            return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to prepare query: {e}"),
+            ));
+        }
     };
-    
+
     let session_ids: Vec<String> = match stmt.query_map([&id], |row| row.get(0)) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return Err(api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to query sessions: {e}"),
-        )),
+        Err(e) => {
+            return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to query sessions: {e}"),
+            ));
+        }
     };
     drop(stmt);
-    
+
     // Delete messages for each session
     let mut deleted_count = 0;
     for session_id in &session_ids {
         match conn.execute("DELETE FROM messages WHERE session_id = ?", [session_id]) {
             Ok(n) => deleted_count += n,
-            Err(e) => return Err(api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to delete messages: {e}"),
-            )),
+            Err(e) => {
+                return Err(api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to delete messages: {e}"),
+                ));
+            }
         }
     }
-    
+
     // Delete the sessions themselves
     for session_id in &session_ids {
         let _ = conn.execute("DELETE FROM sessions WHERE id = ?", [session_id]);
     }
-    
+
     Ok(Json(json!({
         "deleted_count": deleted_count,
         "sessions_cleared": session_ids.len(),
@@ -6681,7 +6696,7 @@ async fn delete_persona_message(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let db = state.session_db.lock().await;
     let conn = db.conn().lock().unwrap();
-    
+
     // Verify the message belongs to a session owned by this persona
     let verified: bool = match conn.query_row(
         "SELECT 1 FROM messages m JOIN sessions s ON m.session_id = s.id 
@@ -6696,12 +6711,14 @@ async fn delete_persona_message(
                 "Message not found or does not belong to this persona".to_string(),
             ));
         }
-        Err(e) => return Err(api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to verify message: {e}"),
-        )),
+        Err(e) => {
+            return Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to verify message: {e}"),
+            ));
+        }
     };
-    
+
     if verified {
         match conn.execute("DELETE FROM messages WHERE id = ?", [message_id]) {
             Ok(_) => Ok(Json(json!({"success": true}))),
@@ -6711,7 +6728,10 @@ async fn delete_persona_message(
             )),
         }
     } else {
-        Err(api_error(StatusCode::FORBIDDEN, "Access denied".to_string()))
+        Err(api_error(
+            StatusCode::FORBIDDEN,
+            "Access denied".to_string(),
+        ))
     }
 }
 
