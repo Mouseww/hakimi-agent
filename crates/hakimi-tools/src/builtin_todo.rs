@@ -212,9 +212,9 @@ impl Tool for TodoToolV2 {
         // Check if todos parameter is provided
         if let Some(todos_val) = args.get("todos") {
             // Write mode
-            let todos_array = todos_val.as_array().ok_or_else(|| {
-                HakimiError::ToolSimple("'todos' must be an array".to_string())
-            })?;
+            let todos_array = todos_val
+                .as_array()
+                .ok_or_else(|| HakimiError::ToolSimple("'todos' must be an array".to_string()))?;
 
             let new_items: Vec<TodoItem> = todos_array
                 .iter()
@@ -227,10 +227,7 @@ impl Tool for TodoToolV2 {
                 ));
             }
 
-            let merge = args
-                .get("merge")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let merge = args.get("merge").and_then(|v| v.as_bool()).unwrap_or(false);
 
             let items = write_todos(session_id, new_items, merge).await?;
             debug!("wrote {} todos (merge={})", items.len(), merge);
@@ -270,7 +267,10 @@ mod tests {
         let session_id = "test_empty";
         cleanup(session_id).await;
 
-        let result = tool.execute(&json!({}), &test_ctx(session_id)).await.unwrap();
+        let result = tool
+            .execute(&json!({}), &test_ctx(session_id))
+            .await
+            .unwrap();
         let parsed: JsonValue = serde_json::from_str(&result).unwrap();
 
         assert_eq!(parsed["todos"].as_array().unwrap().len(), 0);
@@ -293,7 +293,10 @@ mod tests {
             ]
         });
 
-        let result = tool.execute(&write_args, &test_ctx(session_id)).await.unwrap();
+        let result = tool
+            .execute(&write_args, &test_ctx(session_id))
+            .await
+            .unwrap();
         let parsed: JsonValue = serde_json::from_str(&result).unwrap();
 
         assert_eq!(parsed["todos"].as_array().unwrap().len(), 2);
@@ -301,7 +304,10 @@ mod tests {
         assert_eq!(parsed["summary"]["in_progress"], 1);
 
         // Read todos
-        let result = tool.execute(&json!({}), &test_ctx(session_id)).await.unwrap();
+        let result = tool
+            .execute(&json!({}), &test_ctx(session_id))
+            .await
+            .unwrap();
         let parsed: JsonValue = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["todos"].as_array().unwrap().len(), 2);
 
@@ -321,7 +327,9 @@ mod tests {
                 {"id": "2", "content": "Task 2", "status": "pending"}
             ]
         });
-        tool.execute(&write_args, &test_ctx(session_id)).await.unwrap();
+        tool.execute(&write_args, &test_ctx(session_id))
+            .await
+            .unwrap();
 
         // Merge update
         let merge_args = json!({
@@ -332,7 +340,10 @@ mod tests {
             "merge": true
         });
 
-        let result = tool.execute(&merge_args, &test_ctx(session_id)).await.unwrap();
+        let result = tool
+            .execute(&merge_args, &test_ctx(session_id))
+            .await
+            .unwrap();
         let parsed: JsonValue = serde_json::from_str(&result).unwrap();
 
         assert_eq!(parsed["todos"].as_array().unwrap().len(), 3);
@@ -354,7 +365,10 @@ mod tests {
             ]
         });
 
-        let result = tool.execute(&write_args, &test_ctx(session_id)).await.unwrap();
+        let result = tool
+            .execute(&write_args, &test_ctx(session_id))
+            .await
+            .unwrap();
         let parsed: JsonValue = serde_json::from_str(&result).unwrap();
         let content = parsed["todos"][0]["content"].as_str().unwrap();
 
