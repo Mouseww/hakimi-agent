@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.122-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.123-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -30,7 +30,19 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.122)
+## ✨ Recent Updates (v0.5.123)
+
+**Release v0.5.123**
+
+- 🔇 **工具执行详情隐藏功能**
+  - 新增配置项 `gateways.hide_tool_details`（默认 false）
+  - 开启后隐藏工具调用和结果的详细输出（⚙️ terminal、STDOUT、STDERR 等）
+  - 同时过滤 parent agent 和 subagent 的工具执行详情
+  - 保留 AI 正常回复和工具使用统计信息
+
+---
+
+### v0.5.122
 
 **Release v0.5.122**
 

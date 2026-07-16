@@ -36,6 +36,8 @@ pub struct AIAgent {
     pub(crate) streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     /// Optional callback invoked for every StreamEvent (including ToolCallDelta).
     pub(crate) event_callback: Option<Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>,
+    /// Hide tool execution details from streaming output
+    pub hide_tool_details: bool,
     pub(crate) skill_store: Option<hakimi_skills::SkillStore>,
     pub(crate) tts_provider: Option<String>,
     pub(crate) tts_model: Option<String>,
@@ -72,6 +74,7 @@ impl Clone for AIAgent {
             streaming: self.streaming,
             streaming_callback: self.streaming_callback.clone(),
             event_callback: self.event_callback.clone(),
+            hide_tool_details: self.hide_tool_details,
             skill_store: self.skill_store.clone(),
             tts_provider: self.tts_provider.clone(),
             tts_model: self.tts_model.clone(),
@@ -211,6 +214,7 @@ pub struct AIAgentBuilder {
     system_prompt: Option<String>,
     streaming: Option<bool>,
     streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    hide_tool_details: Option<bool>,
     knowledge_searcher: Option<Arc<dyn hakimi_common::KnowledgeSearcher>>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     skill_store: Option<hakimi_skills::SkillStore>,
@@ -248,6 +252,7 @@ impl AIAgentBuilder {
             system_prompt: None,
             streaming: None,
             streaming_callback: None,
+            hide_tool_details: None,
             knowledge_searcher: None,
             embedding_provider: None,
             skill_store: None,
@@ -358,6 +363,12 @@ impl AIAgentBuilder {
         self
     }
 
+    /// Hide tool execution details from streaming output (default: false)
+    pub fn hide_tool_details(mut self, hide: bool) -> Self {
+        self.hide_tool_details = Some(hide);
+        self
+    }
+
     pub fn skill_store(mut self, store: hakimi_skills::SkillStore) -> Self {
         self.skill_store = Some(store);
         self
@@ -454,6 +465,7 @@ impl AIAgentBuilder {
             streaming: self.streaming.unwrap_or(false),
             streaming_callback: self.streaming_callback,
             event_callback: None,
+            hide_tool_details: self.hide_tool_details.unwrap_or(false),
             skill_store: Some(
                 self.skill_store
                     .unwrap_or_else(hakimi_skills::SkillStore::empty),

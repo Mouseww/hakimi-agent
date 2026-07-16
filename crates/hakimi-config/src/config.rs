@@ -785,6 +785,10 @@ pub struct GatewaysConfig {
     /// `*(silent)*`, `.`, or `no reply`, before they reach chat adapters.
     #[serde(default = "default_gateway_filter_silence_narration")]
     pub filter_silence_narration: bool,
+    /// Hide tool execution details (tool calls, tool results with STDOUT/STDERR/EXIT CODE)
+    /// from being sent to the chat platform. When true, only keeps final assistant responses.
+    #[serde(default = "default_hide_tool_details")]
+    pub hide_tool_details: bool,
     /// Behavior when a new message arrives while an agent is already running.
     /// - "parallel": run all messages concurrently as independent tasks
     /// - "interrupt": immediately cancel the running task and start a new one
@@ -840,6 +844,10 @@ fn default_gateway_filter_silence_narration() -> bool {
     true
 }
 
+fn default_hide_tool_details() -> bool {
+    false
+}
+
 fn default_busy_input_mode() -> String {
     "parallel".to_string()
 }
@@ -850,6 +858,7 @@ impl Default for GatewaysConfig {
             allow_all: false,
             allowed_users: Vec::new(),
             filter_silence_narration: default_gateway_filter_silence_narration(),
+            hide_tool_details: default_hide_tool_details(),
             busy_input_mode: "parallel".to_string(),
             streaming: GatewayStreamingConfig::default(),
             telegram: TelegramGatewayConfig::default(),

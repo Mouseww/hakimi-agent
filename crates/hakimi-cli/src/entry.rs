@@ -7307,6 +7307,7 @@ async fn start_gateway(
     // Initialize gateway.
     let mut gateway = hakimi_gateway::Gateway::new();
     gateway.set_filter_silence_narration(config.gateways.filter_silence_narration);
+    gateway.set_hide_tool_details(config.gateways.hide_tool_details);
 
     let gateway_bot_ids = register_configured_gateway_adapters(&mut gateway, &config);
 
@@ -7620,6 +7621,7 @@ async fn start_unified_server(
     // Initialize Gateway
     let mut gateway = hakimi_gateway::Gateway::new();
     gateway.set_filter_silence_narration(config.gateways.filter_silence_narration);
+    gateway.set_hide_tool_details(config.gateways.hide_tool_details);
     let gateway_bot_ids = register_configured_gateway_adapters(&mut gateway, &config);
 
     // Shared state for both WebUI and Gateway
@@ -8672,7 +8674,21 @@ pub async fn run() -> Result<()> {
         maybe_show_startup_onboarding_hints(&mut config, &runtime_home);
     }
 
-    let agent = build_agent(&args, &config, &runtime_home, None).await?;
+    let mut agent = build_agent(&args, &config, &runtime_home, None).await?;
+
+    // Configure agent behavior from config
+    agent.hide_tool_details = config.gateways.hide_tool_details;
+    
+    // Set environment variable so subagents inherit this setting
+    // SAFETY: This is safe because we're in single-threaded initialization
+    // before any agent execution begins
+    unsafe {
+        if config.gateways.hide_tool_details {
+            std::env::set_var("HAKIMI_HIDE_TOOL_DETAILS", "1");
+        } else {
+            std::env::remove_var("HAKIMI_HIDE_TOOL_DETAILS");
+        }
+    }
 
     if let Some(TopLevelCommand::Cron(cron_args)) = &args.command
         && is_top_level_cron_tick(&cron_args.args)

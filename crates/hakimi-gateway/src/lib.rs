@@ -269,6 +269,7 @@ pub trait PlatformAdapter: Send + Sync {
 pub struct Gateway {
     adapters: Vec<Box<dyn PlatformAdapter>>,
     filter_silence_narration: bool,
+    hide_tool_details: bool,
 }
 
 /// A received inbound message paired with its originating platform adapter name.
@@ -285,12 +286,18 @@ impl Gateway {
         Self {
             adapters: Vec::new(),
             filter_silence_narration: silence_filter_env_override().unwrap_or(true),
+            hide_tool_details: false,
         }
     }
 
     /// Enable or disable outbound silence-narration filtering.
     pub fn set_filter_silence_narration(&mut self, enabled: bool) {
         self.filter_silence_narration = silence_filter_env_override().unwrap_or(enabled);
+    }
+
+    /// Enable or disable hiding tool execution details.
+    pub fn set_hide_tool_details(&mut self, enabled: bool) {
+        self.hide_tool_details = enabled;
     }
 
     /// Return the configured adapter's safe per-message text limit, when known.

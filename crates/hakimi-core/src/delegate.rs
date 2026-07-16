@@ -211,28 +211,43 @@ impl DelegateExecutor for CoreDelegateExecutor {
             "Spawning child agents for batch delegation"
         );
 
-        let mut futures = Vec::new();
+        // Capture data from self before entering the loop to avoid borrow issues
+        let transport = self.transport.clone();
+        let parent_model = self.model.clone();
+        let parent_skill_store = self.skill_store.clone();
+        let progress_callback = self.progress_callback.clone();
+        let tool_registry = self.tool_registry.clone();
+        let can_delegate = self.can_delegate();
+        let semaphore = self.semaphore.clone();
+        let workdir = self.workdir.clone();
 
-        for (goal, context, toolsets) in tasks {
-            let transport = self.transport.clone();
-            let parent_model = self.model.clone();
-            let parent_skill_store = self.skill_store.clone();
-            let progress_callback = self.progress_callback.clone();
-            let all_tool_names = self.tool_registry.list().await;
-
-            // Build a filtered tool registry for this child
+        // Build child registries for all tasks before spawning
+        let mut child_registries = Vec::new();
+        let all_tool_names = tool_registry.list().await;
+        
+        for (_goal, _context, toolsets) in &tasks {
             let child_registry = ToolRegistry::new();
-            let can_delegate = self.can_delegate();  // Check delegation depth
             for tool_name in &all_tool_names {
-                if let Some(tool) = self.tool_registry.get(tool_name).await
-                    && delegation_allows_tool(tool.as_ref(), &toolsets, can_delegate)
+                if let Some(tool) = tool_registry.get(tool_name).await
+                    && delegation_allows_tool(tool.as_ref(), toolsets, can_delegate)
                 {
                     child_registry.register(tool).await;
                 }
             }
+            child_registries.push(child_registry);
+        }
 
-            let semaphore = self.semaphore.clone();
-            let _workdir = self.workdir.clone();
+        let mut futures = Vec::new();
+
+        for ((goal, context, _toolsets), child_registry) in tasks.into_iter().zip(child_registries) {
+
+            // Clone variables for each iteration
+            let transport = transport.clone();
+            let parent_model = parent_model.clone();
+            let parent_skill_store = parent_skill_store.clone();
+            let progress_callback = progress_callback.clone();
+            let semaphore = semaphore.clone();
+            let _workdir = workdir.clone();
 
             // Generate a unique session ID for the child
             let child_session_id = format!("child_{}", uuid::Uuid::new_v4().simple());
@@ -304,6 +319,10 @@ impl DelegateExecutor for CoreDelegateExecutor {
                     );
                     child_agent.set_system_prompt(system_prompt);
                     child_agent.set_session_id(child_session_id.clone());
+                    // Inherit hide_tool_details from environment variable
+                    child_agent.hide_tool_details = std::env::var("HAKIMI_HIDE_TOOL_DETAILS")
+                        .map(|v| v == "1" || v.to_lowercase() == "true")
+                        .unwrap_or(false);
 
                     // Track tool usage for final summary; forward tool calls in real-time
                     let tool_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -311,19 +330,25 @@ impl DelegateExecutor for CoreDelegateExecutor {
                         let child_progress_task_id = progress_task_id.clone();
                         let child_progress_title = progress_title.clone();
                         let counter = tool_count.clone();
+                        // Check if tool details should be hidden (from environment variable)
+                        let hide_tools = std::env::var("HAKIMI_HIDE_TOOL_DETAILS")
+                            .map(|v| v == "1" || v.to_lowercase() == "true")
+                            .unwrap_or(false);
                         child_agent.set_streaming_callback(Some(std::sync::Arc::new(
                             move |token: String| {
                                 if let Some(tool_notice) =
                                     token.strip_prefix("\u{001e}hakimi_tool:")
                                 {
                                     counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                    // Forward tool call immediately
-                                    emit_delegate_progress(
-                                        &Some(parent_progress.clone()),
-                                        &child_progress_task_id,
-                                        &child_progress_title,
-                                        tool_notice.trim(),
-                                    );
+                                    // Forward tool call immediately only if not hiding
+                                    if !hide_tools {
+                                        emit_delegate_progress(
+                                            &Some(parent_progress.clone()),
+                                            &child_progress_task_id,
+                                            &child_progress_title,
+                                            tool_notice.trim(),
+                                        );
+                                    }
                                 } else if let Some(review_notice) =
                                     token.strip_prefix("\u{001e}hakimi_review:")
                                 {
