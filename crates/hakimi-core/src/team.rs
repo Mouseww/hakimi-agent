@@ -289,28 +289,31 @@ impl TeamExecutor for PersonaTeamExecutor {
                         let db = session_db.lock().await;
                         let source = format!("team:{}", from_id);
                         let model = teammate.model.clone();
-                        
+
                         use hakimi_session::SessionOps;
                         if db.get_session(&task_id).ok().flatten().is_none() {
                             let auto_title = if title.chars().count() <= 60 {
                                 title.clone()
                             } else {
-                                format!("{}...", title.chars().take(60).collect::<String>().trim_end())
+                                format!(
+                                    "{}...",
+                                    title.chars().take(60).collect::<String>().trim_end()
+                                )
                             };
-                            
+
                             if let Ok(id) = db.create_session_with_id(
                                 &task_id,
                                 &source,
                                 None, // user_id
                                 Some(&model),
-                                None, // system_prompt
-                                None, // parent_session_id
+                                None,          // system_prompt
+                                None,          // parent_session_id
                                 Some(&cfg.id), // persona_id: teammate's persona ID
                             ) {
                                 let _ = db.set_title(&id, &auto_title);
                             }
                         }
-                        
+
                         // Update session totals (basic usage tracking)
                         let usage = hakimi_common::Usage {
                             prompt_tokens: res.usage.prompt_tokens,

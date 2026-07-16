@@ -10,12 +10,7 @@ use hakimi_transports::ProviderTransport;
 use tokio::sync::{RwLock, Semaphore};
 use tracing::info;
 
-const DELEGATION_BLOCKED_TOOLS: &[&str] = &[
-    "clarify",
-    "memory",
-    "send_message",
-    "code_exec",
-];
+const DELEGATION_BLOCKED_TOOLS: &[&str] = &["clarify", "memory", "send_message", "code_exec"];
 
 fn is_delegation_blocked_tool(tool_name: &str) -> bool {
     DELEGATION_BLOCKED_TOOLS.contains(&tool_name)
@@ -26,7 +21,7 @@ fn delegation_allows_tool(tool: &dyn Tool, toolsets: &[String], can_delegate: bo
     if tool.name() == "delegate_task" && !can_delegate {
         return false;
     }
-    
+
     !is_delegation_blocked_tool(tool.name())
         && (toolsets.is_empty() || toolsets.iter().any(|toolset| toolset == tool.toolset()))
 }
@@ -157,10 +152,10 @@ impl CoreDelegateExecutor {
             progress_callback,
             task_queue: Arc::new(RwLock::new(TaskQueue::new())),
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_DELEGATIONS)),
-            delegation_depth: 0,  // Root agent starts at depth 0
+            delegation_depth: 0, // Root agent starts at depth 0
         }
     }
-    
+
     /// Create a child executor with incremented delegation depth.
     fn child(&self) -> Self {
         Self {
@@ -176,7 +171,7 @@ impl CoreDelegateExecutor {
             delegation_depth: self.delegation_depth + 1,
         }
     }
-    
+
     /// Check if this executor can delegate further.
     fn can_delegate(&self) -> bool {
         self.delegation_depth < MAX_DELEGATION_DEPTH
@@ -222,7 +217,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
 
             // Build a filtered tool registry for this child
             let child_registry = ToolRegistry::new();
-            let can_delegate = self.can_delegate();  // Check delegation depth
+            let can_delegate = self.can_delegate(); // Check delegation depth
             for tool_name in &all_tool_names {
                 if let Some(tool) = self.tool_registry.get(tool_name).await
                     && delegation_allows_tool(tool.as_ref(), &toolsets, can_delegate)
@@ -449,7 +444,11 @@ mod tests {
         }
     }
 
-    async fn filtered_child_registry(parent: &ToolRegistry, toolsets: &[String], can_delegate: bool) -> ToolRegistry {
+    async fn filtered_child_registry(
+        parent: &ToolRegistry,
+        toolsets: &[String],
+        can_delegate: bool,
+    ) -> ToolRegistry {
         let child = ToolRegistry::new();
         for tool_name in parent.list().await {
             if let Some(tool) = parent.get(&tool_name).await
@@ -495,7 +494,7 @@ mod tests {
                 .await;
         }
 
-        let child = filtered_child_registry(&parent, &[], true).await;  // can_delegate = true
+        let child = filtered_child_registry(&parent, &[], true).await; // can_delegate = true
 
         assert!(child.get("read_file").await.is_some());
         for tool_name in DELEGATION_BLOCKED_TOOLS {
@@ -527,9 +526,12 @@ mod tests {
             }))
             .await;
 
-        let child =
-            filtered_child_registry(&parent, &["shell".to_string(), "communication".to_string()], false)
-                .await;
+        let child = filtered_child_registry(
+            &parent,
+            &["shell".to_string(), "communication".to_string()],
+            false,
+        )
+        .await;
 
         assert!(child.get("terminal").await.is_some());
         assert!(child.get("read_file").await.is_none());
