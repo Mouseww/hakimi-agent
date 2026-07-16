@@ -703,18 +703,14 @@ async fn process_tool_calls(
 
         let tool_notice = format!("⚙️ {}{}", tc.name, arg_summary);
         if let Some(ref cb) = agent.streaming_callback {
-            // Only send tool notice if not hiding tool details
-            if !agent.hide_tool_details {
-                cb(format!("\u{001e}hakimi_tool:{tool_notice}"));
-            }
+            // Always send tool notice (it's just a progress indicator)
+            cb(format!("\u{001e}hakimi_tool:{tool_notice}"));
         }
-        // Print to stdout as well (unless hiding details)
-        if !agent.hide_tool_details {
-            use std::io::Write;
-            let _ = std::io::stdout().write_all(tool_notice.as_bytes());
-            let _ = std::io::stdout().write_all(b"\n");
-            let _ = std::io::stdout().flush();
-        }
+        // Print to stdout as well
+        use std::io::Write;
+        let _ = std::io::stdout().write_all(tool_notice.as_bytes());
+        let _ = std::io::stdout().write_all(b"\n");
+        let _ = std::io::stdout().flush();
 
         if agent.check_interrupt() {
             info!("Interrupted during tool dispatch");

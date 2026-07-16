@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.123-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.124-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/lines-44K+-orange?style=for-the-badge" alt="Lines">
@@ -30,7 +30,14 @@
 
 ---
 
-## ✨ Recent Updates (v0.5.123)
+## ✨ Recent Updates (v0.5.124)
+
+**Release v0.5.124**
+
+- 🔧 **修复 hide_tool_details 过滤逻辑**
+  - 保留工具调用通知（⚙️ delegate_task、terminal 等进度指示器）
+  - 仅隐藏工具结果详情（STDOUT、STDERR、JSON 输出）
+  - 修复了 v0.5.123 中错误隐藏所有工具通知的问题
 
 **Release v0.5.123**
 
