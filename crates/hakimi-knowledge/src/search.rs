@@ -202,12 +202,10 @@ impl SearchEngine {
 
         // Find all matches and wrap them with markers
         for term in &normalized_terms {
-                if text.contains(term) {
+            if text.contains(term) {
                 // Simplified: just wrap matching term
-                highlighted_text = highlighted_text.replace(
-                    key,
-                    &key.replace(term, &format!("<mark>{}</mark>", term)),
-                );
+                highlighted_text = highlighted_text
+                    .replace(key, &key.replace(term, &format!("<mark>{}</mark>", term)));
             }
         }
 
