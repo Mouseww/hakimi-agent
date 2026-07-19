@@ -56,7 +56,7 @@ pub fn hakimi_plugin(attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(())
     });
 
-    let _ = parse_macro_input!(attr with parser);
+    parse_macro_input!(attr with parser);
 
     // 生成代码
     let expanded = quote! {
