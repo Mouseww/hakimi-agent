@@ -289,9 +289,9 @@ impl SlackAdapter {
                         text,
                         media: None,
                         callback_data: None,
-                reply_to_message_id: None,
-                reply_to_text: None,
-            };
+                        reply_to_message_id: None,
+                        reply_to_text: None,
+                    };
 
                     if msg_tx.send(gw_msg).is_err() {
                         error!("message receiver dropped – stopping Slack poll loop");
