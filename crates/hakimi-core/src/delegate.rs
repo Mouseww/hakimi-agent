@@ -10,12 +10,7 @@ use hakimi_transports::ProviderTransport;
 use tokio::sync::{RwLock, Semaphore};
 use tracing::info;
 
-const DELEGATION_BLOCKED_TOOLS: &[&str] = &[
-    "clarify",
-    "memory",
-    "send_message",
-    "code_exec",
-];
+const DELEGATION_BLOCKED_TOOLS: &[&str] = &["clarify", "memory", "send_message", "code_exec"];
 
 fn is_delegation_blocked_tool(tool_name: &str) -> bool {
     DELEGATION_BLOCKED_TOOLS.contains(&tool_name)
@@ -26,7 +21,7 @@ fn delegation_allows_tool(tool: &dyn Tool, toolsets: &[String], can_delegate: bo
     if tool.name() == "delegate_task" && !can_delegate {
         return false;
     }
-    
+
     !is_delegation_blocked_tool(tool.name())
         && (toolsets.is_empty() || toolsets.iter().any(|toolset| toolset == tool.toolset()))
 }
@@ -157,10 +152,10 @@ impl CoreDelegateExecutor {
             progress_callback,
             task_queue: Arc::new(RwLock::new(TaskQueue::new())),
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_DELEGATIONS)),
-            delegation_depth: 0,  // Root agent starts at depth 0
+            delegation_depth: 0, // Root agent starts at depth 0
         }
     }
-    
+
     /// Create a child executor with incremented delegation depth.
     fn child(&self) -> Self {
         Self {
@@ -176,7 +171,7 @@ impl CoreDelegateExecutor {
             delegation_depth: self.delegation_depth + 1,
         }
     }
-    
+
     /// Check if this executor can delegate further.
     fn can_delegate(&self) -> bool {
         self.delegation_depth < MAX_DELEGATION_DEPTH
@@ -224,7 +219,7 @@ impl DelegateExecutor for CoreDelegateExecutor {
         // Build child registries for all tasks before spawning
         let mut child_registries = Vec::new();
         let all_tool_names = tool_registry.list().await;
-        
+
         for (_goal, _context, toolsets) in &tasks {
             let child_registry = ToolRegistry::new();
             for tool_name in &all_tool_names {
@@ -239,8 +234,8 @@ impl DelegateExecutor for CoreDelegateExecutor {
 
         let mut futures = Vec::new();
 
-        for ((goal, context, _toolsets), child_registry) in tasks.into_iter().zip(child_registries) {
-
+        for ((goal, context, _toolsets), child_registry) in tasks.into_iter().zip(child_registries)
+        {
             // Clone variables for each iteration
             let transport = transport.clone();
             let parent_model = parent_model.clone();
@@ -474,7 +469,11 @@ mod tests {
         }
     }
 
-    async fn filtered_child_registry(parent: &ToolRegistry, toolsets: &[String], can_delegate: bool) -> ToolRegistry {
+    async fn filtered_child_registry(
+        parent: &ToolRegistry,
+        toolsets: &[String],
+        can_delegate: bool,
+    ) -> ToolRegistry {
         let child = ToolRegistry::new();
         for tool_name in parent.list().await {
             if let Some(tool) = parent.get(&tool_name).await
@@ -520,7 +519,7 @@ mod tests {
                 .await;
         }
 
-        let child = filtered_child_registry(&parent, &[], true).await;  // can_delegate = true
+        let child = filtered_child_registry(&parent, &[], true).await; // can_delegate = true
 
         assert!(child.get("read_file").await.is_some());
         for tool_name in DELEGATION_BLOCKED_TOOLS {
@@ -552,9 +551,12 @@ mod tests {
             }))
             .await;
 
-        let child =
-            filtered_child_registry(&parent, &["shell".to_string(), "communication".to_string()], false)
-                .await;
+        let child = filtered_child_registry(
+            &parent,
+            &["shell".to_string(), "communication".to_string()],
+            false,
+        )
+        .await;
 
         assert!(child.get("terminal").await.is_some());
         assert!(child.get("read_file").await.is_none());

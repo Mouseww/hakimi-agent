@@ -243,7 +243,6 @@ mod tests {
     use super::*;
     use crate::{HakimiPlugin, PluginMetadata};
     use async_trait::async_trait;
-    use hakimi_common::error::HakimiError;
 
     struct MockPlugin {
         metadata: PluginMetadata,

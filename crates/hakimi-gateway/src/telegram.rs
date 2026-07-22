@@ -1274,12 +1274,12 @@ fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
                     t.to_owned()
                 }
             });
-        
+
         // Inject reply context into text (Hermes-style formatting)
         if let Some(ref quoted) = reply_text {
             text = format!("[Replying to: \"{}\"]\n\n{}", quoted, text);
         }
-        
+
         (reply_id, reply_text)
     } else {
         (None, None)
