@@ -189,10 +189,10 @@ impl WasmPluginLoader {
             .func_wrap(
                 "hakimi",
                 "host_log",
-                |mut caller: Caller<'_, WasmState>, 
-                 level_ptr: i32, 
-                 level_len: i32, 
-                 msg_ptr: i32, 
+                |mut caller: Caller<'_, WasmState>,
+                 level_ptr: i32,
+                 level_len: i32,
+                 msg_ptr: i32,
                  msg_len: i32| {
                     // 获取 WASM 内存
                     let memory = match caller.get_export("memory") {
@@ -202,14 +202,14 @@ impl WasmPluginLoader {
                             return;
                         }
                     };
-                    
+
                     // 读取日志级别字符串
                     let mut level_buffer = vec![0u8; level_len as usize];
                     if let Err(e) = memory.read(&caller, level_ptr as usize, &mut level_buffer) {
                         tracing::error!("Failed to read log level from WASM memory: {}", e);
                         return;
                     }
-                    
+
                     let level = match String::from_utf8(level_buffer) {
                         Ok(s) => s,
                         Err(e) => {
@@ -217,14 +217,14 @@ impl WasmPluginLoader {
                             return;
                         }
                     };
-                    
+
                     // 读取日志消息字符串
                     let mut msg_buffer = vec![0u8; msg_len as usize];
                     if let Err(e) = memory.read(&caller, msg_ptr as usize, &mut msg_buffer) {
                         tracing::error!("Failed to read log message from WASM memory: {}", e);
                         return;
                     }
-                    
+
                     let message = match String::from_utf8(msg_buffer) {
                         Ok(s) => s,
                         Err(e) => {
@@ -232,7 +232,7 @@ impl WasmPluginLoader {
                             return;
                         }
                     };
-                    
+
                     // 根据级别记录日志
                     match level.to_lowercase().as_str() {
                         "trace" => tracing::trace!("[WASM Plugin] {}", message),
@@ -244,18 +244,21 @@ impl WasmPluginLoader {
                     }
                 },
             )
-            .map_err(|e| PluginError::LoadError(format!("Failed to wrap host_log function: {}", e)))?;
+            .map_err(|e| {
+                PluginError::LoadError(format!("Failed to wrap host_log function: {}", e))
+            })?;
 
         // HTTP GET 请求函数
         linker
             .func_wrap(
                 "hakimi",
                 "host_http_request",
-                |mut caller: Caller<'_, WasmState>, 
-                 url_ptr: i32, 
+                |mut caller: Caller<'_, WasmState>,
+                 url_ptr: i32,
                  url_len: i32,
                  out_ptr: i32,
-                 out_len: i32| -> i32 {
+                 out_len: i32|
+                 -> i32 {
                     // 获取 WASM 内存
                     let memory = match caller.get_export("memory") {
                         Some(Extern::Memory(mem)) => mem,
@@ -264,14 +267,14 @@ impl WasmPluginLoader {
                             return -1;
                         }
                     };
-                    
+
                     // 读取 URL 字符串
                     let mut url_buffer = vec![0u8; url_len as usize];
                     if let Err(e) = memory.read(&caller, url_ptr as usize, &mut url_buffer) {
                         tracing::error!("Failed to read URL from WASM memory: {}", e);
                         return -2;
                     }
-                    
+
                     let url = match String::from_utf8(url_buffer) {
                         Ok(s) => s,
                         Err(e) => {
@@ -279,44 +282,42 @@ impl WasmPluginLoader {
                             return -3;
                         }
                     };
-                    
+
                     tracing::debug!("[WASM Plugin] HTTP GET request to: {}", url);
-                    
+
                     // 执行 HTTP GET 请求（阻塞式）
                     let response_text = match reqwest::blocking::get(&url) {
-                        Ok(resp) => {
-                            match resp.text() {
-                                Ok(text) => text,
-                                Err(e) => {
-                                    tracing::error!("Failed to read HTTP response body: {}", e);
-                                    return -4;
-                                }
+                        Ok(resp) => match resp.text() {
+                            Ok(text) => text,
+                            Err(e) => {
+                                tracing::error!("Failed to read HTTP response body: {}", e);
+                                return -4;
                             }
-                        }
+                        },
                         Err(e) => {
                             tracing::error!("HTTP request failed: {}", e);
                             return -5;
                         }
                     };
-                    
+
                     let response_bytes = response_text.as_bytes();
                     let bytes_to_write = response_bytes.len().min(out_len as usize);
-                    
+
                     // 写入响应到 WASM 内存
                     if let Err(e) = memory.write(
-                        &mut caller, 
-                        out_ptr as usize, 
-                        &response_bytes[..bytes_to_write]
+                        &mut caller,
+                        out_ptr as usize,
+                        &response_bytes[..bytes_to_write],
                     ) {
                         tracing::error!("Failed to write HTTP response to WASM memory: {}", e);
                         return -6;
                     }
-                    
+
                     tracing::debug!(
-                        "[WASM Plugin] HTTP request successful, wrote {} bytes", 
+                        "[WASM Plugin] HTTP request successful, wrote {} bytes",
                         bytes_to_write
                     );
-                    
+
                     bytes_to_write as i32
                 },
             )
