@@ -79,6 +79,9 @@ struct ActiveRun {
     handle: JoinHandle<()>,
 }
 
+/// One queued/active Studio chat job: (run_id, text, client_request_id, cancel, cwd, focused_path)
+type StudioJob = (String, String, String, Arc<Notify>, String, Option<String>);
+
 enum EnqueueAction {
     NotFound,
     Duplicate {
@@ -1129,15 +1132,14 @@ impl StudioRuntime {
         let first_focus = focused_path;
 
         let handle = tokio::spawn(async move {
-            let mut job: Option<(String, String, String, Arc<Notify>, String, Option<String>)> =
-                Some((
-                    first_rid,
-                    first_text,
-                    first_req,
-                    first_cancel,
-                    first_cwd,
-                    first_focus,
-                ));
+            let mut job: Option<StudioJob> = Some((
+                first_rid,
+                first_text,
+                first_req,
+                first_cancel,
+                first_cwd,
+                first_focus,
+            ));
 
             while let Some((rid, job_text, _req, job_cancel, job_cwd, job_focus)) = job.take() {
                 let turn = AgentTurnRequest {
