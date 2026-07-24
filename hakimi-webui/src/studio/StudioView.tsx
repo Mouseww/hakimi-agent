@@ -5,10 +5,13 @@ import {
   History,
   Loader2,
   MonitorSmartphone,
+  Plus,
   RefreshCcw,
+  Save,
   Send,
   SquareTerminal,
   Terminal,
+  Trash2,
   Users,
   Layers,
 } from 'lucide-react';
@@ -52,11 +55,17 @@ export default function StudioView() {
   const [showDevices, setShowDevices] = useState(true);
   const [showEcosystem, setShowEcosystem] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
+  const [preview, setPreview] = useState(false);
 
-  const segments = useMemo(
-    () => (studio.dirPath ? studio.dirPath.split('/').filter(Boolean) : []),
-    [studio.dirPath],
-  );
+  const segments = useMemo(() => {
+    const p = studio.dirPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    return p ? p.split('/').filter(Boolean) : [];
+  }, [studio.dirPath]);
+
+  const pathLabel = useMemo(() => {
+    if (!studio.dirPath) return 'workspace';
+    return studio.dirPath.replace(/\\/g, '/');
+  }, [studio.dirPath]);
 
   const highlighted = useMemo(() => {
     if (!studio.filePath || studio.fileContent.length > 300_000) return '';
@@ -79,6 +88,27 @@ export default function StudioView() {
     setDraft('');
   }
 
+  function joinPath(base: string, name: string): string {
+    const b = base.replace(/\/+$/, '');
+    const n = name.replace(/^\/+/, '');
+    return b ? `${b}/${n}` : n;
+  }
+
+  function onNewFile() {
+    const name = window.prompt(
+      'New file path (relative to workspace root)',
+      joinPath(studio.dirPath, 'untitled.txt'),
+    );
+    if (!name) return;
+    studio.createPath(name, false);
+  }
+
+  function onNewFolder() {
+    const name = window.prompt('New folder path', joinPath(studio.dirPath, 'new-folder'));
+    if (!name) return;
+    studio.createPath(name, true);
+  }
+
   const connLabel =
     studio.conn === 'open'
       ? 'connected'
@@ -87,6 +117,7 @@ export default function StudioView() {
         : studio.conn;
 
   const canSubmit = studio.role === 'controller' && studio.conn === 'open';
+  const canEdit = canSubmit;
 
   return (
     <div className="studio-root">
@@ -94,6 +125,18 @@ export default function StudioView() {
         <span className={`studio-live ${studio.conn === 'open' ? 'is-on' : ''}`}>
           <Terminal size={12} aria-hidden />
           Studio · {connLabel}
+        </span>
+        <span
+          className={`studio-agent-badge agent-${studio.agentKind}`}
+          title={
+            studio.agentKind === 'mock'
+              ? 'MockAgentHost — echo only. Use hakimi --serve for real AIAgent.'
+              : studio.agentKind === 'core'
+                ? 'CoreAgentHost — real AIAgent + tools'
+                : 'Probing agent host…'
+          }
+        >
+          agent:{studio.agentKind}
         </span>
         {studio.sessionId && (
           <span className="studio-session mono" title={studio.sessionId}>
@@ -150,6 +193,14 @@ export default function StudioView() {
         )}
       </div>
 
+      {studio.agentKind === 'mock' && (
+        <div className="studio-banner mock">
+          当前是 <strong>Mock Agent</strong>（回声测试），不是真实模型。请用{' '}
+          <code>hakimi --serve</code> / 统一 Gateway 启动（会注入 CoreAgentHost），不要用仅桌面
+          mock 壳。
+        </div>
+      )}
+
       {showDevices && (
         <div className="studio-multi">
           <div className="studio-multi-col">
@@ -170,10 +221,7 @@ export default function StudioView() {
               {studio.devices.map((d) => {
                 const mine = d.device_id === studio.deviceId;
                 return (
-                  <div
-                    key={d.device_id}
-                    className={`studio-device ${mine ? 'is-me' : ''}`}
-                  >
+                  <div key={d.device_id} className={`studio-device ${mine ? 'is-me' : ''}`}>
                     <span className="mono" title={d.device_id}>
                       {d.device_name || d.device_id.slice(0, 14)}
                       {mine ? ' · you' : ''}
@@ -278,44 +326,99 @@ export default function StudioView() {
       <div className="studio-panels">
         <aside className="studio-tree" aria-label="Workspace tree">
           <div className="studio-tree-head">
-            <nav className="studio-crumbs">
-              <button type="button" onClick={() => studio.listDir('')}>
-                /
+            <nav className="studio-crumbs" title={pathLabel === 'workspace' ? '/' : `/${pathLabel}`}>
+              <button type="button" className="crumb-root" onClick={() => studio.listDir('')}>
+                workspace
               </button>
-              {segments.map((seg, i) => (
-                <span key={`${seg}-${i}`}>
-                  <ChevronRight size={12} aria-hidden />
-                  <button
-                    type="button"
-                    onClick={() => studio.listDir(segments.slice(0, i + 1).join('/'))}
-                  >
-                    {seg}
-                  </button>
-                </span>
-              ))}
+              {segments.map((seg, i) => {
+                const target = segments.slice(0, i + 1).join('/');
+                const isLast = i === segments.length - 1;
+                return (
+                  <span key={`${target}-${i}`} className="crumb-seg">
+                    <ChevronRight size={11} aria-hidden className="crumb-sep" />
+                    <button
+                      type="button"
+                      className={isLast ? 'is-current' : undefined}
+                      onClick={() => studio.listDir(target)}
+                      title={target}
+                    >
+                      {seg}
+                    </button>
+                  </span>
+                );
+              })}
             </nav>
+            <div className="studio-tree-actions">
+              <button
+                type="button"
+                className="studio-btn ghost compact"
+                disabled={!canEdit}
+                onClick={onNewFile}
+                title="New file"
+              >
+                <Plus size={12} />
+                <FileText size={12} />
+              </button>
+              <button
+                type="button"
+                className="studio-btn ghost compact"
+                disabled={!canEdit}
+                onClick={onNewFolder}
+                title="New folder"
+              >
+                <Plus size={12} />
+                <Folder size={12} />
+              </button>
+              <button
+                type="button"
+                className="studio-btn ghost compact"
+                onClick={() => studio.listDir(studio.dirPath)}
+                title="Refresh"
+              >
+                <RefreshCcw size={12} />
+              </button>
+            </div>
           </div>
           <div className="studio-tree-body">
             {studio.entries.length === 0 && <div className="studio-empty">Empty</div>}
             {studio.entries.map((entry) => {
               const active = !entry.is_dir && studio.filePath === entry.path;
               return (
-                <button
+                <div
                   key={entry.path}
-                  type="button"
-                  className={`studio-entry ${active ? 'is-active' : ''}`}
-                  onClick={() => {
-                    if (entry.is_dir) studio.listDir(entry.path);
-                    else studio.readFile(entry.path);
-                  }}
+                  className={`studio-entry-row ${active ? 'is-active' : ''}`}
                 >
-                  {entry.is_dir ? (
-                    <Folder size={14} aria-hidden />
-                  ) : (
-                    <FileText size={14} aria-hidden />
+                  <button
+                    type="button"
+                    className="studio-entry"
+                    onClick={() => {
+                      if (entry.is_dir) studio.listDir(entry.path);
+                      else studio.readFile(entry.path);
+                    }}
+                  >
+                    {entry.is_dir ? (
+                      <Folder size={14} aria-hidden />
+                    ) : (
+                      <FileText size={14} aria-hidden />
+                    )}
+                    <span>{entry.name}</span>
+                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="studio-btn ghost compact entry-del"
+                      title="Delete"
+                      onClick={() => {
+                        const ok = entry.is_dir
+                          ? Danger.deleteRecursive(entry.path)
+                          : Danger.deleteFile(entry.path);
+                        if (ok) studio.deletePath(entry.path, entry.is_dir);
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   )}
-                  <span>{entry.name}</span>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -324,20 +427,68 @@ export default function StudioView() {
         <section className="studio-editor" aria-label="Editor">
           {studio.filePath ? (
             <>
-              <div className="studio-file-head mono">{studio.filePath}</div>
-              <pre className="studio-code">
-                {highlighted ? (
-                  <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
-                ) : (
-                  <code className="hljs">{studio.fileContent}</code>
-                )}
-              </pre>
+              <div className="studio-file-head mono">
+                <span className="studio-file-path">
+                  {studio.filePath}
+                  {studio.fileDirty ? ' ·' : ''}
+                </span>
+                <div className="studio-file-actions">
+                  <button
+                    type="button"
+                    className="studio-btn ghost compact"
+                    onClick={() => setPreview((v) => !v)}
+                    title="Toggle highlight preview"
+                  >
+                    {preview ? 'Edit' : 'Preview'}
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-btn primary compact"
+                    disabled={!canEdit || !studio.fileDirty || studio.fileSaving}
+                    onClick={() => studio.saveFile()}
+                    title="Save (Ctrl/Cmd+S)"
+                  >
+                    {studio.fileSaving ? (
+                      <Loader2 size={12} className="spin" />
+                    ) : (
+                      <Save size={12} />
+                    )}{' '}
+                    Save
+                  </button>
+                </div>
+              </div>
+              {preview ? (
+                <pre className="studio-code">
+                  {highlighted ? (
+                    <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
+                  ) : (
+                    <code className="hljs">{studio.fileContent}</code>
+                  )}
+                </pre>
+              ) : (
+                <textarea
+                  className="studio-code-edit"
+                  value={studio.fileContent}
+                  disabled={!canEdit}
+                  spellCheck={false}
+                  onChange={(e) => studio.setEditorContent(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                      e.preventDefault();
+                      if (canEdit && studio.fileDirty) studio.saveFile();
+                    }
+                  }}
+                />
+              )}
             </>
           ) : (
             <div className="studio-editor-empty">
               <FileText size={28} aria-hidden />
               <h3>Hakimi Studio</h3>
-              <p>Select a file. Multi-device: share ?session=&role=viewer</p>
+              <p>
+                Open a file to edit. Use tree actions for New / Delete. Multi-device: share{' '}
+                <code>?session=&role=viewer</code>
+              </p>
             </div>
           )}
         </section>
@@ -348,17 +499,44 @@ export default function StudioView() {
             Agent
             {studio.busy && <Loader2 size={14} className="spin" aria-hidden />}
             {studio.role === 'viewer' && <span className="studio-badge">read-only</span>}
+            {studio.agentKind === 'mock' && <span className="studio-badge mock">mock</span>}
           </div>
           <div className="studio-chat-body">
             {studio.messages.length === 0 && !studio.streaming && (
               <div className="studio-empty">
-                Ask the agent. Controller can submit; viewers observe.
+                {studio.agentKind === 'mock'
+                  ? 'Mock host: messages are echoed. Start with hakimi --serve for real agent.'
+                  : 'Ask the agent. Controller can submit; viewers observe.'}
               </div>
             )}
             {studio.messages.map((m) => (
-              <div key={m.id} className={`studio-msg role-${m.role}`}>
-                <div className="studio-msg-role">{m.role}</div>
-                <div className="studio-msg-body">{m.content}</div>
+              <div
+                key={m.id}
+                className={`studio-msg role-${m.role}${
+                  m.role === 'tool' && m.toolStatus ? ` tool-${m.toolStatus}` : ''
+                }`}
+              >
+                <div className="studio-msg-role">
+                  {m.role === 'tool'
+                    ? m.toolStatus === 'running'
+                      ? 'tool · running'
+                      : m.toolStatus === 'error'
+                        ? 'tool · error'
+                        : 'tool'
+                    : m.role}
+                </div>
+                <div className="studio-msg-body">
+                  {m.role === 'tool' ? (
+                    <span className="studio-tool-line">
+                      <span className="studio-tool-icon" aria-hidden>
+                        {m.toolStatus === 'running' ? '◉' : m.toolStatus === 'error' ? '✕' : '✓'}
+                      </span>
+                      <code>{m.toolName || m.content}</code>
+                    </span>
+                  ) : (
+                    m.content
+                  )}
+                </div>
               </div>
             ))}
             {studio.streaming && (
@@ -374,7 +552,9 @@ export default function StudioView() {
               onChange={(e) => setDraft(e.target.value)}
               placeholder={
                 canSubmit
-                  ? 'Message Studio agent…'
+                  ? studio.agentKind === 'mock'
+                    ? 'Mock mode — will only echo…'
+                    : 'Message Studio agent…'
                   : studio.role === 'viewer'
                     ? 'Viewer mode — watch only'
                     : 'Connecting…'

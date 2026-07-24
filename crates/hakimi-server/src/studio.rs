@@ -27,25 +27,28 @@ use crate::core_agent_host::CoreAgentHost;
 #[derive(Clone)]
 pub struct StudioState {
     pub runtime: Arc<StudioRuntime>,
+    /// `core` when wired to shared AIAgent; `mock` for tests / desktop shell without agent.
+    pub agent_kind: &'static str,
 }
 
 impl StudioState {
-    /// Mock agent host (tests / fallback).
+    /// Mock agent host (tests / desktop shell without full agent stack).
     pub fn new() -> Self {
-        Self::with_host(Arc::new(MockAgentHost))
+        Self::with_host(Arc::new(MockAgentHost), "mock")
     }
 
     /// Wire the process shared `AIAgent` into Studio chat turns.
     pub fn with_shared_agent(agent: Arc<Mutex<hakimi_core::AIAgent>>) -> Self {
-        Self::with_host(Arc::new(CoreAgentHost::new(agent)))
+        Self::with_host(Arc::new(CoreAgentHost::new(agent)), "core")
     }
 
-    pub fn with_host(host: Arc<dyn AgentHost>) -> Self {
+    pub fn with_host(host: Arc<dyn AgentHost>, agent_kind: &'static str) -> Self {
         let st = Self {
             runtime: Arc::new(StudioRuntime::with_agent_host(
                 format!("local-{}", uuid_simple()),
                 host,
             )),
+            agent_kind,
         };
         // Optional: attach as pure-relay hub worker when HAKIMI_HUB_URL is set.
         if let Some(cfg) = crate::hub_worker::HubWorkerConfig::from_env() {
@@ -88,7 +91,13 @@ async fn studio_health(State(st): State<StudioState>) -> impl IntoResponse {
         "protocol_version": hakimi_studio_api::PROTOCOL_VERSION,
         "local_device_id": st.runtime.local_device_id(),
         "prefer_runner": "local",
-        "agent": "core",
+        // Accurate host: mock = echo stub; core = shared AIAgent (hakimi --serve)
+        "agent": st.agent_kind,
+        "agent_hint": if st.agent_kind == "mock" {
+            "MockAgentHost: replies with 'Studio mock reply'. Use `hakimi --serve` (CoreAgentHost) for real tools/models."
+        } else {
+            "CoreAgentHost: streaming turns via shared AIAgent."
+        },
     }))
 }
 

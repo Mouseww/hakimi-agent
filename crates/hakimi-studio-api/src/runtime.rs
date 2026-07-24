@@ -66,6 +66,9 @@ struct QueuedPrompt {
     client_request_id: String,
     #[allow(dead_code)]
     preempt: bool,
+    /// Workspace-relative Studio tree cwd for this prompt.
+    cwd: String,
+    focused_path: Option<String>,
 }
 
 struct ActiveRun {
@@ -92,6 +95,8 @@ enum EnqueueAction {
         text: String,
         client_request_id: String,
         preempted_run: Option<String>,
+        cwd: String,
+        focused_path: Option<String>,
     },
 }
 
@@ -410,23 +415,41 @@ impl StudioRuntime {
                 text,
                 client_request_id,
                 preempt,
+                cwd,
+                focused_path,
             } => {
                 if let Some(err) = self.require_controller(&session_id, actor_device_id).await {
                     return Ok(vec![err]);
                 }
-                self.enqueue_or_start(session_id, text, client_request_id, preempt)
-                    .await
+                self.enqueue_or_start(
+                    session_id,
+                    text,
+                    client_request_id,
+                    preempt,
+                    cwd.unwrap_or_default(),
+                    focused_path,
+                )
+                .await
             }
             StudioCommand::ChatPreempt {
                 session_id,
                 text,
                 client_request_id,
+                cwd,
+                focused_path,
             } => {
                 if let Some(err) = self.require_controller(&session_id, actor_device_id).await {
                     return Ok(vec![err]);
                 }
-                self.enqueue_or_start(session_id, text, client_request_id, true)
-                    .await
+                self.enqueue_or_start(
+                    session_id,
+                    text,
+                    client_request_id,
+                    true,
+                    cwd.unwrap_or_default(),
+                    focused_path,
+                )
+                .await
             }
             StudioCommand::ChatCancel { session_id, run_id } => {
                 if let Some(err) = self.require_controller(&session_id, actor_device_id).await {
@@ -906,6 +929,8 @@ impl StudioRuntime {
         text: String,
         client_request_id: String,
         preempt: bool,
+        cwd: String,
+        focused_path: Option<String>,
     ) -> Result<Vec<StudioEventEnvelope>> {
         let mut out = Vec::new();
 
@@ -937,6 +962,8 @@ impl StudioRuntime {
                                     text,
                                     client_request_id,
                                     preempted_run: Some(preempted_run),
+                                    cwd: cwd.clone(),
+                                    focused_path: focused_path.clone(),
                                 }
                             } else {
                                 sess.current = Some(active);
@@ -945,6 +972,8 @@ impl StudioRuntime {
                                     text,
                                     client_request_id: client_request_id.clone(),
                                     preempt: false,
+                                    cwd: cwd.clone(),
+                                    focused_path: focused_path.clone(),
                                 });
                                 let depth = sess.queue.len();
                                 let items: Vec<QueueItemView> = sess
@@ -972,6 +1001,8 @@ impl StudioRuntime {
                                 text,
                                 client_request_id,
                                 preempted_run: None,
+                                cwd,
+                                focused_path,
                             }
                         }
                     }
@@ -1042,6 +1073,8 @@ impl StudioRuntime {
                 text,
                 client_request_id,
                 preempted_run,
+                cwd,
+                focused_path,
             } => {
                 if let Some(prev) = preempted_run {
                     out.push(
@@ -1058,7 +1091,7 @@ impl StudioRuntime {
                     );
                 }
                 out.extend(
-                    self.spawn_run(session_id, run_id, text, client_request_id)
+                    self.spawn_run(session_id, run_id, text, client_request_id, cwd, focused_path)
                         .await?,
                 );
                 Ok(out)
@@ -1072,28 +1105,40 @@ impl StudioRuntime {
         run_id: String,
         text: String,
         client_request_id: String,
+        cwd: String,
+        focused_path: Option<String>,
     ) -> Result<Vec<StudioEventEnvelope>> {
         let cancel = Arc::new(Notify::new());
         let bus = self.bus.clone();
         let state = self.state.clone();
         let agent_host = self.agent_host.clone();
+        let workspace_root = self
+            .workspace
+            .root()
+            .to_string_lossy()
+            .into_owned();
         let sid = session_id.clone();
         let first_rid = run_id.clone();
         let first_text = text;
         let first_req = client_request_id.clone();
         let first_cancel = cancel.clone();
+        let first_cwd = cwd;
+        let first_focus = focused_path;
 
         let handle = tokio::spawn(async move {
-            let mut job: Option<(String, String, String, Arc<Notify>)> =
-                Some((first_rid, first_text, first_req, first_cancel));
+            let mut job: Option<(String, String, String, Arc<Notify>, String, Option<String>)> =
+                Some((first_rid, first_text, first_req, first_cancel, first_cwd, first_focus));
 
-            while let Some((rid, job_text, _req, job_cancel)) = job.take() {
+            while let Some((rid, job_text, _req, job_cancel, job_cwd, job_focus)) = job.take() {
                 let turn = AgentTurnRequest {
                     session_id: sid.clone(),
                     run_id: rid.clone(),
                     user_text: job_text,
                     cancel: job_cancel,
                     bus: bus.clone(),
+                    workspace_root: workspace_root.clone(),
+                    cwd: job_cwd,
+                    focused_path: job_focus,
                 };
                 if let Err(e) = agent_host.run_turn(turn).await {
                     warn!(error = %e, "agent host turn error");
@@ -1165,6 +1210,8 @@ impl StudioRuntime {
                     .collect();
                 let next_req = q.client_request_id.clone();
                 let next_text = q.text;
+                let next_cwd = q.cwd;
+                let next_focus = q.focused_path;
                 drop(g);
 
                 let _ = bus
@@ -1187,7 +1234,7 @@ impl StudioRuntime {
                         },
                     )
                     .await;
-                job = Some((next_run, next_text, next_req, next_cancel));
+                job = Some((next_run, next_text, next_req, next_cancel, next_cwd, next_focus));
             }
         });
 
@@ -1290,6 +1337,8 @@ mod tests {
             text: "hello".into(),
             client_request_id: "req-1".into(),
             preempt: false,
+            cwd: None,
+            focused_path: None,
         })
         .await
         .unwrap();
@@ -1335,6 +1384,8 @@ mod tests {
             text: "first".into(),
             client_request_id: "a".into(),
             preempt: false,
+            cwd: None,
+            focused_path: None,
         })
         .await
         .unwrap();
@@ -1345,6 +1396,8 @@ mod tests {
                 text: "second".into(),
                 client_request_id: "b".into(),
                 preempt: false,
+                cwd: None,
+                focused_path: None,
             })
             .await
             .unwrap();
@@ -1406,6 +1459,8 @@ mod tests {
                 text: "nope".into(),
                 client_request_id: "v1".into(),
                 preempt: false,
+                cwd: None,
+                focused_path: None,
             })
             .await
             .unwrap();
@@ -1460,6 +1515,8 @@ mod tests {
                 text: "hi".into(),
                 client_request_id: "b1".into(),
                 preempt: false,
+                cwd: None,
+                focused_path: None,
             })
             .await
             .unwrap();
@@ -1536,6 +1593,8 @@ mod tests {
                     text: "from-a".into(),
                     client_request_id: "a1".into(),
                     preempt: false,
+                    cwd: None,
+                    focused_path: None,
                 },
             )
             .await
@@ -1555,6 +1614,8 @@ mod tests {
                     text: "from-b".into(),
                     client_request_id: "b1".into(),
                     preempt: false,
+                    cwd: None,
+                    focused_path: None,
                 },
             )
             .await

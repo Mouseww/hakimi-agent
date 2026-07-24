@@ -52,29 +52,91 @@ impl AgentHost for CoreAgentHost {
             cloned.clear_interrupt();
             cloned.set_streaming(true);
 
+            // Align tool workdir with Studio focus so relative paths resolve where the
+            // user is browsing (workspace_root/cwd), not the process CWD alone.
+            let workspace_root = req.workspace_root.clone();
+            let cwd_rel = req.cwd.trim().trim_start_matches('/').trim_end_matches('/');
+            let tool_workdir = if workspace_root.is_empty() {
+                if cwd_rel.is_empty() {
+                    ".".to_string()
+                } else {
+                    cwd_rel.to_string()
+                }
+            } else if cwd_rel.is_empty() {
+                workspace_root.clone()
+            } else {
+                format!(
+                    "{}/{}",
+                    workspace_root.trim_end_matches('/'),
+                    cwd_rel
+                )
+            };
+            cloned.set_workdir(tool_workdir.clone());
+
+            // Inject Studio focus context so the model knows where the user is.
+            let user_text = {
+                let mut ctx = String::new();
+                ctx.push_str("[Studio context]\n");
+                ctx.push_str(&format!("workspace_root: {workspace_root}\n"));
+                if cwd_rel.is_empty() {
+                    ctx.push_str("cwd: / (workspace root)\n");
+                } else {
+                    ctx.push_str(&format!("cwd: {cwd_rel}\n"));
+                }
+                ctx.push_str(&format!("tool_workdir: {tool_workdir}\n"));
+                if let Some(ref focus) = req.focused_path {
+                    let f = focus.trim().trim_start_matches('/');
+                    if !f.is_empty() {
+                        ctx.push_str(&format!("focused_file: {f}\n"));
+                    }
+                }
+                ctx.push_str(
+                    "Tools run with tool_workdir as the current directory. Prefer cwd/focused_file when the user says \"this folder\", \"current file\", or \"here\". Paths may be relative to tool_workdir or workspace_root.\n\n",
+                );
+                ctx.push_str(&req.user_text);
+                ctx
+            };
+
             // Map streaming tokens → Studio events (tool markers + text deltas).
+            // Process tokens on a single ordered task so MessageDelta / ToolStarted
+            // never race (spawn-per-token reorders and breaks the chat timeline).
             let bus = req.bus.clone();
             let sid = req.session_id.clone();
             let rid = req.run_id.clone();
             let open_tools: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
 
-            let open_tools_cb = open_tools.clone();
-            let bus_cb = bus.clone();
-            let sid_cb = sid.clone();
-            let rid_cb = rid.clone();
+            let (token_tx, mut token_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            // Wrap sender so we can force-close the channel after the turn even if
+            // the agent still holds a callback Arc.
+            let token_tx = Arc::new(std::sync::Mutex::new(Some(token_tx)));
+            let open_tools_worker = open_tools.clone();
+            let bus_worker = bus.clone();
+            let sid_worker = sid.clone();
+            let rid_worker = rid.clone();
+            let stream_worker = tokio::spawn(async move {
+                while let Some(token) = token_rx.recv().await {
+                    handle_stream_token(
+                        bus_worker.clone(),
+                        sid_worker.clone(),
+                        rid_worker.clone(),
+                        open_tools_worker.clone(),
+                        token,
+                    )
+                    .await;
+                }
+            });
+
+            let token_tx_cb = token_tx.clone();
             cloned.set_streaming_callback(Some(Arc::new(move |token: String| {
-                let bus = bus_cb.clone();
-                let sid = sid_cb.clone();
-                let rid = rid_cb.clone();
-                let open_tools = open_tools_cb.clone();
-                tokio::spawn(async move {
-                    handle_stream_token(bus, sid, rid, open_tools, token).await;
-                });
+                if let Ok(guard) = token_tx_cb.lock() {
+                    if let Some(tx) = guard.as_ref() {
+                        let _ = tx.send(token);
+                    }
+                }
             })));
 
             // Race chat against cancel.
             let cancel = req.cancel.clone();
-            let user_text = req.user_text.clone();
             // Keep interrupt handle so cancel can stop the agent loop.
             let interrupt = cloned.interrupt_handle();
 
@@ -97,6 +159,13 @@ impl AgentHost for CoreAgentHost {
             // Clear clone callbacks so nothing holds the bus sender.
             cloned.set_streaming_callback(None);
             cloned.set_event_callback(None);
+
+            // Force-close the token channel and drain the ordered worker so every
+            // MessageDelta / ToolStarted is emitted before MessageCompleted.
+            if let Ok(mut guard) = token_tx.lock() {
+                *guard = None;
+            }
+            let _ = stream_worker.await;
 
             match outcome {
                 None => {

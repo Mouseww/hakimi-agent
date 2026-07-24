@@ -732,6 +732,11 @@ impl AIAgent {
         self.session_id = session_id.into();
     }
 
+    /// Override the tool working directory for subsequent turns / tool dispatches.
+    pub fn set_workdir(&mut self, dir: impl Into<String>) {
+        self.workdir = dir.into();
+    }
+
     /// Get the model identifier.
     pub fn model(&self) -> &str {
         &self.model

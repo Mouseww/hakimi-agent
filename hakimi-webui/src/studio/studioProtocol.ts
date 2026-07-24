@@ -48,6 +48,10 @@ export type StudioCommand =
       text: string;
       client_request_id: string;
       preempt?: boolean;
+      /** Workspace-relative Studio tree cwd (e.g. `src/studio`). */
+      cwd?: string;
+      /** Workspace-relative focused file path. */
+      focused_path?: string;
     }
   | { type: 'chat_cancel'; session_id: string; run_id?: string }
   | {
@@ -55,6 +59,8 @@ export type StudioCommand =
       session_id: string;
       text: string;
       client_request_id: string;
+      cwd?: string;
+      focused_path?: string;
     }
   | {
       type: 'runner_handoff';
@@ -185,6 +191,17 @@ export type StudioEvent =
       content: string;
     }
   | { type: 'workspace_written'; session_id?: string | null; path: string }
+  | {
+      type: 'workspace_created';
+      session_id?: string | null;
+      path: string;
+      is_dir?: boolean;
+    }
+  | {
+      type: 'workspace_deleted';
+      session_id?: string | null;
+      path: string;
+    }
   | {
       type: 'checkpoint_created';
       session_id?: string | null;

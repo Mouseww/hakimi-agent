@@ -82,6 +82,12 @@ pub enum StudioCommand {
         /// If true and a run is active, preempt it (cancel + start this).
         #[serde(default)]
         preempt: bool,
+        /// Studio tree cwd (workspace-relative), e.g. `src/studio`.
+        #[serde(default)]
+        cwd: Option<String>,
+        /// Focused file path (workspace-relative), if any.
+        #[serde(default)]
+        focused_path: Option<String>,
     },
     ChatCancel {
         session_id: String,
@@ -92,6 +98,10 @@ pub enum StudioCommand {
         session_id: String,
         text: String,
         client_request_id: String,
+        #[serde(default)]
+        cwd: Option<String>,
+        #[serde(default)]
+        focused_path: Option<String>,
     },
     RunnerHandoff {
         session_id: String,

@@ -20,6 +20,12 @@ pub struct AgentTurnRequest {
     pub user_text: String,
     pub cancel: Arc<Notify>,
     pub bus: EventBus,
+    /// Absolute workspace root (path jail + tool workdir base).
+    pub workspace_root: String,
+    /// Workspace-relative cwd the user is browsing (may be empty = root).
+    pub cwd: String,
+    /// Workspace-relative focused file, if any.
+    pub focused_path: Option<String>,
 }
 
 /// Host that executes a single chat turn and emits Studio events on `bus`.
@@ -103,7 +109,10 @@ async fn mock_agent_loop(
     )
     .await;
 
-    let reply = format!("Studio mock reply: {user_text}");
+    // Explicit mock marker so UI/users never confuse this with CoreAgentHost.
+    let reply = format!(
+        "[mock] Studio mock reply (no AIAgent wired — run `hakimi --serve` for real agent):\n\n{user_text}"
+    );
     for ch in reply.chars() {
         tokio::select! {
             _ = cancel.notified() => {

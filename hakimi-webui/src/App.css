@@ -2649,3 +2649,10 @@ h3 {
   50% { transform: scaleY(1.8); opacity: 1; }
 }
 
+
+/* Studio fills the console without agent rail */
+.console-main.studio-full {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}

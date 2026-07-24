@@ -26,6 +26,7 @@ import PersonaRail from './PersonaRail';
 import PersonaConfigForm from './PersonaConfigForm';
 import InstanceSettings from './InstanceSettings';
 import WorkspacePanel from './WorkspacePanel';
+import StudioView from './studio/StudioView';
 import OfficeView from './OfficeView';
 import { SessionTree } from './SessionTree';
 import { useI18n } from './i18n';
@@ -136,7 +137,7 @@ function App() {
   const [sessionQuery, setSessionQuery] = useState('');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activePersonaId, setActivePersonaId] = useState<string | null>(null);
-  const [view, setView] = useState<'chat' | 'config' | 'instance' | 'workspace' | 'office'>('office');
+  const [view, setView] = useState<'chat' | 'config' | 'instance' | 'workspace' | 'office' | 'studio'>('studio');
   const [editingPersona, setEditingPersona] = useState<Agent | null>(null);
   const [showSessions, setShowSessions] = useState(true);
   const [showSessionTree, setShowSessionTree] = useState(false);
@@ -716,6 +717,15 @@ function App() {
           </button>
           <button
             type="button"
+            className={`topbar-nav-btn ${view === 'studio' ? 'is-active' : ''}`}
+            onClick={() => setView('studio')}
+            title="Hakimi Studio"
+          >
+            <SquareTerminal size={15} aria-hidden="true" />
+            <span>Studio</span>
+          </button>
+          <button
+            type="button"
             className={`topbar-nav-btn ${view === 'office' ? 'is-active' : ''}`}
             onClick={() => setView('office')}
             title={t('rail.office')}
@@ -766,6 +776,7 @@ function App() {
       </header>
 
       <div className="console-body">
+        {view !== 'studio' && (
         <PersonaRail
           agents={agents}
           activeId={activePersonaId}
@@ -774,8 +785,11 @@ function App() {
           onEdit={handleEditPersona}
           onCreate={handleCreatePersona}
         />
-        <div className="console-main">
-          {view === 'office' ? (
+        )}
+        <div className={`console-main ${view === 'studio' ? 'studio-full' : ''}`}>
+          {view === 'studio' ? (
+            <StudioView />
+          ) : view === 'office' ? (
             <OfficeView onOpenPersona={handleSelectPersona} />
           ) : view === 'instance' ? (
             <InstanceSettings />

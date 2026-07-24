@@ -374,6 +374,38 @@ function dispatchAuthRequired() {
   window.dispatchEvent(new CustomEvent(AUTH_EVENT));
 }
 
+/** True when body looks like SPA HTML instead of a JSON API payload. */
+function looksLikeHtml(body: string, contentType: string | null): boolean {
+  const ct = (contentType ?? '').toLowerCase();
+  if (ct.includes('text/html')) return true;
+  const head = body.trimStart().slice(0, 32).toLowerCase();
+  return head.startsWith('<!doctype') || head.startsWith('<html');
+}
+
+async function readJsonOrThrow<T>(response: Response, path: string): Promise<T> {
+  const contentType = response.headers.get('content-type');
+  const raw = await response.text();
+
+  if (looksLikeHtml(raw, contentType)) {
+    throw new Error(
+      `API ${path} returned HTML (SPA fallback) instead of JSON — server binary is outdated or the route is missing. Rebuild/restart hakimi (need ≥0.5.125).`,
+    );
+  }
+
+  if (!raw.trim()) {
+    // Empty body is valid for some 204-style handlers; treat as null-ish object.
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(
+      `API ${path} returned non-JSON (${contentType ?? 'unknown content-type'}): ${raw.slice(0, 120)}`,
+    );
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const headers: Record<string, string> = {
@@ -396,15 +428,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     let message = `${response.status} ${response.statusText}`;
     try {
-      const payload = (await response.json()) as { error?: string };
-      message = payload.error ?? message;
-    } catch {
+      const payload = await readJsonOrThrow<{ error?: string; message?: string }>(response, path);
+      message = payload.error ?? payload.message ?? message;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('SPA fallback')) {
+        throw err;
+      }
       // Middleware can return an empty body for authentication failures.
     }
     throw new Error(message);
   }
 
-  return (await response.json()) as T;
+  return readJsonOrThrow<T>(response, path);
 }
 
 export interface GatewayPlatformStatus {

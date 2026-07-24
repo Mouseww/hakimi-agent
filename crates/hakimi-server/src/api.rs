@@ -2594,7 +2594,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/index.html", get(webui_index))
         .route("/favicon.svg", get(webui_favicon))
         .route("/static/{*path}", get(webui_static_asset))
-        .fallback(get(webui_index))
+        // SPA shell only for non-API paths. /api and /v1 must never return HTML —
+        // that produces "Unexpected token '<'" in the frontend JSON parser.
+        .fallback(api_aware_spa_fallback)
         .with_state(state);
 
     // Studio has its own state (wired to the same shared AIAgent); both sides are
@@ -2633,6 +2635,22 @@ async fn webui_static_asset(Path(path): Path<String>) -> Response {
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
+
+/// SPA fallback that never returns HTML for `/api/*` or `/v1/*`.
+/// Frontend expects JSON; HTML fallback causes "Unexpected token '<'" parse errors.
+async fn api_aware_spa_fallback(uri: axum::http::Uri) -> Response {
+    let path = uri.path();
+    if path.starts_with("/api/") || path == "/api" || path.starts_with("/v1/") || path == "/v1" {
+        return (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "application/json")],
+            format!(r#"{{"error":"not found","path":"{path}"}}"#),
+        )
+            .into_response();
+    }
+    webui_index().await
+}
+
 // Handlers
 // ---------------------------------------------------------------------------
 

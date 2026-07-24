@@ -5,7 +5,7 @@ import { useI18n } from './i18n';
 interface PersonaRailProps {
   agents: Agent[];
   activeId: string | null;
-  view: 'chat' | 'config' | 'instance' | 'workspace' | 'office';
+  view: 'chat' | 'config' | 'instance' | 'workspace' | 'office' | 'studio';
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onCreate: () => void;

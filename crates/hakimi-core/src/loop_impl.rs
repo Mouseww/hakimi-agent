@@ -263,6 +263,19 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
 
         // Check for tool calls.
         if response.has_tool_calls() {
+            // Some providers attach pre-tool prose on the assembled response
+            // without streaming it as ContentDelta. Emit once so Studio can
+            // place assistant text before tool cards.
+            if streaming {
+                if let Some(ref content) = response.content {
+                    let trimmed = content.trim();
+                    if !trimmed.is_empty() {
+                        if let Some(ref cb) = agent.streaming_callback {
+                            cb(content.clone());
+                        }
+                    }
+                }
+            }
             process_tool_calls(agent, &response, &tool_ctx, &mut tool_guardrails).await;
             budget.use_one();
             continue;
