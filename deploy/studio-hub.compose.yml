@@ -1,0 +1,29 @@
+# Hakimi Studio Hub — multi-device relay (Phase 2+)
+#
+# Hub does NOT execute tools and does NOT store plaintext provider keys.
+# Active Runner (hakimi-server / desktop worker) holds keys and runs agent.
+#
+# Modes (HAKIMI_HUB_MODE):
+#   embedded — demo with in-process StudioRuntime (local smoke)
+#   relay    — pure relay; workers use worker_publish + worker_dispatch
+
+services:
+  hakimi-hub:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.hub
+    image: hakimi-hub:local
+    ports:
+      - "3010:3010"
+    environment:
+      HAKIMI_HUB_BIND: "0.0.0.0:3010"
+      HAKIMI_HUB_MODE: "${HAKIMI_HUB_MODE:-relay}"
+      # Optional shared secret for hello.token
+      HAKIMI_HUB_TOKEN: "${HAKIMI_HUB_TOKEN:-}"
+      RUST_LOG: "info,hakimi_hub=debug"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3010/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

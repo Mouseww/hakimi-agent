@@ -24,6 +24,10 @@ members = [
     "crates/hakimi-i18n",
     "qq-bot-sdk",
     "crates/hakimi-metrics",
+    "crates/hakimi-studio-api",
+    "crates/hakimi-workspace",
+    "crates/hakimi-hub",
+    "crates/hakimi-desktop",
 ]
 exclude = [
     "examples/hello-wasm-plugin",
@@ -34,7 +38,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.5.124"
+version = "0.5.125"
 edition = "2024"
 
 [workspace.dependencies]

@@ -63,7 +63,12 @@ impl PluginContext {
     pub fn log(&self, level: &str, message: &str) {
         #[cfg(target_arch = "wasm32")]
         unsafe {
-            host_log(level.as_ptr(), level.len() as i32, message.as_ptr(), message.len() as i32);
+            host_log(
+                level.as_ptr(),
+                level.len() as i32,
+                message.as_ptr(),
+                message.len() as i32,
+            );
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -93,8 +98,14 @@ impl PluginContext {
         #[cfg(target_arch = "wasm32")]
         {
             let mut buf = vec![0u8; 4096];
-            let len =
-                unsafe { host_http_request(url.as_ptr(), url.len() as i32, buf.as_mut_ptr(), buf.len() as i32) };
+            let len = unsafe {
+                host_http_request(
+                    url.as_ptr(),
+                    url.len() as i32,
+                    buf.as_mut_ptr(),
+                    buf.len() as i32,
+                )
+            };
 
             if len < 0 {
                 return Err(format!("HTTP request failed with code: {}", len));
@@ -124,12 +135,7 @@ impl Default for PluginContext {
 #[link(wasm_import_module = "hakimi")]
 extern "C" {
     fn host_log(level_ptr: *const u8, level_len: i32, msg_ptr: *const u8, msg_len: i32);
-    fn host_http_request(
-        url_ptr: *const u8,
-        url_len: i32,
-        out_ptr: *mut u8,
-        out_len: i32,
-    ) -> i32;
+    fn host_http_request(url_ptr: *const u8, url_len: i32, out_ptr: *mut u8, out_len: i32) -> i32;
 }
 
 /// 标准插件结果类型
@@ -142,8 +148,8 @@ mod tests {
     #[test]
     fn test_plugin_context_creation() {
         let ctx = PluginContext::new();
-        // 上下文创建成功（无 panic）
-        assert!(std::mem::size_of_val(&ctx) >= 0);
+        // ZST is fine; ensure new() + log() do not panic.
+        ctx.log("info", "plugin-sdk smoke");
     }
 
     #[test]

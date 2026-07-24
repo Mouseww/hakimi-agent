@@ -1,0 +1,228 @@
+# Hakimi Studio desktop packaging (cloud matrix).
+# Headless binary on all OS; GUI + installers on hosts with WebKit 4.1 / WebView2 / WKWebView.
+#
+# Does not run heavy local builds on EL9 — use GitHub-hosted runners.
+
+name: Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+    branches: [main, master]
+    paths:
+      - "crates/hakimi-desktop/**"
+      - "crates/hakimi-studio-api/**"
+      - "crates/hakimi-workspace/**"
+      - "crates/hakimi-server/**"
+      - "crates/hakimi-webui/static/**"
+      - "hakimi-webui/**"
+      - "docs/hakimi-studio/DESKTOP.md"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "crates/hakimi-desktop/**"
+      - "crates/hakimi-studio-api/**"
+      - "crates/hakimi-workspace/**"
+      - "crates/hakimi-server/**"
+      - "crates/hakimi-webui/static/**"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Always-green: headless Studio backend binary (no WebKit / no Tauri)
+  # ---------------------------------------------------------------------------
+  headless:
+    name: Headless (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: hakimi-desktop-x86_64-unknown-linux-gnu
+            bin: hakimi-desktop
+          - os: windows-latest
+            artifact: hakimi-desktop-x86_64-pc-windows-msvc
+            bin: hakimi-desktop.exe
+          - os: macos-latest
+            artifact: hakimi-desktop-aarch64-apple-darwin
+            bin: hakimi-desktop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          prefix-key: desktop-headless-${{ matrix.os }}
+
+      - name: Build headless desktop
+        run: cargo build -p hakimi-desktop --release
+
+      - name: Smoke --once
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./target/release/${{ matrix.bin }} --once
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "target/release/${{ matrix.bin }}" dist/
+          cp crates/hakimi-desktop/README.md dist/ 2>/dev/null || true
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "../${{ matrix.artifact }}.zip" ./*
+          else
+            tar czf "../${{ matrix.artifact }}.tar.gz" ./*
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # GUI feature + native installers (WebKit 4.1 / system webview)
+  # ---------------------------------------------------------------------------
+  gui:
+    name: GUI pack (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: hakimi-studio-linux-x86_64
+            bundle_glob: "target/release/bundle/**/*"
+          - os: windows-latest
+            artifact: hakimi-studio-windows-x86_64
+            bundle_glob: "target/release/bundle/**/*"
+          - os: macos-latest
+            artifact: hakimi-studio-macos-aarch64
+            bundle_glob: "target/release/bundle/**/*"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          prefix-key: desktop-gui-${{ matrix.os }}
+
+      - name: Install Linux WebKit / bundler deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # Prefer ayatana (conflicts with classic libappindicator3 on Ubuntu 22.04+)
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            file
+
+      - name: Setup Node (for prebuilt tauri CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install @tauri-apps/cli
+        # cargo install tauri-cli on nightly fails (rustix / rustc_attrs); use npm binary
+        run: npm install -g @tauri-apps/cli@2
+
+      - name: Build GUI binary
+        run: cargo build -p hakimi-desktop --release --features gui
+
+      - name: Tauri bundle
+        working-directory: crates/hakimi-desktop
+        shell: bash
+        # Prefer npm CLI binary (works on Windows runners too with bash shell)
+        run: |
+          set -euo pipefail
+          if command -v tauri >/dev/null 2>&1; then
+            tauri build --features gui
+          else
+            npx --yes @tauri-apps/cli@2 build --features gui
+          fi
+
+      - name: Collect bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # Workspace target (preferred)
+          if [ -d target/release/bundle ]; then
+            cp -R target/release/bundle out/bundle || true
+          fi
+          # Fallback: crate-local target
+          if [ -d crates/hakimi-desktop/target/release/bundle ]; then
+            mkdir -p out/bundle
+            cp -R crates/hakimi-desktop/target/release/bundle/* out/bundle/ || true
+          fi
+          # Always ship the GUI-linked binary too
+          if [ -f target/release/hakimi-desktop ]; then
+            cp target/release/hakimi-desktop out/
+          fi
+          if [ -f target/release/hakimi-desktop.exe ]; then
+            cp target/release/hakimi-desktop.exe out/
+          fi
+          # Avoid pipefail+head SIGPIPE (exit 141) on large trees
+          find out -type f | sed -n '1,50p' || true
+          count="$(find out -type f | wc -l | tr -d ' ')"
+          echo "collected files: $count"
+          test "$count" -gt 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: out/**
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # On tag: attach desktop artifacts to the GitHub Release
+  # ---------------------------------------------------------------------------
+  release-assets:
+    name: Attach release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [headless, gui]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

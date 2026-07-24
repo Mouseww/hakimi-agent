@@ -11,3 +11,13 @@ createRoot(document.getElementById('root')!).render(
     </I18nProvider>
   </StrictMode>,
 )
+
+// PWA offline shell (best-effort; no-op if unsupported / non-secure context)
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const swUrl = `${import.meta.env.BASE_URL}sw.js`
+    navigator.serviceWorker.register(swUrl).catch(() => {
+      /* ignore offline SW registration failures */
+    })
+  })
+}

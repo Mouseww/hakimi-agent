@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use hakimi_plugin::marketplace::PluginMarketplace;
 use tabled::{
     builder::Builder,
-    settings::{object::Columns, Modify, Width, Style},
+    settings::{Modify, Style, Width, object::Columns},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Parser)]
@@ -119,8 +119,7 @@ impl PluginCommand {
 }
 
 fn create_marketplace() -> Result<PluginMarketplace> {
-    let home = dirs::home_dir()
-        .context("Failed to find home directory")?;
+    let home = dirs::home_dir().context("Failed to find home directory")?;
     let hakimi_dir = home.join(".hakimi");
     let cache_dir = hakimi_dir.join("cache");
     let plugins_dir = hakimi_dir.join("plugins");
@@ -274,10 +273,7 @@ fn uninstall_plugin(marketplace: &PluginMarketplace, name: &str) -> Result<()> {
     Ok(())
 }
 
-async fn check_updates(
-    marketplace: &PluginMarketplace,
-    name: Option<&str>,
-) -> Result<()> {
+async fn check_updates(marketplace: &PluginMarketplace, name: Option<&str>) -> Result<()> {
     println!("🔄 Checking for updates...\n");
 
     let updates = marketplace
@@ -360,25 +356,21 @@ async fn show_plugin_info(marketplace: &PluginMarketplace, name: &str) -> Result
 }
 
 fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
-        s
-    } else {
-        &s[..max_len]
-    }
+    if s.len() <= max_len { s } else { &s[..max_len] }
 }
 
 async fn test_plugin(marketplace: &PluginMarketplace, name: &str) -> Result<()> {
     println!("🧪 Testing plugin: {}", name);
-    
+
     let installed = marketplace.list_installed()?;
     let plugin = installed
         .iter()
         .find(|p| p.name == name)
         .context(format!("Plugin '{}' not found", name))?;
-    
+
     println!("  Path: {}", plugin.path);
     println!("  Version: {}", plugin.version);
-    
+
     // TODO: 实际加载插件进行测试
     // 目前只检查文件是否存在
     if std::path::Path::new(&plugin.path).exists() {
@@ -386,7 +378,7 @@ async fn test_plugin(marketplace: &PluginMarketplace, name: &str) -> Result<()> 
     } else {
         anyhow::bail!("Plugin file not found at: {}", plugin.path);
     }
-    
+
     println!("✓ Plugin test passed");
     Ok(())
 }
@@ -394,12 +386,13 @@ async fn test_plugin(marketplace: &PluginMarketplace, name: &str) -> Result<()> 
 fn enable_plugin(marketplace: &PluginMarketplace, name: &str, enabled: bool) -> Result<()> {
     let action = if enabled { "Enabling" } else { "Disabling" };
     println!("{} plugin: {}", action, name);
-    
-    marketplace.set_plugin_enabled(name, enabled)
+
+    marketplace
+        .set_plugin_enabled(name, enabled)
         .context(format!("Failed to {} plugin", action.to_lowercase()))?;
-    
+
     let status = if enabled { "enabled" } else { "disabled" };
     println!("✓ Plugin '{}' {}", name, status);
-    
+
     Ok(())
 }

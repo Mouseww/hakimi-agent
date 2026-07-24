@@ -1,0 +1,14 @@
+{
+  "name": "hakimi-desktop",
+  "private": true,
+  "version": "0.5.125",
+  "description": "Tauri CLI helper for Hakimi Studio desktop packaging",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "cargo run -p hakimi-desktop -- --bind 127.0.0.1:3015",
+    "build:gui": "cargo build -p hakimi-desktop --features gui --release"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -1,0 +1,17 @@
+# Minimal image for hakimi-hub relay.
+# Prefer multi-stage with nightly when edition2024 workspace is required.
+
+FROM rust:1.88-bookworm AS builder
+WORKDIR /src
+# Copy workspace (caller should build from repo root with full context).
+COPY . .
+RUN cargo build -p hakimi-hub --release 2>/dev/null || \
+    (rustup default nightly && cargo build -p hakimi-hub --release)
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /src/target/release/hakimi-hub /usr/local/bin/hakimi-hub
+ENV HAKIMI_HUB_BIND=0.0.0.0:3010
+EXPOSE 3010
+ENTRYPOINT ["hakimi-hub"]

@@ -24,6 +24,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # hakimi-desktop --features gui (pulled by --all-features) needs WebKit 4.1
+      - name: Install Tauri / WebKit deps
+        run: |
+          sudo apt-get update
+          # Ubuntu 24.04: ayatana replaces libappindicator3 (packages conflict)
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev
+
       - name: Format check
         run: cargo fmt --all -- --check
 
@@ -42,6 +54,16 @@ jobs:
           toolchain: nightly
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri / WebKit deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev
 
       - name: Run tests
         run: cargo test --workspace --all-features

@@ -1,0 +1,37 @@
+[package]
+name = "hakimi-hub"
+version.workspace = true
+edition = "2024"
+description = "Hakimi Studio multi-device relay hub (no tool execution, no plaintext keys)"
+license = "MIT"
+
+[[bin]]
+name = "hakimi-hub"
+path = "src/main.rs"
+
+[lib]
+name = "hakimi_hub"
+path = "src/lib.rs"
+
+[dependencies]
+hakimi-studio-api = { path = "../hakimi-studio-api" }
+axum = { version = "0.8", features = ["json", "ws"] }
+tokio = { workspace = true }
+futures = "0.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[lints]
+workspace = true
