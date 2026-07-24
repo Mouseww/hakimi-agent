@@ -148,8 +148,9 @@ mod tests {
     #[test]
     fn test_plugin_context_creation() {
         let ctx = PluginContext::new();
-        // 上下文创建成功（无 panic）
-        assert!(std::mem::size_of_val(&ctx) >= 0);
+        // Just ensure construction doesn't panic and returns a usable value.
+        let _ = format!("{ctx:?}");
+        assert!(std::mem::size_of::<PluginContext>() > 0);
     }
 
     #[test]
