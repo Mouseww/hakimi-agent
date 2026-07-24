@@ -1,3 +1,6 @@
+//! Hakimi plugin host — manager, registry, marketplace, optional WASM loader.
+#![allow(clippy::result_large_err)]
+
 pub mod config;
 pub mod manager;
 pub mod marketplace;
