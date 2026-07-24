@@ -20,7 +20,7 @@ pub fn run_gui(backend_url: String) {
             if let Some(window) = app.get_webview_window("main") {
                 // Navigate to local Studio backend (WebUI + /v1/studio).
                 let target = url.trim_end_matches('/').to_string() + "/";
-                if let Err(e) = window.eval(&format!("window.location.replace({target:?})")) {
+                if let Err(e) = window.eval(format!("window.location.replace({target:?})")) {
                     tracing::warn!(error = %e, "failed to navigate webview; open {target} manually");
                 }
             }
