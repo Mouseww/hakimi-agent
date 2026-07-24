@@ -1,7 +1,7 @@
 {
   "name": "hakimi-desktop",
   "private": true,
-  "version": "0.5.124",
+  "version": "0.5.125",
   "description": "Tauri CLI helper for Hakimi Studio desktop packaging",
   "scripts": {
     "tauri": "tauri",
