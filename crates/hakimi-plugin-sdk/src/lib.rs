@@ -148,8 +148,8 @@ mod tests {
     #[test]
     fn test_plugin_context_creation() {
         let ctx = PluginContext::new();
-        // Just ensure construction doesn't panic and returns a usable value.
-        let _ = format!("{ctx:?}");
+        // Construction must not panic; type is non-zero sized.
+        drop(ctx);
         assert!(std::mem::size_of::<PluginContext>() > 0);
     }
 
