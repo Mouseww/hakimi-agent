@@ -2675,7 +2675,7 @@ impl Tool for BrowserCdpTool {
                         .target_id(TargetId::from(page_target_id.to_string()))
                         .flatten(true)
                         .build()
-                        .map_err(HakimiError::Tool)?;
+                        .map_err(HakimiError::ToolSimple)?;
                     if let Err(e) = browser.execute(attach).await {
                         handler_task.abort();
                         return Err(HakimiError::ToolSimple(format!(
@@ -2749,8 +2749,8 @@ impl Tool for BrowserCdpTool {
         }
 
         if action == "dispatch" {
-            let method = browser_cdp_method_from_args(args).map_err(HakimiError::Tool)?;
-            let params = browser_cdp_params_from_args(args).map_err(HakimiError::Tool)?;
+            let method = browser_cdp_method_from_args(args).map_err(HakimiError::ToolSimple)?;
+            let params = browser_cdp_params_from_args(args).map_err(HakimiError::ToolSimple)?;
             if let Some(frame_id) = browser_cdp_frame_id_from_args(args) {
                 return Ok(json!({
                     "success": false,
@@ -2810,7 +2810,7 @@ impl Tool for BrowserCdpTool {
                         .target_id(TargetId::from(target_id.to_string()))
                         .flatten(true)
                         .build()
-                        .map_err(HakimiError::Tool)?;
+                        .map_err(HakimiError::ToolSimple)?;
                     if let Err(e) = browser.execute(attach).await {
                         handler_task.abort();
                         return Err(HakimiError::ToolSimple(format!(

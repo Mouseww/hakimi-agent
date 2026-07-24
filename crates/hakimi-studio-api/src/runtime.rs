@@ -869,12 +869,9 @@ impl StudioRuntime {
         actor_device_id: Option<&str>,
     ) -> Option<StudioEventEnvelope> {
         let g = self.state.lock().await;
-        let Some(device_id) = actor_device_id
+        let device_id = actor_device_id
             .map(|s| s.to_string())
-            .or_else(|| g.last_device_id.clone())
-        else {
-            return None;
-        };
+            .or_else(|| g.last_device_id.clone())?;
         let Some(sess) = g.sessions.get(session_id) else {
             drop(g);
             return Some(

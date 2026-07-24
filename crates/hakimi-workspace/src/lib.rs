@@ -17,6 +17,8 @@ pub const DEFAULT_MAX_READ_BYTES: u64 = 2 * 1024 * 1024;
 pub enum WorkspaceError {
     #[error("path escape denied: {0}")]
     PathEscape(String),
+    #[error("path denied by policy: {0}")]
+    PathDenied(String),
     #[error("not found: {0}")]
     NotFound(String),
     #[error("is a directory: {0}")]
@@ -121,6 +123,63 @@ impl Workspace {
         Ok(joined)
     }
 
+    /// Relative path for policy checks (trimmed, no leading `/`).
+    pub fn normalize_rel(relative: &str) -> String {
+        relative
+            .trim()
+            .trim_start_matches('/')
+            .trim_end_matches('/')
+            .to_string()
+    }
+
+    /// Deny mutating sensitive paths (secrets, VCS internals, OS key material).
+    /// Allow `.hakimi/checkpoints/**` (Studio rewind store).
+    pub fn assert_mutable_path(relative: &str) -> Result<()> {
+        let rel = Self::normalize_rel(relative);
+        if rel.is_empty() {
+            return Ok(());
+        }
+        let lower = rel.to_ascii_lowercase();
+
+        // Allow Studio internal checkpoint store
+        if lower.starts_with(".hakimi/checkpoints") || lower == ".hakimi/checkpoints" {
+            return Ok(());
+        }
+
+        const PREFIXES: &[&str] = &[
+            ".git/", ".ssh/", ".gnupg/", ".aws/", ".kube/",
+            ".hakimi/", // other hakimi state (except checkpoints above)
+        ];
+        for p in PREFIXES {
+            if lower.starts_with(p) || lower == p.trim_end_matches('/') {
+                return Err(WorkspaceError::PathDenied(rel));
+            }
+        }
+
+        const NAMES: &[&str] = &[
+            ".env",
+            ".env.local",
+            ".env.production",
+            "id_rsa",
+            "id_ed25519",
+            "id_ecdsa",
+            "credentials.json",
+            "service-account.json",
+        ];
+        let base = Path::new(&lower)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if NAMES.contains(&base) || NAMES.contains(&lower.as_str()) {
+            return Err(WorkspaceError::PathDenied(rel));
+        }
+        // *.pem / *.key basename
+        if base.ends_with(".pem") || base.ends_with(".key") {
+            return Err(WorkspaceError::PathDenied(rel));
+        }
+        Ok(())
+    }
+
     pub async fn list(&self, relative: &str) -> Result<Vec<DirEntry>> {
         let path = self.resolve(relative)?;
         if !path.exists() {
@@ -185,6 +244,7 @@ impl Workspace {
     }
 
     pub async fn write(&self, relative: &str, content: &str) -> Result<()> {
+        Self::assert_mutable_path(relative)?;
         let path = self.resolve(relative)?;
         if path.is_dir() {
             return Err(WorkspaceError::IsDirectory(relative.into()));
@@ -198,6 +258,7 @@ impl Workspace {
     }
 
     pub async fn create(&self, relative: &str, is_dir: bool) -> Result<()> {
+        Self::assert_mutable_path(relative)?;
         let path = self.resolve(relative)?;
         if is_dir {
             fs::create_dir_all(&path).await?;
@@ -213,6 +274,7 @@ impl Workspace {
     }
 
     pub async fn delete(&self, relative: &str, recursive: bool) -> Result<()> {
+        Self::assert_mutable_path(relative)?;
         let path = self.resolve(relative)?;
         if !path.exists() {
             return Err(WorkspaceError::NotFound(relative.into()));
@@ -742,5 +804,22 @@ mod tests {
         assert_eq!(ws.read("note.txt").await.unwrap(), "v1");
         let listed = ws.list_checkpoints().await.unwrap();
         assert!(listed.iter().any(|c| c.id == cp.id));
+    }
+
+    #[tokio::test]
+    async fn denies_sensitive_path_mutations() {
+        let dir = tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        let err = ws.write(".env", "SECRET=1").await.unwrap_err();
+        assert!(
+            matches!(err, WorkspaceError::PathDenied(_)),
+            "expected PathDenied, got {err:?}"
+        );
+        let err = ws.write(".git/config", "x").await.unwrap_err();
+        assert!(matches!(err, WorkspaceError::PathDenied(_)));
+        // checkpoints still writable via internal API path
+        assert!(Workspace::assert_mutable_path(".hakimi/checkpoints/x").is_ok());
+        // normal file ok
+        ws.write("ok.txt", "hi").await.unwrap();
     }
 }

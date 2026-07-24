@@ -26,8 +26,23 @@ No device identity (unit tests without `hello`) → allow (legacy).
 
 See `hakimi-webui/src/studio/dangerConfirm.ts`.
 
+## Path deny policy (mutations)
+
+`Workspace::assert_mutable_path` blocks **write / create / delete** on:
+
+| Class | Examples |
+|-------|----------|
+| VCS / secrets dirs | `.git/**`, `.ssh/**`, `.gnupg/**`, `.aws/**`, `.kube/**`, `.hakimi/**` (except checkpoints) |
+| Secret basenames | `.env`, `.env.local`, `id_rsa`, `*.pem`, `*.key`, `credentials.json` |
+
+**Allowed:** `.hakimi/checkpoints/**` (Studio rewind store)
+
+Error: `WorkspaceError::PathDenied` → Studio `error.code = workspace_error`.
+
+Reads/list/grep are not blocked by this policy (path jail still applies).
+
 ## Future (not yet)
 
 - Explicit permission levels: `read` / `write` / `danger` policy file
-- Per-path allowlists for agent tools
+- Configurable allow/deny globs per session
 - OS-native sandboxes (Tauri capabilities hardening)
