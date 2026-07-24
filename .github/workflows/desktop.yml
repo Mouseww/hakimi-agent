@@ -137,13 +137,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
+          # Prefer ayatana (conflicts with classic libappindicator3 on Ubuntu 22.04+)
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
+            libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
             libgtk-3-dev \
-            libayatana-appindicator3-dev \
             file
 
       - name: Install tauri-cli

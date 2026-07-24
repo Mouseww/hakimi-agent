@@ -28,13 +28,13 @@ jobs:
       - name: Install Tauri / WebKit deps
         run: |
           sudo apt-get update
+          # Ubuntu 24.04: ayatana replaces libappindicator3 (packages conflict)
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
+            libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libgtk-3-dev
 
       - name: Format check
         run: cargo fmt --all -- --check
@@ -60,11 +60,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
+            libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libgtk-3-dev
 
       - name: Run tests
         run: cargo test --workspace --all-features
