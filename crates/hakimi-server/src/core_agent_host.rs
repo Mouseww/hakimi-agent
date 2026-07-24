@@ -261,7 +261,7 @@ fn parse_tool_name(notice: &str) -> String {
         .trim_start_matches(|c: char| c == '⚙' || c == '\u{fe0f}' || c.is_whitespace())
         .trim();
     let name = without_emoji
-        .split(|c: char| c == ' ' || c == '(')
+        .split([' ', '('])
         .next()
         .unwrap_or(without_emoji)
         .trim();
