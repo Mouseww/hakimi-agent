@@ -9,7 +9,6 @@
 //!   HAKIMI_DESKTOP_WORKSPACE=/path/to/project
 
 use std::path::PathBuf;
-use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;

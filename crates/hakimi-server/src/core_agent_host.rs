@@ -65,11 +65,7 @@ impl AgentHost for CoreAgentHost {
             } else if cwd_rel.is_empty() {
                 workspace_root.clone()
             } else {
-                format!(
-                    "{}/{}",
-                    workspace_root.trim_end_matches('/'),
-                    cwd_rel
-                )
+                format!("{}/{}", workspace_root.trim_end_matches('/'), cwd_rel)
             };
             cloned.set_workdir(tool_workdir.clone());
 

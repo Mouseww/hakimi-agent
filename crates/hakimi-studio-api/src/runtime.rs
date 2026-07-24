@@ -1091,8 +1091,15 @@ impl StudioRuntime {
                     );
                 }
                 out.extend(
-                    self.spawn_run(session_id, run_id, text, client_request_id, cwd, focused_path)
-                        .await?,
+                    self.spawn_run(
+                        session_id,
+                        run_id,
+                        text,
+                        client_request_id,
+                        cwd,
+                        focused_path,
+                    )
+                    .await?,
                 );
                 Ok(out)
             }
@@ -1112,11 +1119,7 @@ impl StudioRuntime {
         let bus = self.bus.clone();
         let state = self.state.clone();
         let agent_host = self.agent_host.clone();
-        let workspace_root = self
-            .workspace
-            .root()
-            .to_string_lossy()
-            .into_owned();
+        let workspace_root = self.workspace.root().to_string_lossy().into_owned();
         let sid = session_id.clone();
         let first_rid = run_id.clone();
         let first_text = text;
@@ -1127,7 +1130,14 @@ impl StudioRuntime {
 
         let handle = tokio::spawn(async move {
             let mut job: Option<(String, String, String, Arc<Notify>, String, Option<String>)> =
-                Some((first_rid, first_text, first_req, first_cancel, first_cwd, first_focus));
+                Some((
+                    first_rid,
+                    first_text,
+                    first_req,
+                    first_cancel,
+                    first_cwd,
+                    first_focus,
+                ));
 
             while let Some((rid, job_text, _req, job_cancel, job_cwd, job_focus)) = job.take() {
                 let turn = AgentTurnRequest {
@@ -1234,7 +1244,14 @@ impl StudioRuntime {
                         },
                     )
                     .await;
-                job = Some((next_run, next_text, next_req, next_cancel, next_cwd, next_focus));
+                job = Some((
+                    next_run,
+                    next_text,
+                    next_req,
+                    next_cancel,
+                    next_cwd,
+                    next_focus,
+                ));
             }
         });
 

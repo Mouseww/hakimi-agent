@@ -159,7 +159,12 @@ jobs:
       - name: Tauri bundle
         working-directory: crates/hakimi-desktop
         shell: bash
-        # Prefer npm CLI binary (works on Windows runners too with bash shell)
+        # Prefer npm CLI binary (works on Windows runners too with bash shell).
+        # AppImage is intentionally disabled (linuxdeploy flaky + dumps junk into
+        # release if mis-collected). Targets: deb / msi / dmg only.
+        # continue-on-error: WiX download / platform quirks should not kill the
+        # whole matrix — we still ship headless archives + any installers found.
+        continue-on-error: true
         run: |
           set -euo pipefail
           if command -v tauri >/dev/null 2>&1; then
@@ -202,6 +207,7 @@ jobs:
           find out -type f | sort || true
           count="$(find out -type f | wc -l | tr -d ' ')"
           echo "collected files: $count"
+          # At minimum the GUI binary from the previous build step should exist.
           test "$count" -gt 0
 
       - uses: actions/upload-artifact@v4
@@ -216,13 +222,17 @@ jobs:
   # ---------------------------------------------------------------------------
   release-assets:
     name: Attach release assets
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Headless is required; GUI may partially fail (WiX CDN / AppImage) — still
+    # publish whatever clean packages we have.
+    if: startsWith(github.ref, 'refs/tags/v') && always() && needs.headless.result == 'success'
     needs: [headless, gui]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          # Don't fail the whole attach job if one GUI matrix cell is missing.
+          merge-multiple: false
 
       - name: Stage release files (strict whitelist)
         shell: bash
@@ -245,7 +255,7 @@ jobs:
             -name '*.msi' -o \
             -name '*.dmg' -o \
             -name '*.rpm' \
-          \) -print0 | while IFS= read -r -d '' f; do
+          \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
             base="$(basename "$f" | tr ' ' '.')"
             # Extra safety: skip known junk patterns even if somehow matched
             case "$base" in
@@ -261,7 +271,7 @@ jobs:
             fi
           done
           echo '--- staged for GitHub Release ---'
-          ls -la release-upload
+          ls -la release-upload || true
           count="$(find release-upload -type f | wc -l | tr -d ' ')"
           echo "staged count: $count"
           test "$count" -gt 0
