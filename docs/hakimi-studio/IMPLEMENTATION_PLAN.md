@@ -245,7 +245,7 @@ Result: `viewer_readonly` enforced per-connection; handoff promotes B; health re
 
 ### Still open
 - Full agent-action Rewind graph
-- Path allowlists / policy file
+- Configurable path allow/deny globs per session (hardcoded deny list shipped)
 - ACP
 - 成本面板
 - iOS/Android 壳

@@ -160,7 +160,8 @@ jobs:
 
       - name: Tauri bundle
         working-directory: crates/hakimi-desktop
-        # Prefer npm CLI; falls back to cargo tauri if present
+        shell: bash
+        # Prefer npm CLI binary (works on Windows runners too with bash shell)
         run: |
           set -euo pipefail
           if command -v tauri >/dev/null 2>&1; then
@@ -168,7 +169,6 @@ jobs:
           else
             npx --yes @tauri-apps/cli@2 build --features gui
           fi
-        continue-on-error: false
 
       - name: Collect bundles
         shell: bash
@@ -191,8 +191,11 @@ jobs:
           if [ -f target/release/hakimi-desktop.exe ]; then
             cp target/release/hakimi-desktop.exe out/
           fi
-          find out -type f | head -50
-          test -n "$(find out -type f | head -1)"
+          # Avoid pipefail+head SIGPIPE (exit 141) on large trees
+          find out -type f | sed -n '1,50p' || true
+          count="$(find out -type f | wc -l | tr -d ' ')"
+          echo "collected files: $count"
+          test "$count" -gt 0
 
       - uses: actions/upload-artifact@v4
         with:
