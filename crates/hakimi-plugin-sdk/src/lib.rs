@@ -148,9 +148,8 @@ mod tests {
     #[test]
     fn test_plugin_context_creation() {
         let ctx = PluginContext::new();
-        // Construction must not panic; type is non-zero sized.
-        drop(ctx);
-        assert!(std::mem::size_of::<PluginContext>() > 0);
+        // ZST is fine; ensure new() + log() do not panic.
+        ctx.log("info", "plugin-sdk smoke");
     }
 
     #[test]
