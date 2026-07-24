@@ -296,9 +296,9 @@ impl TeamsWebhookAdapter {
             text: clean_text,
             media: None,
             callback_data: None,
-                reply_to_message_id: None,
-                reply_to_text: None,
-            })
+            reply_to_message_id: None,
+            reply_to_text: None,
+        })
     }
 
     /// Inject a message from HTTP handler.

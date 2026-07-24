@@ -138,7 +138,7 @@ impl SessionOps for SessionDB {
         self.create_session_with_id(&id, source, user_id, model, system_prompt, None, None)
     }
 
-fn create_session_with_id(
+    fn create_session_with_id(
         &self,
         id: &str,
         source: &str,
