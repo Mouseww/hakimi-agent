@@ -45,6 +45,7 @@ pub trait SessionOps {
         system_prompt: Option<&str>,
     ) -> Result<String>;
 
+    #[allow(clippy::too_many_arguments)]
     fn create_session_with_id(
         &self,
         id: &str,
@@ -138,6 +139,7 @@ impl SessionOps for SessionDB {
         self.create_session_with_id(&id, source, user_id, model, system_prompt, None, None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_session_with_id(
         &self,
         id: &str,
