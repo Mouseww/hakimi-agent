@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use hakimi_studio_api::{
-    DeviceKind, DeviceSummary, EventBus, PROTOCOL_VERSION, PreferRunner, StudioCommand, StudioEvent,
-    StudioEventEnvelope, StudioRuntime, WorkerDispatch,
+    DeviceKind, DeviceSummary, EventBus, PROTOCOL_VERSION, PreferRunner, StudioCommand,
+    StudioEvent, StudioEventEnvelope, StudioRuntime, WorkerDispatch,
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tracing::{info, warn};
 
 /// Hub execution mode.
@@ -593,15 +593,14 @@ mod tests {
         let out = hub
             .handle_command_as(
                 Some("runner-1"),
-                StudioCommand::WorkerPublish {
-                    events: vec![env],
-                },
+                StudioCommand::WorkerPublish { events: vec![env] },
             )
             .await
             .unwrap();
-        assert!(out
-            .iter()
-            .any(|e| matches!(e.event, StudioEvent::SessionCreated { .. })));
+        assert!(
+            out.iter()
+                .any(|e| matches!(e.event, StudioEvent::SessionCreated { .. }))
+        );
         let sessions = hub.sessions.lock().await;
         assert_eq!(
             sessions.get("sess_1").unwrap().active_runner_device_id,

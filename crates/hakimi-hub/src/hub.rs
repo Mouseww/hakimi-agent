@@ -12,7 +12,7 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use hakimi_studio_api::{StudioCommand, StudioEvent, StudioEventEnvelope};
 use serde::Deserialize;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, info, warn};
 
 use crate::state::{HubState, Outbound};
@@ -29,7 +29,9 @@ impl HubConfig {
     pub fn from_env() -> Self {
         Self {
             bind: std::env::var("HAKIMI_HUB_BIND").unwrap_or_else(|_| "0.0.0.0:3010".into()),
-            token: std::env::var("HAKIMI_HUB_TOKEN").ok().filter(|s| !s.is_empty()),
+            token: std::env::var("HAKIMI_HUB_TOKEN")
+                .ok()
+                .filter(|s| !s.is_empty()),
             mode: std::env::var("HAKIMI_HUB_MODE").unwrap_or_else(|_| "embedded".into()),
         }
     }
@@ -152,7 +154,8 @@ async fn ws_session(socket: WebSocket, st: HubState) {
 
         if let StudioCommand::Hello { ref device_id, .. } = cmd {
             conn_device = Some(device_id.clone());
-            st.register_connection(device_id.clone(), out_tx.clone()).await;
+            st.register_connection(device_id.clone(), out_tx.clone())
+                .await;
         }
 
         if let Err(e) = st.handle_command_as(conn_device.as_deref(), cmd).await {

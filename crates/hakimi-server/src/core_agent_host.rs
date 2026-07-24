@@ -56,8 +56,7 @@ impl AgentHost for CoreAgentHost {
             let bus = req.bus.clone();
             let sid = req.session_id.clone();
             let rid = req.run_id.clone();
-            let open_tools: Arc<Mutex<Vec<(String, String)>>> =
-                Arc::new(Mutex::new(Vec::new()));
+            let open_tools: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
 
             let open_tools_cb = open_tools.clone();
             let bus_cb = bus.clone();

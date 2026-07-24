@@ -32,7 +32,9 @@ pub struct HubWorkerConfig {
 
 impl HubWorkerConfig {
     pub fn from_env() -> Option<Self> {
-        let hub_url = std::env::var("HAKIMI_HUB_URL").ok().filter(|s| !s.is_empty())?;
+        let hub_url = std::env::var("HAKIMI_HUB_URL")
+            .ok()
+            .filter(|s| !s.is_empty())?;
         let device_id = std::env::var("HAKIMI_HUB_DEVICE_ID").unwrap_or_else(|_| {
             format!(
                 "runner-{}",
@@ -50,7 +52,9 @@ impl HubWorkerConfig {
                 .ok()
                 .filter(|s| !s.is_empty())
                 .or_else(|| Some("Hakimi Server Worker".into())),
-            token: std::env::var("HAKIMI_HUB_TOKEN").ok().filter(|s| !s.is_empty()),
+            token: std::env::var("HAKIMI_HUB_TOKEN")
+                .ok()
+                .filter(|s| !s.is_empty()),
             reconnect_secs: std::env::var("HAKIMI_HUB_RECONNECT_SECS")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -214,9 +218,7 @@ async fn handle_dispatch(
                     code: Some("worker_error".into()),
                 },
             );
-            let publish = StudioCommand::WorkerPublish {
-                events: vec![env],
-            };
+            let publish = StudioCommand::WorkerPublish { events: vec![env] };
             if let Ok(text) = serde_json::to_string(&publish) {
                 let mut w = write.lock().await;
                 let _ = w.send(Message::Text(text.into())).await;

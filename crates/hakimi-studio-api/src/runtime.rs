@@ -428,10 +428,7 @@ impl StudioRuntime {
                 self.enqueue_or_start(session_id, text, client_request_id, true)
                     .await
             }
-            StudioCommand::ChatCancel {
-                session_id,
-                run_id,
-            } => {
+            StudioCommand::ChatCancel { session_id, run_id } => {
                 if let Some(err) = self.require_controller(&session_id, actor_device_id).await {
                     return Ok(vec![err]);
                 }
@@ -1444,9 +1441,11 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(handoff
-            .iter()
-            .any(|e| matches!(e.event, StudioEvent::RunnerChanged { .. })));
+        assert!(
+            handoff
+                .iter()
+                .any(|e| matches!(e.event, StudioEvent::RunnerChanged { .. }))
+        );
 
         rt.handle_command(StudioCommand::Hello {
             device_id: "dev-b".into(),

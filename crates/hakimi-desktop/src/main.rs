@@ -64,7 +64,10 @@ async fn main() -> Result<()> {
 
     info!(url = %handle.base_url, "Hakimi Studio ready");
     println!("Hakimi Studio → {}", handle.base_url);
-    println!("  Studio WS   → {}/v1/studio", handle.base_url.replace("http", "ws"));
+    println!(
+        "  Studio WS   → {}/v1/studio",
+        handle.base_url.replace("http", "ws")
+    );
     println!("  Health      → {}/v1/studio/health", handle.base_url);
 
     if args.open {

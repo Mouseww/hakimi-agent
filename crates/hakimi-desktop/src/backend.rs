@@ -132,10 +132,7 @@ async fn webui_favicon() -> Response<Body> {
 }
 
 async fn webui_manifest() -> Response<Body> {
-    static_response(
-        "application/manifest+json; charset=utf-8",
-        WEBUI_MANIFEST,
-    )
+    static_response("application/manifest+json; charset=utf-8", WEBUI_MANIFEST)
 }
 
 async fn webui_sw() -> Response<Body> {
@@ -148,10 +145,9 @@ async fn webui_static_asset(Path(path): Path<String>) -> Response<Body> {
         "app.css" => static_response("text/css; charset=utf-8", WEBUI_APP_CSS),
         "favicon.svg" => static_response("image/svg+xml; charset=utf-8", WEBUI_FAVICON_SVG),
         "icons.svg" => static_response("image/svg+xml; charset=utf-8", WEBUI_ICONS_SVG),
-        "manifest.webmanifest" => static_response(
-            "application/manifest+json; charset=utf-8",
-            WEBUI_MANIFEST,
-        ),
+        "manifest.webmanifest" => {
+            static_response("application/manifest+json; charset=utf-8", WEBUI_MANIFEST)
+        }
         "sw.js" => static_response("text/javascript; charset=utf-8", WEBUI_SW),
         "index.html" => static_response("text/html; charset=utf-8", WEBUI_INDEX_HTML),
         _ => StatusCode::NOT_FOUND.into_response(),

@@ -9,5 +9,5 @@
 pub mod hub;
 pub mod state;
 
-pub use hub::{hub_router, HubConfig};
+pub use hub::{HubConfig, hub_router};
 pub use state::{HubMode, HubState, Outbound};

@@ -168,9 +168,7 @@ pub enum StudioCommand {
     },
     /// Worker → Hub: publish envelopes produced by the Active Runner (pure-relay mode).
     /// Hub re-sequences and fans out to all clients. Clients never send this.
-    WorkerPublish {
-        events: Vec<StudioEventEnvelope>,
-    },
+    WorkerPublish { events: Vec<StudioEventEnvelope> },
 }
 
 fn default_protocol_version() -> u32 {

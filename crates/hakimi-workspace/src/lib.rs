@@ -145,7 +145,10 @@ impl Workspace {
             } else {
                 format!(
                     "{}/{}",
-                    relative.trim().trim_start_matches('/').trim_end_matches('/'),
+                    relative
+                        .trim()
+                        .trim_start_matches('/')
+                        .trim_end_matches('/'),
                     name
                 )
             };
@@ -230,12 +233,7 @@ impl Workspace {
     }
 
     /// Simple substring search across text files under `relative` (max depth 8).
-    pub async fn grep(
-        &self,
-        relative: &str,
-        pattern: &str,
-        limit: usize,
-    ) -> Result<Vec<GrepHit>> {
+    pub async fn grep(&self, relative: &str, pattern: &str, limit: usize) -> Result<Vec<GrepHit>> {
         let path = self.resolve(relative)?;
         let mut hits = Vec::new();
         grep_walk(&path, &self.root, pattern, limit, 0, &mut hits).await?;
