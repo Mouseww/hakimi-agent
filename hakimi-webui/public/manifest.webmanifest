@@ -1,0 +1,20 @@
+{
+  "name": "Hakimi Studio",
+  "short_name": "Hakimi",
+  "description": "Cross-platform AI development workbench",
+  "start_url": "/static/",
+  "scope": "/static/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c0e12",
+  "theme_color": "#5b7cfa",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

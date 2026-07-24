@@ -2581,7 +2581,8 @@ pub fn build_router(state: AppState) -> Router {
         auth_middleware,
     ));
 
-    Router::new()
+    let studio_agent = state.agent.clone();
+    let main = Router::new()
         .nest("/api", api_routes)
         .nest("/v1", v1_routes)
         .route("/webhooks/teams/inbound", post(teams_webhook_inbound))
@@ -2591,7 +2592,12 @@ pub fn build_router(state: AppState) -> Router {
         .route("/favicon.svg", get(webui_favicon))
         .route("/static/{*path}", get(webui_static_asset))
         .fallback(get(webui_index))
-        .with_state(state)
+        .with_state(state);
+
+    // Studio has its own state (wired to the same shared AIAgent); both sides are
+    // Router<()> after with_state so merge is type-safe.
+    let studio = crate::studio::StudioState::with_shared_agent(studio_agent);
+    main.merge(crate::studio::studio_router(studio))
 }
 
 // The WebUI is the React app in `hakimi-webui/`, built (via `npm run build`) into

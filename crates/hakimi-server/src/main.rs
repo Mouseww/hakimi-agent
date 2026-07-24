@@ -420,6 +420,7 @@ async fn build_agent(
     // Build agent
     let mut agent = hakimi_core::AIAgent::builder()
         .model(&model)
+        .fallback_models(config.model.fallback_models.clone())
         .transport(transport)
         .context_engine(context_engine)
         .tool_registry(tool_registry)

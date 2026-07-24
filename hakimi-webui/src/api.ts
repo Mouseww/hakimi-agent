@@ -527,6 +527,29 @@ export const api = {
       `/api/gateways/platforms/${encodeURIComponent(platform)}`,
       { method: 'PATCH', body: JSON.stringify(config) },
     ),
+  // Cron hub
+  cronJobs: () => request<CronJobsResponse>('/api/cron/jobs'),
+  createCronJob: (payload: CronJobCreateRequest) =>
+    request<CronJobMutationResponse>('/api/cron/jobs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteCronJob: (id: string) =>
+    request<{ success?: boolean }>(`/api/cron/jobs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  pauseCronJob: (id: string) =>
+    request<CronJobMutationResponse>(`/api/cron/jobs/${encodeURIComponent(id)}/pause`, {
+      method: 'POST',
+    }),
+  resumeCronJob: (id: string) =>
+    request<CronJobMutationResponse>(`/api/cron/jobs/${encodeURIComponent(id)}/resume`, {
+      method: 'POST',
+    }),
+  runCronJobNow: (id: string) =>
+    request<CronJobMutationResponse>(`/api/cron/jobs/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+    }),
 };
 
 /**
@@ -700,3 +723,46 @@ export async function fetchSessionTree(sessionId: string): Promise<SessionTreeRe
   
   return await response.json();
 }
+
+// ---------------------------------------------------------------------------
+// Cron jobs (Studio Cron Hub)
+// ---------------------------------------------------------------------------
+
+export interface CronJobInfo {
+  id: string;
+  name: string;
+  schedule: string;
+  schedule_type: string;
+  prompt: string;
+  enabled: boolean;
+  last_run?: string | null;
+  next_run?: string | null;
+  created_at?: string | null;
+  deliver?: string | null;
+  repeat_times?: number | null;
+  repeat_completed?: number | null;
+}
+
+export interface CronJobsResponse {
+  object?: string;
+  total?: number;
+  jobs: CronJobInfo[];
+}
+
+export interface CronJobCreateRequest {
+  name?: string;
+  schedule: string;
+  prompt: string;
+  skills?: string[];
+  enabled_toolsets?: string[];
+  context_from?: string[];
+  deliver?: string;
+  repeat?: number;
+}
+
+export interface CronJobMutationResponse {
+  object?: string;
+  success: boolean;
+  job?: CronJobInfo | null;
+}
+

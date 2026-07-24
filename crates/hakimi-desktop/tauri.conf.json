@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hakimi Studio",
+  "version": "0.5.124",
+  "identifier": "kg.edu.goldras.hakimi.studio",
+  "build": {
+    "frontendDist": "../hakimi-webui/static",
+    "devUrl": "http://127.0.0.1:1420"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Hakimi Studio",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage", "msi", "dmg"],
+    "category": "DeveloperTool",
+    "shortDescription": "Hakimi Studio — local-first AI workbench",
+    "longDescription": "Cross-platform desktop shell for Hakimi Studio. Spawns a local Studio backend and loads the Workspace IDE.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

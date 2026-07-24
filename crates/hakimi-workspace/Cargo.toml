@@ -1,0 +1,21 @@
+[package]
+name = "hakimi-workspace"
+version.workspace = true
+edition = "2024"
+description = "Path-jailed workspace filesystem for Hakimi Studio"
+license = "MIT"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true }
+
+[lints]
+workspace = true

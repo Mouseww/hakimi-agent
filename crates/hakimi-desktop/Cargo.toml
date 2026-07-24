@@ -1,0 +1,49 @@
+[package]
+name = "hakimi-desktop"
+version.workspace = true
+edition = "2024"
+description = "Hakimi Studio desktop shell (local backend + optional Tauri 2 GUI)"
+license = "MIT"
+
+[[bin]]
+name = "hakimi-desktop"
+path = "src/main.rs"
+
+[lib]
+name = "hakimi_desktop"
+path = "src/lib.rs"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+default = []
+## Full native window via Tauri 2. Requires webkit2gtk-4.1 on Linux
+## (EL9 only ships 4.0 — use Fedora 39+/Ubuntu 22.04+ or CI images).
+gui = ["dep:tauri", "dep:tauri-plugin-opener", "dep:tauri-build"]
+
+[dependencies]
+hakimi-studio-api = { path = "../hakimi-studio-api" }
+hakimi-server = { path = "../hakimi-server" }
+axum = { version = "0.8", features = ["json", "ws"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+futures = { workspace = true }
+dirs = { workspace = true }
+# Optional GUI
+tauri = { version = "2", optional = true, features = [] }
+tauri-plugin-opener = { version = "2", optional = true }
+
+[build-dependencies]
+tauri-build = { version = "2", optional = true, features = [] }
+
+[dev-dependencies]
+reqwest = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

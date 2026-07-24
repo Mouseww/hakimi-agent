@@ -1,0 +1,602 @@
+/* Hakimi Studio IDE — three-panel workspace */
+
+.studio-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-deep, #0c0e12);
+  color: var(--text, #e8eaed);
+}
+
+.studio-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  color: rgba(232, 234, 237, 0.7);
+  flex-shrink: 0;
+}
+
+.studio-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-live.is-on {
+  color: #6ee7a8;
+}
+
+.studio-session {
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+.studio-busy {
+  color: #fbbf24;
+}
+
+.studio-error {
+  margin-left: auto;
+  border: 0;
+  background: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-panels {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(280px, 360px);
+  flex: 1;
+  min-height: 0;
+}
+
+.studio-tree,
+.studio-editor,
+.studio-chat {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.studio-chat {
+  border-right: 0;
+}
+
+.studio-tree-head,
+.studio-file-head,
+.studio-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  flex-shrink: 0;
+}
+
+.studio-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.studio-crumbs button {
+  border: 0;
+  background: transparent;
+  color: rgba(232, 234, 237, 0.75);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.studio-crumbs button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.studio-tree-body,
+.studio-chat-body {
+  flex: 1;
+  overflow: auto;
+  padding: 6px;
+}
+
+.studio-entry {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.studio-entry:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.studio-entry.is-active {
+  background: rgba(99, 140, 255, 0.18);
+  color: #c7d6ff;
+}
+
+.studio-editor-empty,
+.studio-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  opacity: 0.55;
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+}
+
+.studio-editor-empty h3 {
+  margin: 0;
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.studio-code {
+  margin: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.studio-file-head.mono,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.studio-msg {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.studio-msg.role-user {
+  background: rgba(99, 140, 255, 0.1);
+}
+
+.studio-msg.role-tool {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.studio-msg.role-system {
+  font-size: 12px;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.studio-msg-role {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.5;
+  margin-bottom: 4px;
+}
+
+.studio-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.studio-msg.is-stream .studio-msg-body::after {
+  content: "▋";
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.studio-composer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.studio-composer textarea {
+  width: 100%;
+  resize: none;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.studio-composer textarea:focus {
+  border-color: rgba(99, 140, 255, 0.55);
+}
+
+.studio-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.studio-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.studio-btn.primary {
+  background: linear-gradient(180deg, #5b7cfa, #4564e0);
+  border-color: transparent;
+  color: #fff;
+}
+
+.studio-btn.primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.studio-btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.studio-btn.compact {
+  padding: 2px 6px;
+  font-size: 11px;
+  gap: 4px;
+}
+
+.studio-role {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.studio-role.role-controller {
+  color: #6ee7a8;
+  background: rgba(110, 231, 168, 0.12);
+}
+
+.studio-role.role-viewer {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.studio-runner {
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+.studio-badge {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.studio-multi {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  flex-shrink: 0;
+  max-height: 140px;
+}
+
+.studio-multi-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.studio-multi-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.studio-multi-list {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+
+.studio-device,
+.studio-session-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.studio-device.is-me,
+.studio-session-row.is-active {
+  background: rgba(91, 124, 250, 0.12);
+}
+
+.studio-device-kind {
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+.studio-multi-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: flex-start;
+  min-width: 120px;
+}
+
+.studio-device-id {
+  font-size: 10px;
+  opacity: 0.45;
+  margin-top: auto;
+}
+
+.studio-empty.tiny {
+  font-size: 11px;
+  opacity: 0.5;
+  padding: 4px 0;
+}
+
+.studio-ecosystem {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(12, 14, 18, 0.6);
+  max-height: 200px;
+  overflow: auto;
+  flex-shrink: 0;
+  display: grid;
+}
+
+.studio-eco-card {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.studio-eco-card h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-eco-item {
+  font-size: 11px;
+  padding: 2px 0;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studio-eco-item .tag {
+  opacity: 0.45;
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+.studio-cron-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.studio-cron-head h4 {
+  margin: 0;
+}
+
+.studio-cron-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.studio-cron-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.studio-cron-form .studio-input {
+  width: 100%;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  resize: vertical;
+}
+
+.studio-cron-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.studio-cron-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.studio-cron-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.studio-cron-name {
+  font-weight: 500;
+}
+
+.studio-cron-ops {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.studio-btn.danger:hover {
+  color: #f87171;
+}
+
+/* Checkpoint panel */
+.studio-cp-panel {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(12, 14, 18, 0.55);
+  padding: 8px 12px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.studio-cp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.studio-cp-head h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.studio-cp-ops {
+  display: flex;
+  gap: 4px;
+}
+
+.studio-cp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.studio-cp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.studio-cp-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-cp-id {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.studio-cp-files {
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 960px) {
+  .studio-panels {
+    grid-template-columns: 1fr;
+    grid-template-rows: 160px 1fr 280px;
+  }
+
+  .studio-tree,
+  .studio-editor,
+  .studio-chat {
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .studio-multi {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+
+  .studio-ecosystem {
+    grid-template-columns: 1fr 1fr;
+    max-height: none;
+  }
+}

@@ -1342,6 +1342,19 @@ hakimi doctor     # diagnose setup and connectivity
 hakimi --serve    # start the embedded WebUI/API on 127.0.0.1:3005
 ```
 
+**Hakimi Studio desktop (local runner shell):**
+```bash
+# Headless — embeds WebUI + Studio WS (works on EL9)
+cargo run -p hakimi-desktop -- --bind 127.0.0.1:3015
+
+# Smoke
+cargo run -p hakimi-desktop -- --once
+
+# Native window (Tauri 2; needs webkit2gtk-4.1 — Fedora 39+/Ubuntu 22.04+)
+cargo run -p hakimi-desktop --features gui
+```
+Docs: [`docs/hakimi-studio/DESKTOP.md`](docs/hakimi-studio/DESKTOP.md)
+
 **v0.4.7 — 上下文管理优化 (Context Management Enhancement):**
 - 🔄 **队列消息注入修复**：修复运行中上下文的排队消息注入逻辑，确保多消息场景下的正确处理
 - 🗜️ **压缩标志重置**：上下文压缩后正确重置 `compressed_this_turn` 标志，避免重复压缩
