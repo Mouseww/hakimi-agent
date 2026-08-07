@@ -50,6 +50,7 @@ fn test_create_child_session() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_a),
+        None,
     )?;
 
     // Verify B's metadata
@@ -83,6 +84,7 @@ fn test_create_grandchild_session() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_a),
+        None,
     )?;
     let session_c = db.create_session_with_id(
         "session-c",
@@ -91,6 +93,7 @@ fn test_create_grandchild_session() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_b),
+        None,
     )?;
 
     // Verify C's metadata
@@ -137,6 +140,7 @@ fn test_multiple_children() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&parent),
+        None,
     )?;
 
     let child2 = db.create_session_with_id(
@@ -146,6 +150,7 @@ fn test_multiple_children() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&parent),
+        None,
     )?;
 
     let child3 = db.create_session_with_id(
@@ -155,6 +160,7 @@ fn test_multiple_children() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&parent),
+        None,
     )?;
 
     // All children should have same parent and root
@@ -194,6 +200,7 @@ fn test_session_depth_calculation() -> Result<()> {
             Some("gpt-4"),
             None,
             Some(&current),
+            None,
         )?;
         assert_eq!(db.get_session_depth(&current)?, i);
         assert_eq!(db.get_session_root(&current)?, Some(root.clone()));
@@ -217,6 +224,7 @@ fn test_lineage_index_performance() -> Result<()> {
             Some("gpt-4"),
             None,
             Some(&root),
+            None,
         )?;
     }
 
@@ -277,6 +285,7 @@ fn test_get_session_lineage_three_generations() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_a),
+        None,
     )?;
     let session_c = db.create_session_with_id(
         "session-c",
@@ -285,6 +294,7 @@ fn test_get_session_lineage_three_generations() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_b),
+        None,
     )?;
 
     // Get lineage from C (should return [C, B, A])
@@ -347,6 +357,7 @@ fn test_get_root_session_meta_with_lineage() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_a),
+        None,
     )?;
     let session_c = db.create_session_with_id(
         "session-c",
@@ -355,6 +366,7 @@ fn test_get_root_session_meta_with_lineage() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_b),
+        None,
     )?;
 
     // All should return root as A
@@ -384,6 +396,7 @@ fn test_get_root_session_meta_multi_branch() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_a),
+        None,
     )?;
     let session_b1 = db.create_session_with_id(
         "session-b1",
@@ -392,6 +405,7 @@ fn test_get_root_session_meta_multi_branch() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_b),
+        None,
     )?;
 
     let session_c = db.create_session_with_id(
@@ -401,6 +415,7 @@ fn test_get_root_session_meta_multi_branch() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_a),
+        None,
     )?;
     let session_c1 = db.create_session_with_id(
         "session-c1",
@@ -409,6 +424,7 @@ fn test_get_root_session_meta_multi_branch() -> Result<()> {
         Some("gpt-4"),
         None,
         Some(&session_c),
+        None,
     )?;
 
     // All nodes should return A as root

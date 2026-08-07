@@ -180,10 +180,9 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
             }
         }
 
-        // Build the messages array to send: system prompt + conversation history.
-        let send_messages = build_send_messages(agent);
-
-        // Check if context compression is needed.
+        // Compress BEFORE building the send_messages array. The old order built
+        // send_messages first, then compressed agent.messages, which meant the
+        // current API call could still carry the over-budget history.
         {
             let engine = agent.context_engine.read().await;
             if engine.should_compress() {
@@ -201,6 +200,15 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                 }
             }
         }
+
+        // Plan the messages for this request. This is a lightweight, zero-LLM
+        // preflight inspired by Hermes/grok-build: dedupe tool results, prune
+        // stale tool output, and enforce a per-request token budget without
+        // mutating durable session history.
+        let planned_messages = plan_request_messages(agent).await;
+
+        // Build the messages array to send: system prompt + planned history.
+        let send_messages = build_send_messages(agent, &planned_messages);
 
         // Fetch a response (streaming or non-streaming).
         let mut response = match fetch_response(
@@ -641,7 +649,6 @@ fn tool_result_media_event(message: &Message) -> Option<String> {
     }
     None
 }
-
 async fn process_tool_calls(
     agent: &mut AIAgent,
     response: &NormalizedResponse,
@@ -841,10 +848,26 @@ fn append_tool_guardrail_notice(message: &mut Message, label: &str, notice: &str
     content.push(']');
 }
 
+/// Plan request messages using the context engine's window size.
+///
+/// This zero-LLM preflight is deliberately per-request and does not mutate
+/// `agent.messages`: durable history remains complete, while the next API call
+/// gets a budget-safe, protocol-safe view.
+async fn plan_request_messages(agent: &AIAgent) -> Vec<Message> {
+    let context_length = {
+        let engine = agent.context_engine.read().await;
+        engine.context_length()
+    };
+    let mut planner = hakimi_context::ContextPlanner::new(
+        hakimi_context::BudgetConfig::from_context_length(context_length),
+    );
+    planner.plan_messages(&agent.messages)
+}
+
 /// Build the messages array to send to the API:
-/// dynamic system prompt + full conversation history.
-fn build_send_messages(agent: &AIAgent) -> Vec<Message> {
-    let mut send = Vec::with_capacity(agent.messages.len() + 1);
+/// dynamic system prompt + planned conversation history.
+fn build_send_messages(agent: &AIAgent, planned_messages: &[Message]) -> Vec<Message> {
+    let mut send = Vec::with_capacity(planned_messages.len() + 1);
 
     let base = agent
         .system_prompt
@@ -866,7 +889,7 @@ fn build_send_messages(agent: &AIAgent) -> Vec<Message> {
         send.push(Message::system(system_prompt));
     }
 
-    send.extend(agent.messages.iter().cloned());
+    send.extend(planned_messages.iter().cloned());
     send
 }
 

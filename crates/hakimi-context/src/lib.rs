@@ -1,6 +1,7 @@
 mod advanced_compressor;
 pub mod archive;
 mod compressor;
+mod context_planner;
 mod engine;
 pub mod error;
 mod factory;
@@ -15,6 +16,7 @@ pub mod smart_engine;
 
 pub use advanced_compressor::{AdvancedCompressor, CompressionConfig};
 pub use compressor::{ContextCompressor, LlmCompressor};
+pub use context_planner::{BudgetConfig, ContextPlanner};
 pub use engine::{CompressionStats, ContextEngine};
 pub use factory::build_context_engine;
 pub use intent::{Intent, IntentClassifier, IntentPrediction};

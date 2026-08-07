@@ -972,6 +972,8 @@ mod tests {
             text: text.to_string(),
             media: None,
             callback_data: None,
+            reply_to_message_id: None,
+            reply_to_text: None,
         }
     }
 

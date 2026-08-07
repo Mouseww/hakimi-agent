@@ -253,7 +253,7 @@ hakimi-agent/
 ├── hakimi-transports/     # OpenAI / Anthropic / Gemini / Bedrock …
 ├── hakimi-tools/          # Built-in tools + registry
 ├── hakimi-session/        # SQLite WAL + FTS5
-├── hakimi-context/        # Compression, intent, roles
+├── hakimi-context/        # Compression, request planning, intent, roles
 ├── hakimi-knowledge/      # Graph memory
 ├── hakimi-skills/         # Skills + meta extraction
 ├── hakimi-cron/           # Persistent scheduler
@@ -268,8 +268,9 @@ hakimi-agent/
 **Turn pipeline (simplified)**
 
 ```
-Message → Intent / Role → Context (compress) → Credential pool
-        → LLM stream → Tool dispatch + guards → Session / memory
+Message → Intent / Role → Context (compress → request-local plan)
+        → Credential pool → LLM stream → Tool dispatch + guards
+        → Session / memory
 ```
 
 ---

@@ -150,6 +150,8 @@ mod tests {
             text: "ping".to_string(),
             media: None,
             callback_data: None,
+            reply_to_message_id: None,
+            reply_to_text: None,
         };
         adapter.inject_message(msg);
 
@@ -186,6 +188,8 @@ mod tests {
             text: "test".to_string(),
             media: Some("https://example.com/img.png".to_string()),
             callback_data: None,
+            reply_to_message_id: None,
+            reply_to_text: None,
         };
         adapter.inject_message(msg);
     }

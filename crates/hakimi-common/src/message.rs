@@ -122,6 +122,12 @@ impl Message {
         self
     }
 
+    /// Attach tool calls to this message (for assistant role).
+    pub fn with_tool_calls(mut self, tool_calls: Vec<ToolCall>) -> Self {
+        self.tool_calls = Some(tool_calls);
+        self
+    }
+
     /// Create a new assistant message.
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {

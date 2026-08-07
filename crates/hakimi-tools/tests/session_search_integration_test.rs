@@ -26,7 +26,7 @@ fn setup_test_db() -> (MutexGuard<'static, ()>, TempDir, SessionDB) {
 
 /// Helper: Insert test messages into a session
 fn insert_test_messages(db: &SessionDB, session_id: &str, count: usize) {
-    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None)
+    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None, None)
         .unwrap();
 
     for i in 0..count {
@@ -184,7 +184,7 @@ async fn test_discovery_fts5_multiple_keywords() {
     let session_id = "test-session-4";
 
     // Insert messages with specific keywords
-    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None)
+    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None, None)
         .unwrap();
 
     let user_msg = Message::user("How to configure Rust compiler?");
@@ -214,7 +214,7 @@ async fn test_discovery_chinese_search() {
     let (_lock, _tmp, db) = setup_test_db();
     let session_id = "test-session-chinese";
 
-    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None)
+    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None, None)
         .unwrap();
 
     let user_msg = Message::user("如何配置 Hakimi Agent？");
@@ -383,7 +383,7 @@ async fn test_error_empty_session() {
     let session_id = "empty-session";
 
     // Create empty session
-    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None)
+    db.create_session_with_id(session_id, "cli", Some("test-user"), None, None, None, None)
         .unwrap();
 
     let tool: Arc<dyn Tool> = Arc::new(SessionSearchTool);
@@ -501,8 +501,16 @@ async fn test_multiple_sessions_discovery() {
     // Create multiple sessions with shared keyword
     for i in 0..3 {
         let session_id = format!("multi-session-{}", i);
-        db.create_session_with_id(&session_id, "cli", Some("test-user"), None, None, None)
-            .unwrap();
+        db.create_session_with_id(
+            &session_id,
+            "cli",
+            Some("test-user"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let msg = Message::user(format!("Common keyword in session {}", i));
         db.save_message(&session_id, &msg).unwrap();

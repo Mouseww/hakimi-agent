@@ -1392,6 +1392,7 @@ mod tests {
             },
             text: Some("Hello!".into()),
             photo: None,
+            reply_to_message: None,
         };
         let gw = convert_message("default", &msg).unwrap();
         assert_eq!(gw.platform, "telegram");
@@ -1422,6 +1423,7 @@ mod tests {
                     file_id: "large_id".into(),
                 },
             ]),
+            reply_to_message: None,
         };
         let gw = convert_message("default", &msg).unwrap();
         assert_eq!(gw.text, "[photo]");
