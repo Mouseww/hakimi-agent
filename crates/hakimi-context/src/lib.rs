@@ -24,9 +24,6 @@ pub use factory::build_context_engine;
 pub use intent::{Intent, IntentClassifier, IntentPrediction};
 pub use memory::{FileMemoryProvider, MemoryProvider, UserMemoryProvider};
 pub use memory_cache::{CacheStats, MemoryCache};
-pub use tool_sanitizer::{
-    SanitizationReport, ToolSanitizer, ValidationIssue, ValidationReport,
-};
 pub use prompt_builder::{
     build_context_files_prompt, build_environment_hints, build_skills_prompt, build_system_prompt,
 };
@@ -34,5 +31,6 @@ pub use role_adapter::{Role, RoleAdapter, RoleProfile};
 pub use scrubber::{StreamingContextScrubber, sanitize_context};
 pub use simple_engine::SimpleContextEngine;
 pub use smart_engine::SmartContextEngine;
+pub use tool_sanitizer::{SanitizationReport, ToolSanitizer, ValidationIssue, ValidationReport};
 // Export archive module
 pub use archive::{ArchiveInfo, ArchiveStats, MemoryArchive, MemoryEntry};
