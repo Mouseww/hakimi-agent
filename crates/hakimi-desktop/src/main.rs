@@ -10,7 +10,6 @@
 
 use std::path::PathBuf;
 
-
 use anyhow::Result;
 use clap::Parser;
 use hakimi_desktop::{BackendConfig, start_backend};
