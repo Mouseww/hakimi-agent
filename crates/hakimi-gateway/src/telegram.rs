@@ -469,7 +469,7 @@ impl TelegramAdapter {
         let body = serde_json::json!({
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "MarkdownV2",
             "reply_markup": {
                 "inline_keyboard": [[
                     {
@@ -582,7 +582,7 @@ impl PlatformAdapter for TelegramAdapter {
             let body = serde_json::json!({
                 "chat_id": chat_id,
                 "text": chunk,
-                "parse_mode": "Markdown",
+                "parse_mode": "MarkdownV2",
             });
 
             let resp: TgResponse<serde_json::Value> = self
@@ -700,7 +700,7 @@ impl PlatformAdapter for TelegramAdapter {
         let body = serde_json::json!({
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "MarkdownV2",
         });
         let resp: TgResponse<serde_json::Value> = self
             .client
@@ -727,7 +727,7 @@ impl PlatformAdapter for TelegramAdapter {
             "chat_id": chat_id,
             "message_id": message_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "MarkdownV2",
         });
         let resp: TgResponse<serde_json::Value> = self
             .client
@@ -892,17 +892,18 @@ fn format_collaboration_message(text: &str) -> String {
     text.to_string()
 }
 
-/// Sanitize text for stable Telegram Markdown rendering.
-/// Removes problematic characters that cause parsing errors.
-fn sanitize_for_markdown(text: &str) -> String {
-    // Replace table separators: | with spaced — for better readability
-    let text = text.replace('|', " — ");
-
-    // Step 1: Identify all code regions (inline ` and block ```)
+/// Escape text for Telegram MarkdownV2 format.
+/// MarkdownV2 requires escaping special characters that aren't part of formatting.
+fn escape_markdown_v2(text: &str) -> String {
+    // Characters that must be escaped in MarkdownV2:
+    // _ * [ ] ( ) ~ ` > # + - = | { } . !
+    // But NOT inside code blocks or inline code
+    
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();
     let mut code_regions = Vec::new();
-
+    
+    // Step 1: Find all code regions (inline ` and block ```)
     let mut i = 0;
     while i < len {
         // Check for code block (```)
@@ -937,84 +938,44 @@ fn sanitize_for_markdown(text: &str) -> String {
         }
         i += 1;
     }
-
-    // Step 2: Smart escaping - preserve Markdown syntax while escaping isolated characters
-    let mut result = String::with_capacity(text.len());
+    
+    // Step 2: Escape special characters outside code regions
+    let mut result = String::with_capacity(text.len() * 2);
     let mut i = 0;
-
+    
     while i < len {
         let ch = chars[i];
-
+        
         // Check if we're inside a code region
         let in_code = code_regions
             .iter()
             .any(|&(start, end)| i >= start && i < end);
-
+        
         if in_code {
-            // Inside code block/inline: keep everything as-is
+            // Inside code: keep everything as-is
             result.push(ch);
-            i += 1;
-            continue;
+        } else {
+            // Outside code: escape MarkdownV2 special characters
+            match ch {
+                '_' | '*' | '[' | ']' | '(' | ')' | '~' | '`' | '>' | '#' 
+                | '+' | '-' | '=' | '|' | '{' | '}' | '.' | '!' | '\\' => {
+                    result.push('\\');
+                    result.push(ch);
+                }
+                _ => result.push(ch),
+            }
         }
-
-        // Outside code: apply smart escaping
-        match ch {
-            '[' => {
-                // Look ahead for ](url) pattern (Markdown link)
-                if let Some(close_pos) = chars[i..].iter().position(|&c| c == ']') {
-                    let after_close = i + close_pos + 1;
-                    if after_close < len && chars[after_close] == '(' {
-                        // Valid Markdown link pattern, keep as-is
-                        result.push(ch);
-                        i += 1;
-                        continue;
-                    }
-                }
-                // Isolated bracket, escape it
-                result.push_str("\\[");
-            }
-            ']' => {
-                // Check if it's followed by '(' (part of Markdown link)
-                if i + 1 < len && chars[i + 1] == '(' {
-                    // Part of Markdown link, keep as-is
-                    result.push(ch);
-                } else {
-                    // Isolated bracket, escape it
-                    result.push_str("\\]");
-                }
-            }
-            '(' => {
-                // Check if it's preceded by ] (part of Markdown link)
-                if i > 0 && chars[i - 1] == ']' {
-                    // Part of Markdown link, keep as-is
-                    result.push(ch);
-                } else {
-                    // Isolated parenthesis, escape it
-                    result.push_str("\\(");
-                }
-            }
-            ')' => {
-                // Check if we're inside a Markdown link by looking back
-                // Simple heuristic: if there's a recent '](' pattern, we're in a link
-                let is_in_link = result.rfind("](").is_some_and(|pos| {
-                    // Check if there's a closing ')' after that position
-                    result[pos..].find(')').is_none()
-                });
-                if is_in_link {
-                    // Part of Markdown link, keep as-is
-                    result.push(ch);
-                } else {
-                    // Isolated parenthesis, escape it
-                    result.push_str("\\)");
-                }
-            }
-            _ => result.push(ch),
-        }
-
+        
         i += 1;
     }
-
+    
     result
+}
+
+/// Sanitize text for stable Telegram MarkdownV2 rendering.
+/// Preserves Markdown formatting while escaping special characters.
+fn sanitize_for_markdown(text: &str) -> String {
+    escape_markdown_v2(text)
 }
 
 /// Sanitize text for streaming updates - removes unclosed Markdown syntax
