@@ -898,11 +898,11 @@ fn escape_markdown_v2(text: &str) -> String {
     // Characters that must be escaped in MarkdownV2:
     // _ * [ ] ( ) ~ ` > # + - = | { } . !
     // But NOT inside code blocks or inline code
-    
+
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();
     let mut code_regions = Vec::new();
-    
+
     // Step 1: Find all code regions (inline ` and block ```)
     let mut i = 0;
     while i < len {
@@ -938,37 +938,37 @@ fn escape_markdown_v2(text: &str) -> String {
         }
         i += 1;
     }
-    
+
     // Step 2: Escape special characters outside code regions
     let mut result = String::with_capacity(text.len() * 2);
     let mut i = 0;
-    
+
     while i < len {
         let ch = chars[i];
-        
+
         // Check if we're inside a code region
         let in_code = code_regions
             .iter()
             .any(|&(start, end)| i >= start && i < end);
-        
+
         if in_code {
             // Inside code: keep everything as-is
             result.push(ch);
         } else {
             // Outside code: escape MarkdownV2 special characters
             match ch {
-                '_' | '*' | '[' | ']' | '(' | ')' | '~' | '`' | '>' | '#' 
-                | '+' | '-' | '=' | '|' | '{' | '}' | '.' | '!' | '\\' => {
+                '_' | '*' | '[' | ']' | '(' | ')' | '~' | '`' | '>' | '#' | '+' | '-' | '='
+                | '|' | '{' | '}' | '.' | '!' | '\\' => {
                     result.push('\\');
                     result.push(ch);
                 }
                 _ => result.push(ch),
             }
         }
-        
+
         i += 1;
     }
-    
+
     result
 }
 
