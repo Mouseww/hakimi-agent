@@ -361,7 +361,7 @@ mod tests {
         let store = CronRunStore::open(temp.path()).unwrap();
 
         // Create multiple runs for the same job
-        for i in 0..5 {
+        for _i in 0..5 {
             let mut run = CronJobRun::new("job-123");
             run.complete(RunStatus::Success, None);
             // Ensure different timestamps

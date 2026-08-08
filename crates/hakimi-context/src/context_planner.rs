@@ -573,16 +573,16 @@ mod tests {
             m.role == MessageRole::System
                 && m.content
                     .as_ref()
-                    .map_or(false, |c| c.contains("helpful assistant"))
+                    .is_some_and(|c| c.contains("helpful assistant"))
         }));
 
         // Newest turn should be preserved
         assert!(trimmed.iter().any(|m| m.role == MessageRole::User
-            && m.content.as_ref().map_or(false, |c| c.contains("3+3"))));
+            && m.content.as_ref().is_some_and(|c| c.contains("3+3"))));
 
         // Older turns should be dropped
         assert!(!trimmed.iter().any(|m| m.role == MessageRole::User
-            && m.content.as_ref().map_or(false, |c| c.contains("1+1"))));
+            && m.content.as_ref().is_some_and(|c| c.contains("1+1"))));
     }
 
     #[test]

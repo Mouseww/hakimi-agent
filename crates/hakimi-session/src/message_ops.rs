@@ -1110,7 +1110,7 @@ mod tests {
         .unwrap();
 
         // 只查询 tool 角色
-        let (start, end) = db.get_bookends(&sid, 10, Some(&["tool"])).unwrap();
+        let (start, _end) = db.get_bookends(&sid, 10, Some(&["tool"])).unwrap();
 
         assert_eq!(start.len(), 1);
         assert_eq!(start[0].role, MessageRole::Tool);
@@ -1134,7 +1134,7 @@ mod tests {
             .unwrap();
 
         // 传空数组 = 不过滤角色
-        let (start, end) = db.get_bookends(&sid, 10, Some(&[])).unwrap();
+        let (start, _end) = db.get_bookends(&sid, 10, Some(&[])).unwrap();
 
         assert_eq!(start.len(), 4);
     }

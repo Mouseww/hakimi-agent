@@ -13,17 +13,10 @@ use hakimi_common::{Message, MessageRole};
 /// # Invariant
 /// Every `tool` role message must have a preceding `assistant` message with a matching
 /// `tool_calls[].id` entry. Violating this invariant can cause provider request errors.
+#[derive(Default)]
 pub struct ToolSanitizer {
     /// Whether to synthesize placeholder tool results for dangling tool calls.
     pub synthesize_placeholders: bool,
-}
-
-impl Default for ToolSanitizer {
-    fn default() -> Self {
-        Self {
-            synthesize_placeholders: false,
-        }
-    }
 }
 
 impl ToolSanitizer {
