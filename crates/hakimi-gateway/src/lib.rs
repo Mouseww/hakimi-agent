@@ -897,7 +897,7 @@ mod tests {
         draft_supported: bool,
     }
 
-#[allow(clippy::double_must_use)]
+    #[allow(clippy::double_must_use)]
     #[async_trait]
     impl PlatformAdapter for RecordingAdapter {
         fn name(&self) -> &str {
