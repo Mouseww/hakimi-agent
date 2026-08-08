@@ -981,10 +981,7 @@ fn sanitize_for_markdown(text: &str) -> String {
 /// Sanitize text for streaming updates - removes unclosed Markdown syntax
 /// to prevent UI flickering during incremental message edits.
 fn sanitize_for_streaming(text: &str) -> String {
-    // First apply standard sanitization
-    let text = sanitize_for_markdown(text);
-
-    // Count Markdown delimiters to detect unclosed syntax
+    // Count Markdown delimiters BEFORE escaping to detect unclosed syntax
     let bold_count = text.matches("**").count();
     let total_stars = text.matches('*').count();
     let italic_count = total_stars.saturating_sub(bold_count * 2);
@@ -992,17 +989,17 @@ fn sanitize_for_streaming(text: &str) -> String {
     let backtick_triple = text.matches("```").count();
     let inline_backticks = backtick_single.saturating_sub(backtick_triple * 6);
 
-    // If all Markdown syntax is properly closed, return as-is
+    // If all Markdown syntax is properly closed, escape and return
     if bold_count.is_multiple_of(2)
         && italic_count.is_multiple_of(2)
         && inline_backticks.is_multiple_of(2)
         && backtick_triple.is_multiple_of(2)
     {
-        return text;
+        return sanitize_for_markdown(text);
     }
 
-    // Otherwise, strip trailing unclosed Markdown syntax
-    let mut result = text.clone();
+    // Otherwise, strip trailing unclosed Markdown syntax BEFORE escaping
+    let mut result = text.to_string();
 
     // Remove trailing unclosed code blocks
     if !backtick_triple.is_multiple_of(2)
@@ -1035,7 +1032,8 @@ fn sanitize_for_streaming(text: &str) -> String {
         result.truncate(pos);
     }
 
-    result
+    // Now escape the cleaned text
+    sanitize_for_markdown(&result)
 }
 
 fn truncate_draft_text(text: &str) -> String {
