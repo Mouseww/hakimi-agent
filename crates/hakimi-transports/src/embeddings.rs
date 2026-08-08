@@ -5,7 +5,8 @@ use serde::Deserialize;
 use serde_json::json;
 use tracing::{debug, warn};
 
-/// Common trait for text embedding providers.
+/// Trait for generating embeddings from text.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait EmbeddingProvider: Send + Sync {
     /// Generate one embedding vector for each input text.

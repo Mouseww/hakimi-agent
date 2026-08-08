@@ -12,7 +12,8 @@ use crate::streaming::StreamEvent;
 /// A transport is responsible for:
 /// 1. Serializing messages + tools into the provider-specific wire format
 /// 2. Sending the HTTP request
-/// 3. Deserializing the response back into the common [`NormalizedResponse`]
+/// Trait for provider-specific HTTP transport (OpenAI, Anthropic, Gemini, etc.).
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ProviderTransport: Send + Sync {
     /// Which API mode / protocol this transport speaks.
