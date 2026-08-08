@@ -2,7 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::len_zero)]
 
-use hakimi_common::{Message, Role, ToolContext};
+use hakimi_common::{Message, ToolContext};
 use hakimi_session::{MessageOps, SessionDB, SessionOps};
 use hakimi_tools::{SessionSearchTool, Tool};
 use serde_json::json;
