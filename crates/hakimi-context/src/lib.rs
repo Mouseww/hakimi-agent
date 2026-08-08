@@ -5,6 +5,8 @@ mod context_planner;
 mod engine;
 pub mod error;
 mod factory;
+mod tool_sanitizer;
+
 pub mod intent;
 mod memory;
 mod memory_cache;
@@ -22,6 +24,9 @@ pub use factory::build_context_engine;
 pub use intent::{Intent, IntentClassifier, IntentPrediction};
 pub use memory::{FileMemoryProvider, MemoryProvider, UserMemoryProvider};
 pub use memory_cache::{CacheStats, MemoryCache};
+pub use tool_sanitizer::{
+    SanitizationReport, ToolSanitizer, ValidationIssue, ValidationReport,
+};
 pub use prompt_builder::{
     build_context_files_prompt, build_environment_hints, build_skills_prompt, build_system_prompt,
 };
