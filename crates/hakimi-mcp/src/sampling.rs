@@ -15,6 +15,7 @@ use crate::protocol::{
 };
 
 /// Handles MCP server-initiated JSON-RPC requests.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait McpServerRequestHandler: Send + Sync {
     async fn handle_request(
@@ -79,6 +80,7 @@ impl TransportSamplingHandler {
     }
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 impl McpServerRequestHandler for TransportSamplingHandler {
     async fn handle_request(

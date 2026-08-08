@@ -11,6 +11,7 @@ pub struct CompressionStats {
 }
 
 /// Trait for managing conversation context (token tracking, compression, lifecycle).
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ContextEngine: Send + Sync {
     /// Human-readable name of this engine.

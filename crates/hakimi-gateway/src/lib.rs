@@ -163,6 +163,7 @@ pub struct GatewayMessage {
 ///
 /// Each platform (Telegram, Slack, Discord, …) implements this trait to
 /// integrate with the [`Gateway`].
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait PlatformAdapter: Send + Sync {
     /// Human-readable platform name (e.g. "telegram").
@@ -896,6 +897,7 @@ mod tests {
         draft_supported: bool,
     }
 
+#[allow(clippy::double_must_use)]
     #[async_trait]
     impl PlatformAdapter for RecordingAdapter {
         fn name(&self) -> &str {

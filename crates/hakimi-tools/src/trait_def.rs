@@ -3,6 +3,7 @@ use hakimi_common::{Result, ToolContext};
 use serde_json::Value as JsonValue;
 
 /// Core trait that every tool in the Hakimi Agent must implement.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Unique name of the tool (used for dispatch).

@@ -107,6 +107,7 @@ pub struct Session {
 }
 
 /// 插件生命周期钩子
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait HakimiPlugin: Send + Sync {
     /// 获取插件元数据

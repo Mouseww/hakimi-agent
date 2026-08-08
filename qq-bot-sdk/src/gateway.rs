@@ -28,7 +28,8 @@ pub enum GatewayEvent {
     Reconnect,
     Disconnected,
 }
-
+/// Trait for handling QQ bot events.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait EventHandler: Send + Sync {
     async fn on_ready(&self, _ready: &ReadyEvent) {}

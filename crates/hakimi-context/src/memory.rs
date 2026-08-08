@@ -13,6 +13,7 @@ const MEMORY_WARN_SIZE_BYTES: u64 = 60 * 1024;
 const MEMORY_MAX_SIZE_BYTES: u64 = 64 * 1024;
 
 /// Trait for providing memory / long-term context to the agent.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait MemoryProvider: Send + Sync {
     /// Human-readable name of this memory provider.
@@ -197,6 +198,7 @@ impl FileMemoryProvider {
     }
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 impl MemoryProvider for FileMemoryProvider {
     fn name(&self) -> &str {
@@ -546,6 +548,7 @@ impl UserMemoryProvider {
     }
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 impl MemoryProvider for UserMemoryProvider {
     fn name(&self) -> &str {
