@@ -10,22 +10,14 @@ use hakimi_common::{Message, MessageRole};
 /// - Strip isolated tool results (no preceding assistant tool_call)
 /// - Optionally synthesize placeholder tool results for dangling tool_calls
 ///
-/// # Invariant
-/// Every `tool` role message must have a preceding `assistant` message with a matching
-/// `tool_calls[].id` entry. Violating this invariant can cause provider request errors.
+/// Configuration for the tool call/result pairing and validation logic.
+#[derive(Default)]
 pub struct ToolSanitizer {
-    /// Whether to synthesize placeholder tool results for dangling tool calls.
+    /// When true, synthesize placeholder results for dangling tool calls.
     pub synthesize_placeholders: bool,
+    /// When true, drop unmatched tool results instead of returning an error.
+    pub drop_unmatched_results: bool,
 }
-
-impl Default for ToolSanitizer {
-    fn default() -> Self {
-        Self {
-            synthesize_placeholders: false,
-        }
-    }
-}
-
 impl ToolSanitizer {
     /// Create a new tool sanitizer.
     pub fn new() -> Self {
