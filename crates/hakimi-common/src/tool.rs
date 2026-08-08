@@ -249,6 +249,7 @@ pub type ToolProgressCallback = Arc<dyn Fn(String) + Send + Sync>;
 /// Implementors hold the shared resources (transport, context engine, model,
 /// tool registry) needed to spawn and run a child agent. The `delegate_task`
 /// tool calls through this trait to perform actual delegation.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait DelegateExecutor: Send + Sync {
     /// Spawn a child agent to accomplish `goal` with the given `context` and
@@ -310,6 +311,7 @@ impl std::fmt::Debug for TeamCallContext {
 ///
 /// Implemented by `hakimi-core`'s `PersonaTeamExecutor`. Tools reach it through
 /// [`ToolContext::team_executor`].
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait TeamExecutor: Send + Sync {
     /// List teammate personas this agent may consult (id, name, description).
@@ -324,6 +326,7 @@ pub trait TeamExecutor: Send + Sync {
 }
 
 /// Trait for searching the knowledge base.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait KnowledgeSearcher: Send + Sync {
     /// Search for knowledge entities or snippets.
