@@ -4025,6 +4025,24 @@ async fn render_gateway_stream_content(
                     }
                     continue;
                 }
+                // When draft is disabled and no message exists yet, send initial message
+                if current_message_id.is_none() {
+                    let msg = hakimi_gateway::GatewayMessage {
+                        platform: env.platform.to_string(),
+                        bot_id: env.bot_id.to_string(),
+                        chat_id: env.chat_id.to_string(),
+                        user_id: String::new(),
+                        text: text.clone(),
+                        media: None,
+                        callback_data: None,
+                        reply_to_message_id: None,
+                        reply_to_text: None,
+                    };
+                    *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
+                    result.rendered_any = true;
+                    first_rendered_at.get_or_insert_with(std::time::Instant::now);
+                    continue;
+                }
                 if let Some(active_msg_id) = *current_message_id {
                     match env
                         .gateway
