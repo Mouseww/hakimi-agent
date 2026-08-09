@@ -651,21 +651,10 @@ impl PlatformAdapter for TelegramAdapter {
         Ok(())
     }
 
-    fn supports_draft_streaming(&self, chat_id: &str, chat_type: Option<&str>) -> bool {
-        if matches!(
-            chat_type.map(|kind| kind.to_ascii_lowercase()),
-            Some(kind) if kind == "dm" || kind == "private"
-        ) {
-            return true;
-        }
-
-        // Telegram private chat IDs are positive user IDs. Groups/channels are
-        // negative IDs, so an unknown chat type can still safely enable drafts
-        // for positive numeric IDs and fall back on API rejection otherwise.
-        chat_type.is_none()
-            && chat_id
-                .parse::<i64>()
-                .is_ok_and(|parsed_chat_id| parsed_chat_id > 0)
+    fn supports_draft_streaming(&self, _chat_id: &str, _chat_type: Option<&str>) -> bool {
+        // Temporarily disabled: draft streaming causes duplicate messages
+        // TODO: Re-enable after fixing draft → final message transition
+        false
     }
 
     async fn send_draft(&self, chat_id: &str, draft_id: i64, text: &str) -> Result<()> {
