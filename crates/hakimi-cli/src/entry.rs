@@ -3756,6 +3756,7 @@ struct GatewayStreamUiState {
     active_chunk_index: usize,
     active_chunk_last_text: String,
     used_overflow_chunks: bool,
+    last_rendered_at_boundary: String,
 }
 
 impl Default for GatewayStreamUiState {
@@ -3768,6 +3769,7 @@ impl Default for GatewayStreamUiState {
             active_chunk_index: 0,
             active_chunk_last_text: String::new(),
             used_overflow_chunks: false,
+            last_rendered_at_boundary: String::new(),
         }
     }
 }
@@ -3793,6 +3795,13 @@ impl GatewayStreamUiState {
             return None;
         }
 
+        // Deduplication: skip if content matches last boundary render
+        if !self.last_rendered_at_boundary.is_empty() 
+            && self.current_text.trim() == self.last_rendered_at_boundary.trim() {
+            tracing::info!("render_pending: skipping duplicate content from boundary");
+            return None;
+        }
+
         let chunks = split_stream_chunks(&self.current_text, max_message_chars);
         if chunks.len() > 1 {
             self.used_overflow_chunks = true;
@@ -3806,6 +3815,7 @@ impl GatewayStreamUiState {
             self.active_chunk_last_text = active_text.clone();
             self.last_edit_text = chunks[..=active_index].concat();
             self.pending_since_last_render = 0;
+            tracing::info!("render_pending: NewMessage triggered, text_len={}", active_text.len());
             return Some(GatewayUiContentTarget::NewMessage(active_text.clone()));
         }
 
@@ -3831,6 +3841,9 @@ impl GatewayStreamUiState {
     }
 
     fn finish_tool_boundary(&mut self) {
+        tracing::info!("finish_tool_boundary called, resetting state");
+        // Store last rendered text before clearing for deduplication
+        self.last_rendered_at_boundary = self.current_text.clone();
         self.current_text.clear();
         self.last_edit_text.clear();
         self.needs_new_message = true;
