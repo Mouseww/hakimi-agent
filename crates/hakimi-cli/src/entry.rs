@@ -3816,8 +3816,10 @@ impl GatewayStreamUiState {
             self.active_chunk_last_text = active_text.clone();
             self.last_edit_text = chunks[..=active_index].concat();
             self.pending_since_last_render = 0;
+            // Update last_rendered_at_boundary to enable deduplication on next boundary
+            self.last_rendered_at_boundary = self.current_text.clone();
             tracing::info!(
-                "render_pending: NewMessage triggered, text_len={}",
+                "render_pending: NewMessage triggered, text_len={}, saved to last_rendered_at_boundary",
                 active_text.len()
             );
             return Some(GatewayUiContentTarget::NewMessage(active_text.clone()));
