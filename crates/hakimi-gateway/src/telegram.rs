@@ -722,7 +722,9 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn edit_message(&self, chat_id: &str, message_id: i64, text: &str) -> Result<()> {
-        let text = sanitize_for_streaming(&normalize_outbound_text(text));
+        let text = normalize_outbound_text(text);
+        let text = sanitize_for_streaming(&text);
+        let text = sanitize_for_markdown(&text); // Escape for MarkdownV2
         let body = serde_json::json!({
             "chat_id": chat_id,
             "message_id": message_id,
