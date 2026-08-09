@@ -3796,8 +3796,9 @@ impl GatewayStreamUiState {
         }
 
         // Deduplication: skip if content matches last boundary render
-        if !self.last_rendered_at_boundary.is_empty() 
-            && self.current_text.trim() == self.last_rendered_at_boundary.trim() {
+        if !self.last_rendered_at_boundary.is_empty()
+            && self.current_text.trim() == self.last_rendered_at_boundary.trim()
+        {
             tracing::info!("render_pending: skipping duplicate content from boundary");
             return None;
         }
@@ -3815,7 +3816,10 @@ impl GatewayStreamUiState {
             self.active_chunk_last_text = active_text.clone();
             self.last_edit_text = chunks[..=active_index].concat();
             self.pending_since_last_render = 0;
-            tracing::info!("render_pending: NewMessage triggered, text_len={}", active_text.len());
+            tracing::info!(
+                "render_pending: NewMessage triggered, text_len={}",
+                active_text.len()
+            );
             return Some(GatewayUiContentTarget::NewMessage(active_text.clone()));
         }
 
