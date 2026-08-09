@@ -38,7 +38,7 @@ impl TodoItem {
         // Cap content length
         const SUFFIX: &str = "… [truncated]";
         let suffix_chars = SUFFIX.chars().count();
-        
+
         if self.content.chars().count() > MAX_TODO_CONTENT_CHARS {
             // Truncate by character count, not byte count
             let target_len = MAX_TODO_CONTENT_CHARS - suffix_chars;
