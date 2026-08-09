@@ -669,7 +669,9 @@ impl PlatformAdapter for TelegramAdapter {
     }
 
     async fn send_draft(&self, chat_id: &str, draft_id: i64, text: &str) -> Result<()> {
-        let text = truncate_draft_text(&normalize_outbound_text(text));
+        let text = normalize_outbound_text(text);
+        let text = truncate_draft_text(&text);
+        let text = sanitize_for_markdown(&text); // Escape for MarkdownV2
         let body = serde_json::json!({
             "chat_id": chat_id,
             "draft_id": draft_id,
