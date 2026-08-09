@@ -4038,7 +4038,8 @@ async fn render_gateway_stream_content(
                         reply_to_message_id: None,
                         reply_to_text: None,
                     };
-                    *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
+                    *current_message_id =
+                        env.gateway.route_message_get_id(&msg).await.ok().flatten();
                     result.rendered_any = true;
                     first_rendered_at.get_or_insert_with(std::time::Instant::now);
                     continue;
