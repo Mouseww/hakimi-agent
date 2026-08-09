@@ -1447,9 +1447,10 @@ mod tests {
     fn telegram_draft_support_is_private_chat_only() {
         let adapter = TelegramAdapter::from_token("default", "test:token");
 
-        assert!(adapter.supports_draft_streaming("123", Some("private")));
-        assert!(adapter.supports_draft_streaming("123", Some("dm")));
-        assert!(adapter.supports_draft_streaming("123", None));
+        // Draft streaming temporarily disabled to prevent duplicate messages
+        assert!(!adapter.supports_draft_streaming("123", Some("private")));
+        assert!(!adapter.supports_draft_streaming("123", Some("dm")));
+        assert!(!adapter.supports_draft_streaming("123", None));
         assert!(!adapter.supports_draft_streaming("-100123", None));
         assert!(!adapter.supports_draft_streaming("-100123", Some("group")));
         assert!(!adapter.supports_draft_streaming("channel", None));
