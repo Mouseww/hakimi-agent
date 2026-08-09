@@ -3853,15 +3853,19 @@ impl GatewayStreamUiState {
         // Store last rendered text before clearing for deduplication
         // Only update if current_text is non-empty to avoid clearing by repeated calls
         if !self.current_text.is_empty() {
+            // Safe substring extraction respecting UTF-8 boundaries
+            let preview = self.current_text.chars().take(50).collect::<String>();
             tracing::info!(
                 "finish_tool_boundary: saving current_text to last_rendered_at_boundary: {:?}",
-                &self.current_text[..self.current_text.len().min(100)]
+                preview
             );
             self.last_rendered_at_boundary = self.current_text.clone();
         } else {
+            // Safe substring extraction respecting UTF-8 boundaries
+            let preview = self.last_rendered_at_boundary.chars().take(50).collect::<String>();
             tracing::info!(
                 "finish_tool_boundary: current_text is empty, keeping last_rendered_at_boundary: {:?}",
-                &self.last_rendered_at_boundary[..self.last_rendered_at_boundary.len().min(100)]
+                preview
             );
         }
         self.current_text.clear();
