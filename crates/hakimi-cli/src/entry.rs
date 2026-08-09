@@ -4109,10 +4109,6 @@ async fn render_gateway_stream_content(
                 *current_message_id = env.gateway.route_message_get_id(&msg).await.ok().flatten();
                 result.rendered_any = true;
                 backoff_state.record_edit_success();
-                // If message_id is still None after sending, retry NewMessage on next render
-                if current_message_id.is_none() {
-                    ui_state.needs_new_message = true;
-                }
             }
         }
     }
