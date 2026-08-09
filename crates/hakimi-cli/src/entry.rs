@@ -3845,11 +3845,24 @@ impl GatewayStreamUiState {
     }
 
     fn finish_tool_boundary(&mut self) {
-        tracing::info!("finish_tool_boundary called, resetting state");
+        tracing::info!(
+            "finish_tool_boundary called, current_text_len={}, last_rendered_len={}",
+            self.current_text.len(),
+            self.last_rendered_at_boundary.len()
+        );
         // Store last rendered text before clearing for deduplication
         // Only update if current_text is non-empty to avoid clearing by repeated calls
         if !self.current_text.is_empty() {
+            tracing::info!(
+                "finish_tool_boundary: saving current_text to last_rendered_at_boundary: {:?}",
+                &self.current_text[..self.current_text.len().min(100)]
+            );
             self.last_rendered_at_boundary = self.current_text.clone();
+        } else {
+            tracing::info!(
+                "finish_tool_boundary: current_text is empty, keeping last_rendered_at_boundary: {:?}",
+                &self.last_rendered_at_boundary[..self.last_rendered_at_boundary.len().min(100)]
+            );
         }
         self.current_text.clear();
         self.last_edit_text.clear();
