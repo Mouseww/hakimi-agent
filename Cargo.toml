@@ -38,7 +38,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.5.134"
+version = "0.5.135"
 edition = "2024"
 
 [workspace.dependencies]
