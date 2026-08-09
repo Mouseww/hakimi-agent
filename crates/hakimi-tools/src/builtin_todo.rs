@@ -36,9 +36,14 @@ impl TodoItem {
         }
 
         // Cap content length
-        if self.content.len() > MAX_TODO_CONTENT_CHARS {
-            self.content.truncate(MAX_TODO_CONTENT_CHARS - 14);
-            self.content.push_str("… [truncated]");
+        const SUFFIX: &str = "… [truncated]";
+        let suffix_chars = SUFFIX.chars().count();
+        
+        if self.content.chars().count() > MAX_TODO_CONTENT_CHARS {
+            // Truncate by character count, not byte count
+            let target_len = MAX_TODO_CONTENT_CHARS - suffix_chars;
+            self.content = self.content.chars().take(target_len).collect();
+            self.content.push_str(SUFFIX);
         }
 
         self
@@ -372,7 +377,7 @@ mod tests {
         let parsed: JsonValue = serde_json::from_str(&result).unwrap();
         let content = parsed["todos"][0]["content"].as_str().unwrap();
 
-        assert!(content.len() <= MAX_TODO_CONTENT_CHARS);
+        assert!(content.chars().count() <= MAX_TODO_CONTENT_CHARS);
         assert!(content.ends_with("… [truncated]"));
 
         cleanup(session_id).await;
