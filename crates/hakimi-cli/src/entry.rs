@@ -3864,7 +3864,11 @@ impl GatewayStreamUiState {
             self.last_rendered_at_boundary = self.current_text.clone();
         } else {
             // Safe substring extraction respecting UTF-8 boundaries
-            let preview = self.last_rendered_at_boundary.chars().take(50).collect::<String>();
+            let preview = self
+                .last_rendered_at_boundary
+                .chars()
+                .take(50)
+                .collect::<String>();
             tracing::info!(
                 "finish_tool_boundary: current_text is empty, keeping last_rendered_at_boundary: {:?}",
                 preview
