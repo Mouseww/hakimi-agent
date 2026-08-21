@@ -3852,24 +3852,18 @@ impl GatewayStreamUiState {
             self.current_text.len(),
             self.last_rendered_at_boundary.len()
         );
-        // Store last rendered text before clearing for deduplication
-        // Only update if current_text is non-empty to avoid clearing by repeated calls
-        if !self.current_text.is_empty() {
-            // Safe substring extraction respecting UTF-8 boundaries
-            let preview = self.current_text.chars().take(50).collect::<String>();
-            tracing::info!(
-                "finish_tool_boundary: saving current_text to last_rendered_at_boundary: {:?}",
-                preview
-            );
-            self.last_rendered_at_boundary = self.current_text.clone();
+        // DO NOT update last_rendered_at_boundary here — render_pending(NewMessage) already set it
+        // Redundant assignment here causes first-sentence duplication because current_text
+        // at boundary == previous NewMessage content → next stream wrongly deduplicates real content
+        let preview = if !self.last_rendered_at_boundary.is_empty() {
+            self.last_rendered_at_boundary.chars().take(50).collect::<String>()
         } else {
-            // Safe substring extraction respecting UTF-8 boundaries
-            let preview = self.last_rendered_at_boundary.chars().take(50).collect::<String>();
-            tracing::info!(
-                "finish_tool_boundary: current_text is empty, keeping last_rendered_at_boundary: {:?}",
-                preview
-            );
-        }
+            String::from("(empty)")
+        };
+        tracing::info!(
+            "finish_tool_boundary: keeping last_rendered_at_boundary (set by NewMessage): {:?}",
+            preview
+        );
         self.current_text.clear();
         self.last_edit_text.clear();
         self.needs_new_message = true;
@@ -4329,7 +4323,7 @@ fn long_version() -> &'static str {
     version,
     long_version = long_version(),
     about = "Hakimi Agent — AI-powered coding assistant",
-    after_help = "EXAMPLES:\n  hakimi                           Start interactive session\n  hakimi \"write a hello world\"     Print response and exit\n  hakimi --print \"your prompt\"     Same as above (explicit)\n  hakimi -c                        Continue most recent conversation\n  hakimi --resume                  Resume a previous session (interactive picker)\n  hakimi --gateway                 Start gateway mode (Telegram/Discord/etc.)\n  hakimi --serve                   Start WebUI server on http://127.0.0.1:3005"
+    after_help = "EXAMPLES:\n  hakimi                           Start interactive session\n  hakimi \"write a hello world\"     Print response and exit\n  hakimi --print \"your prompt\"     Same as above (explicit)\n  hakimi -c                        Continue most recent conversation\n  hakimi --resume                  Resume a previous session (interactive picker)\n  hakimi --gateway                 Start gateway mode (Telegram/Discord/etc.)"
 )]
 pub struct Args {
     /// Your prompt (if provided without --print, acts like --print).
@@ -4385,8 +4379,8 @@ pub struct Args {
     #[arg(long)]
     pub base_url: Option<String>,
 
-    /// Start the HTTP API server (WebUI). In unified mode, also starts gateway bridges.
-    #[arg(long)]
+    /// Start the HTTP API server (removed; retained only to show a clear error).
+    #[arg(long, hide = true)]
     pub serve: bool,
 
     /// Save conversations as Hermes-compatible ShareGPT JSONL trajectories.
@@ -8706,6 +8700,10 @@ pub async fn run() -> Result<()> {
     }
     if matches!(args.gateway, Some(GatewayMode::Status)) {
         return gateway_service_status();
+    }
+
+    if args.serve {
+        anyhow::bail!("WebUI has been removed. Use `hakimi --gateway start` for gateway mode.");
     }
 
     if !args.serve
