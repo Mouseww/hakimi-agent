@@ -3856,7 +3856,10 @@ impl GatewayStreamUiState {
         // Redundant assignment here causes first-sentence duplication because current_text
         // at boundary == previous NewMessage content → next stream wrongly deduplicates real content
         let preview = if !self.last_rendered_at_boundary.is_empty() {
-            self.last_rendered_at_boundary.chars().take(50).collect::<String>()
+            self.last_rendered_at_boundary
+                .chars()
+                .take(50)
+                .collect::<String>()
         } else {
             String::from("(empty)")
         };
