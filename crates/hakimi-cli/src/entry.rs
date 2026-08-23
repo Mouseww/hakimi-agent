@@ -10391,6 +10391,37 @@ gateways:
     }
 
     #[test]
+    fn gateway_tool_boundary_does_not_duplicate_first_sentence() {
+        let mut state = GatewayStreamUiState::default();
+
+        state.push_content("爸爸");
+        state.push_content("稍等...");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "爸爸稍等...".to_string()
+            ))
+        );
+
+        state.finish_tool_boundary();
+        state.push_content("喵～结果");
+
+        let rendered_after_boundary = state.render_pending(None);
+        assert_eq!(
+            rendered_after_boundary,
+            Some(GatewayUiContentTarget::NewMessage("喵～结果".to_string()))
+        );
+        assert_ne!(
+            rendered_after_boundary,
+            Some(GatewayUiContentTarget::NewMessage(
+                "爸爸稍等...爸爸稍等...喵～结果".to_string()
+            ))
+        );
+        assert_eq!(state.current_text, "喵～结果");
+        assert!(!state.current_text.contains("爸爸稍等..."));
+    }
+
+    #[test]
     fn tool_boundary_forces_next_content_into_new_message() {
         let mut state = GatewayStreamUiState::default();
 
