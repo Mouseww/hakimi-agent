@@ -10494,6 +10494,69 @@ gateways:
     }
 
     #[test]
+    fn media_boundary_starts_fresh_message() {
+        let mut state = GatewayStreamUiState::default();
+
+        state.push_content("先生成一张图。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "先生成一张图。".to_string()
+            ))
+        );
+
+        // Media events share the same stream segment reset path as tool
+        // boundaries: the media payload is delivered separately, and following
+        // prose must not edit or duplicate the pre-media explanation.
+        state.finish_tool_boundary();
+        state.push_content("图片已生成，继续说明。");
+
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "图片已生成，继续说明。".to_string()
+            ))
+        );
+        assert_eq!(state.current_text, "图片已生成，继续说明。");
+        assert!(!state.current_text.contains("先生成一张图。"));
+    }
+
+    #[test]
+    fn delegate_boundary_starts_fresh_message() {
+        let mut state = GatewayStreamUiState::default();
+
+        state.push_content("先派发子任务。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "先派发子任务。".to_string()
+            ))
+        );
+
+        // Delegate progress is rendered in its own progress bubble; later
+        // assistant prose should resume in a new assistant bubble, not append to
+        // the pre-delegate text.
+        state.finish_tool_boundary();
+        state.push_content("子任务完成，汇总结果。");
+
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "子任务完成，汇总结果。".to_string()
+            ))
+        );
+        state.push_content("继续补充细节。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::EditCurrent(
+                "子任务完成，汇总结果。继续补充细节。".to_string()
+            ))
+        );
+        assert_eq!(state.current_text, "子任务完成，汇总结果。继续补充细节。");
+        assert!(!state.current_text.contains("先派发子任务。"));
+    }
+
+    #[test]
     fn streaming_overflow_starts_new_message_for_next_chunk() {
         let mut state = GatewayStreamUiState::default();
 
