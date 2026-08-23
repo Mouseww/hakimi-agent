@@ -8985,15 +8985,15 @@ pub async fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
-        GatewayCommandArgs, GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode,
-        GatewayStreamBackoffState, GatewayStreamDraftState, GatewayStreamRenderSnapshot,
-        GatewayStreamUiState, GatewayStreamingPolicy, GatewayUiContentTarget,
-        GatewayUpdateNotification, GatewayUsageSnapshot, KnowledgeCommandArgs, McpCommandArgs,
-        PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, TuiCommandArgs,
-        VOICE_TTS_USER_MESSAGE_PREFIX, VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState,
-        build_cron_delegation_goal, create_hakimi_state_backup, cron_delivery_targets,
-        cron_output_preview, cron_success_output_should_deliver,
+        Args, CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent,
+        GatewayChatTurnTracker, GatewayCommandArgs, GatewayFinalDelivery, GatewayIngressPolicy,
+        GatewayMode, GatewayStreamBackoffState, GatewayStreamDraftState,
+        GatewayStreamRenderSnapshot, GatewayStreamUiState, GatewayStreamingPolicy,
+        GatewayUiContentTarget, GatewayUpdateNotification, GatewayUsageSnapshot,
+        KnowledgeCommandArgs, McpCommandArgs, PluginCommandArgs, ProfileCommandArgs,
+        TopLevelCommand, TuiCommandArgs, VOICE_TTS_USER_MESSAGE_PREFIX, VOICE_USER_MESSAGE_PREFIX,
+        VoiceRuntimeState, build_cron_delegation_goal, create_hakimi_state_backup,
+        cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
         effective_gateway_streaming_policy, format_gateway_tool_progress,
         format_gateway_update_notification, gateway_bot_id_for_platform,
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
@@ -9003,10 +9003,10 @@ mod tests {
         queue_cron_delivery, release_feature_items, render_gateway_undo_response,
         resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
         restore_voice_history_text, rewind_gateway_history, split_stream_chunks,
-        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
-        update_target_from_candidate,
+        top_level_cron_response_for_path, top_level_mcp_response, tui_executable_name,
+        tui_frontend_candidates, update_shim_paths, update_target_from_candidate,
     };
-    use clap::ValueEnum;
+    use clap::{Parser, ValueEnum};
     use hakimi_common::{Message, Usage};
     use hakimi_cron::{CronJob, CronSchedule, persistence::PersistentCronStore};
     use hakimi_skills::{Skill, SkillStore};
@@ -9033,6 +9033,45 @@ mod tests {
         _lock: std::sync::MutexGuard<'static, ()>,
         previous: Option<String>,
         _dir: tempfile::TempDir,
+    }
+
+    #[test]
+    fn tui_launcher_candidates_prefer_sibling_binary_before_path_lookup() {
+        let current_exe = if cfg!(windows) {
+            PathBuf::from(r"C:\Hakimi\hakimi.exe")
+        } else {
+            PathBuf::from("/opt/hakimi/bin/hakimi")
+        };
+
+        let candidates = tui_frontend_candidates(Some(&current_exe));
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(
+            candidates[0],
+            current_exe.parent().unwrap().join(tui_executable_name())
+        );
+        assert_eq!(candidates[1], PathBuf::from(tui_executable_name()));
+    }
+
+    #[test]
+    fn tui_launcher_candidates_fall_back_to_path_when_current_exe_unknown() {
+        assert_eq!(
+            tui_frontend_candidates(None),
+            vec![PathBuf::from(tui_executable_name())]
+        );
+    }
+
+    #[test]
+    fn top_level_tui_smoke_command_parses_as_tui_launcher_probe() {
+        let args = Args::try_parse_from(["hakimi", "tui", "--smoke"]).unwrap();
+
+        assert!(matches!(
+            args.command,
+            Some(TopLevelCommand::Tui(TuiCommandArgs { smoke: true }))
+        ));
+        assert!(args.prompt.is_none());
+        assert!(args.gateway.is_none());
+        assert!(!args.serve);
     }
 
     impl ChannelDirectoryEnvGuard {
