@@ -2618,6 +2618,31 @@ enum GatewayStreamUiEvent {
     Delegate(DelegateProgressEvent),
 }
 
+fn gateway_progress_timestamp() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() % 86_400)
+        .unwrap_or(0);
+    format!("{:02}:{:02}", secs / 3_600, (secs % 3_600) / 60)
+}
+
+fn format_gateway_tool_progress(notice: &str, timestamp: &str) -> String {
+    let notice = notice.trim();
+    if notice.is_empty() {
+        return String::new();
+    }
+    let detail = notice
+        .strip_prefix('⚙')
+        .unwrap_or(notice)
+        .trim_start_matches('\u{fe0f}')
+        .trim();
+    if detail.is_empty() {
+        format!("⚙️ {timestamp}")
+    } else {
+        format!("⚙️ {timestamp} {detail}")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DelegateProgressEvent {
     task_id: String,
@@ -7118,14 +7143,20 @@ Just send a message to chat with me!"
 
                 let callback = move |token: String| {
                     if let Some(review_notice) = token.strip_prefix("\u{001e}hakimi_review:") {
-                        let text = review_notice.trim().to_string();
+                        let text = format_gateway_tool_progress(
+                            review_notice,
+                            &gateway_progress_timestamp(),
+                        );
                         if !text.is_empty() {
                             let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
                         }
                         return;
                     }
                     if let Some(tool_notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
-                        let text = tool_notice.trim().to_string();
+                        let text = format_gateway_tool_progress(
+                            tool_notice,
+                            &gateway_progress_timestamp(),
+                        );
                         if !text.is_empty() {
                             let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
                         }
@@ -8930,16 +8961,16 @@ mod tests {
         VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
         create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
         cron_success_output_should_deliver, effective_gateway_streaming_policy,
-        format_gateway_update_notification, gateway_bot_id_for_platform,
-        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
-        gateway_history_key, gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
-        gateway_usage_response, gateway_voice_response, is_gateway_flood_error,
-        is_top_level_cron_tick, parse_gateway_undo_turns, plan_gateway_final_delivery,
-        queue_cron_delivery, release_feature_items, render_gateway_undo_response,
-        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
-        restore_voice_history_text, rewind_gateway_history, split_stream_chunks,
-        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
-        update_target_from_candidate,
+        format_gateway_tool_progress, format_gateway_update_notification,
+        gateway_bot_id_for_platform, gateway_cron_response_for_path,
+        gateway_cron_response_for_path_with_delivery, gateway_history_key, gateway_mcp_response,
+        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
+        gateway_voice_response, is_gateway_flood_error, is_top_level_cron_tick,
+        parse_gateway_undo_turns, plan_gateway_final_delivery, queue_cron_delivery,
+        release_feature_items, render_gateway_undo_response, resolve_clawbot_gateway_config,
+        resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
+        rewind_gateway_history, split_stream_chunks, top_level_cron_response_for_path,
+        top_level_mcp_response, update_shim_paths, update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::{Message, Usage};
@@ -10726,6 +10757,46 @@ gateways:
             vec!["🚀".to_string(), "✨".to_string(), "🦀".to_string()]
         );
         assert_eq!(split_stream_chunks("same", None), vec!["same".to_string()]);
+    }
+
+    #[test]
+    fn gateway_tool_progress_formats_as_independent_timestamped_event() {
+        assert_eq!(
+            format_gateway_tool_progress("⚙️ terminal (command: cargo test)", "09:42"),
+            "⚙️ 09:42 terminal (command: cargo test)"
+        );
+        assert_eq!(
+            format_gateway_tool_progress("terminal (command: cargo test)", "09:42"),
+            "⚙️ 09:42 terminal (command: cargo test)"
+        );
+        assert_eq!(format_gateway_tool_progress("  ", "09:42"), "");
+    }
+
+    #[test]
+    fn gateway_tool_progress_boundary_keeps_final_assistant_text_clean() {
+        let progress = format_gateway_tool_progress("⚙️ terminal (command: cargo test)", "09:42");
+        assert_eq!(progress, "⚙️ 09:42 terminal (command: cargo test)");
+
+        let mut state = GatewayStreamUiState::default();
+        state.push_content("先检查测试。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "先检查测试。".to_string()
+            ))
+        );
+        state.finish_tool_boundary();
+        state.push_content("测试通过，继续总结。");
+
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "测试通过，继续总结。".to_string()
+            ))
+        );
+        assert_eq!(state.current_text, "测试通过，继续总结。");
+        assert!(!state.current_text.contains("terminal"));
+        assert!(!state.current_text.contains("⚙️"));
     }
 
     #[test]

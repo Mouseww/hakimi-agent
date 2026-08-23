@@ -206,7 +206,9 @@ enum AgentUiEvent {
 
 ---
 
-### Task P2.2: Tool progress 独立通道
+### Task P2.2: Tool progress 独立通道 ✅ 2026-08-23
+
+**Status:** 本轮将 Gateway `hakimi_tool` / `hakimi_review` 进度统一格式化为独立时间戳事件：`⚙️ HH:MM ...`，保持通过 `GatewayStreamUiEvent::Tool` 单独发送，不写入 assistant prose；新增回归测试覆盖进度格式化、tool boundary 后最终助手文本不含工具噪声且不复发首句重复。验证：`cargo fmt --all`，`cargo test -p hakimi-cli gateway_tool_progress -- --nocapture`，`cargo test -p hakimi-cli gateway_ -- --nocapture`。
 
 **Objective:** 工具调用进度显示为独立进度事件，不污染 assistant prose。
 
