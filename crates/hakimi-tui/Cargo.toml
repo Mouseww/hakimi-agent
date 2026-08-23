@@ -24,6 +24,7 @@ hakimi-session = { path = "../hakimi-session" }
 hakimi-skills = { path = "../hakimi-skills" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+unicode-width = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }

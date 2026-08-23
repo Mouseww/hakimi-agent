@@ -68,6 +68,7 @@ clap = { version = "4", features = ["derive"] }
 # TUI
 ratatui = "0.29"
 crossterm = "0.28"
+unicode-width = "0.2"
 
 # Database
 rusqlite = { version = "0.35", features = ["bundled", "backup"] }

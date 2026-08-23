@@ -5,11 +5,12 @@ use crate::{Role, ToolStatus};
 use hakimi_common::SkinRuntime;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
+use unicode_width::UnicodeWidthStr;
 
 /// Color scheme constants
 const COLOR_ASSISTANT: Color = Color::Green;
@@ -399,6 +400,8 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) 
         )
     };
 
+    let prompt_width = UnicodeWidthStr::width(prompt.as_str());
+
     let prompt_style = if app.is_thinking {
         Style::default().fg(palette.warn)
     } else {
@@ -447,6 +450,24 @@ fn render_input(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPalette) 
         .wrap(Wrap { trim: false });
 
     frame.render_widget(input_paragraph, area);
+
+    if !app.is_thinking && area.width > 2 && area.height > 2 {
+        let cursor_prefix = input_prefix_before_cursor(&app.input, app.cursor_position);
+        let cursor_width = prompt_width + UnicodeWidthStr::width(cursor_prefix);
+        let max_inner_x = area.width.saturating_sub(3) as usize;
+        frame.set_cursor_position(Position {
+            x: area.x + 1 + cursor_width.min(max_inner_x) as u16,
+            y: area.y + 1,
+        });
+    }
+}
+
+fn input_prefix_before_cursor(input: &str, cursor_position: usize) -> &str {
+    let mut cursor = cursor_position.min(input.len());
+    while cursor > 0 && !input.is_char_boundary(cursor) {
+        cursor -= 1;
+    }
+    &input[..cursor]
 }
 
 /// Render the status bar at the very bottom.
@@ -733,6 +754,37 @@ mod tests {
             .collect::<String>();
         assert!(rendered.contains("/help"));
         assert!(rendered.contains("Ctrl+C:quit"));
+    }
+
+    #[test]
+    fn input_cursor_tracks_unicode_display_width() {
+        let mut app = make_app();
+        app.input = "爸a😊z".to_string();
+        app.cursor_position = "爸a".len();
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+
+        terminal.backend_mut().assert_cursor_position(Position {
+            // Left input border + prompt (`⟩ `) + display width of `爸a`.
+            x: 1 + 2 + 3,
+            y: 20 + 1,
+        });
+    }
+
+    #[test]
+    fn input_cursor_clamps_invalid_byte_offset_to_previous_char_boundary() {
+        let mut app = make_app();
+        app.input = "爸a".to_string();
+        app.cursor_position = 1;
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+
+        terminal.backend_mut().assert_cursor_position(Position {
+            x: 1 + 2,
+            y: 20 + 1,
+        });
     }
 
     #[test]
