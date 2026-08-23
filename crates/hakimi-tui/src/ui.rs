@@ -490,6 +490,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPale
             Style::default().fg(palette.status_text),
         ),
         separator(),
+        Span::styled("/help", Style::default().fg(palette.status_strong)),
+        separator(),
         Span::styled("↑↓:scroll", Style::default().fg(palette.status_dim)),
         separator(),
         Span::styled("Ctrl+C:quit", Style::default().fg(palette.status_dim)),
@@ -714,6 +716,23 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn status_bar_surfaces_help_hint() {
+        let app = make_app();
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(rendered.contains("/help"));
+        assert!(rendered.contains("Ctrl+C:quit"));
     }
 
     #[test]
