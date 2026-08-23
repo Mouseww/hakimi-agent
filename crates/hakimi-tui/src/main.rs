@@ -197,6 +197,45 @@ fn resolve_bedrock_region() -> String {
         .unwrap_or_else(|| "us-east-1".to_string())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TuiStartupCommand {
+    Run,
+    Help,
+    Version,
+    Smoke,
+}
+
+fn parse_tui_startup_command(args: impl IntoIterator<Item = String>) -> TuiStartupCommand {
+    let mut args = args.into_iter();
+    let _program = args.next();
+    match args.next().as_deref() {
+        None => TuiStartupCommand::Run,
+        Some("--help" | "-h") => TuiStartupCommand::Help,
+        Some("--version" | "-V") => TuiStartupCommand::Version,
+        Some("--smoke") => TuiStartupCommand::Smoke,
+        Some(_) => TuiStartupCommand::Run,
+    }
+}
+
+fn print_tui_help() {
+    println!(
+        "Hakimi TUI\n\nUSAGE:\n    hakimi-tui [--smoke]\n\nOPTIONS:\n    --smoke      Verify the TUI binary, config loading, and model resolution without entering raw terminal mode\n    -V, --version  Print version\n    -h, --help     Print help\n\n通常通过 `hakimi` 或 `hakimi tui` 启动。"
+    );
+}
+
+fn print_tui_version() {
+    println!("hakimi-tui {}", env!("CARGO_PKG_VERSION"));
+}
+
+fn run_tui_smoke(runtime_home: &hakimi_common::RuntimeHome) {
+    let config = load_config(runtime_home);
+    let model = resolve_model(&config);
+    println!("Hakimi TUI smoke OK");
+    println!("Home: {}", runtime_home.home().display());
+    println!("Config: {}", runtime_home.config_path().display());
+    println!("Model: {model}");
+}
+
 fn trajectory_config_from_config(
     config: &hakimi_config::HakimiConfig,
     runtime_home: &hakimi_common::RuntimeHome,
@@ -637,6 +676,22 @@ async fn main() -> Result<()> {
     let runtime_home = hakimi_common::RuntimeHome::resolve_default(None)?;
     bind_runtime_home_env(&runtime_home);
 
+    match parse_tui_startup_command(std::env::args()) {
+        TuiStartupCommand::Help => {
+            print_tui_help();
+            return Ok(());
+        }
+        TuiStartupCommand::Version => {
+            print_tui_version();
+            return Ok(());
+        }
+        TuiStartupCommand::Smoke => {
+            run_tui_smoke(&runtime_home);
+            return Ok(());
+        }
+        TuiStartupCommand::Run => {}
+    }
+
     // Initialize logging to a file (not stdout, since we own the terminal).
     let log_path = runtime_home.home().join("tui.log");
 
@@ -749,4 +804,29 @@ async fn run_event_loop(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_tui_startup_command_supports_noninteractive_smoke_and_help() {
+        assert_eq!(
+            parse_tui_startup_command(["hakimi-tui".to_string()]),
+            TuiStartupCommand::Run
+        );
+        assert_eq!(
+            parse_tui_startup_command(["hakimi-tui".to_string(), "--smoke".to_string()]),
+            TuiStartupCommand::Smoke
+        );
+        assert_eq!(
+            parse_tui_startup_command(["hakimi-tui".to_string(), "--help".to_string()]),
+            TuiStartupCommand::Help
+        );
+        assert_eq!(
+            parse_tui_startup_command(["hakimi-tui".to_string(), "-V".to_string()]),
+            TuiStartupCommand::Version
+        );
+    }
 }

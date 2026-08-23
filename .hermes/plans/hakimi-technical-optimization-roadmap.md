@@ -231,6 +231,8 @@ enum AgentUiEvent {
 
 ### Task P3.1: TUI 默认体验最小可用
 
+**Status:** 进行中；已补 `hakimi-tui --smoke` 非交互启动探针，用于验证 release 包内 TUI 二进制、配置加载和模型解析，不进入 raw terminal mode；README 已同步 smoke 用法。验证：`cargo test -p hakimi-tui parse_tui_startup_command -- --nocapture`，`HAKIMI_HOME=/tmp/hakimi-tui-smoke-test cargo run -p hakimi-tui -- --smoke`。
+
 **Objective:** WebUI 移除后，本地无参 `hakimi` 有高级感 TUI/明确入口。
 
 **Files:**

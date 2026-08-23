@@ -72,6 +72,7 @@ hakimi --gateway start # legacy gateway alias
 ```
 
 Release binaries (CLI + bundled `hakimi-tui` launcher): GitHub Releases on tags `v*`.
+Use `hakimi-tui --smoke` to verify a packaged TUI binary without entering raw terminal mode.
 Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow artifacts, or attached on the same tag release when packaging succeeds.
 
 ---
@@ -169,6 +170,7 @@ hakimi setup           # wizard
 hakimi doctor          # install/systemd/gateway/config diagnostics
 hakimi gateway start   # messaging platforms
 hakimi --gateway start # legacy gateway alias
+hakimi-tui --smoke    # verify packaged TUI without entering raw terminal mode
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
 
