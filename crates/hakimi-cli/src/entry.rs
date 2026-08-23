@@ -10586,6 +10586,14 @@ gateways:
             split_stream_chunks("你好吗", Some(2)),
             vec!["你好".to_string(), "吗".to_string()]
         );
+        assert_eq!(
+            split_stream_chunks("喵🙂好", Some(2)),
+            vec!["喵🙂".to_string(), "好".to_string()]
+        );
+        assert_eq!(
+            split_stream_chunks("🚀✨🦀", Some(1)),
+            vec!["🚀".to_string(), "✨".to_string(), "🦀".to_string()]
+        );
         assert_eq!(split_stream_chunks("same", None), vec!["same".to_string()]);
     }
 
