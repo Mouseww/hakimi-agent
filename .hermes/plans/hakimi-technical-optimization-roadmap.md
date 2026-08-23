@@ -247,7 +247,9 @@ enum AgentUiEvent {
 
 ---
 
-### Task P3.2: SmartContextEngine 产品化设计
+### Task P3.2: SmartContextEngine 产品化设计 ✅ 2026-08-23
+
+**Status:** 已新增 `.hermes/plans/hakimi-smart-context-engine.md`，审计现有 `hakimi-context` / `hakimi-skills` / `hakimi-session` 后，设计了 `ContextProvider` 插件化接口、provider 初始清单、request-local planner、telemetry、与现有 `SmartContextEngine` 三层压缩的渐进迁移关系。验证：`cargo test -p hakimi-context smart_context -- --nocapture`，`cargo fmt --all`。
 
 **Objective:** 设计 ContextProvider 插件化接口，按需加载 memory/session/skill/project context。
 
