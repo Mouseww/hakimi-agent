@@ -9239,6 +9239,13 @@ mod tests {
 
     #[test]
     fn top_level_doctor_and_setup_commands_parse_like_hermes() {
+        let default_tui = <super::Args as clap::Parser>::try_parse_from(["hakimi"]).unwrap();
+        assert_eq!(default_tui.command, None);
+        assert!(default_tui.prompt.is_none());
+        assert!(!default_tui.print);
+        assert!(!default_tui.serve);
+        assert!(default_tui.gateway.is_none());
+
         let chat = <super::Args as clap::Parser>::try_parse_from(["hakimi", "chat"]).unwrap();
         assert_eq!(chat.command, Some(TopLevelCommand::Chat));
 
@@ -9247,6 +9254,11 @@ mod tests {
 
         let serve = <super::Args as clap::Parser>::try_parse_from(["hakimi", "serve"]).unwrap();
         assert_eq!(serve.command, Some(TopLevelCommand::Serve));
+
+        let legacy_serve =
+            <super::Args as clap::Parser>::try_parse_from(["hakimi", "--serve"]).unwrap();
+        assert!(legacy_serve.serve);
+        assert_eq!(legacy_serve.command, None);
 
         let gateway =
             <super::Args as clap::Parser>::try_parse_from(["hakimi", "gateway", "start"]).unwrap();

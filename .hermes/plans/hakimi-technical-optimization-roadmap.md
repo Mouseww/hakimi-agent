@@ -152,6 +152,8 @@ Hakimi Doctor
 
 ### Task P1.2: CLI/TUI/Gateway 子命令入口整理方案与兼容层
 
+**Status:** 已完成入口兼容层：`hakimi` 默认启动本地 TUI，`hakimi tui` 显式 TUI，`hakimi "prompt"` 单次 CLI，`hakimi gateway start|install|status|restart` 为 Gateway 入口，`--gateway start` 继续兼容，`hakimi serve` / `--serve` 明确报错旧 WebUI 已移除。本轮补充了无参默认 TUI 与 legacy `--serve` 解析回归测试，并同步 README 中 WebUI removed 表述。验证：`cargo test -p hakimi-cli top_level_doctor_and_setup_commands_parse_like_hermes -- --nocapture`，`cargo fmt --all`。
+
 **Objective:** 让启动语义清晰：`hakimi` 默认 TUI，`hakimi "prompt"` 单次，`hakimi gateway start` Gateway。
 
 **Files:**

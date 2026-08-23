@@ -110,7 +110,7 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 |---------|------------|
 | **CLI** | REPL, setup, doctor, skills, plugins, profiles |
 | **TUI** | ratatui UI, slash commands, voice PTT, skins |
-| **WebUI** | React operator console — chat, sessions, Office View, cron, config |
+| **WebUI** | Removed runtime; use TUI, Gateway, Studio desktop, or the optional Studio backend surfaces instead |
 | **Gateway** | Telegram · Discord · Slack · Signal · WhatsApp · Feishu · WeCom · Matrix · Email · … |
 | **Studio** | Local-first workbench: workspace IDE, multi-device handoff, Hub relay, desktop shell |
 
@@ -150,7 +150,7 @@ Ideas that define Hakimi vs “just another agent wrapper”:
 4. **Queue + preempt** — dual input model: queue follow-ups or preempt the current run.
 5. **Workspace jail + checkpoints** — path-jailed FS, auto pre-write snapshots, worktree isolation for agent sessions.
 6. **Desktop = shell** — `hakimi-desktop` embeds backend + WebUI; optional Tauri window is UI only, agent loop stays in Rust.
-7. **Hermes alignment** — gateway slash commands, skin engine, voice, session/search shapes — then go further on multi-device, Office, and Studio packaging.
+7. **Hermes alignment** — gateway slash commands, skin engine, voice, session/search shapes — then go further on multi-device and Studio packaging.
 
 Design docs: [`docs/hakimi-studio/`](docs/hakimi-studio/) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
@@ -161,7 +161,7 @@ Design docs: [`docs/hakimi-studio/`](docs/hakimi-studio/) · [`docs/ARCHITECTURE
 ### Everyday
 
 ```bash
-hakimi                 # local TUI
+hakimi                 # local TUI (default local experience)
 hakimi tui             # local TUI explicitly
 hakimi "…prompt…"      # one-shot CLI print mode
 hakimi chat            # interactive CLI entrypoint (REPL wiring pending; use TUI today)
