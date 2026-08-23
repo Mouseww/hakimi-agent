@@ -3749,13 +3749,32 @@ fn plan_gateway_final_delivery(
 
 #[derive(Debug, Clone)]
 struct GatewayStreamUiState {
+    /// Full assistant prose accumulated for the currently active streaming
+    /// segment. Boundaries clear this so post-tool/media/delegate prose starts
+    /// from a fresh assistant bubble instead of editing the previous segment.
     current_text: String,
+    /// Full content that has already been rendered for the active segment.
+    /// This is used to avoid redundant edit calls for unchanged previews.
     last_edit_text: String,
+    /// Forces the next render for a segment to create a new platform message.
+    /// Boundary resets set this; successful `NewMessage` renders clear it.
     needs_new_message: bool,
+    /// Number of newly received Unicode scalar values since the last render.
+    /// This intentionally counts chars, not bytes, for CJK/emoji safety.
     pending_since_last_render: usize,
+    /// Index of the active overflow chunk within `current_text`.
     active_chunk_index: usize,
+    /// Last rendered text for the active overflow chunk.
     active_chunk_last_text: String,
+    /// Tracks whether the active segment required multiple platform messages.
     used_overflow_chunks: bool,
+    /// Content ownership marker for boundary deduplication.
+    ///
+    /// Only `render_pending()` may set this when it emits `NewMessage`; boundary
+    /// handling must not overwrite it. A boundary only clears active segment
+    /// state via `reset_segment_after_boundary()`. This prevents a previously
+    /// rendered first sentence from being reintroduced after a tool/media/
+    /// delegate boundary.
     last_rendered_at_boundary: String,
 }
 
@@ -3846,6 +3865,16 @@ impl GatewayStreamUiState {
         None
     }
 
+    fn reset_segment_after_boundary(&mut self) {
+        self.current_text.clear();
+        self.last_edit_text.clear();
+        self.needs_new_message = true;
+        self.pending_since_last_render = 0;
+        self.active_chunk_index = 0;
+        self.active_chunk_last_text.clear();
+        self.used_overflow_chunks = false;
+    }
+
     fn finish_tool_boundary(&mut self) {
         tracing::info!(
             "finish_tool_boundary called, current_text_len={}, last_rendered_len={}",
@@ -3867,13 +3896,7 @@ impl GatewayStreamUiState {
             "finish_tool_boundary: keeping last_rendered_at_boundary (set by NewMessage): {:?}",
             preview
         );
-        self.current_text.clear();
-        self.last_edit_text.clear();
-        self.needs_new_message = true;
-        self.pending_since_last_render = 0;
-        self.active_chunk_index = 0;
-        self.active_chunk_last_text.clear();
-        self.used_overflow_chunks = false;
+        self.reset_segment_after_boundary();
     }
 }
 
@@ -10434,6 +10457,14 @@ gateways:
         );
 
         state.finish_tool_boundary();
+        assert!(state.current_text.is_empty());
+        assert!(state.last_edit_text.is_empty());
+        assert!(state.needs_new_message);
+        assert_eq!(state.pending_since_last_render, 0);
+        assert_eq!(state.active_chunk_index, 0);
+        assert!(state.active_chunk_last_text.is_empty());
+        assert!(!state.used_overflow_chunks);
+        assert_eq!(state.last_rendered_at_boundary, "爸爸，先看入口。");
 
         state.push_content("爸爸，工具跑完了，继续分析。");
         assert_eq!(

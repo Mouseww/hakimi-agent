@@ -131,7 +131,9 @@ Hakimi Doctor
 
 ## Phase P1 — 入口体验与状态机整理
 
-### Task P1.1: 重构 GatewayStreamUiState ownership 注释与小结构
+### Task P1.1: 重构 GatewayStreamUiState ownership 注释与小结构 ✅ 2026-08-23
+
+**Status:** 已为 `GatewayStreamUiState` 字段补充 ownership 注释，明确 `last_rendered_at_boundary` 只由 `render_pending(NewMessage)` 设置；已将 boundary 后的段状态清理提取为 `reset_segment_after_boundary()`，并扩展测试断言 boundary 只清 active segment、不覆盖 boundary marker。验证：`cargo fmt --all`，`cargo test -p hakimi-cli gateway_stream -- --nocapture`，`cargo test -p hakimi-cli gateway_tool_boundary -- --nocapture`，`cargo test -p hakimi-cli tool_boundary_forces_next_content_into_new_message -- --nocapture`。
 
 **Objective:** 明确 `last_rendered_at_boundary` 只由 NewMessage 设置，boundary 只清空段状态。
 
