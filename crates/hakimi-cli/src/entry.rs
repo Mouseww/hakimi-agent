@@ -4442,6 +4442,17 @@ fn run_tui_frontend() -> Result<()> {
     run_tui_frontend_with_args(&[])
 }
 
+fn args_select_default_tui(args: &Args) -> bool {
+    args.command.is_none()
+        && !args.serve
+        && args.gateway.is_none()
+        && args.query.is_none()
+        && args.prompt.is_none()
+        && !args.print
+        && !args.r#continue
+        && args.resume.is_none()
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "hakimi",
@@ -8869,16 +8880,13 @@ pub async fn run() -> Result<()> {
         );
     }
 
-    if !args.serve
-        && args.gateway.is_none()
-        && !matches!(&args.command, Some(TopLevelCommand::Gateway(_)))
-        && args.query.is_none()
-        && args.prompt.is_none()
-        && !args.print
-        && !args.r#continue
-        && args.resume.is_none()
-    {
+    if args_select_default_tui(&args) {
         maybe_show_startup_onboarding_hints(&mut config, &runtime_home);
+        // Default local experience is the bundled TUI. Do not construct the
+        // CLI agent first: a no-arg `hakimi` launch should only verify the TUI
+        // frontend and let hakimi-tui own config/model diagnostics.
+        info!("未指定模式，启动默认 TUI");
+        return run_tui_frontend();
     }
 
     let mut agent = build_agent(&args, &config, &runtime_home, None).await?;
@@ -8974,12 +8982,9 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    // Default behavior: start the local TUI. The removed WebUI runtime must not
-    // be resurrected by falling through to unified server mode.
-    info!("未指定模式，启动默认 TUI");
-    drop(agent);
-    drop(config);
-    run_tui_frontend()
+    anyhow::bail!(
+        "No runnable mode selected. Use `hakimi`, `hakimi tui`, `hakimi \"prompt\"`, or `hakimi gateway start`."
+    )
 }
 
 #[cfg(test)]
@@ -9318,6 +9323,7 @@ mod tests {
         assert!(!default_tui.print);
         assert!(!default_tui.serve);
         assert!(default_tui.gateway.is_none());
+        assert!(super::args_select_default_tui(&default_tui));
 
         let current_exe = if cfg!(windows) {
             std::path::Path::new(r"C:\Users\hakimi\bin\hakimi.exe")
@@ -9337,6 +9343,7 @@ mod tests {
 
         let chat = <super::Args as clap::Parser>::try_parse_from(["hakimi", "chat"]).unwrap();
         assert_eq!(chat.command, Some(TopLevelCommand::Chat));
+        assert!(!super::args_select_default_tui(&chat));
 
         let tui = <super::Args as clap::Parser>::try_parse_from(["hakimi", "tui"]).unwrap();
         assert_eq!(
@@ -9350,6 +9357,7 @@ mod tests {
             tui_smoke.command,
             Some(TopLevelCommand::Tui(TuiCommandArgs { smoke: true }))
         );
+        assert!(!super::args_select_default_tui(&tui_smoke));
 
         let serve = <super::Args as clap::Parser>::try_parse_from(["hakimi", "serve"]).unwrap();
         assert_eq!(serve.command, Some(TopLevelCommand::Serve));
@@ -9358,6 +9366,7 @@ mod tests {
             <super::Args as clap::Parser>::try_parse_from(["hakimi", "--serve"]).unwrap();
         assert!(legacy_serve.serve);
         assert_eq!(legacy_serve.command, None);
+        assert!(!super::args_select_default_tui(&legacy_serve));
 
         let gateway =
             <super::Args as clap::Parser>::try_parse_from(["hakimi", "gateway", "start"]).unwrap();
@@ -9367,6 +9376,17 @@ mod tests {
                 mode: GatewayMode::Start
             }))
         );
+        assert!(!super::args_select_default_tui(&gateway));
+
+        let legacy_gateway =
+            <super::Args as clap::Parser>::try_parse_from(["hakimi", "--gateway", "start"])
+                .unwrap();
+        assert_eq!(legacy_gateway.gateway, Some(GatewayMode::Start));
+        assert!(!super::args_select_default_tui(&legacy_gateway));
+
+        let one_shot = <super::Args as clap::Parser>::try_parse_from(["hakimi", "hello"]).unwrap();
+        assert_eq!(one_shot.prompt.as_deref(), Some("hello"));
+        assert!(!super::args_select_default_tui(&one_shot));
 
         let gateway_status =
             <super::Args as clap::Parser>::try_parse_from(["hakimi", "gateway", "status"]).unwrap();
