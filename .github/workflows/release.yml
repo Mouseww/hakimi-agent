@@ -70,6 +70,11 @@ jobs:
             cargo build --release --target ${{ matrix.target }} -p hakimi-agent -p hakimi-tui
           fi
 
+      - name: Smoke bundled TUI launcher
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: target/${{ matrix.target }}/release/hakimi tui --smoke
+
       - name: Package (Unix)
         if: runner.os != 'Windows'
         shell: bash
