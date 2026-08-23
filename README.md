@@ -63,8 +63,11 @@ cargo build --release -p hakimi-agent
 ```bash
 hakimi setup      # guided config wizard (providers, keys, gateway)
 hakimi doctor     # diagnose install, systemd, gateway processes, port 3005, config/session DB, connectivity
-hakimi            # interactive CLI
-hakimi --gateway  # multi-platform gateway (Telegram, Discord, …)
+hakimi            # local TUI (same as `hakimi tui`)
+hakimi "prompt"   # one-shot CLI print mode
+hakimi chat       # interactive CLI entrypoint (compatibility placeholder until REPL wiring lands)
+hakimi gateway start  # multi-platform gateway (Telegram, Discord, …)
+hakimi --gateway start # legacy gateway alias
 # WebUI runtime has been removed; use Gateway/CLI/TUI/Studio surfaces instead
 ```
 
@@ -158,12 +161,15 @@ Design docs: [`docs/hakimi-studio/`](docs/hakimi-studio/) · [`docs/ARCHITECTURE
 ### Everyday
 
 ```bash
-hakimi                 # interactive agent (CLI)
-hakimi -m "…prompt…"   # one-shot (if supported by your build flags)
+hakimi                 # local TUI
+hakimi tui             # local TUI explicitly
+hakimi "…prompt…"      # one-shot CLI print mode
+hakimi chat            # interactive CLI entrypoint (REPL wiring pending; use TUI today)
 hakimi setup           # wizard
 hakimi doctor          # install/systemd/gateway/config diagnostics
-hakimi --gateway       # messaging platforms
-# hakimi --serve is retained only to report that the old WebUI runtime was removed
+hakimi gateway start   # messaging platforms
+hakimi --gateway start # legacy gateway alias
+# hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
 
 ### Studio / desktop

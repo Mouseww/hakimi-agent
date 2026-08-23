@@ -4290,8 +4290,23 @@ pub struct ImportCommandArgs {
     pub force: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct GatewayCommandArgs {
+    /// Gateway action: start, install, restart, or status.
+    #[arg(value_enum, default_value = "start")]
+    pub mode: GatewayMode,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum TopLevelCommand {
+    /// Start an interactive CLI chat session.
+    Chat,
+    /// Start the local terminal UI.
+    Tui,
+    /// Manage or start the messaging gateway.
+    Gateway(GatewayCommandArgs),
+    /// Removed WebUI runtime; retained to show a clear error.
+    Serve,
     /// Run setup diagnostics and print remediation hints.
     Doctor,
     /// Run the interactive setup wizard.
@@ -4343,13 +4358,44 @@ fn long_version() -> &'static str {
     BUILD_INFO
 }
 
+fn run_tui_frontend() -> Result<()> {
+    let mut candidates = Vec::new();
+    if let Ok(current_exe) = std::env::current_exe()
+        && let Some(dir) = current_exe.parent()
+    {
+        candidates.push(dir.join("hakimi-tui"));
+    }
+    candidates.push(std::path::PathBuf::from("hakimi-tui"));
+
+    let mut last_not_found = None;
+    for candidate in candidates {
+        match std::process::Command::new(&candidate).status() {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(status) => anyhow::bail!(
+                "hakimi-tui exited with status {status}. Try `cargo run -p hakimi-tui` for diagnostics."
+            ),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                last_not_found = Some(err);
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+
+    anyhow::bail!(
+        "TUI frontend is not installed next to hakimi or on PATH. Install the release bundle or run `cargo run -p hakimi-tui`. Last error: {}",
+        last_not_found
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| "not found".to_string())
+    )
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "hakimi",
     version,
     long_version = long_version(),
     about = "Hakimi Agent — AI-powered coding assistant",
-    after_help = "EXAMPLES:\n  hakimi                           Start interactive session\n  hakimi \"write a hello world\"     Print response and exit\n  hakimi --print \"your prompt\"     Same as above (explicit)\n  hakimi -c                        Continue most recent conversation\n  hakimi --resume                  Resume a previous session (interactive picker)\n  hakimi --gateway                 Start gateway mode (Telegram/Discord/etc.)"
+    after_help = "EXAMPLES:\n  hakimi                           Start local TUI\n  hakimi tui                       Start local TUI explicitly\n  hakimi chat                      Start interactive CLI chat\n  hakimi \"write a hello world\"     Print response and exit\n  hakimi --print \"your prompt\"     Same as above (explicit)\n  hakimi gateway start             Start gateway mode (Telegram/Discord/etc.)\n  hakimi --gateway start           Legacy gateway alias"
 )]
 pub struct Args {
     /// Your prompt (if provided without --print, acts like --print).
@@ -8634,9 +8680,34 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
+    if matches!(&args.command, Some(TopLevelCommand::Serve)) {
+        anyhow::bail!(
+            "WebUI has been removed. Use `hakimi gateway start` for gateway mode or `hakimi tui` for the local UI."
+        );
+    }
+
+    if matches!(&args.command, Some(TopLevelCommand::Tui)) {
+        return run_tui_frontend();
+    }
+
+    if matches!(&args.command, Some(TopLevelCommand::Chat)) {
+        anyhow::bail!(
+            "Interactive CLI chat is not wired yet. Use `hakimi tui` for interactive local use or `hakimi \"prompt\"` for one-shot CLI mode."
+        );
+    }
+
     if args.doctor || matches!(&args.command, Some(TopLevelCommand::Doctor)) {
         crate::doctor::run_and_print_diagnostics();
         return Ok(());
+    }
+
+    if let Some(TopLevelCommand::Gateway(gateway_args)) = &args.command {
+        match gateway_args.mode {
+            GatewayMode::Start => {}
+            GatewayMode::Install => return install_gateway_service(),
+            GatewayMode::Restart => return restart_gateway_service(),
+            GatewayMode::Status => return gateway_service_status(),
+        }
     }
 
     if let Some(TopLevelCommand::Cron(cron_args)) = &args.command
@@ -8729,11 +8800,14 @@ pub async fn run() -> Result<()> {
     }
 
     if args.serve {
-        anyhow::bail!("WebUI has been removed. Use `hakimi --gateway start` for gateway mode.");
+        anyhow::bail!(
+            "WebUI has been removed. Use `hakimi gateway start` for gateway mode or `hakimi tui` for the local UI."
+        );
     }
 
     if !args.serve
         && args.gateway.is_none()
+        && !matches!(&args.command, Some(TopLevelCommand::Gateway(_)))
         && args.query.is_none()
         && args.prompt.is_none()
         && !args.print
@@ -8791,7 +8865,7 @@ pub async fn run() -> Result<()> {
     if args.serve {
         return start_server(agent, &args.addr, config, &runtime_home).await;
     }
-    if args.gateway.is_some() {
+    if args.gateway.is_some() || matches!(&args.command, Some(TopLevelCommand::Gateway(_))) {
         let skill_store = agent
             .skill_store()
             .cloned()
@@ -8836,24 +8910,23 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    // Default behavior: start unified mode (WebUI + Gateway)
-    info!("未指定模式，启动默认统一模式：WebUI + Gateway");
-    let skill_store = agent
-        .skill_store()
-        .cloned()
-        .unwrap_or_else(hakimi_skills::SkillStore::empty);
-    start_unified_server(agent, skill_store, &args.addr, config, runtime_home).await
+    // Default behavior: start the local TUI. The removed WebUI runtime must not
+    // be resurrected by falling through to unified server mode.
+    info!("未指定模式，启动默认 TUI");
+    drop(agent);
+    drop(config);
+    run_tui_frontend()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         CronCommandArgs, DelegateProgressBubble, DelegateProgressEvent, GatewayChatTurnTracker,
-        GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode, GatewayStreamBackoffState,
-        GatewayStreamDraftState, GatewayStreamRenderSnapshot, GatewayStreamUiState,
-        GatewayStreamingPolicy, GatewayUiContentTarget, GatewayUpdateNotification,
-        GatewayUsageSnapshot, KnowledgeCommandArgs, McpCommandArgs, PluginCommandArgs,
-        ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
+        GatewayCommandArgs, GatewayFinalDelivery, GatewayIngressPolicy, GatewayMode,
+        GatewayStreamBackoffState, GatewayStreamDraftState, GatewayStreamRenderSnapshot,
+        GatewayStreamUiState, GatewayStreamingPolicy, GatewayUiContentTarget,
+        GatewayUpdateNotification, GatewayUsageSnapshot, KnowledgeCommandArgs, McpCommandArgs,
+        PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
         VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
         create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
         cron_success_output_should_deliver, effective_gateway_streaming_policy,
@@ -9135,6 +9208,33 @@ mod tests {
 
     #[test]
     fn top_level_doctor_and_setup_commands_parse_like_hermes() {
+        let chat = <super::Args as clap::Parser>::try_parse_from(["hakimi", "chat"]).unwrap();
+        assert_eq!(chat.command, Some(TopLevelCommand::Chat));
+
+        let tui = <super::Args as clap::Parser>::try_parse_from(["hakimi", "tui"]).unwrap();
+        assert_eq!(tui.command, Some(TopLevelCommand::Tui));
+
+        let serve = <super::Args as clap::Parser>::try_parse_from(["hakimi", "serve"]).unwrap();
+        assert_eq!(serve.command, Some(TopLevelCommand::Serve));
+
+        let gateway =
+            <super::Args as clap::Parser>::try_parse_from(["hakimi", "gateway", "start"]).unwrap();
+        assert_eq!(
+            gateway.command,
+            Some(TopLevelCommand::Gateway(GatewayCommandArgs {
+                mode: GatewayMode::Start
+            }))
+        );
+
+        let gateway_status =
+            <super::Args as clap::Parser>::try_parse_from(["hakimi", "gateway", "status"]).unwrap();
+        assert_eq!(
+            gateway_status.command,
+            Some(TopLevelCommand::Gateway(GatewayCommandArgs {
+                mode: GatewayMode::Status
+            }))
+        );
+
         let doctor = <super::Args as clap::Parser>::try_parse_from(["hakimi", "doctor"]).unwrap();
         assert_eq!(doctor.command, Some(TopLevelCommand::Doctor));
         assert!(!doctor.doctor);
