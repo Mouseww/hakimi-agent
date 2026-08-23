@@ -28,7 +28,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
       
       - name: Build documentation
-        run: cargo doc --no-deps --all-features
+        # Do not use --all-features here: hakimi-desktop's optional GUI feature pulls
+        # Tauri/WebKit/GTK system libraries that are not installed on ubuntu-latest.
+        # Desktop GUI release builds are covered by the release workflow instead.
+        run: cargo doc --workspace --no-deps --exclude hakimi-desktop
         
       - name: Add index redirect
         run: |
