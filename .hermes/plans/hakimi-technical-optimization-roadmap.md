@@ -69,9 +69,9 @@
 
 ---
 
-### Task P0.3: 添加 `hakimi doctor`
+### Task P0.3: 添加 `hakimi doctor` ✅ 2026-08-23
 
-**Objective:** 快速诊断安装版/源码版/systemd/重复进程/端口状态，减少排查成本。
+**Status:** 本轮已扩展 doctor 诊断：安装版二进制、PATH shim、版本、systemd hakimi.service、旧 WebUI service、重复 Gateway 进程、端口 3005、config/session DB、网络连通性；README 已同步。验证：`cargo test -p hakimi-cli doctor -- --nocapture` 20 passed，`cargo run -p hakimi-agent -- doctor` 可正常输出。
 
 **Files:**
 - Modify: `crates/hakimi-cli/src/entry.rs`

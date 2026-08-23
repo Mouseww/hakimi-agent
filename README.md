@@ -62,10 +62,10 @@ cargo build --release -p hakimi-agent
 
 ```bash
 hakimi setup      # guided config wizard (providers, keys, gateway)
-hakimi doctor     # diagnose setup / connectivity
+hakimi doctor     # diagnose install, systemd, gateway processes, port 3005, config/session DB, connectivity
 hakimi            # interactive CLI
-hakimi --serve    # WebUI + API on 127.0.0.1:3005
 hakimi --gateway  # multi-platform gateway (Telegram, Discord, …)
+# WebUI runtime has been removed; use Gateway/CLI/TUI/Studio surfaces instead
 ```
 
 Release binaries (CLI): GitHub Releases on tags `v*`.  
@@ -161,9 +161,9 @@ Design docs: [`docs/hakimi-studio/`](docs/hakimi-studio/) · [`docs/ARCHITECTURE
 hakimi                 # interactive agent (CLI)
 hakimi -m "…prompt…"   # one-shot (if supported by your build flags)
 hakimi setup           # wizard
-hakimi doctor          # health check
-hakimi --serve         # WebUI + REST/SSE on :3005
+hakimi doctor          # install/systemd/gateway/config diagnostics
 hakimi --gateway       # messaging platforms
+# hakimi --serve is retained only to report that the old WebUI runtime was removed
 ```
 
 ### Studio / desktop
