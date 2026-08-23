@@ -811,6 +811,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn welcome_message_surfaces_tui_basics() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+        let app = App::new(
+            cmd_tx,
+            event_rx,
+            "test-model".to_string(),
+            "test-session-123".to_string(),
+        );
+
+        let welcome = app
+            .messages
+            .first()
+            .expect("welcome message exists")
+            .content
+            .as_str();
+        assert!(welcome.contains("/help"));
+        assert!(welcome.contains("/quit"));
+        assert!(welcome.contains("Ctrl+C"));
+        assert!(welcome.contains("Tab completes slash commands"));
+    }
+
+    #[test]
     fn parse_tui_startup_command_supports_noninteractive_smoke_and_help() {
         assert_eq!(
             parse_tui_startup_command(["hakimi-tui".to_string()]),

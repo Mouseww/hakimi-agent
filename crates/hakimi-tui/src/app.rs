@@ -1834,6 +1834,10 @@ enum TuiCommand {
     Quit,
 }
 
+fn tui_welcome_message() -> &'static str {
+    "Welcome to Hakimi Agent! Type a message and press Enter to chat. Type /help for commands, /quit to exit, or press Ctrl+C anytime. Tab completes slash commands."
+}
+
 fn parse_tui_command(input: &str) -> Option<TuiCommand> {
     let rest = input.trim().strip_prefix('/')?;
     let (cmd, arg) = match rest.split_once(char::is_whitespace) {
@@ -1931,9 +1935,7 @@ impl App {
         );
 
         Self {
-            messages: vec![ChatMessage::system(
-                "Welcome to Hakimi Agent! Type a message and press Enter to chat. Type /help for commands; Ctrl+C or /quit exits.",
-            )],
+            messages: vec![ChatMessage::system(tui_welcome_message())],
             input: String::new(),
             cursor_position: 0,
             completion_hint: None,
