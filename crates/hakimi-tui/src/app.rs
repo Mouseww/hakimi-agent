@@ -2128,8 +2128,20 @@ impl App {
                 self.refresh_completion_hint();
             }
 
+            // Ctrl+A (readline-style) also moves to the beginning of input.
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.cursor_position = 0;
+                self.refresh_completion_hint();
+            }
+
             // End
             KeyCode::End => {
+                self.cursor_position = self.input.len();
+                self.refresh_completion_hint();
+            }
+
+            // Ctrl+E (readline-style) also moves to the end of input.
+            KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.cursor_position = self.input.len();
                 self.refresh_completion_hint();
             }
@@ -4187,6 +4199,16 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_a_moves_cursor_to_start() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('b')));
+        app.handle_key_event(key(KeyCode::Char('中')));
+        app.handle_key_event(key_with_mod(KeyCode::Char('a'), KeyModifiers::CONTROL));
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    #[test]
     fn end_moves_cursor_to_end() {
         let (mut app, _cmd_rx, _event_tx) = make_app();
         app.handle_key_event(key(KeyCode::Char('a')));
@@ -4194,6 +4216,17 @@ mod tests {
         app.handle_key_event(key(KeyCode::Home));
         app.handle_key_event(key(KeyCode::End));
         assert_eq!(app.cursor_position, 2);
+    }
+
+    #[test]
+    fn ctrl_e_moves_cursor_to_end() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.handle_key_event(key(KeyCode::Char('a')));
+        app.handle_key_event(key(KeyCode::Char('中')));
+        app.handle_key_event(key(KeyCode::Char('🙂')));
+        app.handle_key_event(key(KeyCode::Home));
+        app.handle_key_event(key_with_mod(KeyCode::Char('e'), KeyModifiers::CONTROL));
+        assert_eq!(app.cursor_position, app.input.len());
     }
 
     #[test]
