@@ -2146,6 +2146,19 @@ impl App {
                 self.refresh_completion_hint();
             }
 
+            // Ctrl+U (readline-style) clears input before the cursor.
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.input.drain(..self.cursor_position);
+                self.cursor_position = 0;
+                self.refresh_completion_hint();
+            }
+
+            // Ctrl+K (readline-style) clears input after the cursor.
+            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.input.drain(self.cursor_position..);
+                self.refresh_completion_hint();
+            }
+
             // Left arrow
             KeyCode::Left if self.cursor_position > 0 => {
                 self.cursor_position = self.input[..self.cursor_position]
@@ -4227,6 +4240,39 @@ mod tests {
         app.handle_key_event(key(KeyCode::Home));
         app.handle_key_event(key_with_mod(KeyCode::Char('e'), KeyModifiers::CONTROL));
         assert_eq!(app.cursor_position, app.input.len());
+    }
+
+    #[test]
+    fn ctrl_u_clears_input_before_cursor_on_utf8_boundary() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸🙂abc".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Left));
+        app.handle_key_event(key(KeyCode::Left));
+        assert_eq!(app.cursor_position, "爸🙂a".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('u'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.input, "bc");
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    #[test]
+    fn ctrl_k_clears_input_after_cursor_on_utf8_boundary() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸🙂abc".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Left));
+        app.handle_key_event(key(KeyCode::Left));
+        app.handle_key_event(key(KeyCode::Left));
+        assert_eq!(app.cursor_position, "爸🙂".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('k'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.input, "爸🙂");
+        assert_eq!(app.cursor_position, "爸🙂".len());
     }
 
     #[test]

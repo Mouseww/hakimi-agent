@@ -173,7 +173,8 @@ hakimi --gateway start # legacy gateway alias
 hakimi tui --smoke  # verify packaged TUI via the main launcher
 hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # TUI keys: /help for commands, Tab toggles/completes, ↑↓/PageUp/PageDown scroll,
-#           Ctrl+A/Ctrl+E jump input start/end, Ctrl+C quits.
+#           Ctrl+A/Ctrl+E jump input start/end, Ctrl+U/Ctrl+K clear before/after cursor,
+#           Ctrl+C quits.
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
 
