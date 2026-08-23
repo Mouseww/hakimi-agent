@@ -1609,6 +1609,26 @@ fn render_completion_hint(matches: &[&SlashCommandSpec]) -> Option<String> {
     Some(compact_one_line(&hint, COMPLETION_HINT_CHARS))
 }
 
+fn previous_word_start(input: &str, cursor_position: usize) -> usize {
+    let mut boundary = cursor_position.min(input.len());
+    while boundary > 0 && !input.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+
+    let mut saw_word_char = false;
+    for (idx, ch) in input[..boundary].char_indices().rev() {
+        if ch.is_whitespace() {
+            if saw_word_char {
+                return idx + ch.len_utf8();
+            }
+        } else {
+            saw_word_char = true;
+        }
+    }
+
+    0
+}
+
 fn env_any_present(names: &[&str]) -> bool {
     names
         .iter()
@@ -2150,6 +2170,14 @@ impl App {
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.input.drain(..self.cursor_position);
                 self.cursor_position = 0;
+                self.refresh_completion_hint();
+            }
+
+            // Ctrl+W (readline-style) deletes the previous word before the cursor.
+            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                let remove_start = previous_word_start(&self.input, self.cursor_position);
+                self.input.drain(remove_start..self.cursor_position);
+                self.cursor_position = remove_start;
                 self.refresh_completion_hint();
             }
 
@@ -3001,6 +3029,32 @@ mod tests {
         app.handle_key_event(key(KeyCode::Delete));
         assert_eq!(app.input, "爸c");
         assert_eq!(app.cursor_position, "爸".len());
+    }
+
+    #[test]
+    fn ctrl_w_deletes_previous_utf8_word() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸爸 稍等🙂 result".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 result".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('w'), KeyModifiers::CONTROL));
+        assert_eq!(app.input, "爸爸 稍等🙂 ");
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 ".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('w'), KeyModifiers::CONTROL));
+        assert_eq!(app.input, "爸爸 ");
+        assert_eq!(app.cursor_position, "爸爸 ".len());
+    }
+
+    #[test]
+    fn previous_word_start_clamps_invalid_byte_offset() {
+        assert_eq!(previous_word_start("爸🙂 word", 1), 0);
+        assert_eq!(
+            previous_word_start("爸🙂 word", "爸🙂 word".len()),
+            "爸🙂 ".len()
+        );
     }
 
     // ---------------------------------------------------------------
