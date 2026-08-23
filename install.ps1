@@ -67,7 +67,7 @@ try {
     if (Test-Path $TempExtract) { Remove-Item -Recurse -Force $TempExtract }
     Expand-Archive -Path $TempFile -DestinationPath $TempExtract -Force
 
-    # Find and copy binary
+    # Find and copy binaries
     $Exe = Get-ChildItem -Path $TempExtract -Filter "hakimi.exe" -Recurse | Select-Object -First 1
     if ($Exe) {
         Copy-Item $Exe.FullName -Destination (Join-Path $InstallDir "hakimi.exe") -Force
@@ -75,6 +75,11 @@ try {
     } else {
         Write-Host "[ERR]   hakimi.exe not found in archive" -ForegroundColor Red
         exit 1
+    }
+    $TuiExe = Get-ChildItem -Path $TempExtract -Filter "hakimi-tui.exe" -Recurse | Select-Object -First 1
+    if ($TuiExe) {
+        Copy-Item $TuiExe.FullName -Destination (Join-Path $InstallDir "hakimi-tui.exe") -Force
+        Write-Host "[OK]    Installed to: $InstallDir\hakimi-tui.exe" -ForegroundColor Green
     }
 
     # Install bundled skills if present
@@ -125,9 +130,9 @@ try {
     Write-Host "  2. Or start directly with:" -ForegroundColor Yellow
     Write-Host "     hakimi --help                  # Show all commands" -ForegroundColor White
     Write-Host "     hakimi doctor                 # Diagnose setup" -ForegroundColor White
-    Write-Host "     hakimi --gateway              # Messaging platforms only" -ForegroundColor White
-    Write-Host "     hakimi --serve                # WebUI only (http://127.0.0.1:3005)" -ForegroundColor White
-    Write-Host "     hakimi --gateway --serve      # Both (recommended)" -ForegroundColor White
+    Write-Host "     hakimi                        # Local TUI" -ForegroundColor White
+    Write-Host "     hakimi `"prompt`"              # One-shot CLI print mode" -ForegroundColor White
+    Write-Host "     hakimi gateway start          # Messaging platforms only" -ForegroundColor White
     Write-Host ""
     Write-Host "  Setup wizard will help you configure:" -ForegroundColor Yellow
     Write-Host "    • LLM provider and API key" -ForegroundColor Gray

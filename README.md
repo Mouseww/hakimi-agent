@@ -71,7 +71,7 @@ hakimi --gateway start # legacy gateway alias
 # WebUI runtime has been removed; use Gateway/CLI/TUI/Studio surfaces instead
 ```
 
-Release binaries (CLI): GitHub Releases on tags `v*`.  
+Release binaries (CLI + bundled `hakimi-tui` launcher): GitHub Releases on tags `v*`.
 Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow artifacts, or attached on the same tag release when packaging succeeds.
 
 ---

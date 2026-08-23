@@ -65,9 +65,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p hakimi-agent
+            cross build --release --target ${{ matrix.target }} -p hakimi-agent -p hakimi-tui
           else
-            cargo build --release --target ${{ matrix.target }} -p hakimi-agent
+            cargo build --release --target ${{ matrix.target }} -p hakimi-agent -p hakimi-tui
           fi
 
       - name: Package (Unix)
@@ -76,9 +76,10 @@ jobs:
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/hakimi dist/
+          cp target/${{ matrix.target }}/release/hakimi-tui dist/
           cp -r skills dist/
           cd dist
-          tar czf ../${{ matrix.artifact }}.tar.gz hakimi skills
+          tar czf ../${{ matrix.artifact }}.tar.gz hakimi hakimi-tui skills
           cd ..
           rm -rf dist
 
@@ -88,9 +89,10 @@ jobs:
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/hakimi.exe dist/
+          cp target/${{ matrix.target }}/release/hakimi-tui.exe dist/
           cp -r skills dist/
           cd dist
-          7z a ../${{ matrix.artifact }}.zip hakimi.exe skills
+          7z a ../${{ matrix.artifact }}.zip hakimi.exe hakimi-tui.exe skills
           cd ..
           rm -rf dist
 

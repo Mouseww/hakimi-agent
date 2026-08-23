@@ -14,6 +14,9 @@ cargo fmt --all -- --check
 echo "==> Release smoke: hakimi-agent no-default-features tests"
 cargo test -p hakimi-agent --no-default-features
 
+echo "==> Release smoke: TUI package tests"
+cargo test -p hakimi-tui
+
 if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
   expected_version="${GITHUB_REF_NAME#v}"
   cargo_version="$({ cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "hakimi-agent") | .version'; } 2>/dev/null || true)"

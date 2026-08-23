@@ -176,15 +176,19 @@ if [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "403" ] || [ ! -f "$TMPDIR/hakim
             mv "$BUILD_DIR/hakimi-agent-main" "$BUILD_DIR/hakimi-agent"
         fi
 
-        info "Building hakimi-agent (release mode)..."
+        info "Building hakimi-agent and hakimi-tui (release mode)..."
         (
             cd "$BUILD_DIR/hakimi-agent"
-            cargo build --release -p hakimi-agent 2>&1 | tail -5
+            cargo build --release -p hakimi-agent -p hakimi-tui 2>&1 | tail -5
         )
 
         if [ -f "$BUILD_DIR/hakimi-agent/target/release/hakimi" ]; then
             cp "$BUILD_DIR/hakimi-agent/target/release/hakimi" "$INSTALL_DIR/hakimi"
             chmod +x "$INSTALL_DIR/hakimi"
+            if [ -f "$BUILD_DIR/hakimi-agent/target/release/hakimi-tui" ]; then
+                cp "$BUILD_DIR/hakimi-agent/target/release/hakimi-tui" "$INSTALL_DIR/hakimi-tui"
+                chmod +x "$INSTALL_DIR/hakimi-tui"
+            fi
             success "Built from source and installed."
             
             # Install bundled skills if present in the repo
@@ -222,6 +226,10 @@ else
 
     cp "$TMPDIR/hakimi" "$INSTALL_DIR/hakimi"
     chmod +x "$INSTALL_DIR/hakimi"
+    if [ -f "$TMPDIR/hakimi-tui" ]; then
+        cp "$TMPDIR/hakimi-tui" "$INSTALL_DIR/hakimi-tui"
+        chmod +x "$INSTALL_DIR/hakimi-tui"
+    fi
     success "Binary installed."
 
     # Install bundled skills if present in the archive
