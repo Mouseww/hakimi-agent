@@ -177,7 +177,9 @@ Hakimi Doctor
 
 ## Phase P2 — 统一事件协议与工具进度
 
-### Task P2.1: 设计 `AgentUiEvent` 内部事件协议
+### Task P2.1: 设计 `AgentUiEvent` 内部事件协议 ✅ 2026-08-23
+
+**Status:** 已新增 `.hermes/plans/hakimi-agent-ui-event-protocol.md`，明确 AgentUiEvent 分层、事件类型草案、语义规则、与现有 `StreamEvent` / `GatewayStreamUiEvent` 的映射、渐进迁移计划和测试要求。验证：`cargo test -p hakimi-common ui_event -- --nocapture`（当前无专门测试，编译通过）；`cargo fmt --all`。
 
 **Objective:** 将 Text/Tool/Media/Delegate/Final/Error 统一为显式事件，先写设计文档和类型草案。
 
