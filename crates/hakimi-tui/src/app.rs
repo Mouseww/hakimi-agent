@@ -2099,18 +2099,26 @@ impl App {
 
             // Backspace
             KeyCode::Backspace if self.cursor_position > 0 => {
-                let before = &self.input[..self.cursor_position - 1];
-                let after = &self.input[self.cursor_position..];
-                self.input = format!("{before}{after}");
-                self.cursor_position -= 1;
+                let remove_start = self.input[..self.cursor_position]
+                    .char_indices()
+                    .last()
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(0);
+                self.input
+                    .replace_range(remove_start..self.cursor_position, "");
+                self.cursor_position = remove_start;
                 self.refresh_completion_hint();
             }
 
             // Delete
             KeyCode::Delete if self.cursor_position < self.input.len() => {
-                let before = &self.input[..self.cursor_position];
-                let after = &self.input[self.cursor_position + 1..];
-                self.input = format!("{before}{after}");
+                let remove_end = self.input[self.cursor_position..]
+                    .char_indices()
+                    .nth(1)
+                    .map(|(idx, _)| self.cursor_position + idx)
+                    .unwrap_or(self.input.len());
+                self.input
+                    .replace_range(self.cursor_position..remove_end, "");
                 self.refresh_completion_hint();
             }
 
@@ -2128,22 +2136,28 @@ impl App {
 
             // Left arrow
             KeyCode::Left if self.cursor_position > 0 => {
-                self.cursor_position -= 1;
+                self.cursor_position = self.input[..self.cursor_position]
+                    .char_indices()
+                    .last()
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(0);
                 self.refresh_completion_hint();
             }
 
             // Right arrow
             KeyCode::Right if self.cursor_position < self.input.len() => {
-                self.cursor_position += 1;
+                self.cursor_position = self.input[self.cursor_position..]
+                    .char_indices()
+                    .nth(1)
+                    .map(|(idx, _)| self.cursor_position + idx)
+                    .unwrap_or(self.input.len());
                 self.refresh_completion_hint();
             }
 
             // Regular character input
             KeyCode::Char(c) => {
-                let before = &self.input[..self.cursor_position];
-                let after = &self.input[self.cursor_position..];
-                self.input = format!("{before}{c}{after}");
-                self.cursor_position += 1;
+                self.input.insert(self.cursor_position, c);
+                self.cursor_position += c.len_utf8();
                 self.refresh_completion_hint();
             }
 
@@ -2936,6 +2950,32 @@ mod tests {
         app.handle_key_event(key(KeyCode::Backspace));
         assert!(app.input.is_empty());
         assert_eq!(app.cursor_position, 0);
+    }
+
+    #[test]
+    fn input_editing_handles_utf8_char_boundaries() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸🙂c".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        assert_eq!(app.input, "爸🙂c");
+        assert_eq!(app.cursor_position, "爸🙂c".len());
+
+        app.handle_key_event(key(KeyCode::Left));
+        assert_eq!(app.cursor_position, "爸🙂".len());
+        app.handle_key_event(key(KeyCode::Char('好')));
+        assert_eq!(app.input, "爸🙂好c");
+        assert_eq!(app.cursor_position, "爸🙂好".len());
+
+        app.handle_key_event(key(KeyCode::Backspace));
+        assert_eq!(app.input, "爸🙂c");
+        assert_eq!(app.cursor_position, "爸🙂".len());
+
+        app.handle_key_event(key(KeyCode::Left));
+        assert_eq!(app.cursor_position, "爸".len());
+        app.handle_key_event(key(KeyCode::Delete));
+        assert_eq!(app.input, "爸c");
+        assert_eq!(app.cursor_position, "爸".len());
     }
 
     // ---------------------------------------------------------------
