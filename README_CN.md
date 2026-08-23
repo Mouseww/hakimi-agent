@@ -51,13 +51,16 @@ cargo build --release -p hakimi-agent
 
 ```bash
 hakimi setup      # 配置向导（模型、密钥、网关等）
-hakimi doctor     # 诊断连通性与环境
-hakimi            # 交互 CLI
-hakimi --serve    # WebUI + API，默认 127.0.0.1:3005
-hakimi --gateway  # 多平台网关（Telegram / Discord / …）
+hakimi doctor     # 诊断安装、systemd、Gateway、端口、配置与连通性
+hakimi            # 本地 TUI（等同于 `hakimi tui`）
+hakimi "提示词"  # 单次 CLI 输出
+hakimi tui --smoke # 通过主二进制验证打包内 TUI，不进入 raw terminal mode
+hakimi gateway start  # 多平台网关（Telegram / Discord / …）
+hakimi --gateway start # 旧 Gateway 兼容入口
+# WebUI 运行态已移除；请使用 Gateway / CLI / TUI / Studio
 ```
 
-- CLI 发布包：GitHub Releases（tag `v*`）
+- CLI 发布包（含 `hakimi` + bundled `hakimi-tui`）：GitHub Releases（tag `v*`）
 - Studio 桌面包（deb / AppImage / MSI / DMG）：Actions **Desktop** 产物，或同 tag Release 附件
 
 ---
@@ -96,7 +99,7 @@ hakimi --gateway  # 多平台网关（Telegram / Discord / …）
 |------|------|
 | **CLI** | REPL、setup、doctor、skills、plugins、profiles |
 | **TUI** | ratatui、斜杠指令、语音 PTT、皮肤 |
-| **WebUI** | React 控制台：聊天、会话、Office View、cron、配置 |
+| **WebUI** | 运行态已移除；请使用 TUI、Gateway、Studio 桌面或可选 Studio 后端 |
 | **Gateway** | Telegram · Discord · Slack · Signal · WhatsApp · 飞书 · 企微 · Matrix · 邮件 · … |
 | **Studio** | 本机优先工作台：工作区 IDE、多设备接管、Hub 中继、桌面壳 |
 
@@ -145,11 +148,16 @@ hakimi --gateway  # 多平台网关（Telegram / Discord / …）
 ### 日常
 
 ```bash
-hakimi                 # 交互 CLI
+hakimi                 # 本地 TUI（默认本地体验）
+hakimi tui             # 显式启动本地 TUI
+hakimi tui --smoke     # 通过主二进制验证打包内 TUI
+hakimi-tui --smoke     # 直接验证 TUI 二进制
+hakimi "…提示词…"    # 单次 CLI 输出
 hakimi setup           # 配置向导
 hakimi doctor          # 健康检查
-hakimi --serve         # WebUI + REST/SSE，:3005
-hakimi --gateway       # 消息平台网关
+hakimi gateway start   # 消息平台网关
+hakimi --gateway start # 旧 Gateway 兼容入口
+# hakimi serve / --serve 仅保留为“旧 WebUI 已移除”的明确报错
 ```
 
 ### Studio / 桌面

@@ -4322,12 +4322,19 @@ pub struct GatewayCommandArgs {
     pub mode: GatewayMode,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct TuiCommandArgs {
+    /// Verify the bundled TUI binary without entering raw terminal mode.
+    #[arg(long)]
+    pub smoke: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum TopLevelCommand {
     /// Start an interactive CLI chat session.
     Chat,
     /// Start the local terminal UI.
-    Tui,
+    Tui(TuiCommandArgs),
     /// Manage or start the messaging gateway.
     Gateway(GatewayCommandArgs),
     /// Removed WebUI runtime; retained to show a clear error.
@@ -4403,13 +4410,15 @@ fn tui_frontend_candidates(current_exe: Option<&std::path::Path>) -> Vec<std::pa
     candidates
 }
 
-fn run_tui_frontend() -> Result<()> {
+fn run_tui_frontend_with_args(extra_args: &[&str]) -> Result<()> {
     let current_exe = std::env::current_exe().ok();
     let candidates = tui_frontend_candidates(current_exe.as_deref());
 
     let mut last_not_found = None;
     for candidate in candidates {
-        match std::process::Command::new(&candidate).status() {
+        let mut command = std::process::Command::new(&candidate);
+        command.args(extra_args);
+        match command.status() {
             Ok(status) if status.success() => return Ok(()),
             Ok(status) => anyhow::bail!(
                 "hakimi-tui exited with status {status}. Try `cargo run -p hakimi-tui` for diagnostics."
@@ -4427,6 +4436,10 @@ fn run_tui_frontend() -> Result<()> {
             .map(|err| err.to_string())
             .unwrap_or_else(|| "not found".to_string())
     )
+}
+
+fn run_tui_frontend() -> Result<()> {
+    run_tui_frontend_with_args(&[])
 }
 
 #[derive(Parser, Debug)]
@@ -8732,8 +8745,13 @@ pub async fn run() -> Result<()> {
         );
     }
 
-    if matches!(&args.command, Some(TopLevelCommand::Tui)) {
-        return run_tui_frontend();
+    if let Some(TopLevelCommand::Tui(tui_args)) = &args.command {
+        let extra_args: Vec<&str> = if tui_args.smoke {
+            vec!["--smoke"]
+        } else {
+            Vec::new()
+        };
+        return run_tui_frontend_with_args(&extra_args);
     }
 
     if matches!(&args.command, Some(TopLevelCommand::Chat)) {
@@ -8972,20 +8990,21 @@ mod tests {
         GatewayStreamBackoffState, GatewayStreamDraftState, GatewayStreamRenderSnapshot,
         GatewayStreamUiState, GatewayStreamingPolicy, GatewayUiContentTarget,
         GatewayUpdateNotification, GatewayUsageSnapshot, KnowledgeCommandArgs, McpCommandArgs,
-        PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, VOICE_TTS_USER_MESSAGE_PREFIX,
-        VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState, build_cron_delegation_goal,
-        create_hakimi_state_backup, cron_delivery_targets, cron_output_preview,
-        cron_success_output_should_deliver, effective_gateway_streaming_policy,
-        format_gateway_tool_progress, format_gateway_update_notification,
-        gateway_bot_id_for_platform, gateway_cron_response_for_path,
-        gateway_cron_response_for_path_with_delivery, gateway_history_key, gateway_mcp_response,
-        gateway_service_exe_path, gateway_service_unit, gateway_usage_response,
-        gateway_voice_response, is_gateway_flood_error, is_top_level_cron_tick,
-        parse_gateway_undo_turns, plan_gateway_final_delivery, queue_cron_delivery,
-        release_feature_items, render_gateway_undo_response, resolve_clawbot_gateway_config,
-        resolve_hakimi_update_target, restore_hakimi_state_backup, restore_voice_history_text,
-        rewind_gateway_history, split_stream_chunks, top_level_cron_response_for_path,
-        top_level_mcp_response, update_shim_paths, update_target_from_candidate,
+        PluginCommandArgs, ProfileCommandArgs, TopLevelCommand, TuiCommandArgs,
+        VOICE_TTS_USER_MESSAGE_PREFIX, VOICE_USER_MESSAGE_PREFIX, VoiceRuntimeState,
+        build_cron_delegation_goal, create_hakimi_state_backup, cron_delivery_targets,
+        cron_output_preview, cron_success_output_should_deliver,
+        effective_gateway_streaming_policy, format_gateway_tool_progress,
+        format_gateway_update_notification, gateway_bot_id_for_platform,
+        gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
+        gateway_history_key, gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
+        gateway_usage_response, gateway_voice_response, is_gateway_flood_error,
+        is_top_level_cron_tick, parse_gateway_undo_turns, plan_gateway_final_delivery,
+        queue_cron_delivery, release_feature_items, render_gateway_undo_response,
+        resolve_clawbot_gateway_config, resolve_hakimi_update_target, restore_hakimi_state_backup,
+        restore_voice_history_text, rewind_gateway_history, split_stream_chunks,
+        top_level_cron_response_for_path, top_level_mcp_response, update_shim_paths,
+        update_target_from_candidate,
     };
     use clap::ValueEnum;
     use hakimi_common::{Message, Usage};
@@ -9281,7 +9300,17 @@ mod tests {
         assert_eq!(chat.command, Some(TopLevelCommand::Chat));
 
         let tui = <super::Args as clap::Parser>::try_parse_from(["hakimi", "tui"]).unwrap();
-        assert_eq!(tui.command, Some(TopLevelCommand::Tui));
+        assert_eq!(
+            tui.command,
+            Some(TopLevelCommand::Tui(TuiCommandArgs { smoke: false }))
+        );
+
+        let tui_smoke =
+            <super::Args as clap::Parser>::try_parse_from(["hakimi", "tui", "--smoke"]).unwrap();
+        assert_eq!(
+            tui_smoke.command,
+            Some(TopLevelCommand::Tui(TuiCommandArgs { smoke: true }))
+        );
 
         let serve = <super::Args as clap::Parser>::try_parse_from(["hakimi", "serve"]).unwrap();
         assert_eq!(serve.command, Some(TopLevelCommand::Serve));
