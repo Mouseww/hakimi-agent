@@ -4383,14 +4383,29 @@ fn long_version() -> &'static str {
     BUILD_INFO
 }
 
-fn run_tui_frontend() -> Result<()> {
+fn tui_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "hakimi-tui.exe"
+    } else {
+        "hakimi-tui"
+    }
+}
+
+fn tui_frontend_candidates(current_exe: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
+    let executable_name = tui_executable_name();
     let mut candidates = Vec::new();
-    if let Ok(current_exe) = std::env::current_exe()
+    if let Some(current_exe) = current_exe
         && let Some(dir) = current_exe.parent()
     {
-        candidates.push(dir.join("hakimi-tui"));
+        candidates.push(dir.join(executable_name));
     }
-    candidates.push(std::path::PathBuf::from("hakimi-tui"));
+    candidates.push(std::path::PathBuf::from(executable_name));
+    candidates
+}
+
+fn run_tui_frontend() -> Result<()> {
+    let current_exe = std::env::current_exe().ok();
+    let candidates = tui_frontend_candidates(current_exe.as_deref());
 
     let mut last_not_found = None;
     for candidate in candidates {
@@ -9245,6 +9260,22 @@ mod tests {
         assert!(!default_tui.print);
         assert!(!default_tui.serve);
         assert!(default_tui.gateway.is_none());
+
+        let current_exe = if cfg!(windows) {
+            std::path::Path::new(r"C:\Users\hakimi\bin\hakimi.exe")
+        } else {
+            std::path::Path::new("/opt/hakimi/bin/hakimi")
+        };
+        let tui_candidates = super::tui_frontend_candidates(Some(current_exe));
+        assert_eq!(tui_candidates.len(), 2);
+        assert_eq!(
+            tui_candidates[0].file_name().and_then(|name| name.to_str()),
+            Some(super::tui_executable_name())
+        );
+        assert_eq!(
+            tui_candidates[1],
+            PathBuf::from(super::tui_executable_name())
+        );
 
         let chat = <super::Args as clap::Parser>::try_parse_from(["hakimi", "chat"]).unwrap();
         assert_eq!(chat.command, Some(TopLevelCommand::Chat));
