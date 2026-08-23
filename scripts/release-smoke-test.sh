@@ -8,6 +8,9 @@ export PATH="/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin:/usr/local/sbin:/root/
 echo "==> Release smoke: gateway streaming regression tests"
 cargo test -p hakimi-cli gateway_ -- --nocapture
 
+echo "==> Release smoke: TUI launcher routing tests"
+cargo test -p hakimi-cli tui_ -- --nocapture
+
 echo "==> Release smoke: format check"
 cargo fmt --all -- --check
 
@@ -15,7 +18,7 @@ echo "==> Release smoke: hakimi-agent no-default-features tests"
 cargo test -p hakimi-agent --no-default-features
 
 echo "==> Release smoke: TUI package tests"
-cargo test -p hakimi-tui
+cargo test -p hakimi-tui parse_tui_startup_command -- --nocapture
 
 if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
   expected_version="${GITHUB_REF_NAME#v}"
