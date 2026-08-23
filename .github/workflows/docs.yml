@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: "pages"
@@ -37,23 +35,8 @@ jobs:
         run: |
           echo '<meta http-equiv="refresh" content="0; url=hakimi_agent/index.html">' > target/doc/index.html
       
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
         with:
-          enablement: true
-        
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
+          name: api-docs
           path: ./target/doc
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
