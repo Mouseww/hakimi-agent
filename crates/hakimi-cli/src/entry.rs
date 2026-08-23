@@ -10453,6 +10453,47 @@ gateways:
     }
 
     #[test]
+    fn consecutive_tool_boundaries_keep_clean_state() {
+        let mut state = GatewayStreamUiState::default();
+
+        state.push_content("第一段回答。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "第一段回答。".to_string()
+            ))
+        );
+        state.finish_tool_boundary();
+
+        state.push_content("第二段回答。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "第二段回答。".to_string()
+            ))
+        );
+        state.finish_tool_boundary();
+
+        state.push_content("第三段回答。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::NewMessage(
+                "第三段回答。".to_string()
+            ))
+        );
+        state.push_content("继续补充。");
+        assert_eq!(
+            state.render_pending(None),
+            Some(GatewayUiContentTarget::EditCurrent(
+                "第三段回答。继续补充。".to_string()
+            ))
+        );
+        assert_eq!(state.current_text, "第三段回答。继续补充。");
+        assert!(!state.current_text.contains("第一段回答。"));
+        assert!(!state.current_text.contains("第二段回答。"));
+    }
+
+    #[test]
     fn streaming_overflow_starts_new_message_for_next_chunk() {
         let mut state = GatewayStreamUiState::default();
 
