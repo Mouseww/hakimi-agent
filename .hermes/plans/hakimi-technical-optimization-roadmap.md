@@ -107,7 +107,9 @@ Hakimi Doctor
 
 ---
 
-### Task P0.4: Release smoke test
+### Task P0.4: Release smoke test ✅ 2026-08-23
+
+**Status:** 已添加 `scripts/release-smoke-test.sh` 并接入 Release workflow 的 Linux x86_64-unknown-linux-gnu 矩阵，在正式 release build 前执行 Gateway streaming 回归测试、`cargo fmt --all -- --check`、`cargo test -p hakimi-agent --no-default-features`，并在 `GITHUB_REF_NAME` 存在时校验 tag 版本与 `hakimi-agent` Cargo 版本一致。
 
 **Objective:** 发版前自动验收二进制版本、Gateway 状态机测试、CLI 单次模式。
 
