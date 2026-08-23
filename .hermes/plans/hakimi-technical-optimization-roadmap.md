@@ -265,7 +265,9 @@ enum AgentUiEvent {
 
 ## Phase P4 — Runtime/UI 解耦
 
-### Task P4.1: Agent Runtime / Renderer 边界设计
+### Task P4.1: Agent Runtime / Renderer 边界设计 ✅ 2026-08-24
+
+**Status:** 已新增 `.hermes/plans/hakimi-runtime-renderer-boundary.md`，审计现有 `hakimi-core` stream callback、`hakimi-cli` GatewayStreamUiState、`hakimi-tui` AgentEvent、`hakimi-studio-api` EventBus/StudioRuntime 后，明确 runtime 是 run/session/cancel/queue 的唯一事实源，Gateway/TUI/Studio/Future WebUI 只消费事件并维护 renderer-local preview state。文档记录了 ownership 表、RuntimeEvent 草案、渐进迁移计划和待决策 blocker。验证：`cargo fmt --all`，`cargo test -p hakimi-studio-api event_bus -- --nocapture`。
 
 **Objective:** 明确 Core Runtime 是唯一真相源，Gateway/TUI/Future WebUI 都只订阅事件并渲染。
 
