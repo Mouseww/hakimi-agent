@@ -1932,7 +1932,7 @@ impl App {
 
         Self {
             messages: vec![ChatMessage::system(
-                "Welcome to Hakimi Agent! Type a message and press Enter to chat.",
+                "Welcome to Hakimi Agent! Type a message and press Enter to chat. Type /help for commands; Ctrl+C or /quit exits.",
             )],
             input: String::new(),
             cursor_position: 0,
@@ -4069,6 +4069,18 @@ mod tests {
                 .content
                 .contains("Voice capture stopped")
         );
+    }
+
+    #[test]
+    fn welcome_message_surfaces_tui_basics() {
+        let app = make_app_simple();
+        let welcome = app.messages.first().expect("welcome message");
+
+        assert_eq!(welcome.role, crate::Role::System);
+        assert!(welcome.content.contains("Type a message"));
+        assert!(welcome.content.contains("/help"));
+        assert!(welcome.content.contains("Ctrl+C"));
+        assert!(welcome.content.contains("/quit"));
     }
 
     #[test]

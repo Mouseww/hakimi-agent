@@ -231,7 +231,7 @@ enum AgentUiEvent {
 
 ### Task P3.1: TUI 默认体验最小可用
 
-**Status:** 进行中；已补 `hakimi-tui --smoke` 非交互启动探针，用于验证 release 包内 TUI 二进制、配置加载和模型解析，不进入 raw terminal mode；README 已同步 smoke 用法；Release workflow 已在 Linux x86_64-unknown-linux-gnu release build 后执行 `target/.../release/hakimi tui --smoke`，验证主 `hakimi` 二进制能发现同目录 bundled `hakimi-tui`。验证：`cargo test -p hakimi-tui parse_tui_startup_command -- --nocapture`，`HAKIMI_HOME=/tmp/hakimi-tui-smoke-test cargo run -p hakimi-tui -- --smoke`，`cargo test -p hakimi-cli tui_ -- --nocapture`。
+**Status:** 进行中；已补 `hakimi-tui --smoke` 非交互启动探针，用于验证 release 包内 TUI 二进制、配置加载和模型解析，不进入 raw terminal mode；README 已同步 smoke 用法；Release workflow 已在 Linux x86_64-unknown-linux-gnu release build 后执行 `target/.../release/hakimi tui --smoke`，验证主 `hakimi` 二进制能发现同目录 bundled `hakimi-tui`。本轮补充 TUI 欢迎语可发现性：首屏提示 `/help`、`Ctrl+C`、`/quit`，并添加回归测试。验证：`cargo test -p hakimi-tui parse_tui_startup_command -- --nocapture`，`cargo test -p hakimi-tui welcome_message_surfaces_tui_basics -- --nocapture`。
 
 **Objective:** WebUI 移除后，本地无参 `hakimi` 有高级感 TUI/明确入口。
 
