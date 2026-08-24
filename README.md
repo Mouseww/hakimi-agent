@@ -184,6 +184,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 #           Ctrl+D deletes under cursor or exits when empty,
 #           Ctrl+C quits.
 # Type /shortcuts inside the TUI to show the same key reference without the full command help.
+# Type /status inside the TUI to show local session/model/state counters without calling the model.
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
 

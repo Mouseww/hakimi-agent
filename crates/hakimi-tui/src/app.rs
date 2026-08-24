@@ -1872,6 +1872,7 @@ enum TuiCommand {
     Clear,
     Tools,
     Voice(Option<String>),
+    Status,
     Quit,
 }
 
@@ -1909,6 +1910,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "clear" => Some(TuiCommand::Clear),
         "tools" => Some(TuiCommand::Tools),
         "voice" => Some(TuiCommand::Voice(arg)),
+        "status" => Some(TuiCommand::Status),
         "quit" => Some(TuiCommand::Quit),
         _ => None,
     }
@@ -2412,7 +2414,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2519,6 +2521,10 @@ impl App {
             Some(TuiCommand::Voice(arg)) => {
                 self.handle_voice_command(arg.as_deref());
             }
+            Some(TuiCommand::Status) => {
+                self.messages
+                    .push(ChatMessage::system(self.render_status()));
+            }
             Some(TuiCommand::Quit) => {
                 let _ = self.cmd_tx.send(AgentCommand::Shutdown);
                 self.should_quit = true;
@@ -2530,6 +2536,33 @@ impl App {
             }
         }
         true
+    }
+
+    fn render_status(&self) -> String {
+        let thinking = if self.is_thinking {
+            "thinking"
+        } else {
+            "ready"
+        };
+        let tools_panel = if self.show_tools_panel {
+            "visible"
+        } else {
+            "hidden"
+        };
+        let voice = if self.voice.enabled { "enabled" } else { "off" };
+        format!(
+            "TUI status:\n  Session: {}\n  Model: {}\n  State: {}\n  Messages: {}\n  Scroll offset: {}\n  Tools panel: {}\n  Tool activities: {}\n  Token total: {}\n  API calls: {}\n  Voice: {}",
+            self.session_id,
+            self.model_name,
+            thinking,
+            self.messages.len(),
+            self.scroll_offset,
+            tools_panel,
+            self.tool_activity.len(),
+            self.total_tokens,
+            self.api_calls,
+            voice
+        )
     }
 
     fn handle_voice_command(&mut self, arg: Option<&str>) {
@@ -3655,6 +3688,7 @@ mod tests {
         assert!(app.messages[1].content.contains("/skills"));
         assert!(app.messages[1].content.contains("/knowledge"));
         assert!(app.messages[1].content.contains("/checkpoints"));
+        assert!(app.messages[1].content.contains("/status"));
         assert!(app.messages[1].content.contains("/voice"));
         assert!(app.messages[1].content.contains("Keyboard shortcuts:"));
         assert!(app.messages[1].content.contains("Shift+Tab"));
@@ -3756,6 +3790,35 @@ mod tests {
             parse_tui_command("/kg search alice"),
             Some(TuiCommand::Knowledge(Some("search alice".to_string())))
         );
+    }
+
+    #[test]
+    fn slash_status_shows_local_tui_state_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("hello"));
+        app.messages.push(crate::ChatMessage::assistant("world"));
+        app.scroll_offset = 1;
+        app.show_tools_panel = false;
+        app.total_tokens = 42;
+        app.api_calls = 3;
+        for c in "/status".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("TUI status:"));
+        assert!(content.contains("Session: test-session-123"));
+        assert!(content.contains("Model: test-model"));
+        assert!(content.contains("State: ready"));
+        assert!(content.contains("Messages: 3"));
+        assert!(content.contains("Scroll offset: 1"));
+        assert!(content.contains("Tools panel: hidden"));
+        assert!(content.contains("Token total: 42"));
+        assert!(content.contains("API calls: 3"));
     }
 
     #[test]
