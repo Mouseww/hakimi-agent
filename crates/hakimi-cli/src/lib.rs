@@ -138,7 +138,7 @@ impl Command {
         };
 
         match canonical_slash_command(cmd)? {
-            "help" => Some(Command::Help),
+            "help" | "commands" => Some(Command::Help),
             "about" => Some(Command::About),
             "shortcuts" => Some(Command::Shortcuts),
             "stop" => Some(Command::Stop),
