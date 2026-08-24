@@ -2187,6 +2187,23 @@ impl App {
                 self.refresh_completion_hint();
             }
 
+            // Ctrl+D (readline-style) exits on an empty composer, otherwise deletes under cursor.
+            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.input.is_empty() {
+                    let _ = self.cmd_tx.send(AgentCommand::Shutdown);
+                    self.should_quit = true;
+                } else if self.cursor_position < self.input.len() {
+                    let remove_end = self.input[self.cursor_position..]
+                        .char_indices()
+                        .nth(1)
+                        .map(|(idx, _)| self.cursor_position + idx)
+                        .unwrap_or(self.input.len());
+                    self.input
+                        .replace_range(self.cursor_position..remove_end, "");
+                    self.refresh_completion_hint();
+                }
+            }
+
             // Left arrow
             KeyCode::Left if self.cursor_position > 0 => {
                 self.cursor_position = self.input[..self.cursor_position]
@@ -4327,6 +4344,36 @@ mod tests {
 
         assert_eq!(app.input, "爸🙂");
         assert_eq!(app.cursor_position, "爸🙂".len());
+    }
+
+    #[test]
+    fn ctrl_d_deletes_char_under_cursor_on_utf8_boundary() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸🙂abc".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Home));
+        app.handle_key_event(key(KeyCode::Right));
+        assert_eq!(app.cursor_position, "爸".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.input, "爸abc");
+        assert_eq!(app.cursor_position, "爸".len());
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn ctrl_d_on_empty_input_quits() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL));
+
+        assert!(app.should_quit);
+        match cmd_rx.try_recv().expect("shutdown command") {
+            AgentCommand::Shutdown => {}
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     #[test]
