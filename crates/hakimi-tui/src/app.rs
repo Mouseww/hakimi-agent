@@ -1865,6 +1865,7 @@ enum TuiCommand {
     History(Option<String>),
     Undo(Option<String>),
     Skills(Option<String>),
+    Skin(Option<String>),
     Cron(Option<String>),
     Gateway(Option<String>),
     Knowledge(Option<String>),
@@ -1903,6 +1904,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "history" => Some(TuiCommand::History(arg)),
         "undo" => Some(TuiCommand::Undo(arg)),
         "skills" => Some(TuiCommand::Skills(arg)),
+        "skin" => Some(TuiCommand::Skin(arg)),
         "cron" => Some(TuiCommand::Cron(arg)),
         "gateway" => Some(TuiCommand::Gateway(arg)),
         "platforms" => Some(TuiCommand::Gateway(Some(
@@ -2420,7 +2422,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2484,6 +2486,11 @@ impl App {
             Some(TuiCommand::Skills(arg)) => {
                 let output = render_tui_skills_command(arg.as_deref(), &self.skills_dir_path);
                 self.messages.push(ChatMessage::system(output));
+            }
+            Some(TuiCommand::Skin(arg)) => {
+                self.messages.push(ChatMessage::system(
+                    self.render_skin_command(arg.as_deref()),
+                ));
             }
             Some(TuiCommand::Cron(arg)) => {
                 let output = render_tui_cron_command(arg.as_deref(), &self.cron_db_path);
@@ -2668,6 +2675,23 @@ impl App {
         format!(
             "Model switch requested: `{requested}`\nCurrent TUI session is still using `{}`. Runtime model switching from the TUI is not enabled yet; update config.yaml or launch Hakimi with the desired model, then restart the TUI.",
             self.model_name
+        )
+    }
+
+    fn render_skin_command(&self, arg: Option<&str>) -> String {
+        let requested = arg.unwrap_or_default().trim();
+        if requested.is_empty()
+            || requested.eq_ignore_ascii_case("show")
+            || requested.eq_ignore_ascii_case("status")
+        {
+            return format!(
+                "TUI skin:\n{}\n\nSwitching: update `display.skin` in config.yaml or run `hakimi skin set <name>` outside the TUI, then restart the TUI so all surfaces use one stable theme snapshot.",
+                render_tui_config_command(Some("display"), &self.config_summary)
+            );
+        }
+
+        format!(
+            "Skin switch requested: `{requested}`\nRuntime skin switching from the TUI is not enabled yet; run `hakimi skin set {requested}` outside the TUI or edit display.skin in config.yaml, then restart Hakimi."
         )
     }
 
@@ -3888,6 +3912,57 @@ mod tests {
             parse_tui_command("/skills search release"),
             Some(TuiCommand::Skills(Some("search release".to_string())))
         );
+    }
+
+    #[test]
+    fn parse_tui_command_accepts_skin_arguments_and_alias() {
+        assert_eq!(
+            parse_tui_command("/skin show"),
+            Some(TuiCommand::Skin(Some("show".to_string())))
+        );
+        assert_eq!(
+            parse_tui_command("/theme ares"),
+            Some(TuiCommand::Skin(Some("ares".to_string())))
+        );
+    }
+
+    #[test]
+    fn slash_skin_reports_active_skin_without_model_call() {
+        let mut config = HakimiConfig::default();
+        config.display.skin = "ares".to_string();
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app = app.with_config(&config);
+
+        for c in "/skin".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("TUI skin:"));
+        assert!(content.contains("display: streaming="));
+        assert!(content.contains("skin=ares"));
+        assert!(content.contains("hakimi skin set <name>"));
+    }
+
+    #[test]
+    fn slash_skin_requested_name_gives_restart_guidance() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+
+        for c in "/theme neon".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("Skin switch requested: `neon`"));
+        assert!(content.contains("Runtime skin switching from the TUI is not enabled yet"));
+        assert!(content.contains("hakimi skin set neon"));
     }
 
     #[test]
