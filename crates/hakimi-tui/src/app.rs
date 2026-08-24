@@ -1880,7 +1880,7 @@ fn tui_welcome_message() -> &'static str {
 }
 
 fn tui_keyboard_shortcuts() -> &'static str {
-    "Keyboard shortcuts:\n  F1                  — Open help without clearing input\n  Tab                 — Complete slash command before first space, otherwise toggle tools\n  Shift+Tab           — Toggle tools even while slash completion is active\n  Esc                 — Clear current input and completion hint\n  ↑/↓, PageUp/PageDown — Scroll message history\n  Ctrl+L              — Jump back to latest message\n  Home/End, Ctrl+A/E  — Move to input start/end\n  Ctrl/Alt+Left/Right, Alt+B/F — Move by word\n  Ctrl+U/K            — Clear text before/after cursor\n  Ctrl+W, Alt+Backspace — Delete previous word\n  Alt+D, Ctrl+Delete  — Delete next word\n  Ctrl+D              — Delete under cursor, or exit when input is empty\n  Ctrl+C              — Quit"
+    "Keyboard shortcuts:\n  F1                  — Open help without clearing input\n  Tab                 — Complete slash command before first space, otherwise toggle tools\n  Shift+Tab           — Toggle tools even while slash completion is active\n  Esc                 — Clear current input and completion hint\n  ↑/↓, Ctrl+P/N, PageUp/PageDown — Scroll message history\n  Ctrl+L              — Jump back to latest message\n  Home/End, Ctrl+A/E  — Move to input start/end\n  Ctrl/Alt+Left/Right, Alt+B/F — Move by word\n  Ctrl+U/K            — Clear text before/after cursor\n  Ctrl+W, Alt+Backspace — Delete previous word\n  Alt+D, Ctrl+Delete  — Delete next word\n  Ctrl+D              — Delete under cursor, or exit when input is empty\n  Ctrl+C              — Quit"
 }
 
 fn parse_tui_command(input: &str) -> Option<TuiCommand> {
@@ -2048,6 +2048,17 @@ impl App {
         self
     }
 
+    fn scroll_up_one(&mut self) {
+        let max_scroll = self.messages.len().saturating_sub(1);
+        if self.scroll_offset < max_scroll {
+            self.scroll_offset += 1;
+        }
+    }
+
+    fn scroll_down_one(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+    }
+
     /// Handle a single key event.
     pub fn handle_key_event(&mut self, key: KeyEvent) {
         // Ctrl+C always quits
@@ -2119,15 +2130,22 @@ impl App {
 
             // Scroll up
             KeyCode::Up => {
-                let max_scroll = self.messages.len().saturating_sub(1);
-                if self.scroll_offset < max_scroll {
-                    self.scroll_offset += 1;
-                }
+                self.scroll_up_one();
+            }
+            KeyCode::Char('p') | KeyCode::Char('P')
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.scroll_up_one();
             }
 
             // Scroll down
             KeyCode::Down => {
-                self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                self.scroll_down_one();
+            }
+            KeyCode::Char('n') | KeyCode::Char('N')
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.scroll_down_one();
             }
 
             // Page up
@@ -4779,6 +4797,23 @@ mod tests {
     // ---------------------------------------------------------------
     // PageUp / PageDown
     // ---------------------------------------------------------------
+
+    #[test]
+    fn ctrl_p_ctrl_n_scroll_like_arrow_keys() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for i in 0..20 {
+            app.messages
+                .push(crate::ChatMessage::user(format!("msg{i}")));
+        }
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('p'), KeyModifiers::CONTROL));
+        app.handle_key_event(key_with_mod(KeyCode::Char('P'), KeyModifiers::CONTROL));
+        assert_eq!(app.scroll_offset, 2);
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('n'), KeyModifiers::CONTROL));
+        app.handle_key_event(key_with_mod(KeyCode::Char('N'), KeyModifiers::CONTROL));
+        assert_eq!(app.scroll_offset, 0);
+    }
 
     #[test]
     fn page_up_scrolls_by_10() {

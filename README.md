@@ -175,7 +175,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # TUI keys: F1 or /help opens command help,
 #           Tab completes slash commands or toggles the tools panel,
 #           Shift+Tab always toggles the tools panel, Esc clears the current input/completion hint,
-#           ↑↓/PageUp/PageDown scroll; Ctrl+L jumps back to latest,
+#           ↑↓/Ctrl+P/Ctrl+N/PageUp/PageDown scroll; Ctrl+L jumps back to latest,
 #           Home/End or Ctrl+A/Ctrl+E jump input start/end,
 #           Ctrl+Left/Alt+Left or Alt+B jumps to previous word,
 #           Ctrl+Right/Alt+Right or Alt+F jumps to next word,
