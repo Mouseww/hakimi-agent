@@ -1872,6 +1872,7 @@ enum TuiCommand {
     History(Option<String>),
     Undo(Option<String>),
     Skills(Option<String>),
+    Memory(Option<String>),
     Providers(Option<String>),
     Skin(Option<String>),
     Cron(Option<String>),
@@ -1899,7 +1900,45 @@ fn tui_keyboard_shortcuts() -> &'static str {
 }
 
 fn tui_usage_tips() -> &'static str {
-    "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /logs, /model, /providers, and /skin for local state without calling the model.\n  - Use `/commands` (or `/help local`) to show TUI commands implemented locally; other catalog entries are shared with CLI/Gateway surfaces.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
+    "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /logs, /model, /providers, /memory, and /skin for local state without calling the model.\n  - Use `/commands` (or `/help local`) to show TUI commands implemented locally; other catalog entries are shared with CLI/Gateway surfaces.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
+}
+
+fn render_tui_memory_command(arg: Option<&str>, summary: &TuiConfigSummary) -> String {
+    let query = arg.unwrap_or_default().trim();
+    let memory_path = default_memory_dir_path();
+    if query.is_empty()
+        || query.eq_ignore_ascii_case("show")
+        || query.eq_ignore_ascii_case("status")
+    {
+        let path_state = if memory_path.exists() {
+            "exists"
+        } else {
+            "missing"
+        };
+        return format!(
+            "Hakimi TUI memory:\n{}\n  local_path_probe: {} ({path_state})\n\nThis TUI surface is read-only for persistent memory. Use `hakimi memory ...` or config.yaml outside the TUI for write-side changes.",
+            render_tui_config_command(Some("memory"), summary),
+            memory_path.display()
+        );
+    }
+
+    if query.eq_ignore_ascii_case("path") || query.eq_ignore_ascii_case("paths") {
+        return format!(
+            "Memory paths:\n  default/effective local probe: {}\n  config summary:\n{}",
+            memory_path.display(),
+            render_tui_config_command(Some("memory"), summary)
+        );
+    }
+
+    if matches!(
+        query.to_ascii_lowercase().as_str(),
+        "clear" | "delete" | "remove" | "add" | "set" | "write"
+    ) {
+        return "TUI /memory is read-only. Use `hakimi memory ...` outside the TUI for memory mutations."
+            .to_string();
+    }
+
+    format!("Usage: /memory [status|path]\nUnknown read-only memory action `{query}`.")
 }
 
 fn render_tui_providers_command(arg: Option<&str>, summary: &TuiConfigSummary) -> String {
@@ -1975,6 +2014,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "history" => Some(TuiCommand::History(arg)),
         "undo" => Some(TuiCommand::Undo(arg)),
         "skills" => Some(TuiCommand::Skills(arg)),
+        "memory" => Some(TuiCommand::Memory(arg)),
         "providers" => Some(TuiCommand::Providers(arg)),
         "skin" => Some(TuiCommand::Skin(arg)),
         "cron" => Some(TuiCommand::Cron(arg)),
@@ -2504,7 +2544,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /commands           — Show the local slash-command catalog\n  /about              — Show TUI version and surface summary\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /providers [cmd]    — Show current provider/model snapshot and API modes\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /logs [N]           — Show recent TUI log lines\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /commands           — Show the local slash-command catalog\n  /about              — Show TUI version and surface summary\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /providers [cmd]    — Show current provider/model snapshot and API modes\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /memory [cmd]       — Show read-only persistent memory status and paths\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /logs [N]           — Show recent TUI log lines\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2581,6 +2621,10 @@ impl App {
             }
             Some(TuiCommand::Skills(arg)) => {
                 let output = render_tui_skills_command(arg.as_deref(), &self.skills_dir_path);
+                self.messages.push(ChatMessage::system(output));
+            }
+            Some(TuiCommand::Memory(arg)) => {
+                let output = render_tui_memory_command(arg.as_deref(), &self.config_summary);
                 self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::Providers(arg)) => {
@@ -5185,12 +5229,46 @@ mod tests {
         assert!(message.content.contains("/logs [N]"));
         assert!(message.content.contains("/skin [name]"));
         assert!(message.content.contains("/providers [provider|modes]"));
+        assert!(message.content.contains("/memory [command]"));
         assert!(
             message
                 .content
                 .contains("/voice [on|off|tts|status|doctor]")
         );
         assert!(message.content.contains("do not call the model"));
+        assert!(!app.is_thinking);
+        assert!(cmd_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn slash_memory_shows_read_only_status_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/memory".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("Hakimi TUI memory"));
+        assert!(message.content.contains("Hakimi TUI config (memory)"));
+        assert!(message.content.contains("local_path_probe"));
+        assert!(message.content.contains("read-only"));
+        assert!(!app.is_thinking);
+        assert!(cmd_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn slash_memory_mutation_is_rejected_locally_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/memory clear".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("TUI /memory is read-only"));
         assert!(!app.is_thinking);
         assert!(cmd_rx.try_recv().is_err());
     }
