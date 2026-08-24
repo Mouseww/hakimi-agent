@@ -9657,6 +9657,17 @@ mod tests {
     async fn test_activity_snapshot_includes_personas_as_idle() {
         hakimi_common::reset_activity_for_tests();
         let app = build_router(test_state());
+        let persona_id = format!("idle_{}", uuid::Uuid::new_v4().simple());
+        let create_resp = app
+            .clone()
+            .oneshot(json_post(
+                "/api/agents",
+                json!({"id": persona_id, "name": "Idle Probe"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(create_resp.status(), http::StatusCode::OK);
+
         let resp = app
             .oneshot(
                 Request::builder()
@@ -9669,9 +9680,11 @@ mod tests {
         assert_eq!(resp.status(), http::StatusCode::OK);
         let json = read_json(resp).await;
         let arr = json["personas"].as_array().unwrap();
-        // default persona present, idle by default
-        let def = arr.iter().find(|p| p["id"] == "default").unwrap();
-        assert_eq!(def["state"], "idle");
+        // A newly-created persona is present and idle by default. Use a unique
+        // id so parallel tests that publish `default` turn activity cannot race
+        // this assertion.
+        let created = arr.iter().find(|p| p["id"] == persona_id).unwrap();
+        assert_eq!(created["state"], "idle");
     }
 
     #[tokio::test]
