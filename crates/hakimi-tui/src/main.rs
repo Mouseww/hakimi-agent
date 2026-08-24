@@ -747,7 +747,8 @@ async fn main() -> Result<()> {
         .with_session_db_path(runtime_home.sessions_db_path())
         .with_skills_dir_path(runtime_home.skills_dir())
         .with_cron_db_path(runtime_home.cron_db_path())
-        .with_knowledge_home_path(runtime_home.home());
+        .with_knowledge_home_path(runtime_home.home())
+        .with_tui_log_path(runtime_home.home().join("tui.log"));
 
     // Event loop.
     let tick_rate = Duration::from_millis(100);

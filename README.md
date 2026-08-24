@@ -188,6 +188,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # Type /status inside the TUI to show local session/model/state counters without calling the model.
 # Type /usage inside the TUI to show local token/API counters without calling the model.
 # Type /doctor inside the TUI to show local TUI readiness diagnostics; use `hakimi doctor` for install/systemd checks.
+# Type /logs inside the TUI to show recent local TUI log lines without calling the model.
 # Type /model inside the TUI to show the current model; /model NAME explains safe restart-based switching.
 # Type /skin inside the TUI to show the active skin; /skin NAME explains restart-based theme switching.
 # Type /tips inside the TUI to show practical TUI usage tips.

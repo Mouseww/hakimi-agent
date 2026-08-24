@@ -271,8 +271,8 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
         name: "logs",
         aliases: &["l"],
-        args_hint: "[lines]",
-        summary: "View recent logs",
+        args_hint: "[N]",
+        summary: "View recent TUI or runtime logs",
         category: "operations",
     },
     SlashCommandSpec {
