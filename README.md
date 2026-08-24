@@ -183,6 +183,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 #           Ctrl+W or Alt+Backspace deletes the previous word; Alt+D or Ctrl+Delete deletes the next word,
 #           Ctrl+D deletes under cursor or exits when empty,
 #           Ctrl+C quits.
+# Type /shortcuts inside the TUI to show the same key reference without the full command help.
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
 

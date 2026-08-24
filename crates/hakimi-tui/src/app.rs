@@ -1858,6 +1858,7 @@ impl TuiVoiceStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TuiCommand {
     Help,
+    Shortcuts,
     Config(Option<String>),
     Sessions(Option<String>),
     History(Option<String>),
@@ -1875,7 +1876,11 @@ enum TuiCommand {
 }
 
 fn tui_welcome_message() -> &'static str {
-    "Welcome to Hakimi Agent! Type a message and press Enter to chat. Type /help or press F1 for commands, /quit or Ctrl+C to exit. Tab completes slash commands, Shift+Tab toggles tools, Esc clears input, and PageUp/PageDown scroll history."
+    "Welcome to Hakimi Agent! Type a message and press Enter to chat. Type /help or press F1 for commands, /shortcuts for keys, /quit or Ctrl+C to exit. Tab completes slash commands, Shift+Tab toggles tools, Esc clears input, and PageUp/PageDown scroll history."
+}
+
+fn tui_keyboard_shortcuts() -> &'static str {
+    "Keyboard shortcuts:\n  F1                  — Open help without clearing input\n  Tab                 — Complete slash command before first space, otherwise toggle tools\n  Shift+Tab           — Toggle tools even while slash completion is active\n  Esc                 — Clear current input and completion hint\n  ↑/↓, PageUp/PageDown — Scroll message history\n  Ctrl+L              — Jump back to latest message\n  Home/End, Ctrl+A/E  — Move to input start/end\n  Ctrl/Alt+Left/Right, Alt+B/F — Move by word\n  Ctrl+U/K            — Clear text before/after cursor\n  Ctrl+W, Alt+Backspace — Delete previous word\n  Alt+D, Ctrl+Delete  — Delete next word\n  Ctrl+D              — Delete under cursor, or exit when input is empty\n  Ctrl+C              — Quit"
 }
 
 fn parse_tui_command(input: &str) -> Option<TuiCommand> {
@@ -1887,6 +1892,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
 
     match canonical_slash_command(cmd)? {
         "help" => Some(TuiCommand::Help),
+        "shortcuts" => Some(TuiCommand::Shortcuts),
         "config" => Some(TuiCommand::Config(arg)),
         "sessions" => Some(TuiCommand::Sessions(arg)),
         "history" => Some(TuiCommand::History(arg)),
@@ -2388,7 +2394,8 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nKeyboard shortcuts:\n  F1                  — Open this help without clearing input\n  Tab                 — Complete slash command before first space, otherwise toggle tools\n  Shift+Tab           — Toggle tools even while slash completion is active\n  Esc                 — Clear current input and completion hint\n  ↑/↓, PageUp/PageDown — Scroll message history\n  Ctrl+L              — Jump back to latest message\n  Home/End, Ctrl+A/E  — Move to input start/end\n  Ctrl/Alt+Left/Right, Alt+B/F — Move by word\n  Ctrl+U/K            — Clear text before/after cursor\n  Ctrl+W, Alt+Backspace — Delete previous word\n  Alt+D, Ctrl+Delete  — Delete next word\n  Ctrl+D              — Delete under cursor, or exit when input is empty\n  Ctrl+C              — Quit"
+            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            tui_keyboard_shortcuts()
         )));
     }
 
@@ -2397,6 +2404,10 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.push_help_message();
+            }
+            Some(TuiCommand::Shortcuts) => {
+                self.messages
+                    .push(ChatMessage::system(tui_keyboard_shortcuts()));
             }
             Some(TuiCommand::Config(arg)) => {
                 let output = render_tui_config_command(arg.as_deref(), &self.config_summary);
@@ -3498,7 +3509,7 @@ mod tests {
                 .last()
                 .unwrap()
                 .content
-                .contains("F1                  — Open this help")
+                .contains("F1                  — Open help")
         );
         assert!(!app.should_quit);
     }
@@ -3632,6 +3643,33 @@ mod tests {
         assert!(app.messages[1].content.contains("Ctrl+W"));
         assert!(app.messages[1].content.contains("Ctrl+D"));
         assert!(app.messages[1].content.contains("Alt+D"));
+    }
+
+    #[test]
+    fn slash_shortcuts_shows_keyboard_reference_only() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/shortcuts".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(app.messages.len(), 2);
+        let content = &app.messages[1].content;
+        assert!(content.starts_with("Keyboard shortcuts:"));
+        assert!(content.contains("F1"));
+        assert!(content.contains("Shift+Tab"));
+        assert!(content.contains("Ctrl+D"));
+        assert!(!content.contains("/config [field]"));
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn slash_shortcuts_aliases_execute_locally() {
+        assert_eq!(parse_tui_command("/keys"), Some(TuiCommand::Shortcuts));
+        assert_eq!(
+            parse_tui_command("/keybindings"),
+            Some(TuiCommand::Shortcuts)
+        );
     }
 
     #[test]
