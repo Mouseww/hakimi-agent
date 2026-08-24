@@ -1859,6 +1859,7 @@ impl TuiVoiceStatus {
 enum TuiCommand {
     Help,
     Shortcuts,
+    Model(Option<String>),
     Config(Option<String>),
     Sessions(Option<String>),
     History(Option<String>),
@@ -1894,6 +1895,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
     match canonical_slash_command(cmd)? {
         "help" => Some(TuiCommand::Help),
         "shortcuts" => Some(TuiCommand::Shortcuts),
+        "model" => Some(TuiCommand::Model(arg)),
         "config" => Some(TuiCommand::Config(arg)),
         "sessions" => Some(TuiCommand::Sessions(arg)),
         "history" => Some(TuiCommand::History(arg)),
@@ -2414,7 +2416,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2428,6 +2430,11 @@ impl App {
             Some(TuiCommand::Shortcuts) => {
                 self.messages
                     .push(ChatMessage::system(tui_keyboard_shortcuts()));
+            }
+            Some(TuiCommand::Model(arg)) => {
+                self.messages.push(ChatMessage::system(
+                    self.render_model_command(arg.as_deref()),
+                ));
             }
             Some(TuiCommand::Config(arg)) => {
                 let output = render_tui_config_command(arg.as_deref(), &self.config_summary);
@@ -2562,6 +2569,21 @@ impl App {
             self.total_tokens,
             self.api_calls,
             voice
+        )
+    }
+
+    fn render_model_command(&self, arg: Option<&str>) -> String {
+        let requested = arg.unwrap_or_default().trim();
+        if requested.is_empty() || requested.eq_ignore_ascii_case("show") {
+            return format!(
+                "TUI model:\n  Current: {}\n  Switching: restart Hakimi with an updated config/model setting to avoid changing an active local session mid-turn.",
+                self.model_name
+            );
+        }
+
+        format!(
+            "Model switch requested: `{requested}`\nCurrent TUI session is still using `{}`. Runtime model switching from the TUI is not enabled yet; update config.yaml or launch Hakimi with the desired model, then restart the TUI.",
+            self.model_name
         )
     }
 
@@ -3680,6 +3702,7 @@ mod tests {
         // welcome + help
         assert_eq!(app.messages.len(), 2);
         assert!(app.messages[1].content.contains("/help"));
+        assert!(app.messages[1].content.contains("/model [name]"));
         assert!(app.messages[1].content.contains("/config"));
         assert!(app.messages[1].content.contains("/history"));
         assert!(app.messages[1].content.contains("/undo"));
@@ -3722,6 +3745,39 @@ mod tests {
             parse_tui_command("/keybindings"),
             Some(TuiCommand::Shortcuts)
         );
+    }
+
+    #[test]
+    fn slash_model_shows_current_model_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/model".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("TUI model:"));
+        assert!(content.contains("Current: test-model"));
+        assert!(content.contains("restart Hakimi"));
+    }
+
+    #[test]
+    fn slash_model_with_name_reports_switch_as_unsupported_locally() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/model openai/gpt-5".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("Model switch requested: `openai/gpt-5`"));
+        assert!(content.contains("Current TUI session is still using `test-model`"));
+        assert!(content.contains("not enabled yet"));
     }
 
     #[test]
