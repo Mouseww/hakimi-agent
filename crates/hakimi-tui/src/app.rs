@@ -1875,7 +1875,7 @@ enum TuiCommand {
 }
 
 fn tui_welcome_message() -> &'static str {
-    "Welcome to Hakimi Agent! Type a message and press Enter to chat. Type /help for commands, /quit to exit, or press Ctrl+C anytime. Tab completes slash commands."
+    "Welcome to Hakimi Agent! Type a message and press Enter to chat. Type /help or press F1 for commands, /quit or Ctrl+C to exit. Tab completes slash commands, Shift+Tab toggles tools, Esc clears input, and PageUp/PageDown scroll history."
 }
 
 fn parse_tui_command(input: &str) -> Option<TuiCommand> {
@@ -4508,8 +4508,12 @@ mod tests {
         assert_eq!(welcome.role, crate::Role::System);
         assert!(welcome.content.contains("Type a message"));
         assert!(welcome.content.contains("/help"));
+        assert!(welcome.content.contains("F1"));
         assert!(welcome.content.contains("Ctrl+C"));
         assert!(welcome.content.contains("/quit"));
+        assert!(welcome.content.contains("Shift+Tab"));
+        assert!(welcome.content.contains("Esc"));
+        assert!(welcome.content.contains("PageUp/PageDown"));
     }
 
     #[test]
