@@ -3156,6 +3156,22 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_a_and_ctrl_e_jump_to_utf8_input_boundaries() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸爸 稍等🙂 result".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key_with_mod(KeyCode::Left, KeyModifiers::ALT));
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 ".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('a'), KeyModifiers::CONTROL));
+        assert_eq!(app.cursor_position, 0);
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('e'), KeyModifiers::CONTROL));
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 result".len());
+    }
+
+    #[test]
     fn ctrl_u_and_ctrl_k_clear_utf8_text_around_cursor() {
         let (mut app, _cmd_rx, _event_tx) = make_app();
         for c in "爸爸 稍等🙂 result".chars() {
