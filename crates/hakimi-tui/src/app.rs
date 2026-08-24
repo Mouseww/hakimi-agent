@@ -8,7 +8,7 @@ use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hakimi_common::{
     SkinRuntime, SlashCommandSpec, canonical_slash_command, complete_slash_command_prefix,
-    load_skin_runtime,
+    load_skin_runtime, slash_command_catalog,
 };
 use hakimi_config::{HakimiConfig, VoiceConfig};
 use hakimi_cron::persistence::PersistentCronStore;
@@ -1863,7 +1863,7 @@ impl TuiVoiceStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TuiCommand {
-    Help,
+    Help(Option<String>),
     About,
     Shortcuts,
     Model(Option<String>),
@@ -1898,7 +1898,35 @@ fn tui_keyboard_shortcuts() -> &'static str {
 }
 
 fn tui_usage_tips() -> &'static str {
-    "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /logs, /model, and /skin for local state without calling the model.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
+    "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /logs, /model, and /skin for local state without calling the model.\n  - Use `/help local` to show TUI commands implemented locally; other catalog entries are shared with CLI/Gateway surfaces.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
+}
+
+fn render_tui_local_command_catalog() -> String {
+    let mut lines = vec![
+        "TUI local command catalog:".to_string(),
+        "These commands are handled inside the TUI and do not call the model.".to_string(),
+    ];
+    for spec in slash_command_catalog()
+        .iter()
+        .filter(|spec| parse_tui_command(&format!("/{}", spec.name)).is_some())
+    {
+        let aliases = if spec.aliases.is_empty() {
+            String::new()
+        } else {
+            format!(" (aliases: {})", spec.aliases.join(", "))
+        };
+        let args = if spec.args_hint.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", spec.args_hint)
+        };
+        lines.push(format!(
+            "  /{}{} — {}{}",
+            spec.name, args, spec.summary, aliases
+        ));
+    }
+    lines.push("Use /help for the curated quick reference and keyboard shortcuts.".to_string());
+    lines.join("\n")
 }
 
 fn tui_about_message(model_name: &str, session_id: &str) -> String {
@@ -1918,7 +1946,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
     };
 
     match canonical_slash_command(cmd)? {
-        "help" => Some(TuiCommand::Help),
+        "help" => Some(TuiCommand::Help(arg)),
         "about" => Some(TuiCommand::About),
         "shortcuts" => Some(TuiCommand::Shortcuts),
         "model" => Some(TuiCommand::Model(arg)),
@@ -2463,8 +2491,16 @@ impl App {
     /// Handle slash commands locally (without sending to agent).
     fn handle_slash_command(&mut self, cmd: &str) -> bool {
         match parse_tui_command(cmd) {
-            Some(TuiCommand::Help) => {
-                self.push_help_message();
+            Some(TuiCommand::Help(arg)) => {
+                if arg
+                    .as_deref()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("local"))
+                {
+                    self.messages
+                        .push(ChatMessage::system(render_tui_local_command_catalog()));
+                } else {
+                    self.push_help_message();
+                }
             }
             Some(TuiCommand::About) => {
                 self.messages.push(ChatMessage::system(tui_about_message(
@@ -5076,6 +5112,30 @@ mod tests {
         assert!(welcome.content.contains("Shift+Tab"));
         assert!(welcome.content.contains("Esc"));
         assert!(welcome.content.contains("PageUp/PageDown"));
+    }
+
+    #[test]
+    fn slash_help_local_lists_tui_local_commands_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/help local".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        let message = app.messages.last().unwrap();
+        assert_eq!(message.role, crate::Role::System);
+        assert!(message.content.contains("TUI local command catalog"));
+        assert!(message.content.contains("/about"));
+        assert!(message.content.contains("/logs [N]"));
+        assert!(message.content.contains("/skin [name]"));
+        assert!(
+            message
+                .content
+                .contains("/voice [on|off|tts|status|doctor]")
+        );
+        assert!(message.content.contains("do not call the model"));
+        assert!(!app.is_thinking);
+        assert!(cmd_rx.try_recv().is_err());
     }
 
     #[test]
