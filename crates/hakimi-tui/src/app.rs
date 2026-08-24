@@ -2388,7 +2388,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nF1 opens this help. Tab completes slash commands before the first space."
+            "{header}:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nKeyboard shortcuts:\n  F1                  — Open this help without clearing input\n  Tab                 — Complete slash command before first space, otherwise toggle tools\n  Shift+Tab           — Toggle tools even while slash completion is active\n  Esc                 — Clear current input and completion hint\n  ↑/↓, PageUp/PageDown — Scroll message history\n  Ctrl+L              — Jump back to latest message\n  Home/End, Ctrl+A/E  — Move to input start/end\n  Ctrl/Alt+Left/Right, Alt+B/F — Move by word\n  Ctrl+U/K            — Clear text before/after cursor\n  Ctrl+W, Alt+Backspace — Delete previous word\n  Alt+D, Ctrl+Delete  — Delete next word\n  Ctrl+D              — Delete under cursor, or exit when input is empty\n  Ctrl+C              — Quit"
         )));
     }
 
@@ -3498,7 +3498,7 @@ mod tests {
                 .last()
                 .unwrap()
                 .content
-                .contains("F1 opens this help")
+                .contains("F1                  — Open this help")
         );
         assert!(!app.should_quit);
     }
@@ -3627,6 +3627,11 @@ mod tests {
         assert!(app.messages[1].content.contains("/knowledge"));
         assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/voice"));
+        assert!(app.messages[1].content.contains("Keyboard shortcuts:"));
+        assert!(app.messages[1].content.contains("Shift+Tab"));
+        assert!(app.messages[1].content.contains("Ctrl+W"));
+        assert!(app.messages[1].content.contains("Ctrl+D"));
+        assert!(app.messages[1].content.contains("Alt+D"));
     }
 
     #[test]
