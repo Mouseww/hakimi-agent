@@ -8585,6 +8585,20 @@ async fn self_update() -> Result<()> {
     let binary_data = binary_data
         .ok_or_else(|| anyhow::anyhow!("Binary '{binary_name}' not found in archive"))?;
 
+    // Extract optional companion TUI binary from the same release archive.
+    // The CLI's default local UI (`hakimi` / `hakimi tui`) launches this sibling binary,
+    // so self-update must install it together with the main `hakimi` executable.
+    let tui_binary_name = if os == "windows" {
+        "hakimi-tui.exe"
+    } else {
+        "hakimi-tui"
+    };
+    let tui_binary_data = if ext == "zip" {
+        extract_binary_from_zip(&bytes, tui_binary_name)?
+    } else {
+        extract_binary_from_tar_gz(&bytes, tui_binary_name)?
+    };
+
     // Determine update target. Prefer the `hakimi` found on PATH so `hakimi --update`
     // updates the command users actually run, even when current_exe resolves through a
     // symlink or a renamed wrapper binary.
@@ -8660,6 +8674,38 @@ async fn self_update() -> Result<()> {
     }
 
     fs::rename(&install_tmp, &update_target.binary_path)?;
+
+    if let Some(tui_binary_data) = tui_binary_data {
+        let tui_path = update_target.binary_path.with_file_name(tui_binary_name);
+        let tui_tmp = tui_path.with_extension(format!(
+            "hakimi-tui-update-{}",
+            chrono::Local::now().format("%Y%m%d%H%M%S")
+        ));
+        fs::write(&tui_tmp, &tui_binary_data)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&tui_tmp, fs::Permissions::from_mode(0o755))?;
+        }
+        fs::rename(&tui_tmp, &tui_path)?;
+        println!("✅ Companion TUI installed to: {}", tui_path.display());
+
+        if os == "linux" {
+            let tui_shim = usr_local_hakimi_path().with_file_name(tui_binary_name);
+            match ensure_hakimi_path_shim(&tui_shim, &tui_path) {
+                Ok(()) => println!(
+                    "✅ TUI PATH shim refreshed: {} -> {}",
+                    tui_shim.display(),
+                    tui_path.display()
+                ),
+                Err(err) => warn_hakimi_path_shim_failed(&tui_shim, &tui_path, &err),
+            }
+        }
+    } else {
+        eprintln!(
+            "⚠️ Release archive did not contain {tui_binary_name}; `hakimi tui` may be unavailable."
+        );
+    }
 
     // Verify new binary works and reports the expected latest version.
     let output = std::process::Command::new(&update_target.binary_path)
