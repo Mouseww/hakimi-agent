@@ -1874,6 +1874,7 @@ enum TuiCommand {
     Tools,
     Voice(Option<String>),
     Status,
+    Usage,
     Quit,
 }
 
@@ -1913,6 +1914,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "tools" => Some(TuiCommand::Tools),
         "voice" => Some(TuiCommand::Voice(arg)),
         "status" => Some(TuiCommand::Status),
+        "usage" => Some(TuiCommand::Usage),
         "quit" => Some(TuiCommand::Quit),
         _ => None,
     }
@@ -2416,7 +2418,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2532,6 +2534,9 @@ impl App {
                 self.messages
                     .push(ChatMessage::system(self.render_status()));
             }
+            Some(TuiCommand::Usage) => {
+                self.messages.push(ChatMessage::system(self.render_usage()));
+            }
             Some(TuiCommand::Quit) => {
                 let _ = self.cmd_tx.send(AgentCommand::Shutdown);
                 self.should_quit = true;
@@ -2569,6 +2574,13 @@ impl App {
             self.total_tokens,
             self.api_calls,
             voice
+        )
+    }
+
+    fn render_usage(&self) -> String {
+        format!(
+            "TUI usage:\n  Token total: {}\n  API calls: {}\n  Scope: local TUI session counters since startup\n  Note: provider billing and gateway usage may differ; use gateway logs/provider dashboard for cross-surface totals.",
+            self.total_tokens, self.api_calls
         )
     }
 
@@ -3712,6 +3724,7 @@ mod tests {
         assert!(app.messages[1].content.contains("/knowledge"));
         assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/status"));
+        assert!(app.messages[1].content.contains("/usage"));
         assert!(app.messages[1].content.contains("/voice"));
         assert!(app.messages[1].content.contains("Keyboard shortcuts:"));
         assert!(app.messages[1].content.contains("Shift+Tab"));
@@ -3875,6 +3888,27 @@ mod tests {
         assert!(content.contains("Tools panel: hidden"));
         assert!(content.contains("Token total: 42"));
         assert!(content.contains("API calls: 3"));
+    }
+
+    #[test]
+    fn slash_usage_shows_local_counters_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app.total_tokens = 2048;
+        app.api_calls = 7;
+        for c in "/usage".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("TUI usage:"));
+        assert!(content.contains("Token total: 2048"));
+        assert!(content.contains("API calls: 7"));
+        assert!(content.contains("local TUI session counters"));
     }
 
     #[test]
