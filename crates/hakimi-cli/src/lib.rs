@@ -30,6 +30,8 @@ pub use hakimi_common::{
 pub enum Command {
     /// Show help / available commands.
     Help,
+    /// Show keyboard shortcuts for local interactive surfaces.
+    Shortcuts,
     /// Stop ongoing tasks or streaming.
     Stop,
     /// Restart the managed gateway service.
@@ -135,6 +137,7 @@ impl Command {
 
         match canonical_slash_command(cmd)? {
             "help" => Some(Command::Help),
+            "shortcuts" => Some(Command::Shortcuts),
             "stop" => Some(Command::Stop),
             "restart" => Some(Command::Restart),
             "clear" => Some(Command::Clear),
@@ -187,6 +190,7 @@ impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Command::Help => write!(f, "/help"),
+            Command::Shortcuts => write!(f, "/shortcuts"),
             Command::Stop => write!(f, "/stop"),
             Command::Restart => write!(f, "/restart"),
             Command::Clear => write!(f, "/clear"),
@@ -275,6 +279,9 @@ mod tests {
     #[test]
     fn test_parse_slash_commands() {
         assert_eq!(Command::parse("/help"), Some(Command::Help));
+        assert_eq!(Command::parse("/shortcuts"), Some(Command::Shortcuts));
+        assert_eq!(Command::parse("/keys"), Some(Command::Shortcuts));
+        assert_eq!(Command::parse("/keybindings"), Some(Command::Shortcuts));
         assert_eq!(Command::parse("/stop"), Some(Command::Stop));
         assert_eq!(Command::parse("/restart"), Some(Command::Restart));
         assert_eq!(Command::parse("/clear"), Some(Command::Clear));
