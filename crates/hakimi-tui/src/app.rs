@@ -2319,9 +2319,11 @@ impl App {
                 self.refresh_completion_hint();
             }
 
-            // Escape — could be used for interrupt in future
+            // Escape — clear the composer and slash completion hint without exiting.
             KeyCode::Esc => {
-                // Currently no-op; could interrupt agent
+                self.input.clear();
+                self.cursor_position = 0;
+                self.completion_hint = None;
             }
 
             _ => {}
@@ -3407,6 +3409,25 @@ mod tests {
                 .unwrap_or_default()
                 .contains("/clear")
         );
+    }
+
+    #[test]
+    fn escape_clears_composer_and_slash_completion_hint() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/c".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        assert_eq!(app.input, "/c");
+        assert_eq!(app.cursor_position, 2);
+        assert!(app.completion_hint.is_some());
+        assert!(!app.should_quit);
+
+        app.handle_key_event(key(KeyCode::Esc));
+
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_position, 0);
+        assert!(app.completion_hint.is_none());
+        assert!(!app.should_quit);
     }
 
     #[test]
