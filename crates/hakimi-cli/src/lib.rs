@@ -30,6 +30,8 @@ pub use hakimi_common::{
 pub enum Command {
     /// Show help / available commands.
     Help,
+    /// Show version and local interface summary.
+    About,
     /// Show keyboard shortcuts for local interactive surfaces.
     Shortcuts,
     /// Stop ongoing tasks or streaming.
@@ -137,6 +139,7 @@ impl Command {
 
         match canonical_slash_command(cmd)? {
             "help" => Some(Command::Help),
+            "about" => Some(Command::About),
             "shortcuts" => Some(Command::Shortcuts),
             "stop" => Some(Command::Stop),
             "restart" => Some(Command::Restart),
@@ -190,6 +193,7 @@ impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Command::Help => write!(f, "/help"),
+            Command::About => write!(f, "/about"),
             Command::Shortcuts => write!(f, "/shortcuts"),
             Command::Stop => write!(f, "/stop"),
             Command::Restart => write!(f, "/restart"),
@@ -279,6 +283,7 @@ mod tests {
     #[test]
     fn test_parse_slash_commands() {
         assert_eq!(Command::parse("/help"), Some(Command::Help));
+        assert_eq!(Command::parse("/about"), Some(Command::About));
         assert_eq!(Command::parse("/shortcuts"), Some(Command::Shortcuts));
         assert_eq!(Command::parse("/keys"), Some(Command::Shortcuts));
         assert_eq!(Command::parse("/keybindings"), Some(Command::Shortcuts));
