@@ -174,7 +174,8 @@ hakimi tui --smoke  # verify packaged TUI via the main launcher
 hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # TUI keys: /help for commands, Tab toggles/completes, ↑↓/PageUp/PageDown scroll,
 #           Ctrl+A/Ctrl+E jump input start/end, Ctrl+U/Ctrl+K clear before/after cursor,
-#           Ctrl+W deletes the previous word, Ctrl+D deletes under cursor or exits when empty,
+#           Ctrl+W or Alt+Backspace deletes the previous word; Alt+D or Ctrl+Delete deletes the next word,
+#           Ctrl+D deletes under cursor or exits when empty,
 #           Ctrl+C quits.
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```

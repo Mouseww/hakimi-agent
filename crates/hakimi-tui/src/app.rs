@@ -1629,6 +1629,26 @@ fn previous_word_start(input: &str, cursor_position: usize) -> usize {
     0
 }
 
+fn next_word_end(input: &str, cursor_position: usize) -> usize {
+    let mut boundary = cursor_position.min(input.len());
+    while boundary > 0 && !input.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+
+    let mut saw_word_char = false;
+    for (idx, ch) in input[boundary..].char_indices() {
+        if ch.is_whitespace() {
+            if saw_word_char {
+                return boundary + idx;
+            }
+        } else {
+            saw_word_char = true;
+        }
+    }
+
+    input.len()
+}
+
 fn env_any_present(names: &[&str]) -> bool {
     names
         .iter()
@@ -2118,7 +2138,11 @@ impl App {
             }
 
             // Backspace
-            KeyCode::Backspace if self.cursor_position > 0 => {
+            KeyCode::Backspace
+                if self.cursor_position > 0
+                    && !key.modifiers.contains(KeyModifiers::ALT)
+                    && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
                 let remove_start = self.input[..self.cursor_position]
                     .char_indices()
                     .last()
@@ -2131,7 +2155,10 @@ impl App {
             }
 
             // Delete
-            KeyCode::Delete if self.cursor_position < self.input.len() => {
+            KeyCode::Delete
+                if self.cursor_position < self.input.len()
+                    && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
                 let remove_end = self.input[self.cursor_position..]
                     .char_indices()
                     .nth(1)
@@ -2178,6 +2205,33 @@ impl App {
                 let remove_start = previous_word_start(&self.input, self.cursor_position);
                 self.input.drain(remove_start..self.cursor_position);
                 self.cursor_position = remove_start;
+                self.refresh_completion_hint();
+            }
+
+            // Alt+Backspace / Ctrl+Backspace delete the previous word before the cursor.
+            KeyCode::Backspace
+                if self.cursor_position > 0
+                    && (key.modifiers.contains(KeyModifiers::ALT)
+                        || key.modifiers.contains(KeyModifiers::CONTROL)) =>
+            {
+                let remove_start = previous_word_start(&self.input, self.cursor_position);
+                self.input.drain(remove_start..self.cursor_position);
+                self.cursor_position = remove_start;
+                self.refresh_completion_hint();
+            }
+
+            // Alt+D / Ctrl+Delete delete the next word after the cursor.
+            KeyCode::Char('d')
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                let remove_end = next_word_end(&self.input, self.cursor_position);
+                self.input.drain(self.cursor_position..remove_end);
+                self.refresh_completion_hint();
+            }
+            KeyCode::Delete if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                let remove_end = next_word_end(&self.input, self.cursor_position);
+                self.input.drain(self.cursor_position..remove_end);
                 self.refresh_completion_hint();
             }
 
@@ -3066,12 +3120,48 @@ mod tests {
     }
 
     #[test]
+    fn modified_word_delete_shortcuts_handle_utf8_boundaries() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸爸 稍等🙂 result".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key_with_mod(KeyCode::Backspace, KeyModifiers::ALT));
+        assert_eq!(app.input, "爸爸 稍等🙂 ");
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 ".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Backspace, KeyModifiers::CONTROL));
+        assert_eq!(app.input, "爸爸 ");
+        assert_eq!(app.cursor_position, "爸爸 ".len());
+
+        for c in "稍等🙂 result".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Home));
+        app.handle_key_event(key_with_mod(KeyCode::Char('d'), KeyModifiers::ALT));
+        assert_eq!(app.input, " 稍等🙂 result");
+        assert_eq!(app.cursor_position, 0);
+
+        app.handle_key_event(key(KeyCode::Right));
+        app.handle_key_event(key_with_mod(KeyCode::Delete, KeyModifiers::CONTROL));
+        assert_eq!(app.input, "  result");
+        assert_eq!(app.cursor_position, 1);
+    }
+
+    #[test]
     fn previous_word_start_clamps_invalid_byte_offset() {
         assert_eq!(previous_word_start("爸🙂 word", 1), 0);
         assert_eq!(
             previous_word_start("爸🙂 word", "爸🙂 word".len()),
             "爸🙂 ".len()
         );
+    }
+
+    #[test]
+    fn next_word_end_clamps_invalid_byte_offset() {
+        assert_eq!(next_word_end("爸🙂 word", 1), "爸🙂".len());
+        assert_eq!(next_word_end("爸🙂 word", "爸🙂".len()), "爸🙂 word".len());
+        assert_eq!(next_word_end("爸🙂 word", "爸🙂 ".len()), "爸🙂 word".len());
     }
 
     // ---------------------------------------------------------------
