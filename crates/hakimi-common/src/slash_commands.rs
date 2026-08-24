@@ -45,6 +45,13 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
         category: "chat",
     },
     SlashCommandSpec {
+        name: "about",
+        aliases: &[],
+        args_hint: "",
+        summary: "Show TUI version and surface summary",
+        category: "chat",
+    },
+    SlashCommandSpec {
         name: "shortcuts",
         aliases: &["keys", "keybindings"],
         args_hint: "",

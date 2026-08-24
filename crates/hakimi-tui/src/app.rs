@@ -1858,6 +1858,7 @@ impl TuiVoiceStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TuiCommand {
     Help,
+    About,
     Shortcuts,
     Model(Option<String>),
     Config(Option<String>),
@@ -1893,6 +1894,15 @@ fn tui_usage_tips() -> &'static str {
     "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /model, and /skin for local state without calling the model.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
 }
 
+fn tui_about_message(model_name: &str, session_id: &str) -> String {
+    format!(
+        "Hakimi TUI about:\n  Version: {}\n  Surface: local ratatui TUI (no WebUI runtime)\n  Session: {}\n  Model: {}\n  Gateway: run `hakimi gateway start` separately for messaging platforms\n  Help: /help, /shortcuts, /tips, /doctor",
+        env!("CARGO_PKG_VERSION"),
+        session_id,
+        model_name
+    )
+}
+
 fn parse_tui_command(input: &str) -> Option<TuiCommand> {
     let rest = input.trim().strip_prefix('/')?;
     let (cmd, arg) = match rest.split_once(char::is_whitespace) {
@@ -1902,6 +1912,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
 
     match canonical_slash_command(cmd)? {
         "help" => Some(TuiCommand::Help),
+        "about" => Some(TuiCommand::About),
         "shortcuts" => Some(TuiCommand::Shortcuts),
         "model" => Some(TuiCommand::Model(arg)),
         "config" => Some(TuiCommand::Config(arg)),
@@ -2428,7 +2439,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /about              — Show TUI version and surface summary\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2438,6 +2449,12 @@ impl App {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
                 self.push_help_message();
+            }
+            Some(TuiCommand::About) => {
+                self.messages.push(ChatMessage::system(tui_about_message(
+                    &self.model_name,
+                    &self.session_id,
+                )));
             }
             Some(TuiCommand::Shortcuts) => {
                 self.messages
@@ -3819,6 +3836,7 @@ mod tests {
         // welcome + help
         assert_eq!(app.messages.len(), 2);
         assert!(app.messages[1].content.contains("/help"));
+        assert!(app.messages[1].content.contains("/about"));
         assert!(app.messages[1].content.contains("/model [name]"));
         assert!(app.messages[1].content.contains("/config"));
         assert!(app.messages[1].content.contains("/history"));
@@ -3856,6 +3874,32 @@ mod tests {
         assert!(content.contains("Ctrl+D"));
         assert!(!content.contains("/config [field]"));
         assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn parse_tui_command_accepts_about() {
+        assert_eq!(parse_tui_command("/about"), Some(TuiCommand::About));
+    }
+
+    #[test]
+    fn slash_about_shows_version_surface_summary_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/about".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("Hakimi TUI about:"));
+        assert!(content.contains("Version:"));
+        assert!(content.contains("local ratatui TUI"));
+        assert!(content.contains("no WebUI runtime"));
+        assert!(content.contains("Session: test-session"));
+        assert!(content.contains("Model: test-model"));
+        assert!(content.contains("hakimi gateway start"));
     }
 
     #[test]

@@ -184,6 +184,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 #           Ctrl+D deletes under cursor or exits when empty,
 #           Ctrl+C quits.
 # Type /shortcuts inside the TUI to show the same key reference without the full command help.
+# Type /about inside the TUI to show version and local-surface summary without calling the model.
 # Type /status inside the TUI to show local session/model/state counters without calling the model.
 # Type /usage inside the TUI to show local token/API counters without calling the model.
 # Type /doctor inside the TUI to show local TUI readiness diagnostics; use `hakimi doctor` for install/systemd checks.
