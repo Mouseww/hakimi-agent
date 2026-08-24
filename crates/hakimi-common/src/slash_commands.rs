@@ -313,8 +313,8 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
         name: "providers",
         aliases: &[],
-        args_hint: "[provider]",
-        summary: "List supported LLM providers",
+        args_hint: "[provider|modes]",
+        summary: "Show provider/model transport options",
         category: "agent",
     },
     SlashCommandSpec {
