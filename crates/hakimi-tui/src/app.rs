@@ -3139,6 +3139,24 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_l_resets_scroll_without_clearing_utf8_input() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        app.messages.push(crate::ChatMessage::user("msg1"));
+        app.messages.push(crate::ChatMessage::assistant("msg2"));
+        app.scroll_offset = 2;
+        for c in "爸爸🙂".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('l'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.scroll_offset, 0);
+        assert_eq!(app.input, "爸爸🙂");
+        assert_eq!(app.cursor_position, "爸爸🙂".len());
+        assert!(!app.should_quit);
+    }
+
+    #[test]
     fn ctrl_w_deletes_previous_utf8_word() {
         let (mut app, _cmd_rx, _event_tx) = make_app();
         for c in "爸爸 稍等🙂 result".chars() {
