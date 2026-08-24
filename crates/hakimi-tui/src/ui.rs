@@ -513,6 +513,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect, palette: &TuiPale
         separator(),
         Span::styled("/help", Style::default().fg(palette.status_strong)),
         separator(),
+        Span::styled("Esc:clear", Style::default().fg(palette.status_dim)),
+        separator(),
         Span::styled("PgUp/PgDn:scroll", Style::default().fg(palette.status_dim)),
         separator(),
         Span::styled("Ctrl+C:quit", Style::default().fg(palette.status_dim)),
@@ -753,6 +755,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(rendered.contains("/help"));
+        assert!(rendered.contains("Esc:clear"));
         assert!(rendered.contains("PgUp/PgDn:scroll"));
         assert!(rendered.contains("Ctrl+C:quit"));
     }
