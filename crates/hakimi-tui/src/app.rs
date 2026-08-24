@@ -2057,6 +2057,13 @@ impl App {
             return;
         }
 
+        // F1 opens inline help without requiring users to discover /help first.
+        if key.code == KeyCode::F(1) {
+            self.push_help_message();
+            self.scroll_offset = 0;
+            return;
+        }
+
         if voice_record_key_matches(&key, &self.voice.record_key) {
             self.handle_voice_record_key();
             return;
@@ -2374,18 +2381,22 @@ impl App {
         true
     }
 
+    fn push_help_message(&mut self) {
+        let header = self
+            .skin_runtime
+            .branding("help_header")
+            .unwrap_or("Commands")
+            .trim();
+        self.messages.push(ChatMessage::system(format!(
+            "{header}:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nF1 opens this help. Tab completes slash commands before the first space."
+        )));
+    }
+
     /// Handle slash commands locally (without sending to agent).
     fn handle_slash_command(&mut self, cmd: &str) -> bool {
         match parse_tui_command(cmd) {
             Some(TuiCommand::Help) => {
-                let header = self
-                    .skin_runtime
-                    .branding("help_header")
-                    .unwrap_or("Commands")
-                    .trim();
-                self.messages.push(ChatMessage::system(format!(
-                    "{header}:\n  /help               — Show this help\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\nTab completes slash commands before the first space."
-                )));
+                self.push_help_message();
             }
             Some(TuiCommand::Config(arg)) => {
                 let output = render_tui_config_command(arg.as_deref(), &self.config_summary);
@@ -3467,6 +3478,29 @@ mod tests {
                 .unwrap_or_default()
                 .contains("/clear")
         );
+    }
+
+    #[test]
+    fn f1_opens_help_without_clearing_utf8_composer() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸爸🙂".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        let initial_messages = app.messages.len();
+
+        app.handle_key_event(key(KeyCode::F(1)));
+
+        assert_eq!(app.input, "爸爸🙂");
+        assert_eq!(app.cursor_position, "爸爸🙂".len());
+        assert_eq!(app.messages.len(), initial_messages + 1);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("F1 opens this help")
+        );
+        assert!(!app.should_quit);
     }
 
     #[test]
