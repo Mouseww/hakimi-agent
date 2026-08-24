@@ -2259,6 +2259,18 @@ impl App {
             }
 
             // Left arrow
+            // Ctrl+Left / Alt+B move to the beginning of the previous word.
+            KeyCode::Left
+                if self.cursor_position > 0 && key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.cursor_position = previous_word_start(&self.input, self.cursor_position);
+                self.refresh_completion_hint();
+            }
+            KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.cursor_position = previous_word_start(&self.input, self.cursor_position);
+                self.refresh_completion_hint();
+            }
+
             KeyCode::Left if self.cursor_position > 0 => {
                 self.cursor_position = self.input[..self.cursor_position]
                     .char_indices()
@@ -2269,6 +2281,19 @@ impl App {
             }
 
             // Right arrow
+            // Ctrl+Right / Alt+F move to the end of the next word.
+            KeyCode::Right
+                if self.cursor_position < self.input.len()
+                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.cursor_position = next_word_end(&self.input, self.cursor_position);
+                self.refresh_completion_hint();
+            }
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.cursor_position = next_word_end(&self.input, self.cursor_position);
+                self.refresh_completion_hint();
+            }
+
             KeyCode::Right if self.cursor_position < self.input.len() => {
                 self.cursor_position = self.input[self.cursor_position..]
                     .char_indices()
@@ -3146,6 +3171,32 @@ mod tests {
         app.handle_key_event(key_with_mod(KeyCode::Delete, KeyModifiers::CONTROL));
         assert_eq!(app.input, "  result");
         assert_eq!(app.cursor_position, 1);
+    }
+
+    #[test]
+    fn modified_word_movement_shortcuts_handle_utf8_boundaries() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸爸 稍等🙂 result".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+
+        app.handle_key_event(key_with_mod(KeyCode::Left, KeyModifiers::CONTROL));
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 ".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('b'), KeyModifiers::ALT));
+        assert_eq!(app.cursor_position, "爸爸 ".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('b'), KeyModifiers::ALT));
+        assert_eq!(app.cursor_position, 0);
+
+        app.handle_key_event(key_with_mod(KeyCode::Right, KeyModifiers::CONTROL));
+        assert_eq!(app.cursor_position, "爸爸".len());
+
+        app.handle_key_event(key(KeyCode::Right));
+        assert_eq!(app.cursor_position, "爸爸 ".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('f'), KeyModifiers::ALT));
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂".len());
     }
 
     #[test]

@@ -173,7 +173,9 @@ hakimi --gateway start # legacy gateway alias
 hakimi tui --smoke  # verify packaged TUI via the main launcher
 hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # TUI keys: /help for commands, Tab toggles/completes, ↑↓/PageUp/PageDown scroll,
-#           Ctrl+A/Ctrl+E jump input start/end, Ctrl+U/Ctrl+K clear before/after cursor,
+#           Ctrl+A/Ctrl+E jump input start/end, Ctrl+Left or Alt+B jumps to previous word,
+#           Ctrl+Right or Alt+F jumps to next word,
+#           Ctrl+U/Ctrl+K clear before/after cursor,
 #           Ctrl+W or Alt+Backspace deletes the previous word; Alt+D or Ctrl+Delete deletes the next word,
 #           Ctrl+D deletes under cursor or exits when empty,
 #           Ctrl+C quits.
