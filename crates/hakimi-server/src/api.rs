@@ -9655,6 +9655,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_activity_snapshot_includes_personas_as_idle() {
+        hakimi_common::reset_activity_for_tests();
         let app = build_router(test_state());
         let resp = app
             .oneshot(

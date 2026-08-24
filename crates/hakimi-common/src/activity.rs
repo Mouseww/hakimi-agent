@@ -277,6 +277,14 @@ pub fn all_live_states() -> HashMap<String, LiveState> {
         .collect()
 }
 
+/// Clear the process-global activity overlay for tests that assert a fresh
+/// snapshot. Production code should rely on `TurnEnded`/`PersonaDeleted` events
+/// instead so connected clients receive the matching state transitions.
+#[doc(hidden)]
+pub fn reset_activity_for_tests() {
+    HUB.state.lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
