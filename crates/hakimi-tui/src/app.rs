@@ -4553,6 +4553,27 @@ mod tests {
     }
 
     #[test]
+    fn home_end_keys_keep_utf8_cursor_boundaries() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "爸🙂abc".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Left));
+        app.handle_key_event(key(KeyCode::Left));
+        assert_eq!(app.cursor_position, "爸🙂a".len());
+
+        app.handle_key_event(key(KeyCode::Home));
+
+        assert_eq!(app.cursor_position, 0);
+        assert!(app.input.is_char_boundary(app.cursor_position));
+
+        app.handle_key_event(key(KeyCode::End));
+
+        assert_eq!(app.cursor_position, app.input.len());
+        assert!(app.input.is_char_boundary(app.cursor_position));
+    }
+
+    #[test]
     fn ctrl_u_clears_input_before_cursor_on_utf8_boundary() {
         let (mut app, _cmd_rx, _event_tx) = make_app();
         for c in "爸🙂abc".chars() {
