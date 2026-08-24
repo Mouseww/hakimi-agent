@@ -314,7 +314,7 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
         name: "tips",
         aliases: &["tip"],
         args_hint: "",
-        summary: "Show daily tips",
+        summary: "Show practical TUI usage tips",
         category: "system",
     },
     SlashCommandSpec {

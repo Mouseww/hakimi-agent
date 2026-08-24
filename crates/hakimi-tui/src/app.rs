@@ -1877,6 +1877,7 @@ enum TuiCommand {
     Status,
     Usage,
     Doctor,
+    Tips,
     Quit,
 }
 
@@ -1886,6 +1887,10 @@ fn tui_welcome_message() -> &'static str {
 
 fn tui_keyboard_shortcuts() -> &'static str {
     "Keyboard shortcuts:\n  F1                  — Open help without clearing input\n  Tab                 — Complete slash command before first space, otherwise toggle tools\n  Shift+Tab           — Toggle tools even while slash completion is active\n  Esc                 — Clear current input and completion hint\n  ↑/↓, Ctrl+P/N, PageUp/PageDown — Scroll message history\n  Ctrl+L              — Jump back to latest message\n  Home/End, Ctrl+A/E  — Move to input start/end\n  Ctrl/Alt+Left/Right, Alt+B/F — Move by word\n  Ctrl+U/K            — Clear text before/after cursor\n  Ctrl+W, Alt+Backspace — Delete previous word\n  Alt+D, Ctrl+Delete  — Delete next word\n  Ctrl+D              — Delete under cursor, or exit when input is empty\n  Ctrl+C              — Quit"
+}
+
+fn tui_usage_tips() -> &'static str {
+    "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /model, and /skin for local state without calling the model.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
 }
 
 fn parse_tui_command(input: &str) -> Option<TuiCommand> {
@@ -1919,6 +1924,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "status" => Some(TuiCommand::Status),
         "usage" => Some(TuiCommand::Usage),
         "doctor" => Some(TuiCommand::Doctor),
+        "tips" => Some(TuiCommand::Tips),
         "quit" => Some(TuiCommand::Quit),
         _ => None,
     }
@@ -2422,7 +2428,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2549,6 +2555,9 @@ impl App {
             Some(TuiCommand::Doctor) => {
                 self.messages
                     .push(ChatMessage::system(self.render_doctor()));
+            }
+            Some(TuiCommand::Tips) => {
+                self.messages.push(ChatMessage::system(tui_usage_tips()));
             }
             Some(TuiCommand::Quit) => {
                 let _ = self.cmd_tx.send(AgentCommand::Shutdown);
@@ -3822,6 +3831,7 @@ mod tests {
         assert!(app.messages[1].content.contains("/status"));
         assert!(app.messages[1].content.contains("/usage"));
         assert!(app.messages[1].content.contains("/doctor"));
+        assert!(app.messages[1].content.contains("/tips"));
         assert!(app.messages[1].content.contains("/voice"));
         assert!(app.messages[1].content.contains("Keyboard shortcuts:"));
         assert!(app.messages[1].content.contains("Shift+Tab"));
@@ -4080,6 +4090,26 @@ mod tests {
         assert!(content.contains("Gateway cache:"));
         assert!(content.contains("Voice: capture="));
         assert!(content.contains("Counters: tokens=99 api_calls=2"));
+        assert!(content.contains("hakimi doctor"));
+    }
+
+    #[test]
+    fn slash_tips_shows_practical_tui_tips_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/tip".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert_eq!(parse_tui_command("/tips"), Some(TuiCommand::Tips));
+        assert_eq!(parse_tui_command("/tip"), Some(TuiCommand::Tips));
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("Hakimi TUI tips:"));
+        assert!(content.contains("/status, /usage, /doctor"));
+        assert!(content.contains("Shift+Tab"));
         assert!(content.contains("hakimi doctor"));
     }
 

@@ -189,6 +189,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # Type /doctor inside the TUI to show local TUI readiness diagnostics; use `hakimi doctor` for install/systemd checks.
 # Type /model inside the TUI to show the current model; /model NAME explains safe restart-based switching.
 # Type /skin inside the TUI to show the active skin; /skin NAME explains restart-based theme switching.
+# Type /tips inside the TUI to show practical TUI usage tips.
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
 
