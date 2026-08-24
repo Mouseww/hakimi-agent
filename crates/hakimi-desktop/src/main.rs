@@ -90,13 +90,13 @@ async fn main() -> Result<()> {
         if args.once {
             info!("--once: backend ready, exiting");
             handle.join.abort();
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         } else {
             info!("headless mode — press Ctrl-C to stop (rebuild with --features gui for window)");
             tokio::signal::ctrl_c().await.ok();
             info!("shutting down");
             handle.join.abort();
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         Ok(())
     }
