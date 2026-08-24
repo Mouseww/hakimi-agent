@@ -192,7 +192,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # Type /model inside the TUI to show the current model; /model NAME explains safe restart-based switching.
 # Type /skin inside the TUI to show the active skin; /skin NAME explains restart-based theme switching.
 # Type /tips inside the TUI to show practical TUI usage tips.
-# Type /help local inside the TUI to show the local slash-command catalog without calling the model.
+# Type /commands (or /help local) inside the TUI to show the local slash-command catalog without calling the model.
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
 

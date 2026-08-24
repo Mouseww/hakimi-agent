@@ -1898,7 +1898,7 @@ fn tui_keyboard_shortcuts() -> &'static str {
 }
 
 fn tui_usage_tips() -> &'static str {
-    "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /logs, /model, and /skin for local state without calling the model.\n  - Use `/help local` to show TUI commands implemented locally; other catalog entries are shared with CLI/Gateway surfaces.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
+    "Hakimi TUI tips:\n  - Press F1 or type /help for the full local command list.\n  - Start slash commands with / and press Tab to complete the command token.\n  - Use /status, /usage, /doctor, /logs, /model, and /skin for local state without calling the model.\n  - Use `/commands` (or `/help local`) to show TUI commands implemented locally; other catalog entries are shared with CLI/Gateway surfaces.\n  - Keep Shift+Tab for tools-panel toggling while editing slash commands.\n  - Use /sessions, /history, /undo, /copy, and /checkpoints to recover or reuse recent work.\n  - Gateway/systemd/install diagnostics live in the external `hakimi doctor`; the TUI stays local-session scoped."
 }
 
 fn render_tui_local_command_catalog() -> String {
@@ -1947,6 +1947,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
 
     match canonical_slash_command(cmd)? {
         "help" => Some(TuiCommand::Help(arg)),
+        "commands" => Some(TuiCommand::Help(Some("local".to_string()))),
         "about" => Some(TuiCommand::About),
         "shortcuts" => Some(TuiCommand::Shortcuts),
         "model" => Some(TuiCommand::Model(arg)),
@@ -2483,7 +2484,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /about              — Show TUI version and surface summary\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /logs [N]           — Show recent TUI log lines\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /commands           — Show the local slash-command catalog\n  /about              — Show TUI version and surface summary\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /logs [N]           — Show recent TUI log lines\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -3945,6 +3946,37 @@ mod tests {
         assert!(app.messages[1].content.contains("Ctrl+W"));
         assert!(app.messages[1].content.contains("Ctrl+D"));
         assert!(app.messages[1].content.contains("Alt+D"));
+    }
+
+    #[test]
+    fn slash_commands_shows_local_catalog_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        for c in "/commands".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("TUI local command catalog:"));
+        assert!(content.contains("/commands"));
+        assert!(content.contains("/help"));
+        assert!(content.contains("/logs [N]"));
+        assert!(content.contains("do not call the model"));
+    }
+
+    #[test]
+    fn parse_tui_command_accepts_commands_aliases() {
+        assert_eq!(
+            parse_tui_command("/commands"),
+            Some(TuiCommand::Help(Some("local".to_string())))
+        );
+        assert_eq!(
+            parse_tui_command("/cmds"),
+            Some(TuiCommand::Help(Some("local".to_string())))
+        );
     }
 
     #[test]

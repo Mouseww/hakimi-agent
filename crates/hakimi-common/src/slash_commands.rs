@@ -59,6 +59,13 @@ const SLASH_COMMANDS: &[SlashCommandSpec] = &[
         category: "chat",
     },
     SlashCommandSpec {
+        name: "commands",
+        aliases: &["cmds"],
+        args_hint: "",
+        summary: "Show the local slash-command catalog",
+        category: "chat",
+    },
+    SlashCommandSpec {
         name: "stop",
         aliases: &[],
         args_hint: "",
@@ -486,6 +493,7 @@ mod tests {
         assert_eq!(canonical_slash_command("/hist"), Some("history"));
         assert_eq!(canonical_slash_command("/sess"), Some("sessions"));
         assert_eq!(canonical_slash_command("cp"), Some("copy"));
+        assert_eq!(canonical_slash_command("/cmds"), Some("commands"));
         assert_eq!(canonical_slash_command("/rewind"), Some("undo"));
         assert_eq!(canonical_slash_command("/missing"), None);
     }
