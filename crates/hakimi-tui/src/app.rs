@@ -2259,9 +2259,11 @@ impl App {
             }
 
             // Left arrow
-            // Ctrl+Left / Alt+B move to the beginning of the previous word.
+            // Ctrl+Left / Alt+Left / Alt+B move to the beginning of the previous word.
             KeyCode::Left
-                if self.cursor_position > 0 && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                if self.cursor_position > 0
+                    && (key.modifiers.contains(KeyModifiers::CONTROL)
+                        || key.modifiers.contains(KeyModifiers::ALT)) =>
             {
                 self.cursor_position = previous_word_start(&self.input, self.cursor_position);
                 self.refresh_completion_hint();
@@ -2281,10 +2283,11 @@ impl App {
             }
 
             // Right arrow
-            // Ctrl+Right / Alt+F move to the end of the next word.
+            // Ctrl+Right / Alt+Right / Alt+F move to the end of the next word.
             KeyCode::Right
                 if self.cursor_position < self.input.len()
-                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    && (key.modifiers.contains(KeyModifiers::CONTROL)
+                        || key.modifiers.contains(KeyModifiers::ALT)) =>
             {
                 self.cursor_position = next_word_end(&self.input, self.cursor_position);
                 self.refresh_completion_hint();
@@ -3183,20 +3186,26 @@ mod tests {
         app.handle_key_event(key_with_mod(KeyCode::Left, KeyModifiers::CONTROL));
         assert_eq!(app.cursor_position, "爸爸 稍等🙂 ".len());
 
-        app.handle_key_event(key_with_mod(KeyCode::Char('b'), KeyModifiers::ALT));
+        app.handle_key_event(key_with_mod(KeyCode::Left, KeyModifiers::ALT));
         assert_eq!(app.cursor_position, "爸爸 ".len());
 
         app.handle_key_event(key_with_mod(KeyCode::Char('b'), KeyModifiers::ALT));
         assert_eq!(app.cursor_position, 0);
 
-        app.handle_key_event(key_with_mod(KeyCode::Right, KeyModifiers::CONTROL));
+        app.handle_key_event(key_with_mod(KeyCode::Right, KeyModifiers::ALT));
         assert_eq!(app.cursor_position, "爸爸".len());
 
         app.handle_key_event(key(KeyCode::Right));
         assert_eq!(app.cursor_position, "爸爸 ".len());
 
-        app.handle_key_event(key_with_mod(KeyCode::Char('f'), KeyModifiers::ALT));
+        app.handle_key_event(key_with_mod(KeyCode::Right, KeyModifiers::CONTROL));
         assert_eq!(app.cursor_position, "爸爸 稍等🙂".len());
+
+        app.handle_key_event(key(KeyCode::Right));
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 ".len());
+
+        app.handle_key_event(key_with_mod(KeyCode::Char('f'), KeyModifiers::ALT));
+        assert_eq!(app.cursor_position, "爸爸 稍等🙂 result".len());
     }
 
     #[test]
