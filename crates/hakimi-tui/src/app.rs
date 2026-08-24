@@ -2137,6 +2137,12 @@ impl App {
                 self.refresh_completion_hint();
             }
 
+            // Shift+Tab toggles the tools panel even while editing a slash command.
+            KeyCode::BackTab => {
+                self.show_tools_panel = !self.show_tools_panel;
+                self.refresh_completion_hint();
+            }
+
             // Backspace
             KeyCode::Backspace
                 if self.cursor_position > 0
@@ -3379,6 +3385,28 @@ mod tests {
         assert_eq!(app.input, "hello");
         assert!(!app.show_tools_panel);
         assert!(app.completion_hint.is_none());
+    }
+
+    #[test]
+    fn shift_tab_toggles_tools_panel_while_slash_completion_is_active() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        for c in "/c".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        assert!(app.show_tools_panel);
+        assert!(app.completion_hint.is_some());
+
+        app.handle_key_event(key(KeyCode::BackTab));
+
+        assert!(!app.show_tools_panel);
+        assert_eq!(app.input, "/c");
+        assert_eq!(app.cursor_position, 2);
+        assert!(
+            app.completion_hint
+                .as_deref()
+                .unwrap_or_default()
+                .contains("/clear")
+        );
     }
 
     #[test]
