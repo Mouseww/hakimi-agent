@@ -1875,6 +1875,7 @@ enum TuiCommand {
     Voice(Option<String>),
     Status,
     Usage,
+    Doctor,
     Quit,
 }
 
@@ -1915,6 +1916,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "voice" => Some(TuiCommand::Voice(arg)),
         "status" => Some(TuiCommand::Status),
         "usage" => Some(TuiCommand::Usage),
+        "doctor" => Some(TuiCommand::Doctor),
         "quit" => Some(TuiCommand::Quit),
         _ => None,
     }
@@ -2418,7 +2420,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2537,6 +2539,10 @@ impl App {
             Some(TuiCommand::Usage) => {
                 self.messages.push(ChatMessage::system(self.render_usage()));
             }
+            Some(TuiCommand::Doctor) => {
+                self.messages
+                    .push(ChatMessage::system(self.render_doctor()));
+            }
             Some(TuiCommand::Quit) => {
                 let _ = self.cmd_tx.send(AgentCommand::Shutdown);
                 self.should_quit = true;
@@ -2581,6 +2587,72 @@ impl App {
         format!(
             "TUI usage:\n  Token total: {}\n  API calls: {}\n  Scope: local TUI session counters since startup\n  Note: provider billing and gateway usage may differ; use gateway logs/provider dashboard for cross-surface totals.",
             self.total_tokens, self.api_calls
+        )
+    }
+
+    fn render_doctor(&self) -> String {
+        let session_db = if self.session_db_path.exists() {
+            "exists"
+        } else {
+            "missing"
+        };
+        let cron_db = if self.cron_db_path.exists() {
+            "exists"
+        } else {
+            "missing"
+        };
+        let skills_dir = if self.skills_dir_path.exists() {
+            "exists"
+        } else {
+            "missing"
+        };
+        let knowledge_home = if self.knowledge_home_path.exists() {
+            "exists"
+        } else {
+            "missing"
+        };
+        let channel_cache = if self.gateway_status.channel_directory_path.exists() {
+            "exists"
+        } else {
+            "missing"
+        };
+        let gateway_events = if self.gateway_status.events_log_path.exists() {
+            "exists"
+        } else {
+            "missing"
+        };
+        let voice_capture = if self.voice.audio_environment.capture_available {
+            "ready"
+        } else {
+            "not ready"
+        };
+        let voice_stt = if self.voice.transcription_ready {
+            "ready"
+        } else {
+            "needs API key"
+        };
+
+        format!(
+            "Hakimi TUI doctor:\n  Session: {}\n  Model: {}\n  State: {}\n  Paths: sessions.db={} cron.db={} skills={} home={}\n  Gateway cache: channels={} events={} configured_adapters={}\n  Voice: capture={} stt={} record_key={}\n  Counters: tokens={} api_calls={}\n  Note: run `hakimi doctor` outside the TUI for install/systemd/port diagnostics.",
+            self.session_id,
+            self.model_name,
+            if self.is_thinking {
+                "thinking"
+            } else {
+                "ready"
+            },
+            session_db,
+            cron_db,
+            skills_dir,
+            knowledge_home,
+            channel_cache,
+            gateway_events,
+            self.gateway_status.enabled_gateways_label(),
+            voice_capture,
+            voice_stt,
+            self.voice.record_key_label,
+            self.total_tokens,
+            self.api_calls
         )
     }
 
@@ -3725,6 +3797,7 @@ mod tests {
         assert!(app.messages[1].content.contains("/checkpoints"));
         assert!(app.messages[1].content.contains("/status"));
         assert!(app.messages[1].content.contains("/usage"));
+        assert!(app.messages[1].content.contains("/doctor"));
         assert!(app.messages[1].content.contains("/voice"));
         assert!(app.messages[1].content.contains("Keyboard shortcuts:"));
         assert!(app.messages[1].content.contains("Shift+Tab"));
@@ -3909,6 +3982,30 @@ mod tests {
         assert!(content.contains("Token total: 2048"));
         assert!(content.contains("API calls: 7"));
         assert!(content.contains("local TUI session counters"));
+    }
+
+    #[test]
+    fn slash_doctor_shows_local_readiness_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app.total_tokens = 99;
+        app.api_calls = 2;
+        for c in "/doctor".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.input.is_empty());
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("Hakimi TUI doctor:"));
+        assert!(content.contains("Session: test-session-123"));
+        assert!(content.contains("Model: test-model"));
+        assert!(content.contains("Paths: sessions.db="));
+        assert!(content.contains("Gateway cache:"));
+        assert!(content.contains("Voice: capture="));
+        assert!(content.contains("Counters: tokens=99 api_calls=2"));
+        assert!(content.contains("hakimi doctor"));
     }
 
     #[test]

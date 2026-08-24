@@ -231,7 +231,7 @@ enum AgentUiEvent {
 
 ### Task P3.1: TUI 默认体验最小可用
 
-**Status:** 进行中；TUI 默认体验已持续补强：`hakimi-tui --smoke` / release smoke、无参 `hakimi` 默认 TUI、欢迎语与 `/help`/`/shortcuts` 可发现性、UTF-8 安全输入编辑、真实终端光标定位、readline 风格快捷键（Ctrl+A/E/U/K/W/D/L/P/N、Alt/Ctrl 词移动和词删除、Home/End、PageUp/PageDown、Esc、F1、Shift+Tab）均已覆盖回归并同步 README。本轮补充 TUI `/usage` 本地命令，显示当前 TUI 会话 token/API 计数且不调用模型，并同步 `/help` 与 README。验证：`cargo fmt --all`，`cargo test -p hakimi-tui slash_usage -- --nocapture`，`cargo test -p hakimi-tui slash_help_shows_help -- --nocapture`。
+**Status:** 进行中；TUI 默认体验已持续补强：`hakimi-tui --smoke` / release smoke、无参 `hakimi` 默认 TUI、欢迎语与 `/help`/`/shortcuts` 可发现性、UTF-8 安全输入编辑、真实终端光标定位、readline 风格快捷键（Ctrl+A/E/U/K/W/D/L/P/N、Alt/Ctrl 词移动和词删除、Home/End、PageUp/PageDown、Esc、F1、Shift+Tab）均已覆盖回归并同步 README。已补充 TUI `/usage` 本地命令，显示当前 TUI 会话 token/API 计数且不调用模型。本轮补充 TUI `/doctor` 本地诊断，显示会话/模型/路径/Gateway cache/voice/计数器，并提示安装与 systemd 诊断应使用外部 `hakimi doctor`；同步 `/help` 与 README。验证：`cargo fmt --all`，`cargo test -p hakimi-tui slash_doctor -- --nocapture`，`cargo test -p hakimi-tui slash_help_shows_help -- --nocapture`。
 
 **Objective:** WebUI 移除后，本地无参 `hakimi` 有高级感 TUI/明确入口。
 

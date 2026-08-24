@@ -186,6 +186,7 @@ hakimi-tui --smoke  # verify the TUI binary directly without raw terminal mode
 # Type /shortcuts inside the TUI to show the same key reference without the full command help.
 # Type /status inside the TUI to show local session/model/state counters without calling the model.
 # Type /usage inside the TUI to show local token/API counters without calling the model.
+# Type /doctor inside the TUI to show local TUI readiness diagnostics; use `hakimi doctor` for install/systemd checks.
 # Type /model inside the TUI to show the current model; /model NAME explains safe restart-based switching.
 # hakimi serve / --serve are retained only to report that the old WebUI runtime was removed
 ```
