@@ -1881,7 +1881,7 @@ enum TuiCommand {
     Copy(Option<String>),
     Checkpoints(Option<String>),
     Clear,
-    Tools,
+    Tools(Option<String>),
     Voice(Option<String>),
     Status,
     Usage,
@@ -1987,6 +1987,68 @@ fn render_tui_local_command_catalog() -> String {
     lines.join("\n")
 }
 
+fn tool_status_label(status: &ToolStatus) -> &'static str {
+    match status {
+        ToolStatus::Running => "running",
+        ToolStatus::Success => "success",
+        ToolStatus::Error => "error",
+    }
+}
+
+fn render_tui_tools_command(
+    arg: Option<&str>,
+    show_tools_panel: &mut bool,
+    tool_activity: &[ToolActivity],
+) -> String {
+    let query = arg.unwrap_or_default().trim();
+    if query.is_empty() || query.eq_ignore_ascii_case("toggle") {
+        *show_tools_panel = !*show_tools_panel;
+        let state = if *show_tools_panel { "on" } else { "off" };
+        return format!("Tools panel: {state}");
+    }
+
+    if query.eq_ignore_ascii_case("on") || query.eq_ignore_ascii_case("show") {
+        *show_tools_panel = true;
+        return "Tools panel: on".to_string();
+    }
+
+    if query.eq_ignore_ascii_case("off") || query.eq_ignore_ascii_case("hide") {
+        *show_tools_panel = false;
+        return "Tools panel: off".to_string();
+    }
+
+    if query.eq_ignore_ascii_case("status") || query.eq_ignore_ascii_case("list") {
+        let panel = if *show_tools_panel {
+            "visible"
+        } else {
+            "hidden"
+        };
+        if tool_activity.is_empty() {
+            return format!(
+                "TUI tools:\n  Panel: {panel}\n  Recent activity: none\n\nUse `/tools`, `/tools on`, or `/tools off` to control the side panel. Tool definitions are managed outside this local TUI view."
+            );
+        }
+
+        let mut lines = vec![
+            "TUI tools:".to_string(),
+            format!("  Panel: {panel}"),
+            "  Recent activity:".to_string(),
+        ];
+        for activity in tool_activity.iter().rev().take(8) {
+            lines.push(format!(
+                "    - {} [{}] {}",
+                activity.name,
+                tool_status_label(&activity.status),
+                activity.arguments_summary
+            ));
+        }
+        lines.push("Use `/tools on|off|toggle|status` for local panel control.".to_string());
+        return lines.join("\n");
+    }
+
+    format!("Usage: /tools [on|off|toggle|status]\nUnknown TUI tools action `{query}`.")
+}
+
 fn tui_about_message(model_name: &str, session_id: &str) -> String {
     format!(
         "Hakimi TUI about:\n  Version: {}\n  Surface: local ratatui TUI (no WebUI runtime)\n  Session: {}\n  Model: {}\n  Gateway: run `hakimi gateway start` separately for messaging platforms\n  Help: /help, /shortcuts, /tips, /doctor",
@@ -2026,7 +2088,7 @@ fn parse_tui_command(input: &str) -> Option<TuiCommand> {
         "copy" => Some(TuiCommand::Copy(arg)),
         "checkpoints" => Some(TuiCommand::Checkpoints(arg)),
         "clear" => Some(TuiCommand::Clear),
-        "tools" => Some(TuiCommand::Tools),
+        "tools" => Some(TuiCommand::Tools(arg)),
         "voice" => Some(TuiCommand::Voice(arg)),
         "status" => Some(TuiCommand::Status),
         "usage" => Some(TuiCommand::Usage),
@@ -2544,7 +2606,7 @@ impl App {
             .unwrap_or("Commands")
             .trim();
         self.messages.push(ChatMessage::system(format!(
-            "{header}:\n  /help               — Show this help\n  /commands           — Show the local slash-command catalog\n  /about              — Show TUI version and surface summary\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /providers [cmd]    — Show current provider/model snapshot and API modes\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /memory [cmd]       — Show read-only persistent memory status and paths\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /logs [N]           — Show recent TUI log lines\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools              — Toggle tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
+            "{header}:\n  /help               — Show this help\n  /commands           — Show the local slash-command catalog\n  /about              — Show TUI version and surface summary\n  /shortcuts          — Show TUI keyboard shortcuts\n  /model [name]       — Show current model, or explain how to switch safely\n  /config [field]     — Show sanitized runtime configuration\n  /sessions [cmd]     — Browse saved sessions\n  /history [N]        — Show recent conversation messages\n  /undo [N]           — Rewind recent user turns into the composer\n  /skills [cmd]       — Browse/search local skill hub metadata\n  /providers [cmd]    — Show current provider/model snapshot and API modes\n  /skin [name]        — Show current TUI skin, or explain how to switch safely\n  /cron [cmd]         — Manage scheduled cron jobs\n  /gateway [cmd]      — Inspect gateway channels and lifecycle events\n  /knowledge [cmd]    — Inspect or update local knowledge graph entries\n  /memory [cmd]       — Show read-only persistent memory status and paths\n  /copy [N]           — Copy the Nth latest assistant response\n  /checkpoints [cmd]  — Inspect or manage file checkpoints\n  /status             — Show current TUI session status\n  /usage              — Show local token/API counters\n  /doctor             — Show local TUI readiness diagnostics\n  /logs [N]           — Show recent TUI log lines\n  /tips               — Show practical TUI usage tips\n  /clear              — Clear chat history\n  /tools [cmd]        — Toggle or inspect the tools panel\n  /voice [cmd]        — Show or toggle voice readiness\n  /quit               — Exit the application\n\n{}",
             tui_keyboard_shortcuts()
         )));
     }
@@ -2674,11 +2736,13 @@ impl App {
                     .push(ChatMessage::system("Chat history cleared."));
                 self.scroll_offset = 0;
             }
-            Some(TuiCommand::Tools) => {
-                self.show_tools_panel = !self.show_tools_panel;
-                let state = if self.show_tools_panel { "on" } else { "off" };
-                self.messages
-                    .push(ChatMessage::system(format!("Tools panel: {state}")));
+            Some(TuiCommand::Tools(arg)) => {
+                let output = render_tui_tools_command(
+                    arg.as_deref(),
+                    &mut self.show_tools_panel,
+                    &self.tool_activity,
+                );
+                self.messages.push(ChatMessage::system(output));
             }
             Some(TuiCommand::Voice(arg)) => {
                 self.handle_voice_command(arg.as_deref());
@@ -4958,6 +5022,62 @@ mod tests {
         }
         app.handle_key_event(key(KeyCode::Enter));
         assert!(!app.show_tools_panel);
+    }
+
+    #[test]
+    fn slash_tools_status_lists_recent_activity_without_model_call() {
+        let (mut app, mut cmd_rx, _event_tx) = make_app();
+        app.tool_activity.push(ToolActivity {
+            name: "terminal".to_string(),
+            arguments_summary: "cargo test -p hakimi-tui".to_string(),
+            status: ToolStatus::Running,
+            timestamp: Utc::now(),
+        });
+        for c in "/tools status".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+
+        assert!(cmd_rx.try_recv().is_err());
+        assert!(app.show_tools_panel);
+        assert!(!app.is_thinking);
+        let content = &app.messages.last().unwrap().content;
+        assert!(content.contains("TUI tools:"));
+        assert!(content.contains("Panel: visible"));
+        assert!(content.contains("terminal [running]"));
+        assert!(content.contains("cargo test -p hakimi-tui"));
+    }
+
+    #[test]
+    fn slash_tools_on_off_commands_set_panel_state() {
+        let (mut app, _cmd_rx, _event_tx) = make_app();
+        assert!(app.show_tools_panel);
+
+        for c in "/tools off".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        assert!(!app.show_tools_panel);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("Tools panel: off")
+        );
+
+        for c in "/tools on".chars() {
+            app.handle_key_event(key(KeyCode::Char(c)));
+        }
+        app.handle_key_event(key(KeyCode::Enter));
+        assert!(app.show_tools_panel);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .content
+                .contains("Tools panel: on")
+        );
     }
 
     #[test]

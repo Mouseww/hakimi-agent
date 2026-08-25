@@ -231,7 +231,7 @@ enum AgentUiEvent {
 
 ### Task P3.1: TUI 默认体验最小可用
 
-**Status:** 进行中；TUI 默认体验已持续补强：`hakimi-tui --smoke` / release smoke、无参 `hakimi` 默认 TUI、欢迎语与 `/help`/`/shortcuts` 可发现性、UTF-8 安全输入编辑、真实终端光标定位、readline 风格快捷键（Ctrl+A/E/U/K/W/D/L/P/N、Alt/Ctrl 词移动和词删除、Home/End、PageUp/PageDown、Esc、F1、Shift+Tab）均已覆盖回归并同步 README。已补充 TUI `/usage` 本地命令，显示当前 TUI 会话 token/API 计数且不调用模型；已补充 TUI `/doctor` 本地诊断，显示会话/模型/路径/Gateway cache/voice/计数器，并提示安装与 systemd 诊断应使用外部 `hakimi doctor`；已补充 TUI `/logs [N]` 本地命令，读取最近 TUI log 行且不调用模型；已补充 TUI `/skin`/`/theme` 本地命令，显示当前皮肤并给出重启式切换指引，不在运行中改动主题快照；已补充 `/tips` 实用提示与 `/about` 版本/本地界面摘要。同步 `/help` 与 README。验证：`cargo fmt --all`，`cargo test -p hakimi-tui slash_logs -- --nocapture`，`cargo test -p hakimi-tui parse_tui_command_accepts_logs -- --nocapture`，`cargo test -p hakimi-tui slash_tips -- --nocapture`，`cargo test -p hakimi-common slash_completion -- --nocapture`。
+**Status:** 进行中；TUI 默认体验已持续补强：`hakimi-tui --smoke` / release smoke、无参 `hakimi` 默认 TUI、欢迎语与 `/help`/`/shortcuts` 可发现性、UTF-8 安全输入编辑、真实终端光标定位、readline 风格快捷键（Ctrl+A/E/U/K/W/D/L/P/N、Alt/Ctrl 词移动和词删除、Home/End、PageUp/PageDown、Esc、F1、Shift+Tab）均已覆盖回归并同步 README。已补充 TUI `/usage` 本地命令，显示当前 TUI 会话 token/API 计数且不调用模型；已补充 TUI `/doctor` 本地诊断，显示会话/模型/路径/Gateway cache/voice/计数器，并提示安装与 systemd 诊断应使用外部 `hakimi doctor`；已补充 TUI `/logs [N]` 本地命令，读取最近 TUI log 行且不调用模型；已补充 TUI `/skin`/`/theme` 本地命令，显示当前皮肤并给出重启式切换指引，不在运行中改动主题快照；已补充 `/tips` 实用提示与 `/about` 版本/本地界面摘要；已补充 `/commands` 本地命令目录、`/providers`/`/memory` 只读状态、`/tools status|on|off` 工具面板控制与最近活动检查。同步 `/help` 与 README。验证：`cargo fmt --all`，`cargo test -p hakimi-tui slash_tools -- --nocapture`。
 
 **Objective:** WebUI 移除后，本地无参 `hakimi` 有高级感 TUI/明确入口。
 
