@@ -17,9 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned: a bare `nightly` lets rustfmt and clippy change under the repo,
+      # turning an untouched tree red with no code change. This is the last
+      # nightly whose `cargo fmt --check` was verified green here (2026-08-25).
+      # Bump deliberately, together with the reformat it demands.
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-08-24
           components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
@@ -51,7 +55,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-08-24
 
       - uses: Swatinem/rust-cache@v2
 
