@@ -211,7 +211,10 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         let send_messages = build_send_messages(agent, &planned_messages);
 
         // Fetch a response (streaming or non-streaming).
-        let mut response = match fetch_response(
+        let FetchOutcome {
+            mut response,
+            content_streamed,
+        } = match fetch_response(
             agent.shared.transport.as_ref(),
             &agent.model,
             streaming,
@@ -273,8 +276,10 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         if response.has_tool_calls() {
             // Some providers attach pre-tool prose on the assembled response
             // without streaming it as ContentDelta. Emit once so Studio can
-            // place assistant text before tool cards.
-            if streaming {
+            // place assistant text before tool cards. Providers that DID
+            // stream the prose must be skipped: re-emitting the assembled
+            // content would deliver the same text twice.
+            if streaming && !content_streamed {
                 if let Some(ref content) = response.content {
                     let trimmed = content.trim();
                     if !trimmed.is_empty() {
@@ -386,6 +391,16 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
     })
 }
 
+/// A single provider fetch: the normalized response plus whether its assistant
+/// prose already reached `callback` as content deltas.
+struct FetchOutcome {
+    response: NormalizedResponse,
+    /// True when at least one non-empty content delta was handed to the
+    /// streaming callback. Callers use this to avoid emitting the assembled
+    /// content a second time.
+    content_streamed: bool,
+}
+
 /// Fetch a response from the transport, with retry logic.
 #[allow(clippy::too_many_arguments)]
 async fn fetch_response(
@@ -398,7 +413,7 @@ async fn fetch_response(
     callback: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
     event_callback: Option<std::sync::Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>,
     api_call_count: &mut usize,
-) -> Result<NormalizedResponse> {
+) -> Result<FetchOutcome> {
     // Maximum retry attempts per fetch.
     let max_retries = MAX_RETRIES;
     let mut attempt = 0;
@@ -421,13 +436,17 @@ async fn fetch_response(
             transport
                 .execute(model, send_messages, tool_defs, &effective_params)
                 .await
+                .map(|response| FetchOutcome {
+                    response,
+                    content_streamed: false,
+                })
         };
 
         match result {
-            Ok(resp) => {
+            Ok(outcome) => {
                 *api_call_count += 1;
                 // Metrics will be recorded later in run_loop_inner
-                return Ok(resp);
+                return Ok(outcome);
             }
             Err(e) => {
                 *api_call_count += 1;
@@ -493,7 +512,7 @@ async fn fetch_streaming_response(
     params: &RequestParams,
     callback: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
     event_callback: Option<std::sync::Arc<dyn Fn(hakimi_transports::StreamEvent) + Send + Sync>>,
-) -> Result<NormalizedResponse> {
+) -> Result<FetchOutcome> {
     let mut stream = transport
         .execute_streaming(model, send_messages, tool_defs, params)
         .await?;
@@ -502,6 +521,7 @@ async fn fetch_streaming_response(
     let scrubber = hakimi_transports::scrubber::ThinkScrubber::new();
     let scrubber = std::sync::Arc::new(tokio::sync::Mutex::new(scrubber));
     let mut saw_terminal_event = false;
+    let mut content_streamed = false;
 
     while let Some(item) = stream.next().await {
         match item {
@@ -522,6 +542,7 @@ async fn fetch_streaming_response(
                     if !clean_text.is_empty() {
                         if let Some(ref cb) = callback {
                             cb(clean_text.clone());
+                            content_streamed = true;
                         }
                         use std::io::Write;
                         let _ = std::io::stdout().write_all(clean_text.as_bytes());
@@ -548,6 +569,7 @@ async fn fetch_streaming_response(
     if !tail.is_empty() {
         if let Some(ref cb) = callback {
             cb(tail.clone());
+            content_streamed = true;
         }
         use std::io::Write;
         let _ = std::io::stdout().write_all(tail.as_bytes());
@@ -572,7 +594,10 @@ async fn fetch_streaming_response(
         let _ = std::io::stdout().flush();
     }
 
-    Ok(accumulator_to_response(&accumulator))
+    Ok(FetchOutcome {
+        response: accumulator_to_response(&accumulator),
+        content_streamed,
+    })
 }
 
 fn scrub_response_content(response: &mut NormalizedResponse) {

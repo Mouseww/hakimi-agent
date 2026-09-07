@@ -2643,6 +2643,33 @@ fn format_gateway_tool_progress(notice: &str, timestamp: &str) -> String {
     }
 }
 
+/// Maximum characters of tool output forwarded into a chat bubble.
+const GATEWAY_TOOL_RESULT_PREVIEW_CHARS: usize = 280;
+
+/// Format a `hakimi_tool_result:<tool>|<output>` notice as a compact chat line.
+///
+/// Chat bubbles carry progress, not transcripts, so the output is capped. The
+/// `team` tool is skipped because delegate progress bubbles already report it.
+fn format_gateway_tool_result(notice: &str, timestamp: &str) -> String {
+    let (tool, output) = notice.split_once('|').unwrap_or((notice, ""));
+    let tool = tool.trim();
+    if tool.is_empty() || tool == "team" {
+        return String::new();
+    }
+    let output = output.trim();
+    if output.is_empty() {
+        return format!("⚙️ {timestamp} {tool} 结果");
+    }
+    let mut preview: String = output
+        .chars()
+        .take(GATEWAY_TOOL_RESULT_PREVIEW_CHARS)
+        .collect();
+    if output.chars().count() > GATEWAY_TOOL_RESULT_PREVIEW_CHARS {
+        preview.push_str("...");
+    }
+    format!("⚙️ {timestamp} {tool} 结果\n{preview}")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DelegateProgressEvent {
     task_id: String,
@@ -7201,6 +7228,19 @@ Just send a message to chat with me!"
                         }
                         return;
                     }
+                    // Tool results carry their own control prefix. Without this
+                    // arm the raw token falls through as assistant Content and
+                    // is appended verbatim to the next prose bubble.
+                    if let Some(result_notice) = token.strip_prefix("\u{001e}hakimi_tool_result:") {
+                        let text = format_gateway_tool_result(
+                            result_notice,
+                            &gateway_progress_timestamp(),
+                        );
+                        if !text.is_empty() {
+                            let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
+                        }
+                        return;
+                    }
                     if let Some(media_notice) = token.strip_prefix("\u{001e}hakimi_media:") {
                         let media = media_notice
                             .trim()
@@ -7218,6 +7258,12 @@ Just send a message to chat with me!"
                         if let Some(event) = DelegateProgressEvent::parse(delegate_notice) {
                             let _ = ui_tx.send(GatewayStreamUiEvent::Delegate(event));
                         }
+                        return;
+                    }
+                    // Anything else carrying the record separator is protocol,
+                    // never assistant prose. Drop it so a prefix added later
+                    // cannot leak its raw marker into a chat bubble.
+                    if token.starts_with('\u{001e}') {
                         return;
                     }
                     if content_preview_enabled {
@@ -9046,7 +9092,7 @@ mod tests {
         VoiceRuntimeState, build_cron_delegation_goal, create_hakimi_state_backup,
         cron_delivery_targets, cron_output_preview, cron_success_output_should_deliver,
         effective_gateway_streaming_policy, format_gateway_tool_progress,
-        format_gateway_update_notification, gateway_bot_id_for_platform,
+        format_gateway_tool_result, format_gateway_update_notification, gateway_bot_id_for_platform,
         gateway_cron_response_for_path, gateway_cron_response_for_path_with_delivery,
         gateway_history_key, gateway_mcp_response, gateway_service_exe_path, gateway_service_unit,
         gateway_usage_response, gateway_voice_response, is_gateway_flood_error,
@@ -10947,6 +10993,31 @@ gateways:
             "⚙️ 09:42 terminal (command: cargo test)"
         );
         assert_eq!(format_gateway_tool_progress("  ", "09:42"), "");
+    }
+
+    #[test]
+    fn gateway_tool_result_formats_as_capped_independent_event() {
+        assert_eq!(
+            format_gateway_tool_result("terminal|STDOUT:\nGit not installed", "09:42"),
+            "⚙️ 09:42 terminal 结果\nSTDOUT:\nGit not installed"
+        );
+        // Empty output still reports the tool, never a bare prefix.
+        assert_eq!(
+            format_gateway_tool_result("terminal|", "09:42"),
+            "⚙️ 09:42 terminal 结果"
+        );
+        // Delegate bubbles already report team activity.
+        assert_eq!(format_gateway_tool_result("team|done", "09:42"), "");
+        assert_eq!(format_gateway_tool_result("|output", "09:42"), "");
+
+        // Long output is truncated on a char boundary, not a byte one.
+        let long = "汉".repeat(400);
+        let formatted = format_gateway_tool_result(&format!("terminal|{long}"), "09:42");
+        assert!(formatted.ends_with("..."));
+        assert_eq!(
+            formatted.chars().filter(|c| *c == '汉').count(),
+            super::GATEWAY_TOOL_RESULT_PREVIEW_CHARS
+        );
     }
 
     #[test]

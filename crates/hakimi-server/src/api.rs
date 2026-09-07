@@ -6291,7 +6291,9 @@ fn setup_tool_separation_callback(
 /// - `\u{001e}hakimi_delegate:` — Sub-agent delegation progress (sent by delegate.rs)
 ///
 /// These markers are stripped from the text buffer and sent as separate progress notifications.
-/// Regular tokens are accumulated in the buffer for later display.
+/// Regular tokens are accumulated in the buffer for later display. Any other
+/// `\u{001e}`-prefixed control token (tool results, media, review notices) is dropped instead of
+/// accumulated, so its raw marker never reaches the reply text.
 ///
 /// This enables real-time visibility into what tools are running and what sub-agents are doing,
 /// similar to Hermes Agent's delegation UX.
@@ -6362,6 +6364,13 @@ fn create_progress_aware_streaming_callback(
                         }
                     }
                 }
+                return;
+            }
+
+            // Any other control token (tool results, media, review notices) is
+            // protocol, not prose. Drop it: accumulating it would splice the raw
+            // marker plus the full untruncated tool output into the reply text.
+            if token.starts_with('\u{001e}') {
                 return;
             }
 
