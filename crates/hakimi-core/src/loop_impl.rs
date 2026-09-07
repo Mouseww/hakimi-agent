@@ -211,10 +211,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         let send_messages = build_send_messages(agent, &planned_messages);
 
         // Fetch a response (streaming or non-streaming).
-        let FetchOutcome {
-            mut response,
-            content_streamed,
-        } = match fetch_response(
+        let fetched = match fetch_response(
             agent.shared.transport.as_ref(),
             &agent.model,
             streaming,
@@ -227,7 +224,7 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
         )
         .await
         {
-            Ok(resp) => resp,
+            Ok(outcome) => outcome,
             Err(e) => {
                 // Check if context compression might help.
                 let classifier = ErrorClassifier::new();
@@ -256,6 +253,8 @@ async fn run_loop_inner(agent: &mut AIAgent, streaming: bool) -> Result<Conversa
                 return Err(e);
             }
         };
+        let content_streamed = fetched.content_streamed;
+        let mut response = fetched.response;
         scrub_response_content(&mut response);
 
         // Track usage.

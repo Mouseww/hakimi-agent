@@ -2643,8 +2643,11 @@ fn format_gateway_tool_progress(notice: &str, timestamp: &str) -> String {
     }
 }
 
+/// Control-token prefix carrying a completed tool's output.
+const TOOL_RESULT_PREFIX: &str = "\u{001e}hakimi_tool_result:";
+
 /// Maximum characters of tool output forwarded into a chat bubble.
-const GATEWAY_TOOL_RESULT_PREVIEW_CHARS: usize = 280;
+const TOOL_RESULT_PREVIEW_CHARS: usize = 280;
 
 /// Format a `hakimi_tool_result:<tool>|<output>` notice as a compact chat line.
 ///
@@ -2660,11 +2663,8 @@ fn format_gateway_tool_result(notice: &str, timestamp: &str) -> String {
     if output.is_empty() {
         return format!("⚙️ {timestamp} {tool} 结果");
     }
-    let mut preview: String = output
-        .chars()
-        .take(GATEWAY_TOOL_RESULT_PREVIEW_CHARS)
-        .collect();
-    if output.chars().count() > GATEWAY_TOOL_RESULT_PREVIEW_CHARS {
+    let mut preview: String = output.chars().take(TOOL_RESULT_PREVIEW_CHARS).collect();
+    if output.chars().count() > TOOL_RESULT_PREVIEW_CHARS {
         preview.push_str("...");
     }
     format!("⚙️ {timestamp} {tool} 结果\n{preview}")
@@ -7231,11 +7231,9 @@ Just send a message to chat with me!"
                     // Tool results carry their own control prefix. Without this
                     // arm the raw token falls through as assistant Content and
                     // is appended verbatim to the next prose bubble.
-                    if let Some(result_notice) = token.strip_prefix("\u{001e}hakimi_tool_result:") {
-                        let text = format_gateway_tool_result(
-                            result_notice,
-                            &gateway_progress_timestamp(),
-                        );
+                    if let Some(result_notice) = token.strip_prefix(TOOL_RESULT_PREFIX) {
+                        let timestamp = gateway_progress_timestamp();
+                        let text = format_gateway_tool_result(result_notice, &timestamp);
                         if !text.is_empty() {
                             let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
                         }
@@ -11016,7 +11014,7 @@ gateways:
         assert!(formatted.ends_with("..."));
         assert_eq!(
             formatted.chars().filter(|c| *c == '汉').count(),
-            super::GATEWAY_TOOL_RESULT_PREVIEW_CHARS
+            super::TOOL_RESULT_PREVIEW_CHARS
         );
     }
 
