@@ -89,8 +89,11 @@ hakimi --gateway start # 旧 Gateway 兼容入口
 - **63+ 工具**：文件、Shell、Web、浏览器/CDP、computer-use、代码执行、视觉/TTS/STT、todo、cron、记忆、知识图谱、MCP、委派
 - **子 Agent / 团队**：`delegate_task`、具名人格、多层委派与深度上限
 - **智能上下文**：丢弃陈旧工具噪声 → LLM 摘要 → 滑动窗口；按模型上下文长度自适应
+- **提示词装配器**：所有可注入系统提示块（身份 → 环境 → 分平台输出样式 → 记忆 → 技能 → 项目上下文）只有一个装配点，每块自带字符预算，记忆文件再大也不会挤掉对话；CLI / Server / TUI 共用同一条路径
+- **输出样式**：按平台定制格式指引（Telegram / Discord / Slack / 飞书 / 企业微信 / QQ / CLI / Web），回复适配用户客户端的真实渲染能力
+- **计划编排**：活跃 todo 计划自动注入每轮系统提示，跨多轮长任务不再丢失线索
 - **意图 + 角色**：意图分类，Coder / Researcher / Writer 等模式切换
-- **记忆**：短/长/工作记忆、FTS5、会话检索（发现 / 滚动 / 浏览）
+- **记忆**：短/长/工作记忆、FTS5、会话检索（发现 / 滚动 / 浏览）；**BM25 相关性预取** + 中文分词，取代朴素子串匹配
 - **检查点**：共享 shadow-git 存储于 `~/.hakimi/checkpoints`（不污染项目 `.git`）
 
 ### 控制面
@@ -247,7 +250,7 @@ hakimi-agent/
 ├── hakimi-transports/     # OpenAI / Anthropic / Gemini / Bedrock …
 ├── hakimi-tools/          # 内置工具 + 注册表
 ├── hakimi-session/        # SQLite WAL + FTS5
-├── hakimi-context/        # 压缩、意图、角色
+├── hakimi-context/        # 压缩、提示词装配、BM25 记忆索引、计划编排、意图、角色
 ├── hakimi-knowledge/      # 图谱记忆
 ├── hakimi-skills/         # Skills
 ├── hakimi-cron/           # 持久化调度
@@ -262,7 +265,7 @@ hakimi-agent/
 **单轮流程（简化）**
 
 ```
-消息 → 意图/角色 → 上下文（压缩）→ 凭证池
+消息 → 意图/角色 → 上下文（压缩 → 请求级计划 → 提示词装配）→ 凭证池
      → LLM 流式 → 工具分发 + 护栏 → 会话/记忆
 ```
 

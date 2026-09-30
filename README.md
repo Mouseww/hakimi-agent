@@ -101,8 +101,10 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 - **63+ tools**: files, shell, web, browser/CDP, computer-use readiness, code exec, vision/TTS/STT, todo, cron, memory, knowledge graph, MCP, delegation
 - **Sub-agents & teams**: `delegate_task`, named personas, multi-level delegation with depth limits
 - **Smart context**: drop stale tool noise → LLM summary → sliding window; model-aware context length
+- **Prompt assembler**: one assembly point for every injectable system-prompt block (identity → environment → per-platform output style → memory → skills → project context), each with its own character budget, so a large memory file can no longer crowd out the conversation — CLI / Server / TUI share the same path
+- **Output style**: per-surface formatting guidance (Telegram / Discord / Slack / Feishu / WeCom / QQ / CLI / Web) so replies match what the reader's client can actually render
 - **Intent + roles**: classify intent, adapt Coder / Researcher / Writer modes
-- **Memory**: short/long/working tiers, FTS5, session search (discovery / scroll / browse)
+- **Memory**: short/long/working tiers, FTS5, session search (discovery / scroll / browse); **BM25-ranked prefetch** with CJK-aware tokenisation instead of naive substring matching
 - **Checkpoints**: shared shadow-git store under `~/.hakimi/checkpoints` (not your project `.git`)
 
 ### Control surfaces
@@ -286,7 +288,7 @@ hakimi-agent/
 ├── hakimi-transports/     # OpenAI / Anthropic / Gemini / Bedrock …
 ├── hakimi-tools/          # Built-in tools + registry
 ├── hakimi-session/        # SQLite WAL + FTS5
-├── hakimi-context/        # Compression, request planning, intent, roles
+├── hakimi-context/        # Compression, prompt assembly, BM25 memory index, planning, intent, roles
 ├── hakimi-knowledge/      # Graph memory
 ├── hakimi-skills/         # Skills + meta extraction
 ├── hakimi-cron/           # Persistent scheduler
@@ -301,7 +303,7 @@ hakimi-agent/
 **Turn pipeline (simplified)**
 
 ```
-Message → Intent / Role → Context (compress → request-local plan)
+Message → Intent / Role → Context (compress → request-local plan → prompt assembly)
         → Credential pool → LLM stream → Tool dispatch + guards
         → Session / memory
 ```
