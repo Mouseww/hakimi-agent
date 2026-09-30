@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::memory_cache::MemoryCache;
+use crate::memory_index::MemoryIndex;
 
 /// Soft limit: warn user when memory file exceeds this size (60 KB)
 const MEMORY_WARN_SIZE_BYTES: u64 = 60 * 1024;
@@ -339,17 +340,21 @@ impl MemoryProvider for FileMemoryProvider {
             return String::new();
         }
 
-        // Simple keyword-matching prefetch: return all memory entries whose
-        // filename or content contains any word from the query.
-        let query_lower = query.to_lowercase();
-        let words: Vec<&str> = query_lower.split_whitespace().collect();
+        // BM25 relevance prefetch. The previous implementation returned whole
+        // files whose text merely *contained* a query word, in directory order:
+        // a passing mention near the top outranked the entry that actually
+        // answered the question, and CJK queries could not be matched at all.
+        // Now each file is ranked by relevance and only its best lines are
+        // surfaced, so what reaches the prompt is what the query is about.
+        const MAX_HITS_PER_FILE: usize = 8;
+        const MAX_CHARS: usize = 4_000;
 
         let entries = match std::fs::read_dir(&self.memory_dir) {
             Ok(e) => e,
             Err(_) => return String::new(),
         };
 
-        let mut matches = Vec::new();
+        let mut scored: Vec<(f64, String, String)> = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_file() {
@@ -358,28 +363,52 @@ impl MemoryProvider for FileMemoryProvider {
             let name = path
                 .file_stem()
                 .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    let content_lower = content.to_lowercase();
-                    let matched = words
-                        .iter()
-                        .any(|w| !w.is_empty() && (name.contains(w) || content_lower.contains(w)));
-                    if matched {
-                        matches.push(format!(
-                            "[{}]\n{}",
-                            path.file_stem().and_then(|n| n.to_str()).unwrap_or("?"),
-                            content
-                        ));
-                    }
-                }
-                Err(_) => continue,
+                .unwrap_or("?")
+                .to_string();
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+
+            let index = MemoryIndex::build(&content);
+            if index.is_empty() {
+                continue;
             }
+
+            let hits = index.search(query, MAX_HITS_PER_FILE);
+            let Some(top_score) = hits.first().map(|hit| hit.score) else {
+                continue;
+            };
+
+            let body = hits
+                .iter()
+                .map(|hit| format!("- {}", hit.text))
+                .collect::<Vec<_>>()
+                .join("\n");
+            scored.push((top_score, name, body));
         }
 
-        debug!(query = query, matches = matches.len(), "Memory prefetch");
-        matches.join("\n\n")
+        scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+
+        let mut out = String::new();
+        let mut files_included = 0;
+        for (_, name, body) in scored {
+            let block = format!("[{name}]\n{body}");
+            if !out.is_empty() && out.chars().count() + block.chars().count() + 2 > MAX_CHARS {
+                break;
+            }
+            if !out.is_empty() {
+                out.push_str("\n\n");
+            }
+            out.push_str(&block);
+            files_included += 1;
+        }
+
+        debug!(
+            query = query,
+            files = files_included,
+            "Memory prefetch (BM25)"
+        );
+        out
     }
 
     fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
