@@ -1310,28 +1310,213 @@ impl RunsStore {
 // Route builder
 // ---------------------------------------------------------------------------
 
+/// Authenticate the caller.
+///
+/// Resolution order is owned by [`crate::auth::AuthService::authorize`]: a valid
+/// multi-user bearer token wins, then an open (unconfigured) store, then the
+/// legacy shared `webui_password`. On success the resolved [`Principal`] is
+/// inserted into request extensions so handlers can ask who is calling.
 async fn auth_middleware(
     State(state): State<AppState>,
-    req: Request,
+    mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let password = state.webui_password.lock().await.clone();
-    if password.trim().is_empty() {
-        return Ok(next.run(req).await);
-    }
-
-    let auth_header = req
+    let legacy = state.webui_password.lock().await.clone();
+    let authorization = req
         .headers()
         .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok());
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_owned);
 
-    if let Some(auth) = auth_header
-        && auth == format!("Bearer {}", password)
-    {
-        return Ok(next.run(req).await);
+    match state.auth.authorize(authorization.as_deref(), &legacy) {
+        Ok(principal) => {
+            req.extensions_mut().insert(principal);
+            Ok(next.run(req).await)
+        }
+        Err(err) => {
+            tracing::debug!(error = %err, "auth: request rejected");
+            Err(StatusCode::UNAUTHORIZED)
+        }
     }
+}
 
-    Err(StatusCode::UNAUTHORIZED)
+// ---------------------------------------------------------------------------
+// Multi-user auth handlers
+// ---------------------------------------------------------------------------
+
+/// Reject non-admin callers.
+fn require_admin(
+    principal: &crate::auth::Principal,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    if principal.is_admin() {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "admin role required" })),
+        ))
+    }
+}
+
+/// Map an auth failure onto an HTTP status.
+fn status_for_auth_error(err: &crate::auth::AuthError) -> StatusCode {
+    use crate::auth::AuthError;
+    match err {
+        AuthError::Unauthorized | AuthError::Expired => StatusCode::UNAUTHORIZED,
+        AuthError::Forbidden => StatusCode::FORBIDDEN,
+        AuthError::Invalid(_) => StatusCode::BAD_REQUEST,
+        AuthError::Conflict(_) => StatusCode::CONFLICT,
+        AuthError::NotFound => StatusCode::NOT_FOUND,
+        AuthError::Io(_) | AuthError::Corrupt(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct LoginRequest {
+    username: String,
+    password: String,
+}
+
+/// `POST /api/auth/login` — exchange credentials for a bearer token.
+async fn auth_login(
+    State(state): State<AppState>,
+    Json(req): Json<LoginRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    match state.auth.login(&req.username, &req.password) {
+        Ok(issued) => Ok(Json(serde_json::json!({
+            "token": issued.token,
+            "expires_at": issued.expires_at,
+            "username": issued.username,
+            "role": issued.role.as_str(),
+        }))),
+        Err(err) => Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": err.to_string() })),
+        )),
+    }
+}
+
+/// `GET /api/auth/me` — who does the server think I am?
+async fn auth_me(
+    axum::extract::Extension(principal): axum::extract::Extension<crate::auth::Principal>,
+) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "user_id": principal.user_id,
+        "username": principal.username,
+        "role": principal.role.as_str(),
+        "anonymous": principal.anonymous,
+    }))
+}
+
+/// `GET /api/users` — every account (admin only; never returns hashes).
+async fn list_users(
+    State(state): State<AppState>,
+    axum::extract::Extension(principal): axum::extract::Extension<crate::auth::Principal>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    require_admin(&principal)?;
+    let users: Vec<serde_json::Value> = state
+        .auth
+        .list_users()
+        .into_iter()
+        .map(|user| {
+            serde_json::json!({
+                "id": user.id,
+                "username": user.username,
+                "role": user.role.as_str(),
+                "created_at": user.created_at,
+                "disabled": user.disabled,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "users": users })))
+}
+
+#[derive(serde::Deserialize)]
+struct CreateUserRequest {
+    username: String,
+    password: String,
+    #[serde(default)]
+    role: Option<String>,
+}
+
+/// `POST /api/users` — create an account (admin only).
+async fn create_user(
+    State(state): State<AppState>,
+    axum::extract::Extension(principal): axum::extract::Extension<crate::auth::Principal>,
+    Json(req): Json<CreateUserRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    require_admin(&principal)?;
+
+    let role = match req.role.as_deref() {
+        None | Some("user") => crate::auth::Role::User,
+        Some("admin") => crate::auth::Role::Admin,
+        Some(other) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("unknown role '{other}'") })),
+            ));
+        }
+    };
+
+    match state.auth.create_user(&req.username, &req.password, role) {
+        Ok(user) => Ok(Json(serde_json::json!({
+            "id": user.id,
+            "username": user.username,
+            "role": user.role.as_str(),
+        }))),
+        Err(err) => Err((
+            status_for_auth_error(&err),
+            Json(serde_json::json!({ "error": err.to_string() })),
+        )),
+    }
+}
+
+/// `DELETE /api/users/{id}` — remove an account (admin only).
+async fn delete_user(
+    State(state): State<AppState>,
+    axum::extract::Extension(principal): axum::extract::Extension<crate::auth::Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    require_admin(&principal)?;
+    if principal.user_id == id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "refusing to delete the calling account" })),
+        ));
+    }
+    match state.auth.delete_user(&id) {
+        Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(err) => Err((
+            status_for_auth_error(&err),
+            Json(serde_json::json!({ "error": err.to_string() })),
+        )),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct SetPasswordRequest {
+    password: String,
+}
+
+/// `POST /api/users/{id}/password` — reset a password (admin, or self).
+async fn set_user_password(
+    State(state): State<AppState>,
+    axum::extract::Extension(principal): axum::extract::Extension<crate::auth::Principal>,
+    Path(id): Path<String>,
+    Json(req): Json<SetPasswordRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Anyone may rotate their own password; only an admin may rotate someone
+    // else's.
+    if principal.user_id != id {
+        require_admin(&principal)?;
+    }
+    match state.auth.set_password(&id, &req.password) {
+        Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(err) => Err((
+            status_for_auth_error(&err),
+            Json(serde_json::json!({ "error": err.to_string() })),
+        )),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2556,15 +2741,24 @@ pub fn build_router(state: AppState) -> Router {
         .route("/agents/{id}/sessions", get(agent_sessions))
         .route("/activity/snapshot", get(activity_snapshot))
         .route("/activity/stream", get(activity_stream))
-        .route("/bindings", get(list_bindings));
+        .route("/bindings", get(list_bindings))
+        // Identity + user management
+        .route("/auth/me", get(auth_me))
+        .route("/users", get(list_users))
+        .route("/users", post(create_user))
+        .route("/users/{id}", delete(delete_user))
+        .route("/users/{id}/password", post(set_user_password));
 
     api_routes = api_routes.route_layer(middleware::from_fn_with_state(
         state.clone(),
         auth_middleware,
     ));
 
-    // Health check can be unauthenticated
-    let api_routes = api_routes.route("/health", get(health));
+    // Health and login are unauthenticated: `route_layer` only covers routes
+    // registered before it, so anything added here bypasses the middleware.
+    let api_routes = api_routes
+        .route("/health", get(health))
+        .route("/auth/login", post(auth_login));
 
     let mut v1_routes = Router::new()
         .route("/models", get(models))
@@ -6100,6 +6294,11 @@ async fn update_config(
     drop(config);
 
     if let Some(password) = update.password {
+        // Keep the auth store in sync so the `admin` account follows the legacy
+        // setting instead of silently diverging from it.
+        if let Err(err) = state.auth.set_admin_password(&password) {
+            tracing::warn!(error = %err, "auth: failed to update the admin password");
+        }
         *state.webui_password.lock().await = password;
     }
 
@@ -7088,6 +7287,7 @@ mod tests {
             response_store: Arc::new(Mutex::new(ResponsesStore::new(100))),
             run_store: Arc::new(Mutex::new(RunsStore::default())),
             webui_password: Arc::new(Mutex::new(String::new())),
+            auth: Arc::new(crate::auth::AuthService::in_memory()),
             knowledge_provider: Arc::new(Mutex::new(hakimi_knowledge::KnowledgeProvider::new(
                 std::env::temp_dir().join(format!(
                     "hakimi-test-knowledge-{}-{}. json",

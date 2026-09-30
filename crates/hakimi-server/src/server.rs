@@ -43,6 +43,11 @@ pub struct AppState {
     pub run_store: Arc<Mutex<crate::api::RunsStore>>,
     pub knowledge_provider: Arc<Mutex<hakimi_knowledge::KnowledgeProvider>>,
     pub webui_password: Arc<Mutex<String>>,
+    /// Multi-user authentication store (see [`crate::auth`]).
+    ///
+    /// Runs alongside the legacy shared `webui_password`; when no accounts are
+    /// configured the API stays open, exactly as it did before this existed.
+    pub auth: Arc<crate::auth::AuthService>,
     /// Gateway handle for unified mode (None in WebUI-only mode).
     pub gateway: Option<Arc<hakimi_gateway::Gateway>>,
     /// Persona registry for multi-agent isolation. Existing endpoints operate on
@@ -89,6 +94,16 @@ impl Server {
         } else {
             std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default()
         };
+        // Multi-user auth. Bootstraps an `admin` account from the legacy shared
+        // password when the store is empty, so an existing single-password
+        // deployment keeps working unchanged after the upgrade.
+        let auth = Arc::new(
+            crate::auth::AuthService::load_or_bootstrap(&hakimi_dir, &initial_webui_password)
+                .unwrap_or_else(|err| {
+                    tracing::warn!(error = %err, "auth: falling back to an ephemeral store");
+                    crate::auth::AuthService::in_memory()
+                }),
+        );
         let persona_registry = hakimi_core::PersonaRegistry::load(hakimi_dir.join("agents"))?;
         let state = AppState {
             agent: Arc::new(Mutex::new(agent)),
@@ -99,6 +114,7 @@ impl Server {
             run_store: Arc::new(Mutex::new(crate::api::RunsStore::default())),
             knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
             webui_password: Arc::new(Mutex::new(initial_webui_password)),
+            auth,
             gateway: None, // WebUI-only mode
             persona_registry: Arc::new(tokio::sync::RwLock::new(persona_registry)),
             persona_agents: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),

@@ -795,6 +795,14 @@ pub struct GatewaysConfig {
     /// - "queue": queue the new message and process it after the current task finishes
     #[serde(default = "default_busy_input_mode")]
     pub busy_input_mode: String,
+    /// Platforms that are actually wired end to end.
+    ///
+    /// Defaults to the two supported gateways (Telegram and WeChat). Any
+    /// platform outside this list is skipped during registration even when its
+    /// own `enabled` flag is true. An **empty** list disables the filter —
+    /// development only.
+    #[serde(default = "default_enabled_platforms")]
+    pub enabled_platforms: Vec<String>,
     /// Streaming delivery behavior for gateway chat platforms.
     #[serde(default)]
     pub streaming: GatewayStreamingConfig,
@@ -852,11 +860,33 @@ fn default_busy_input_mode() -> String {
     "parallel".to_string()
 }
 
+/// Gateways that are supported end to end out of the box.
+fn default_enabled_platforms() -> Vec<String> {
+    vec!["telegram".to_string(), "weixin".to_string()]
+}
+
+impl GatewaysConfig {
+    /// Whether `platform` is allowed to register.
+    ///
+    /// Only Telegram and WeChat are supported end to end; see
+    /// `docs/ARCHITECTURE.md`. An empty `enabled_platforms` list means "no
+    /// restriction" and is intended for development only.
+    pub fn platform_enabled(&self, platform: &str) -> bool {
+        if self.enabled_platforms.is_empty() {
+            return true;
+        }
+        self.enabled_platforms
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case(platform))
+    }
+}
+
 impl Default for GatewaysConfig {
     fn default() -> Self {
         Self {
             allow_all: false,
             allowed_users: Vec::new(),
+            enabled_platforms: default_enabled_platforms(),
             filter_silence_narration: default_gateway_filter_silence_narration(),
             hide_tool_details: default_hide_tool_details(),
             busy_input_mode: "parallel".to_string(),

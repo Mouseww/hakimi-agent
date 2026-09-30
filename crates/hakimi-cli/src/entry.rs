@@ -1202,6 +1202,7 @@ fn mcp_help_response() -> String {
         "",
         "Commands:",
         "- `list` - show configured MCP servers",
+        "- `serve` - run Hakimi as an MCP server on stdio (for Zed / OpenCode / Claude Code)",
         "- `catalog [--plain|--json] [--category <name>]` - list curated MCP catalog entries",
         "- `categories` - list catalog categories",
         "- `search <query>` - search the curated catalog",
@@ -2915,7 +2916,9 @@ fn register_configured_gateway_adapters(
         })
         .or_else(|| optional_config_value(&config.gateways.telegram.bot_token));
 
-    if let Some(token) = bot_token {
+    if config.gateways.platform_enabled("telegram")
+        && let Some(token) = bot_token
+    {
         let telegram =
             hakimi_gateway::TelegramAdapter::new(hakimi_gateway::TelegramAdapterConfig {
                 token,
@@ -2927,7 +2930,7 @@ fn register_configured_gateway_adapters(
     }
 
     let clawbot_config = resolve_clawbot_gateway_config(config);
-    if clawbot_config.enabled {
+    if config.gateways.platform_enabled("clawbot") && clawbot_config.enabled {
         let bot_id = clawbot_config.bot_id.clone();
         let clawbot = hakimi_gateway::ClawBotAdapter::new(hakimi_gateway::ClawBotAdapterConfig {
             platform_name: "clawbot".to_string(),
@@ -2953,7 +2956,7 @@ fn register_configured_gateway_adapters(
         info!("clawbot gateway registered");
     }
 
-    if config.gateways.weixin.enabled {
+    if config.gateways.platform_enabled("weixin") && config.gateways.weixin.enabled {
         let bot_id = config.gateways.weixin.bot_id.clone();
         let home_channel =
             env_or_config_value("WEIXIN_HOME_CHANNEL", &config.gateways.weixin.home_channel)
@@ -3017,7 +3020,7 @@ fn register_configured_gateway_adapters(
         info!("weixin gateway registered");
     }
 
-    if config.gateways.slack.enabled {
+    if config.gateways.platform_enabled("slack") && config.gateways.slack.enabled {
         if let Some(token) = env_or_config_value("SLACK_BOT_TOKEN", &config.gateways.slack.token) {
             let bot_id = config.gateways.slack.bot_id.clone();
             let channel_id =
@@ -3045,7 +3048,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.discord.enabled {
+    if config.gateways.platform_enabled("discord") && config.gateways.discord.enabled {
         if let Some(token) =
             env_or_config_value("DISCORD_BOT_TOKEN", &config.gateways.discord.token)
         {
@@ -3097,7 +3100,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.mattermost.enabled {
+    if config.gateways.platform_enabled("mattermost") && config.gateways.mattermost.enabled {
         let server_url =
             env_or_config_value("MATTERMOST_URL", &config.gateways.mattermost.server_url);
         let token = env_or_config_value("MATTERMOST_TOKEN", &config.gateways.mattermost.token);
@@ -3133,7 +3136,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.webhook.enabled {
+    if config.gateways.platform_enabled("webhook") && config.gateways.webhook.enabled {
         let bot_id = config.gateways.webhook.bot_id.clone();
         let webhook = hakimi_gateway::WebhookAdapter::new(hakimi_gateway::WebhookAdapterConfig {
             port: config.gateways.webhook.port,
@@ -3150,7 +3153,8 @@ fn register_configured_gateway_adapters(
         "MSGRAPH_WEBHOOK_CLIENT_STATE",
         &config.gateways.msgraph_webhook.client_state,
     );
-    if config.gateways.msgraph_webhook.enabled
+    if config.gateways.platform_enabled("msgraph_webhook")
+        && config.gateways.msgraph_webhook.enabled
         || env_flag_enabled("MSGRAPH_WEBHOOK_ENABLED")
         || msgraph_client_state.is_some()
     {
@@ -3217,7 +3221,7 @@ fn register_configured_gateway_adapters(
         info!("msgraph_webhook gateway registered");
     }
 
-    if config.gateways.signal.enabled {
+    if config.gateways.platform_enabled("signal") && config.gateways.signal.enabled {
         if !config.gateways.signal.phone_number.trim().is_empty() {
             let bot_id = config.gateways.signal.bot_id.clone();
             let signal = hakimi_gateway::SignalAdapter::new(hakimi_gateway::SignalAdapterConfig {
@@ -3240,7 +3244,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.bluebubbles.enabled {
+    if config.gateways.platform_enabled("bluebubbles") && config.gateways.bluebubbles.enabled {
         let server_url = env_or_config_value(
             "BLUEBUBBLES_SERVER_URL",
             &config.gateways.bluebubbles.server_url,
@@ -3282,7 +3286,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.qqbot.enabled {
+    if config.gateways.platform_enabled("qqbot") && config.gateways.qqbot.enabled {
         let app_id = env_or_config_value("QQ_APP_ID", &config.gateways.qqbot.app_id);
         let client_secret =
             env_or_config_value("QQ_CLIENT_SECRET", &config.gateways.qqbot.client_secret);
@@ -3333,7 +3337,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.sms.enabled {
+    if config.gateways.platform_enabled("sms") && config.gateways.sms.enabled {
         let account_sid =
             env_or_config_value("TWILIO_ACCOUNT_SID", &config.gateways.sms.account_sid);
         let auth_token = env_or_config_value("TWILIO_AUTH_TOKEN", &config.gateways.sms.auth_token);
@@ -3372,7 +3376,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.email.enabled {
+    if config.gateways.platform_enabled("email") && config.gateways.email.enabled {
         let smtp_host = env_or_config_value("EMAIL_SMTP_HOST", &config.gateways.email.smtp_host);
         let address = env_or_config_value("EMAIL_ADDRESS", &config.gateways.email.address);
         let password = env_or_config_value("EMAIL_PASSWORD", &config.gateways.email.password);
@@ -3421,7 +3425,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.whatsapp.enabled {
+    if config.gateways.platform_enabled("whatsapp") && config.gateways.whatsapp.enabled {
         let access_token = env_or_config_value(
             "WHATSAPP_ACCESS_TOKEN",
             &config.gateways.whatsapp.access_token,
@@ -3471,7 +3475,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.homeassistant.enabled {
+    if config.gateways.platform_enabled("homeassistant") && config.gateways.homeassistant.enabled {
         let token = env_or_config_value("HASS_TOKEN", &config.gateways.homeassistant.token);
         if let Some(token) = token {
             let bot_id = config.gateways.homeassistant.bot_id.clone();
@@ -3511,7 +3515,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.matrix.enabled {
+    if config.gateways.platform_enabled("matrix") && config.gateways.matrix.enabled {
         if !config.gateways.matrix.homeserver_url.trim().is_empty()
             && !config.gateways.matrix.access_token.trim().is_empty()
             && !config.gateways.matrix.room_id.trim().is_empty()
@@ -3540,7 +3544,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.dingtalk.enabled {
+    if config.gateways.platform_enabled("dingtalk") && config.gateways.dingtalk.enabled {
         if !config.gateways.dingtalk.webhook_url.trim().is_empty() {
             let bot_id = config.gateways.dingtalk.bot_id.clone();
             let dingtalk =
@@ -3560,7 +3564,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.wecom.enabled {
+    if config.gateways.platform_enabled("wecom") && config.gateways.wecom.enabled {
         if !config.gateways.wecom.corp_id.trim().is_empty()
             && !config.gateways.wecom.agent_id.trim().is_empty()
             && !config.gateways.wecom.secret.trim().is_empty()
@@ -3580,7 +3584,7 @@ fn register_configured_gateway_adapters(
         }
     }
 
-    if config.gateways.feishu.enabled {
+    if config.gateways.platform_enabled("feishu") && config.gateways.feishu.enabled {
         let app_id = env_or_config_value("FEISHU_APP_ID", &config.gateways.feishu.app_id);
         let app_secret =
             env_or_config_value("FEISHU_APP_SECRET", &config.gateways.feishu.app_secret);
@@ -5844,6 +5848,64 @@ async fn build_agent(
 
     // TODO: Wrap with ModelDispatcher when smart dispatch is implemented
     Ok(agent)
+}
+
+// ---------------------------------------------------------------------------
+// MCP server mode
+// ---------------------------------------------------------------------------
+
+/// Tools exposed to an external MCP host.
+///
+/// Deliberately the non-interactive subset: anything that needs a live user
+/// (`clarify`, `send_message`) or a gateway surface is excluded, because an
+/// MCP host has no way to answer it.
+fn mcp_served_tools() -> Vec<std::sync::Arc<dyn hakimi_tools::Tool>> {
+    vec![
+        std::sync::Arc::new(hakimi_tools::TerminalTool),
+        std::sync::Arc::new(hakimi_tools::ReadFileTool),
+        std::sync::Arc::new(hakimi_tools::WriteFileTool),
+        std::sync::Arc::new(hakimi_tools::PatchTool),
+        std::sync::Arc::new(hakimi_tools::SearchFilesTool),
+        std::sync::Arc::new(hakimi_tools::TodoToolV2),
+        std::sync::Arc::new(hakimi_tools::ProcessTool),
+        std::sync::Arc::new(hakimi_tools::CodeExecTool),
+        std::sync::Arc::new(hakimi_tools::SessionSearchTool),
+        std::sync::Arc::new(hakimi_tools::WebSearchTool),
+        std::sync::Arc::new(hakimi_tools::WebExtractTool),
+        std::sync::Arc::new(hakimi_tools::MemoryTool::new()),
+        std::sync::Arc::new(hakimi_tools::SkillManageTool),
+    ]
+}
+
+/// Run Hakimi as an MCP server on stdio (`hakimi mcp serve`).
+///
+/// This is the outbound-facing half of MCP support. Hakimi has always been an
+/// MCP *client*, calling other people's servers; here an external host — Zed,
+/// OpenCode, Claude Code, Codex — launches this process and calls Hakimi's own
+/// tools over newline-delimited JSON-RPC.
+///
+/// Calls run through the normal [`hakimi_tools::ToolRegistry`] with a real
+/// [`hakimi_common::ToolContext`], so tool behaviour matches a local turn.
+async fn mcp_serve(config: &hakimi_config::HakimiConfig) -> Result<()> {
+    let registry = hakimi_tools::ToolRegistry::new();
+    registry
+        .configure_tool_output(config.tools.output.clone())
+        .await;
+    for tool in mcp_served_tools() {
+        registry.register(tool).await;
+    }
+
+    let workdir = std::env::current_dir()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let ctx = hakimi_tools::ToolContextBuilder::new()
+        .session_id(format!("mcp-{}", uuid::Uuid::new_v4()))
+        .workdir(workdir)
+        .build();
+
+    hakimi_mcp::McpServer::new(registry, ctx)
+        .serve_stdio()
+        .await
 }
 
 // ---------------------------------------------------------------------------
@@ -8135,6 +8197,16 @@ async fn start_unified_server(
         std::env::var("HAKIMI_WEBUI_PASSWORD").unwrap_or_default()
     };
 
+    // Multi-user auth store (see `hakimi_server::auth`). The bootstrap mirrors
+    // the server-only path so unified mode and `hakimi serve` agree on accounts.
+    let auth = Arc::new(
+        hakimi_server::auth::AuthService::load_or_bootstrap(&hakimi_dir, &initial_webui_password)
+            .unwrap_or_else(|err| {
+                tracing::warn!(error = %err, "auth: falling back to an ephemeral store");
+                hakimi_server::auth::AuthService::in_memory()
+            }),
+    );
+
     // Reuse the same registry Arc the gateway loop routes against (built above),
     // so WebUI persona/binding edits and gateway routing share one source of truth.
 
@@ -8150,6 +8222,7 @@ async fn start_unified_server(
         run_store: Arc::new(Mutex::new(hakimi_server::api::RunsStore::default())),
         knowledge_provider: Arc::new(Mutex::new(knowledge_provider)),
         webui_password: Arc::new(Mutex::new(initial_webui_password)),
+        auth,
         gateway: Some(gateway.clone()),
         persona_registry,
         persona_agents,
@@ -8826,11 +8899,17 @@ pub async fn run() -> Result<()> {
     bind_runtime_home_env(&runtime_home);
 
     // Initialise logging.
+    //
+    // Logs go to **stderr**, never stdout. In `hakimi mcp serve` mode stdout is
+    // the JSON-RPC channel, and a stray log line would corrupt the MCP stream
+    // for the host (Zed / OpenCode / Claude Code). Keeping every log on stderr
+    // makes that class of bug impossible rather than merely unlikely.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
+        .with_writer(std::io::stderr)
         .init();
 
     if args.update {
@@ -8896,6 +8975,13 @@ pub async fn run() -> Result<()> {
     }
     if let Some(TopLevelCommand::Mcp(mcp_args)) = &args.command {
         let config = load_config(&runtime_home);
+        if mcp_args
+            .args
+            .first()
+            .is_some_and(|arg| arg.eq_ignore_ascii_case("serve"))
+        {
+            return mcp_serve(&config).await;
+        }
         println!(
             "{}",
             top_level_mcp_response(&mcp_args.args, &config.mcp_servers)
