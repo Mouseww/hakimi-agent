@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod approval;
 pub mod budget;
 pub mod complexity_analyzer;
 pub mod conversation;
@@ -24,6 +25,7 @@ pub mod trajectory;
 pub mod turn_retry_state;
 
 pub use agent::{AIAgent, AIAgentBuilder};
+pub use approval::{ApprovalDecision, ApprovalGate, ApprovalOutcome, ToolApprovalPolicy};
 pub use budget::IterationBudget;
 pub use conversation::ConversationResult;
 pub use credential_pool::{Credential, CredentialPool, CredentialStatus, RotationStrategy};

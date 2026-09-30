@@ -36,6 +36,13 @@ pub struct AIAgent {
     /// by the prompt assembler. Entry points (CLI, Server, TUI) set this once
     /// instead of concatenating their own `### PERSISTENT CONTEXT` sections.
     pub(crate) memory_block: Option<String>,
+    /// Human-in-the-loop gate. Shared behind an `Arc` so the surface that
+    /// answers (CLI prompt, gateway reply, HTTP endpoint) can resolve requests
+    /// the agent loop is awaiting. See `crate::approval`.
+    pub(crate) approval_gate: Arc<crate::approval::ApprovalGate>,
+    /// Whether a surface is attached to answer approval requests. When false
+    /// and the policy fails closed, gated tools are denied rather than run.
+    pub(crate) approval_surface: bool,
     pub(crate) streaming: bool,
     pub(crate) streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     /// Optional callback invoked for every StreamEvent (including ToolCallDelta).
@@ -76,6 +83,8 @@ impl Clone for AIAgent {
             workdir: self.workdir.clone(),
             system_prompt: self.system_prompt.clone(),
             memory_block: self.memory_block.clone(),
+            approval_gate: self.approval_gate.clone(),
+            approval_surface: self.approval_surface,
             streaming: self.streaming,
             streaming_callback: self.streaming_callback.clone(),
             event_callback: self.event_callback.clone(),
@@ -218,6 +227,8 @@ pub struct AIAgentBuilder {
     workdir: Option<String>,
     system_prompt: Option<String>,
     memory_block: Option<String>,
+    approval_gate: Option<Arc<crate::approval::ApprovalGate>>,
+    approval_surface: Option<bool>,
     streaming: Option<bool>,
     streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     hide_tool_details: Option<bool>,
@@ -257,6 +268,8 @@ impl AIAgentBuilder {
             workdir: None,
             system_prompt: None,
             memory_block: None,
+            approval_gate: None,
+            approval_surface: None,
             streaming: None,
             streaming_callback: None,
             hide_tool_details: None,
@@ -359,6 +372,21 @@ impl AIAgentBuilder {
     /// conversation. Passing `None` clears it.
     pub fn memory_block(mut self, block: Option<String>) -> Self {
         self.memory_block = block;
+        self
+    }
+
+    /// Attach a human-in-the-loop approval gate for dangerous tool calls.
+    ///
+    /// The caller keeps an `Arc` clone so the surface (CLI prompt, gateway,
+    /// HTTP endpoint) can resolve requests the agent loop is awaiting.
+    pub fn approval_gate(mut self, gate: Arc<crate::approval::ApprovalGate>) -> Self {
+        self.approval_gate = Some(gate);
+        self
+    }
+
+    /// Declare whether an approval surface is attached.
+    pub fn approval_surface(mut self, attached: bool) -> Self {
+        self.approval_surface = Some(attached);
         self
     }
 
@@ -480,6 +508,10 @@ impl AIAgentBuilder {
             workdir,
             system_prompt: self.system_prompt,
             memory_block: self.memory_block,
+            approval_gate: self
+                .approval_gate
+                .unwrap_or_else(|| Arc::new(crate::approval::ApprovalGate::default())),
+            approval_surface: self.approval_surface.unwrap_or(false),
             streaming: self.streaming.unwrap_or(false),
             streaming_callback: self.streaming_callback,
             event_callback: None,
@@ -812,6 +844,11 @@ impl AIAgent {
     /// Get the current persistent memory block, if any.
     pub fn memory_block(&self) -> Option<&str> {
         self.memory_block.as_deref()
+    }
+
+    /// The human-in-the-loop approval gate.
+    pub fn approval_gate(&self) -> &Arc<crate::approval::ApprovalGate> {
+        &self.approval_gate
     }
 
     /// Change the model identifier at runtime.

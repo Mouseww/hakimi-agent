@@ -7,6 +7,7 @@ use hakimi_transports::{RequestParams, StreamAccumulator, StreamEvent};
 use tracing::{debug, info, instrument, warn};
 
 use crate::agent::AIAgent;
+use crate::approval::{ApprovalDecision, ApprovalOutcome};
 use crate::budget::IterationBudget;
 use crate::conversation::ConversationResult;
 use crate::error_classifier::{
@@ -782,6 +783,52 @@ async fn process_tool_calls(
                 warn!(tool = %tc.name, reason = %msg, "Guardrail warning");
             }
             GuardrailDecision::Allow => {}
+        }
+
+        // Human-in-the-loop: a mutating tool must be approved before it runs.
+        // Guardrails above are automatic; this asks a person. Disabled by
+        // default, so this is a no-op unless the operator turns it on.
+        let approval = agent.approval_gate.request(
+            format!("{}-{}", agent.session_id, tc.id),
+            &tc.name,
+            &arg_summary,
+            agent.approval_surface,
+        );
+        match approval {
+            ApprovalDecision::NotRequired | ApprovalDecision::PreApproved => {}
+            ApprovalDecision::Unavailable(reason) => {
+                warn!(tool = %tc.name, reason = %reason, "approval unavailable; denying tool");
+                agent.messages.push(Message::tool_result(
+                    &tc.id,
+                    &tc.name,
+                    format!("DENIED: {reason}"),
+                ));
+                continue;
+            }
+            ApprovalDecision::Pending {
+                request_id,
+                prompt,
+                receiver,
+            } => {
+                if let Some(ref cb) = agent.streaming_callback {
+                    cb(format!("\u{001e}hakimi_approval:{request_id}:{prompt}"));
+                }
+                let timeout = agent.approval_gate.policy().timeout;
+                let outcome =
+                    crate::approval::ApprovalGate::await_decision(receiver, timeout).await;
+                if outcome != ApprovalOutcome::Approved {
+                    warn!(tool = %tc.name, request_id = %request_id, "tool denied by operator");
+                    agent.messages.push(Message::tool_result(
+                        &tc.id,
+                        &tc.name,
+                        format!(
+                            "DENIED: tool `{}` was not approved by the operator.",
+                            tc.name
+                        ),
+                    ));
+                    continue;
+                }
+            }
         }
 
         let registry = agent.shared.tool_registry.clone();
