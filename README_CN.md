@@ -95,6 +95,7 @@ hakimi --gateway start # 旧 Gateway 兼容入口
 - **意图 + 角色**：意图分类，Coder / Researcher / Writer 等模式切换
 - **记忆**：短/长/工作记忆、FTS5、会话检索（发现 / 滚动 / 浏览）；**BM25 相关性预取** + 中文分词，取代朴素子串匹配
 - **检查点**：共享 shadow-git 存储于 `~/.hakimi/checkpoints`（不污染项目 `.git`）
+- **人工审批（HITL）**：变更类工具（`terminal`、`write_file`、`patch`、`code_exec`、`computer_use`）可要求执行前由人明确批准 —— 超时、无审批通道、通道断开一律 **fail-closed 判拒**。沉默不等于同意。
 
 ### 控制面
 
@@ -103,7 +104,7 @@ hakimi --gateway start # 旧 Gateway 兼容入口
 | **CLI** | REPL、setup、doctor、skills、plugins、profiles |
 | **TUI** | ratatui、斜杠指令、语音 PTT、皮肤 |
 | **WebUI** | 运行态已移除；请使用 TUI、Gateway、Studio 桌面或可选 Studio 后端 |
-| **Gateway** | Telegram · Discord · Slack · Signal · WhatsApp · 飞书 · 企微 · Matrix · 邮件 · … |
+| **Gateway** | 内置 20 个适配器；**默认仅启用 Telegram + 微信**（`gateways.enabled_platforms`）—— Discord · Slack · Signal · WhatsApp · 飞书 · 企微 · Matrix · 邮件 · … |
 | **Studio** | 本机优先工作台：工作区 IDE、多设备接管、Hub 中继、桌面壳 |
 
 ### Gateway 亮点
@@ -120,15 +121,17 @@ hakimi --gateway start # 旧 Gateway 兼容入口
 - Skills / cron / 上下文文件注入启发式检测
 - SSRF 黑名单、危险 shell 模式、工具死循环护栏
 - 写路径 sandbox + Studio **路径 deny 策略**（`.env`、`.git`、密钥等）
+- 变更类工具 **人工审批（HITL）** —— fail-closed；MCP 服务端保持 stdout 洁净，日志永不污染 JSON-RPC 流
 - Studio 多设备 **Controller / Viewer** 角色
 
 ### 扩展
 
-- **MCP** 客户端（stdio / HTTP / SSE）+ 目录片段
+- **MCP 双向**：客户端（stdio / HTTP / SSE）+ 目录片段，**并**提供服务端模式（`hakimi mcp serve`），让 Zed / OpenCode / Claude Code 能通过 stdio 调用 Hakimi 自己的工具
 - HTTP 插件（YAML）与 **WASM** 插件路径（演进中）
 - Skills Hub 安装社区技能
 - OpenAI 兼容发现：`/v1/models`、`/v1/chat/completions`、`/v1/runs` …
 - 隔离 **profile**（`--profile`）隔离配置 / 记忆 / 会话 / cron
+- **多用户认证**：每用户独立 PBKDF2 口令哈希、HMAC 签名 bearer token、Admin / User 角色、`POST /api/auth/login` + `/api/users` —— 旧共享口令继续可用，并自动 bootstrap 一个 `admin` 账号
 
 ---
 
@@ -254,8 +257,8 @@ hakimi-agent/
 ├── hakimi-knowledge/      # 图谱记忆
 ├── hakimi-skills/         # Skills
 ├── hakimi-cron/           # 持久化调度
-├── hakimi-gateway/        # 平台适配器
-├── hakimi-mcp/            # MCP 客户端
+├── hakimi-gateway/        # 平台适配器（默认仅 Telegram + 微信启用）
+├── hakimi-mcp/            # MCP 客户端 + 服务端（mcp serve）
 ├── hakimi-cli/ · hakimi-tui/
 ├── hakimi-server/         # 统一 serve + Studio + hub worker
 ├── hakimi-studio-api/ · hakimi-workspace/ · hakimi-hub/

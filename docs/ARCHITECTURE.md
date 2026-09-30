@@ -390,3 +390,50 @@ context_compression_ratio
 ---
 
 本文档会随着架构演进持续更新。若新增 crate、核心数据流或扩展点，请同步更新本文档与 `EVOLUTION_ROADMAP.md`。
+
+## 13. 模块硬边界（加固约定）
+
+本节把上面各节隐含的依赖方向写成**硬规则**。违反即视为架构回归，review 应直接打回。
+
+### 13.1 依赖只能向内流
+
+```
+entry (cli / tui / server / desktop)  ->  core  ->  context / tools / session / knowledge
+                                               |
+                                     common / config / metrics / transports / i18n
+```
+
+- **基础设施层不得反向依赖核心层**：`common`、`config`、`metrics`、`transports`、`i18n` 不得出现 `use hakimi_core::` 或 `use hakimi_tools::`。
+- **核心能力层不得依赖入口层**：`core`、`context`、`tools`、`session`、`knowledge` 不得出现 `use hakimi_cli::` 或 `use hakimi_server::`。
+- 新增跨层调用前先问「这个方向是否已经存在」；不存在就走事件 / trait 回调，而不是直接 `use`。
+
+### 13.2 单点装配
+
+- 系统提示词只有一个装配点：`hakimi-context::prompt_assembler`。任何入口自己拼 `base_prompt + xxx` 都属于回归。
+- 工具注册只有一个入口：`hakimi-cli::entry::build_agent`；`hakimi mcp serve` 复用同一份工具集定义（见 `mcp_served_tools`）。
+- 会话持久化只有一条路径：`hakimi-session::SessionDB`。不要为某个入口单开 JSON 落盘。
+
+### 13.3 网关注册白名单
+
+- `GatewaysConfig::enabled_platforms` 是**唯一的网关开关**，默认 `["telegram", "weixin"]`。
+- 每个 adapter 注册点都必须先过 `config.gateways.platform_enabled("<name>")`，再判断该平台自己的 `enabled`。
+- 新增平台时：先在 `enabled_platforms` 里显式加入，再写 adapter。**adapter 存在不等于平台可用。**
+
+### 13.4 危险工具必须过审批
+
+- `hakimi-core::approval` 是唯一的人类审批入口，与 `hakimi-core::guardrails`（自动护栏）职责分离。
+- 新增会改动宿主机或执行代码的工具时，必须同时加进 `ToolApprovalPolicy::default_dangerous_tools()` 并补测试。
+- 审批失败一律 **fail closed**：超时、通道断开、无可用交互面，全部判为拒绝。
+- 审批请求通过 `\u{001e}hakimi_approval:<id>:<prompt>` 事件上报，由交互面（CLI / 网关 / HTTP）渲染并回填。
+
+### 13.5 MCP 双向
+
+- `hakimi-mcp::McpClient` 是出站（Hakimi 调别人的 server）；`hakimi-mcp::McpServer` 是入站（别人把 Hakimi 当工具）。
+- 入站模式走 `hakimi mcp serve`（stdio，换行分隔 JSON-RPC）。
+- **stdout 是协议通道**：任何日志必须写 stderr。`tracing_subscriber` 已固定 `.with_writer(std::io::stderr)`，不要改回去。
+
+### 13.6 已废弃组件
+
+- **旧 WebUI 设计已废弃**：不再迭代 `crates/hakimi-webui/static` 下的界面。该目录暂时保留，因为 `hakimi-desktop` 通过 `include_str!` 内嵌了这些文件；新界面形态确定前不重启这条线。
+- `hakimi serve` 已移除，只会返回明确的错误提示。HTTP 能力统一走 `hakimi-server`。
+- 真正端到端可用的网关只有 **Telegram** 与 **微信**（见 13.3）。其余 adapter 保留代码但默认不注册。

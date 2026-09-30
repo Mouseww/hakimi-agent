@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.144-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.147-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/github/actions/workflow/status/Mouseww/hakimi-agent/ci.yml?branch=main&style=for-the-badge" alt="CI">
@@ -106,6 +106,7 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 - **Intent + roles**: classify intent, adapt Coder / Researcher / Writer modes
 - **Memory**: short/long/working tiers, FTS5, session search (discovery / scroll / browse); **BM25-ranked prefetch** with CJK-aware tokenisation instead of naive substring matching
 - **Checkpoints**: shared shadow-git store under `~/.hakimi/checkpoints` (not your project `.git`)
+- **Human-in-the-loop approval**: mutating tools (`terminal`, `write_file`, `patch`, `code_exec`, `computer_use`) can require an explicit human decision before they run — **fail-closed** on timeout, a missing approval surface, or a dropped resolver. Silence is never consent.
 
 ### Control surfaces
 
@@ -114,7 +115,7 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 | **CLI** | REPL, setup, doctor, skills, plugins, profiles |
 | **TUI** | ratatui UI, slash commands, voice PTT, skins |
 | **WebUI** | Removed runtime; use TUI, Gateway, Studio desktop, or the optional Studio backend surfaces instead |
-| **Gateway** | Telegram · Discord · Slack · Signal · WhatsApp · Feishu · WeCom · Matrix · Email · … |
+| **Gateway** | 20 adapters ship in-tree; **Telegram + WeChat are the supported defaults** (`gateways.enabled_platforms`) — Discord · Slack · Signal · WhatsApp · Feishu · WeCom · Matrix · Email · … |
 | **Studio** | Local-first workbench: workspace IDE, multi-device handoff, Hub relay, desktop shell |
 
 ### Gateway highlights
@@ -131,15 +132,17 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 - Prompt-injection heuristics on skills / cron / context files
 - SSRF blocklist, dangerous shell patterns, tool-loop guardrails
 - Write safe-root sandbox + Studio **path deny policy** (`.env`, `.git`, keys, …)
+- **Human-in-the-loop approval** for mutating tools — fail-closed, and the MCP server keeps stdout clean so logs can never corrupt the JSON-RPC stream
 - Controller / Viewer roles for multi-device Studio sessions
 
 ### Extensibility
 
-- **MCP** client (stdio / HTTP / SSE) + catalog snippets
+- **MCP both ways**: client (stdio / HTTP / SSE) + catalog snippets, **and** server mode (`hakimi mcp serve`) so Zed / OpenCode / Claude Code can call Hakimi's own tools over stdio
 - **HTTP plugins** (YAML) and **WASM** plugin path (evolving)
 - **Skills Hub**: install community skills
 - OpenAI-compatible discovery: `/v1/models`, `/v1/chat/completions`, `/v1/runs`, …
 - Isolated **profiles** (`--profile`) for config / memory / sessions / cron
+- **Multi-user auth**: per-user PBKDF2 password hashes, HMAC-signed bearer tokens, Admin / User roles, `POST /api/auth/login` + `/api/users` — the legacy single shared password still works and bootstraps an `admin` account
 
 ---
 
@@ -292,8 +295,8 @@ hakimi-agent/
 ├── hakimi-knowledge/      # Graph memory
 ├── hakimi-skills/         # Skills + meta extraction
 ├── hakimi-cron/           # Persistent scheduler
-├── hakimi-gateway/        # Platform adapters
-├── hakimi-mcp/            # MCP client
+├── hakimi-gateway/        # Platform adapters (Telegram + WeChat enabled by default)
+├── hakimi-mcp/            # MCP client + server (mcp serve)
 ├── hakimi-cli/ · hakimi-tui/
 ├── hakimi-server/         # Unified serve + Studio + hub worker
 ├── hakimi-studio-api/ · hakimi-workspace/ · hakimi-hub/
