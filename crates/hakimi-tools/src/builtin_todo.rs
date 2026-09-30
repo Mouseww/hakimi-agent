@@ -63,6 +63,56 @@ fn session_file(session_id: &str) -> std::path::PathBuf {
     todos_dir().join(format!("{session_id}.json"))
 }
 
+/// Load the persisted todo plan for a session without touching the async runtime.
+///
+/// Returns an empty vector when the file is missing or unreadable, so callers
+/// can treat "no plan yet" and "unreadable plan" the same way.
+pub fn load_session_todos_blocking(session_id: &str) -> Vec<TodoItem> {
+    std::fs::read_to_string(session_file(session_id))
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default()
+}
+
+/// Render the session's active plan as a compact system-prompt block.
+///
+/// Only unfinished work is surfaced: a plan exists to keep a long multi-turn
+/// task on track, so completed and cancelled items collapse into a count
+/// instead of spending prompt budget on lines the model no longer acts on.
+/// Returns `None` when there is nothing left to do.
+pub fn render_active_plan(session_id: &str) -> Option<String> {
+    let items = load_session_todos_blocking(session_id);
+    if items.is_empty() {
+        return None;
+    }
+
+    let in_progress: Vec<&TodoItem> = items.iter().filter(|i| i.status == "in_progress").collect();
+    let pending: Vec<&TodoItem> = items.iter().filter(|i| i.status == "pending").collect();
+    if in_progress.is_empty() && pending.is_empty() {
+        return None;
+    }
+
+    let mut body = String::from("## Active plan\n");
+    for item in in_progress.iter().chain(pending.iter()) {
+        let marker = if item.status == "in_progress" {
+            ">"
+        } else {
+            " "
+        };
+        body.push_str(&format!("- [{}] {}: {}\n", marker, item.id, item.content));
+    }
+
+    let completed = items.iter().filter(|i| i.status == "completed").count();
+    let cancelled = items.iter().filter(|i| i.status == "cancelled").count();
+    if completed > 0 || cancelled > 0 {
+        body.push_str(&format!(
+            "({completed} completed, {cancelled} cancelled — not listed)\n"
+        ));
+    }
+
+    Some(body.trim_end().to_string())
+}
+
 /// Load todos from disk
 async fn load_todos(session_id: &str) -> Result<Vec<TodoItem>> {
     let path = session_file(session_id);

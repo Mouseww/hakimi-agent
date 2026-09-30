@@ -6851,13 +6851,15 @@ Just send a message to chat with me!"
                         .unwrap_or_else(|| hakimi_core::DEFAULT_SYSTEM_PROMPT.to_string())
                 };
 
-                if !memory_text.is_empty() {
-                    a.set_system_prompt(format!(
-                        "{base_prompt}\n\n### PERSISTENT CONTEXT\n{memory_text}"
-                    ));
+                // Persistent memory is a separate, budgeted prompt section.
+                // The assembler in hakimi-core decides how much of it fits, so a
+                // large memory file can no longer crowd out the conversation.
+                a.set_system_prompt(base_prompt);
+                a.set_memory_block(if memory_text.is_empty() {
+                    None
                 } else {
-                    a.set_system_prompt(base_prompt);
-                }
+                    Some(memory_text)
+                });
 
                 let base_history_len = {
                     let histories = histories_clone.lock().await;

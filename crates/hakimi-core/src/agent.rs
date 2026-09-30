@@ -32,6 +32,10 @@ pub struct AIAgent {
     pub(crate) pending_guidance: Arc<std::sync::Mutex<Vec<String>>>,
     pub(crate) workdir: String,
     pub(crate) system_prompt: Option<String>,
+    /// Persistent memory / user-profile block, rendered into the system prompt
+    /// by the prompt assembler. Entry points (CLI, Server, TUI) set this once
+    /// instead of concatenating their own `### PERSISTENT CONTEXT` sections.
+    pub(crate) memory_block: Option<String>,
     pub(crate) streaming: bool,
     pub(crate) streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     /// Optional callback invoked for every StreamEvent (including ToolCallDelta).
@@ -71,6 +75,7 @@ impl Clone for AIAgent {
             pending_guidance: Arc::new(std::sync::Mutex::new(Vec::new())),
             workdir: self.workdir.clone(),
             system_prompt: self.system_prompt.clone(),
+            memory_block: self.memory_block.clone(),
             streaming: self.streaming,
             streaming_callback: self.streaming_callback.clone(),
             event_callback: self.event_callback.clone(),
@@ -212,6 +217,7 @@ pub struct AIAgentBuilder {
     interrupt: Option<Arc<AtomicBool>>,
     workdir: Option<String>,
     system_prompt: Option<String>,
+    memory_block: Option<String>,
     streaming: Option<bool>,
     streaming_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
     hide_tool_details: Option<bool>,
@@ -250,6 +256,7 @@ impl AIAgentBuilder {
             interrupt: None,
             workdir: None,
             system_prompt: None,
+            memory_block: None,
             streaming: None,
             streaming_callback: None,
             hide_tool_details: None,
@@ -342,6 +349,16 @@ impl AIAgentBuilder {
     /// Set a custom system prompt.
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.system_prompt = Some(prompt.into());
+        self
+    }
+
+    /// Set the persistent memory / user-profile block.
+    ///
+    /// This is assembled into the system prompt by the prompt assembler, under
+    /// its own character budget, so a large memory file cannot crowd out the
+    /// conversation. Passing `None` clears it.
+    pub fn memory_block(mut self, block: Option<String>) -> Self {
+        self.memory_block = block;
         self
     }
 
@@ -462,6 +479,7 @@ impl AIAgentBuilder {
             pending_guidance: Arc::new(std::sync::Mutex::new(Vec::new())),
             workdir,
             system_prompt: self.system_prompt,
+            memory_block: self.memory_block,
             streaming: self.streaming.unwrap_or(false),
             streaming_callback: self.streaming_callback,
             event_callback: None,
@@ -780,6 +798,20 @@ impl AIAgent {
     /// Set or replace the system prompt.
     pub fn set_system_prompt(&mut self, prompt: impl Into<String>) {
         self.system_prompt = Some(prompt.into());
+    }
+
+    /// Set or replace the persistent memory block.
+    ///
+    /// Unlike [`set_system_prompt`](Self::set_system_prompt), this is kept in a
+    /// separate, budgeted prompt section, so callers can refresh memory on every
+    /// turn without rewiring the identity prompt.
+    pub fn set_memory_block(&mut self, block: Option<String>) {
+        self.memory_block = block;
+    }
+
+    /// Get the current persistent memory block, if any.
+    pub fn memory_block(&self) -> Option<&str> {
+        self.memory_block.as_deref()
     }
 
     /// Change the model identifier at runtime.

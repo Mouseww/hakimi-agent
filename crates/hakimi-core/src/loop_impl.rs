@@ -890,6 +890,11 @@ async fn plan_request_messages(agent: &AIAgent) -> Vec<Message> {
 
 /// Build the messages array to send to the API:
 /// dynamic system prompt + planned conversation history.
+///
+/// All injectable prompt blocks (identity, per-platform output style,
+/// persistent memory, runtime skills) go through [`PromptAssembler`], which
+/// budgets and prioritises them, instead of being string-concatenated here.
+/// This is the single assembly point shared by CLI, Server and TUI.
 fn build_send_messages(agent: &AIAgent, planned_messages: &[Message]) -> Vec<Message> {
     let mut send = Vec::with_capacity(planned_messages.len() + 1);
 
@@ -903,18 +908,66 @@ fn build_send_messages(agent: &AIAgent, planned_messages: &[Message]) -> Vec<Mes
         .map(|store| store.render_active_skill_context())
         .unwrap_or_default();
 
-    let system_prompt = if skill_context.is_empty() {
-        base
-    } else {
-        format!("{base}\n\n{skill_context}")
-    };
-
+    let system_prompt = assemble_system_prompt(agent, base, skill_context);
     if !system_prompt.is_empty() {
         send.push(Message::system(system_prompt));
     }
 
     send.extend(planned_messages.iter().cloned());
     send
+}
+
+/// Assemble the system prompt from its named, budgeted sections.
+fn assemble_system_prompt(agent: &AIAgent, base: String, skill_context: String) -> String {
+    use hakimi_context::prompt_assembler::{PromptSection, platform_output_style, priority};
+
+    let mut assembler = hakimi_context::PromptAssembler::new();
+
+    assembler
+        .push(PromptSection::new("identity", priority::IDENTITY, base).with_limits(2_000, 32_000));
+
+    if let Some(platform) = agent.platform() {
+        let style = platform_output_style(platform);
+        if !style.is_empty() {
+            assembler.push(
+                PromptSection::new(
+                    "output_style",
+                    priority::OUTPUT_STYLE,
+                    format!("## Platform\n{style}"),
+                )
+                .with_limits(200, 2_000),
+            );
+        }
+    }
+
+    if let Some(memory) = agent.memory_block() {
+        assembler.push(
+            PromptSection::new("memory", priority::MEMORY, format!("## Memory\n{memory}"))
+                .with_limits(500, 12_000),
+        );
+    }
+
+    // The active plan is working state, not background knowledge: it outranks
+    // memory so a long multi-turn task keeps its place even under a tight
+    // budget. Populated by the `todo` tool, read straight off disk here.
+    if let Some(plan) = hakimi_tools::render_active_plan(&agent.session_id) {
+        assembler.push(PromptSection::new("plan", priority::PLAN, plan).with_limits(100, 2_000));
+    }
+
+    assembler.push(
+        PromptSection::new("skills", priority::SKILLS, skill_context).with_limits(500, 10_000),
+    );
+
+    let system_prompt = assembler.render();
+    let dropped = assembler.dropped_sections();
+    if !dropped.is_empty() {
+        debug!(
+            dropped = %dropped.join(", "),
+            "Prompt sections dropped to fit budget"
+        );
+    }
+
+    system_prompt.trim_end().to_string()
 }
 
 /// Build a plain assistant message while preserving metadata such as reasoning
