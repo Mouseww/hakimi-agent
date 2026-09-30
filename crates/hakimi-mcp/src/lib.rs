@@ -5,6 +5,7 @@ pub mod http_transport;
 pub mod protocol;
 mod redaction;
 pub mod sampling;
+pub mod server;
 pub mod sse_transport;
 
 pub use adapter::McpToolAdapter;
@@ -13,4 +14,5 @@ pub use client::McpClient;
 pub use http_transport::HttpTransport;
 pub use protocol::*;
 pub use sampling::{McpServerRequestHandler, TransportSamplingHandler};
+pub use server::McpServer;
 pub use sse_transport::{ReconnectConfig, SseTransport};
