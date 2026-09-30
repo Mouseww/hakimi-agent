@@ -8,7 +8,10 @@ use crate::intent::IntentPrediction;
 use crate::role_adapter::RoleProfile;
 
 /// Platform-specific formatting hints.
-fn build_platform_hints() -> HashMap<&'static str, &'static str> {
+///
+/// Public so that `prompt_assembler` can reuse the single source of truth for
+/// per-platform output style instead of duplicating the table.
+pub fn build_platform_hints() -> HashMap<&'static str, &'static str> {
     let mut m = HashMap::new();
     m.insert(
         "telegram",
