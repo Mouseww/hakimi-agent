@@ -575,8 +575,9 @@ impl PlatformAdapter for TelegramAdapter {
     async fn send_message(&self, chat_id: &str, text: &str) -> Result<()> {
         let text = format_collaboration_message(&normalize_outbound_text(text));
         let text = sanitize_for_markdown(&text);
-        // Split messages longer than 4096 characters into multiple sends.
-        let chunks = split_message(&text, MAX_MESSAGE_LENGTH);
+        // Split messages longer than 4096 characters into multiple sends,
+        // keeping fenced code blocks balanced across the split.
+        let chunks = balance_fences_across_chunks(split_message(&text, MAX_MESSAGE_LENGTH));
 
         for chunk in chunks {
             let body = serde_json::json!({
@@ -597,10 +598,29 @@ impl PlatformAdapter for TelegramAdapter {
                 .context("failed to parse sendMessage response")?;
 
             if !resp.ok {
-                anyhow::bail!(
-                    "Telegram sendMessage failed: {}",
-                    resp.description.unwrap_or_else(|| "unknown error".into())
-                );
+                // A MarkdownV2 parse error must never drop the message: retry
+                // as clean plain text, mirroring Hermes.
+                let plain = strip_markdown_v2(&chunk);
+                let fallback = serde_json::json!({
+                    "chat_id": chat_id,
+                    "text": plain,
+                });
+                let retry: TgResponse<serde_json::Value> = self
+                    .client
+                    .post(self.api_url("sendMessage"))
+                    .json(&fallback)
+                    .send()
+                    .await
+                    .context("failed to resend Telegram message as plain text")?
+                    .json()
+                    .await
+                    .context("failed to parse plain-text sendMessage response")?;
+                if !retry.ok {
+                    anyhow::bail!(
+                        "Telegram sendMessage failed: {}",
+                        resp.description.unwrap_or_else(|| "unknown error".into())
+                    );
+                }
             }
         }
 
@@ -735,11 +755,30 @@ impl PlatformAdapter for TelegramAdapter {
             .context("failed to parse editMessageText response")?;
 
         if !resp.ok {
+            let desc = resp.description.clone().unwrap_or_default();
             // Silent handling for "message is not modified"
-            if let Some(desc) = &resp.description
-                && !desc.contains("message is not modified")
-            {
-                warn!(error = %desc, "editMessageText failed");
+            if !desc.contains("message is not modified") {
+                // Retry without parse_mode so a MarkdownV2 failure cannot
+                // leave the streamed message broken.
+                let plain = strip_markdown_v2(&text);
+                let fallback = serde_json::json!({
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": plain,
+                });
+                let retry: TgResponse<serde_json::Value> = self
+                    .client
+                    .post(self.api_url("editMessageText"))
+                    .json(&fallback)
+                    .send()
+                    .await
+                    .context("failed to resend Telegram edit as plain text")?
+                    .json()
+                    .await
+                    .context("failed to parse plain-text editMessageText response")?;
+                if !retry.ok {
+                    warn!(error = %desc, "editMessageText failed");
+                }
             }
         }
         Ok(())
@@ -967,10 +1006,381 @@ fn escape_markdown_v2(text: &str) -> String {
     result
 }
 
-/// Sanitize text for stable Telegram MarkdownV2 rendering.
-/// Preserves Markdown formatting while escaping special characters.
+/// Convert standard Markdown to Telegram MarkdownV2, mirroring Hermes'
+/// `format_message`.
+///
+/// Protected regions (fenced code blocks and inline code) are stashed behind
+/// placeholder tokens so their contents survive escaping; standard Markdown
+/// constructs are then translated to MarkdownV2 syntax and everything else is
+/// escaped. This is what makes code blocks, headers, bold/italic and spoilers
+/// render natively in Telegram instead of showing literal `**` / fenced
+/// backticks as plain (oversized body) text.
+fn format_message(content: &str) -> String {
+    if content.is_empty() {
+        return String::new();
+    }
+
+    let mut placeholders: Vec<String> = Vec::new();
+    let mut text = content.to_string();
+
+    // 1) Protect fenced code blocks. Per the MarkdownV2 spec, `\` and `` ` ``
+    //    inside pre/code must be escaped; the fences themselves stay intact so
+    //    Telegram renders a real code block (monospace, correct size).
+    let fenced_re = regex::Regex::new(r"(?s)(```(?:[^\n]*\n)?.*?```)").expect("valid regex");
+    text = fenced_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            let raw = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let open_end = match raw[3..].find('\n') {
+                Some(idx) => 3 + idx + 1,
+                None => 3,
+            };
+            let (opening, body_and_close) = raw.split_at(open_end);
+            let body = body_and_close.strip_suffix("```").unwrap_or(body_and_close);
+            let body = body.replace('\\', "\\\\").replace('`', "\\`");
+            stash_placeholder(&mut placeholders, format!("{opening}{body}```"))
+        })
+        .into_owned();
+
+    // 2) Protect inline code (`...`). Escape `\` per spec.
+    let inline_re = regex::Regex::new(r"(`[^`\n]+`)").expect("valid regex");
+    text = inline_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            let raw = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            stash_placeholder(&mut placeholders, raw.replace('\\', "\\\\"))
+        })
+        .into_owned();
+
+    // 3) Convert Markdown links. Escape display text; inside the URL only `)`
+    //    and `\` need escaping.
+    let link_re =
+        regex::Regex::new(r"\[([^\]]+)\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)").expect("valid regex");
+    text = link_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            let display = escape_markdown_v2(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
+            let url = caps
+                .get(2)
+                .map(|m| m.as_str())
+                .unwrap_or("")
+                .replace('\\', "\\\\")
+                .replace(')', "\\)");
+            stash_placeholder(&mut placeholders, format!("[{display}]({url})"))
+        })
+        .into_owned();
+
+    // 4) Convert Markdown headers (## Title) into MarkdownV2 bold.
+    let bold_re = regex::Regex::new(r"\*\*(.+?)\*\*").expect("valid regex");
+    let header_re = regex::Regex::new(r"(?m)^#{1,6}\s+(.+)$").expect("valid regex");
+    text = header_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("").trim();
+            let inner = bold_re.replace_all(inner, "$1");
+            stash_placeholder(
+                &mut placeholders,
+                format!("*{}*", escape_markdown_v2(&inner)),
+            )
+        })
+        .into_owned();
+
+    // 5) Convert bold: **text** -> *text*
+    text = bold_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            stash_placeholder(
+                &mut placeholders,
+                format!(
+                    "*{}*",
+                    escape_markdown_v2(caps.get(1).map(|m| m.as_str()).unwrap_or(""))
+                ),
+            )
+        })
+        .into_owned();
+
+    // 6) Convert italic: *text* -> _text_ (never across newlines).
+    let italic_re = regex::Regex::new(r"\*([^*\n]+)\*").expect("valid regex");
+    text = italic_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            stash_placeholder(
+                &mut placeholders,
+                format!(
+                    "_{}_",
+                    escape_markdown_v2(caps.get(1).map(|m| m.as_str()).unwrap_or(""))
+                ),
+            )
+        })
+        .into_owned();
+
+    // 7) Convert strikethrough: ~~text~~ -> ~text~
+    let strike_re = regex::Regex::new(r"~~(.+?)~~").expect("valid regex");
+    text = strike_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            stash_placeholder(
+                &mut placeholders,
+                format!(
+                    "~{}~",
+                    escape_markdown_v2(caps.get(1).map(|m| m.as_str()).unwrap_or(""))
+                ),
+            )
+        })
+        .into_owned();
+
+    // 8) Convert spoilers: ||text|| (protect the pipes from escaping).
+    let spoiler_re = regex::Regex::new(r"\|\|(.+?)\|\|").expect("valid regex");
+    text = spoiler_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            stash_placeholder(
+                &mut placeholders,
+                format!(
+                    "||{}||",
+                    escape_markdown_v2(caps.get(1).map(|m| m.as_str()).unwrap_or(""))
+                ),
+            )
+        })
+        .into_owned();
+
+    // 9) Convert blockquotes (`> text`, expandable `**>`), keeping the `>`.
+    let bq_re = regex::Regex::new(r"(?m)^((?:\*\*)?>{1,3}) (.+)$").expect("valid regex");
+    text = bq_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let body = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            if prefix.starts_with("**") && body.ends_with("||") {
+                let trimmed = body.strip_suffix("||").unwrap_or(body);
+                stash_placeholder(
+                    &mut placeholders,
+                    format!("{prefix} {}||", escape_markdown_v2(trimmed)),
+                )
+            } else {
+                stash_placeholder(
+                    &mut placeholders,
+                    format!("{prefix} {}", escape_markdown_v2(body)),
+                )
+            }
+        })
+        .into_owned();
+
+    // 10) Escape everything that is still plain text.
+    text = escape_markdown_v2(&text);
+
+    // 11) Restore placeholders in reverse order so nested refs resolve.
+    for idx in (0..placeholders.len()).rev() {
+        let key = format!("\u{0}{idx}\u{0}");
+        text = text.replace(&key, &placeholders[idx]);
+    }
+
+    // 12) Safety net: escape bare ( ) { } that slipped through, without
+    //     touching code spans or link URLs.
+    escape_bare_delimiters(&text)
+}
+
+/// Stash `value` behind a sentinel key that survives MarkdownV2 escaping.
+fn stash_placeholder(store: &mut Vec<String>, value: String) -> String {
+    let key = format!("\u{0}{}\u{0}", store.len());
+    store.push(value);
+    key
+}
+
+/// Escape bare `(`, `)` and `{` `}` outside code spans and link URLs.
+fn escape_bare_delimiters(text: &str) -> String {
+    let code_re = regex::Regex::new(r"(?s)(```.*?```|`[^`\n]+`)").expect("valid regex");
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0usize;
+    for m in code_re.find_iter(text) {
+        out.push_str(&escape_bare_delimiters_segment(&text[last..m.start()]));
+        out.push_str(m.as_str());
+        last = m.end();
+    }
+    out.push_str(&escape_bare_delimiters_segment(&text[last..]));
+    out
+}
+
+fn escape_bare_delimiters_segment(segment: &str) -> String {
+    let chars: Vec<char> = segment.chars().collect();
+    let mut out = String::with_capacity(segment.len());
+    for (i, &ch) in chars.iter().enumerate() {
+        let escaped = i > 0 && chars[i - 1] == '\\';
+        match ch {
+            '(' => {
+                if escaped || (i > 0 && chars[i - 1] == ']') {
+                    out.push(ch);
+                } else {
+                    out.push('\\');
+                    out.push(ch);
+                }
+            }
+            ')' => {
+                if escaped || is_link_url_close(&chars, i) {
+                    out.push(ch);
+                } else {
+                    out.push('\\');
+                    out.push(ch);
+                }
+            }
+            '{' | '}' => {
+                if escaped {
+                    out.push(ch);
+                } else {
+                    out.push('\\');
+                    out.push(ch);
+                }
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Whether the `)` at `idx` closes a Markdown link's `]( ... )` URL.
+fn is_link_url_close(chars: &[char], idx: usize) -> bool {
+    let mut depth = 0i32;
+    let mut j = idx;
+    while j > 0 {
+        j -= 1;
+        if idx - j > 2000 {
+            return false;
+        }
+        if j > 0 && chars[j - 1] == '\\' {
+            continue;
+        }
+        match chars[j] {
+            ')' => depth += 1,
+            '(' => {
+                if depth == 0 {
+                    return j > 0 && chars[j - 1] == ']';
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Balance fenced code blocks across message chunks.
+///
+/// When a split lands inside a ``` block, close the fence at the end of the
+/// head chunk and reopen it (with the original language tag) on the next, so
+/// every delivered chunk parses on its own instead of being rejected by
+/// Telegram and falling back to plain text.
+fn balance_fences_across_chunks(chunks: Vec<String>) -> Vec<String> {
+    if chunks.len() <= 1 {
+        return chunks;
+    }
+    let mut out = Vec::with_capacity(chunks.len());
+    let mut carry_lang: Option<String> = None;
+    for chunk in chunks {
+        let prefix = match &carry_lang {
+            Some(lang) => format!("```{lang}\n"),
+            None => String::new(),
+        };
+        let mut in_code = carry_lang.is_some();
+        let mut lang = carry_lang.clone().unwrap_or_default();
+        for line in chunk.split('\n') {
+            let stripped = line.trim();
+            if let Some(rest) = stripped.strip_prefix("```") {
+                if in_code {
+                    in_code = false;
+                    lang = String::new();
+                } else {
+                    in_code = true;
+                    lang = rest.split_whitespace().next().unwrap_or("").to_string();
+                }
+            }
+        }
+        let mut body = format!("{prefix}{chunk}");
+        if in_code {
+            body.push_str("\n```");
+            carry_lang = Some(lang);
+        } else {
+            carry_lang = None;
+        }
+        out.push(body);
+    }
+    out
+}
+
+/// Strip MarkdownV2 escapes for a plain-text fallback.
+fn strip_markdown_v2(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\\'
+            && let Some(&next) = chars.peek()
+            && "_*[]()~`>#+-=|{}.!\\".contains(next)
+        {
+            out.push(next);
+            chars.next();
+            continue;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Sanitize outbound text for stable Telegram MarkdownV2 rendering.
+/// Standard Markdown is converted to MarkdownV2 and special characters are
+/// escaped, so code blocks, headers and emphasis render natively.
 fn sanitize_for_markdown(text: &str) -> String {
-    escape_markdown_v2(text)
+    format_message(text)
+}
+
+#[cfg(test)]
+mod mdv2_tests {
+    use super::{balance_fences_across_chunks, format_message, split_message};
+
+    #[test]
+    fn code_block_is_preserved() {
+        assert_eq!(
+            format_message("```rust\nfn main() {}\n```"),
+            "```rust\nfn main() {}\n```"
+        );
+    }
+
+    #[test]
+    fn inline_code_is_preserved() {
+        assert_eq!(format_message("use `cargo build`"), "use `cargo build`");
+    }
+
+    #[test]
+    fn bold_and_italic_are_converted() {
+        assert_eq!(format_message("**bold**"), "*bold*");
+        assert_eq!(format_message("*italic*"), "_italic_");
+    }
+
+    #[test]
+    fn header_becomes_bold() {
+        assert_eq!(format_message("## Title"), "*Title*");
+    }
+
+    #[test]
+    fn plain_specials_are_escaped() {
+        assert_eq!(format_message("a.b!"), "a\\.b\\!");
+    }
+
+    #[test]
+    fn link_is_converted() {
+        assert_eq!(
+            format_message("[x](https://e.com/a_b)"),
+            "[x](https://e.com/a_b)"
+        );
+    }
+
+    #[test]
+    fn spoiler_is_preserved() {
+        assert_eq!(format_message("||secret||"), "||secret||");
+    }
+
+    #[test]
+    fn fences_are_balanced_across_chunks() {
+        let text = "```rust\nline1\nline2\nline3\n```";
+        let chunks = balance_fences_across_chunks(split_message(text, 15));
+        assert!(chunks.len() > 1, "expected a split: {chunks:?}");
+        for chunk in &chunks {
+            assert_eq!(
+                chunk.matches("```").count() % 2,
+                0,
+                "chunk not fence-balanced: {chunk:?}"
+            );
+        }
+    }
 }
 
 /// Sanitize text for streaming updates - removes unclosed Markdown syntax
