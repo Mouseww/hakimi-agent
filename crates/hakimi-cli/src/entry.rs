@@ -27,15 +27,69 @@ impl GatewayTaskControl {
     }
 }
 
-#[derive(Clone)]
-#[allow(dead_code)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct QueuedMessage {
+    platform: String,
+    bot_id: String,
+    chat_id: String,
+    #[serde(default)]
+    user_id: String,
+    #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
     media_id: Option<String>,
+}
+
+impl QueuedMessage {
+    /// Rebuild the original inbound message so a queued item can be replayed
+    /// through the normal gateway turn path once the active run finishes.
+    fn into_gateway_message(self) -> hakimi_gateway::GatewayMessage {
+        hakimi_gateway::GatewayMessage {
+            platform: self.platform,
+            bot_id: self.bot_id,
+            chat_id: self.chat_id,
+            user_id: self.user_id,
+            text: self.text.unwrap_or_default(),
+            media: self.media_id,
+            callback_data: None,
+            reply_to_message_id: None,
+            reply_to_text: None,
+        }
+    }
 }
 
 fn gateway_task_key(platform: &str, bot_id: &str, chat_id: &str) -> String {
     format!("{platform}:{bot_id}:{chat_id}")
+}
+
+/// Path of the persisted session-scoped pending-input queue.
+fn pending_queue_path(runtime_home: &hakimi_common::RuntimeHome) -> std::path::PathBuf {
+    runtime_home.home().join("gateway_pending_queue.json")
+}
+
+/// Load the persisted pending queue. A missing or corrupt file degrades to an
+/// empty queue rather than blocking gateway startup.
+fn load_pending_queue(
+    path: &std::path::Path,
+) -> std::collections::HashMap<String, std::collections::VecDeque<QueuedMessage>> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// Persist the pending queue so queued-but-undelivered user input survives a
+/// gateway restart (Hermes Queue durability requirement).
+fn persist_pending_queue(
+    path: &std::path::Path,
+    queue: &std::collections::HashMap<String, std::collections::VecDeque<QueuedMessage>>,
+) {
+    if let Ok(json) = serde_json::to_string_pretty(queue)
+        && let Some(parent) = path.parent()
+    {
+        let _ = std::fs::create_dir_all(parent);
+        let _ = std::fs::write(path, json);
+    }
 }
 
 /// Per-persona history bucket key. Scopes the in-memory per-chat history map so
@@ -6117,7 +6171,36 @@ async fn process_gateway_messages_loop(
             128_000,
         ))
     };
-    while let Some(msg) = messages.recv().await {
+    let (requeue_tx, mut requeue_rx) =
+        tokio::sync::mpsc::unbounded_channel::<hakimi_gateway::GatewayMessage>();
+
+    // Anything that was queued but never delivered before a restart is replayed
+    // now, in order, then dropped from the persisted copy.
+    {
+        let mut queues = message_queues.lock().await;
+        for queue in queues.values_mut() {
+            while let Some(queued) = queue.pop_front() {
+                let _ = requeue_tx.send(queued.into_gateway_message());
+            }
+        }
+        if !queues.is_empty() {
+            queues.clear();
+            persist_pending_queue(&pending_queue_path(&runtime_home), &queues);
+        }
+    }
+
+    loop {
+        let msg = tokio::select! {
+            incoming = messages.recv() => match incoming {
+                Some(msg) => msg,
+                None => break,
+            },
+            // Re-queued messages never terminate while `requeue_tx` is alive.
+            queued = requeue_rx.recv() => match queued {
+                Some(msg) => msg,
+                None => continue,
+            },
+        };
         let chat_id = msg.chat_id.clone();
         let bot_id = msg.bot_id.clone();
         let platform = msg.platform.clone();
@@ -6312,7 +6395,8 @@ async fn process_gateway_messages_loop(
         let histories_clone = histories_clone.clone();
         let turn_trackers = turn_trackers.clone();
         let active_tasks = active_tasks.clone();
-        let _message_queues = message_queues.clone();
+        let message_queues = message_queues.clone();
+        let requeue_tx = requeue_tx.clone();
         let voice_states = voice_states.clone();
         let last_usage = last_usage.clone();
         let onboarding_state = onboarding_state.clone();
@@ -6355,50 +6439,90 @@ async fn process_gateway_messages_loop(
             // checks so they execute immediately even while a task is running.
             let is_slash_command = text.starts_with('/') && Command::parse(&text).is_some();
 
-            // Check busy input mode configuration
+            // Busy-input policy (Hermes pending-intent model):
+            //   queue         -> hold as the next normal turn (session-scoped, persisted)
+            //   steer         -> inject into the active run as mid-turn guidance
+            //   stop_and_send -> cancel the active run, then run this message
+            //   parallel      -> run concurrently as an independent task
+            //   interrupt     -> legacy alias for stop_and_send
             let busy_mode = config.gateways.busy_input_mode.as_str();
             let guidance_arc: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
                 std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let mut queue_this = false;
+            let mut steer_target: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>> = None;
             {
                 let mut active = active_tasks.lock().await;
-                if !is_slash_command && let Some(previous) = active.get(&task_key) {
-                    // There's already an active task for this chat
-                    if busy_mode == "queue" {
-                        // Inject the message as guidance into the running task's
-                        // context so the LLM sees it on its next iteration.
-                        if let Ok(mut g) = previous.guidance.lock() {
-                            g.push(text.clone());
+                let busy = !is_slash_command && active.contains_key(&task_key);
+                if busy {
+                    match busy_mode {
+                        "queue" => queue_this = true,
+                        "steer" => {
+                            steer_target = active.get(&task_key).map(|c| c.guidance.clone());
                         }
-
-                        send_gateway_text(
-                            &gateway_clone,
-                            &platform,
-                            &bot_id,
-                            &chat_id,
-                            "💡 已将消息融入当前任务上下文，下次 AI 调用时会参考。",
-                        )
-                        .await;
-                        return;
-                    } else if busy_mode == "interrupt" {
-                        // Interrupt mode: cancel previous task
-                        previous.cancel();
-                        debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for chat");
+                        "stop_and_send" | "interrupt" => {
+                            if let Some(previous) = active.get(&task_key) {
+                                previous.cancel();
+                            }
+                            debug!(platform = %platform, chat_id = %chat_id, "cancelled previous active gateway task for stop_and_send");
+                        }
+                        // "parallel" (and anything unknown): run independently.
+                        _ => {}
                     }
-                    // Parallel mode (default): let previous task keep running,
-                    // start a new independent task concurrently.
                 }
 
-                // Insert the new task with a fresh guidance queue.
-                // The same Arc is shared with the turn agent so messages
-                // injected here appear in the running loop.
-                active.insert(
-                    task_key.clone(),
-                    GatewayTaskControl {
-                        id: task_id,
-                        token: cancellation.clone(),
-                        guidance: guidance_arc.clone(),
-                    },
-                );
+                // Only register a new task when this turn actually owns the chat.
+                if !queue_this && steer_target.is_none() {
+                    active.insert(
+                        task_key.clone(),
+                        GatewayTaskControl {
+                            id: task_id,
+                            token: cancellation.clone(),
+                            guidance: guidance_arc.clone(),
+                        },
+                    );
+                }
+            }
+
+            if queue_this {
+                {
+                    let mut queues = message_queues.lock().await;
+                    queues
+                        .entry(task_key.clone())
+                        .or_default()
+                        .push_back(QueuedMessage {
+                            platform: platform.clone(),
+                            bot_id: bot_id.clone(),
+                            chat_id: chat_id.clone(),
+                            user_id: msg_user_id.clone(),
+                            text: Some(text.clone()),
+                            media_id: media_id.clone(),
+                        });
+                    persist_pending_queue(&pending_queue_path(&runtime_home), &queues);
+                }
+                send_gateway_text(
+                    &gateway_clone,
+                    &platform,
+                    &bot_id,
+                    &chat_id,
+                    "🕒 已排队，当前任务结束后会作为下一条消息发送。",
+                )
+                .await;
+                return;
+            }
+
+            if let Some(target) = steer_target {
+                if let Ok(mut g) = target.lock() {
+                    g.push(text.clone());
+                }
+                send_gateway_text(
+                    &gateway_clone,
+                    &platform,
+                    &bot_id,
+                    &chat_id,
+                    "💡 已作为引导融入当前任务，下次 AI 调用时会参考。",
+                )
+                .await;
+                return;
             }
 
             // Start typing indicator.
@@ -7490,6 +7614,25 @@ Just send a message to chat with me!"
                 }
                 // If ID doesn't match, a newer task has started; don't remove it
             }
+
+            // Promote the oldest queued follow-up (if any) into the next turn.
+            // Queue mode holds user input until the active run finishes; this is
+            // where it drains, FIFO, and only into its own session.
+            let next_queued = {
+                let mut queues = message_queues.lock().await;
+                let popped = queues.get_mut(&task_key).and_then(|q| q.pop_front());
+                if queues.get(&task_key).is_some_and(|q| q.is_empty()) {
+                    queues.remove(&task_key);
+                }
+                if popped.is_some() {
+                    persist_pending_queue(&pending_queue_path(&runtime_home), &queues);
+                }
+                popped
+            };
+            if let Some(queued) = next_queued {
+                let _ = requeue_tx.send(queued.into_gateway_message());
+            }
+
             {
                 let mut trackers = turn_trackers.lock().await;
                 if let Some(tracker) = trackers.get_mut(&chat_id) {
@@ -7554,19 +7697,26 @@ Just send a message to chat with me!"
                 }
             }
 
-            // If any guidance messages arrived after the last LLM call but
-            // before the task finished, notify the user so they can resend.
-            let has_leftover = guidance_arc.lock().ok().is_some_and(|g| !g.is_empty());
-            if has_leftover {
-                debug!(platform = %platform, chat_id = %chat_id, "leftover guidance after task completion");
-                send_gateway_text(
-                    &gateway_clone,
-                    &platform,
-                    &bot_id,
-                    &chat_id,
-                    "ℹ️ 任务已完成，最后的消息未被处理，请重新发送。",
-                )
-                .await;
+            // Leftover steer: guidance that arrived after the last LLM call but
+            // before the run ended. Hermes converts leftover Steer into Queue
+            // rather than dropping it, so re-inject it as the next turn(s).
+            let leftover: Vec<String> = guidance_arc
+                .lock()
+                .map(|mut g| g.drain(..).collect())
+                .unwrap_or_default();
+            for text in leftover {
+                debug!(platform = %platform, chat_id = %chat_id, "leftover guidance promoted to next turn");
+                let _ = requeue_tx.send(hakimi_gateway::GatewayMessage {
+                    platform: platform.clone(),
+                    bot_id: bot_id.clone(),
+                    chat_id: chat_id.clone(),
+                    user_id: msg_user_id.clone(),
+                    text,
+                    media: None,
+                    callback_data: None,
+                    reply_to_message_id: None,
+                    reply_to_text: None,
+                });
             }
         });
     }
@@ -7627,8 +7777,10 @@ async fn start_gateway(
         Arc::new(Mutex::new(HashMap::new()));
     let active_tasks: Arc<Mutex<HashMap<String, GatewayTaskControl>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    let message_queues: Arc<Mutex<HashMap<String, VecDeque<QueuedMessage>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let message_queues: Arc<Mutex<HashMap<String, VecDeque<QueuedMessage>>>> = {
+        let path = pending_queue_path(&runtime_home);
+        Arc::new(Mutex::new(load_pending_queue(&path)))
+    };
     let voice_states: Arc<Mutex<HashMap<String, VoiceRuntimeState>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let last_usage: Arc<Mutex<HashMap<String, GatewayUsageSnapshot>>> =
@@ -7940,8 +8092,10 @@ async fn start_unified_server(
         Arc::new(Mutex::new(HashMap::new()));
     let active_tasks: Arc<Mutex<HashMap<String, GatewayTaskControl>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    let message_queues: Arc<Mutex<HashMap<String, VecDeque<QueuedMessage>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let message_queues: Arc<Mutex<HashMap<String, VecDeque<QueuedMessage>>>> = {
+        let path = pending_queue_path(&runtime_home);
+        Arc::new(Mutex::new(load_pending_queue(&path)))
+    };
     let voice_states: Arc<Mutex<HashMap<String, VoiceRuntimeState>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let last_usage: Arc<Mutex<HashMap<String, GatewayUsageSnapshot>>> =
