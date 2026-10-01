@@ -78,6 +78,7 @@ async fn mock_agent_loop(
             run_id: run_id.clone(),
             name: "mock_echo".into(),
             call_id: call_id.clone(),
+            preview: String::new(),
         },
     )
     .await;

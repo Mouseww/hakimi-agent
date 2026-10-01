@@ -252,6 +252,7 @@ async fn handle_stream_token(
     // Tool start: \u{001e}hakimi_tool:⚙️ name (args)
     if let Some(notice) = token.strip_prefix("\u{001e}hakimi_tool:") {
         let name = parse_tool_name(notice);
+        let preview = parse_tool_preview(notice);
         let call_id = format!("tool_{}_{}", run_id, open_tools.lock().await.len());
         open_tools
             .lock()
@@ -265,14 +266,23 @@ async fn handle_stream_token(
                     run_id: run_id.clone(),
                     name,
                     call_id,
+                    preview,
                 },
             )
             .await;
         return;
     }
 
-    // Tool result: \u{001e}hakimi_tool_result:name|content
-    if let Some(rest) = token.strip_prefix("\u{001e}hakimi_tool_result:") {
+    // Tool result: \u{001e}hakimi_tool_result:name|content  (success)
+    //              \u{001e}hakimi_tool_error:name|content   (failure)
+    let (result_rest, ok) = if let Some(rest) = token.strip_prefix("\u{001e}hakimi_tool_result:") {
+        (Some(rest), true)
+    } else if let Some(rest) = token.strip_prefix("\u{001e}hakimi_tool_error:") {
+        (Some(rest), false)
+    } else {
+        (None, true)
+    };
+    if let Some(rest) = result_rest {
         let tool_name = rest.split('|').next().unwrap_or("tool");
         let mut tools = open_tools.lock().await;
         // Prefer matching open tool by name, else pop last.
@@ -290,7 +300,7 @@ async fn handle_stream_token(
                         session_id: session_id.clone(),
                         run_id: run_id.clone(),
                         call_id,
-                        ok: true,
+                        ok,
                     },
                 )
                 .await;
@@ -299,7 +309,7 @@ async fn handle_stream_token(
     }
 
     // Other control markers — skip from chat body.
-    if token.starts_with('\u{001e}') || token.starts_with("\u{001e}") {
+    if token.starts_with('\u{001e}') {
         return;
     }
 
@@ -334,5 +344,18 @@ fn parse_tool_name(notice: &str) -> String {
         "tool".into()
     } else {
         name.to_string()
+    }
+}
+
+/// Extract the argument preview from a tool-start notice.
+///
+/// The notice looks like `⚙️ read_file (path: src/main.rs)`; the parenthesised
+/// tail is returned without the parentheses. Empty when the notice carries no
+/// arguments, so the UI can omit the preview row entirely.
+fn parse_tool_preview(notice: &str) -> String {
+    let s = notice.trim();
+    match (s.find('('), s.rfind(')')) {
+        (Some(start), Some(end)) if end > start + 1 => s[start + 1..end].trim().to_string(),
+        _ => String::new(),
     }
 }

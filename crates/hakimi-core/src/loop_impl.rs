@@ -841,7 +841,7 @@ async fn process_tool_calls(
         Vec::new()
     };
 
-    for mut res in results {
+    for (mut res, is_error) in results {
         let guardrail_decision = if let (Some(tool_name), Some(content)) =
             (res.name.as_deref(), res.content.as_deref())
         {
@@ -891,12 +891,15 @@ async fn process_tool_calls(
             && let Some(content) = &res.content
             && !agent.hide_tool_details
         {
-            // Send tool result with special prefix
+            // Status-specific prefix so consumers can render a failed tool
+            // differently from a successful one instead of guessing.
             let tool_name = res.name.as_deref().unwrap_or("unknown");
-            cb(format!(
-                "\u{001e}hakimi_tool_result:{}|{}",
-                tool_name, content
-            ));
+            let prefix = if is_error {
+                "\u{001e}hakimi_tool_error:"
+            } else {
+                "\u{001e}hakimi_tool_result:"
+            };
+            cb(format!("{prefix}{tool_name}|{content}"));
         }
 
         agent.messages.push(res);
@@ -1078,7 +1081,7 @@ async fn dispatch_tool(
     tool_registry: &hakimi_tools::ToolRegistry,
     tool_ctx: &hakimi_common::ToolContext,
     tc: &ToolCall,
-) -> Message {
+) -> (Message, bool) {
     // Reject tool calls with empty names (formatting error from LLM).
     if tc.name.is_empty() {
         warn!(
@@ -1086,10 +1089,13 @@ async fn dispatch_tool(
             raw_args = %tc.arguments,
             "Rejecting tool call with empty name - LLM formatting error"
         );
-        return Message::tool_result(
-            &tc.id,
-            "",
-            "Error: Tool call has an empty name. This is a formatting error. You must specify a valid tool name such as read_file, write_file, terminal, search_files, or patch. Please retry with the correct tool name.",
+        return (
+            Message::tool_result(
+                &tc.id,
+                "",
+                "Error: Tool call has an empty name. This is a formatting error. You must specify a valid tool name such as read_file, write_file, terminal, search_files, or patch. Please retry with the correct tool name.",
+            ),
+            true,
         );
     }
 
@@ -1133,7 +1139,7 @@ async fn dispatch_tool(
                 });
             }
 
-            Message::tool_result(&tc.id, &tc.name, content)
+            (Message::tool_result(&tc.id, &tc.name, content), false)
         }
         Err(e) => {
             warn!(tool = %tc.name, error = %e, "Tool execution failed");
@@ -1148,7 +1154,10 @@ async fn dispatch_tool(
                 });
             }
 
-            Message::tool_result(&tc.id, &tc.name, format!("Error: {e}"))
+            (
+                Message::tool_result(&tc.id, &tc.name, format!("Error: {e}")),
+                true,
+            )
         }
     }
 }

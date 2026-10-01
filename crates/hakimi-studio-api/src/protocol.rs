@@ -253,6 +253,10 @@ pub enum StudioEvent {
         run_id: String,
         name: String,
         call_id: String,
+        /// Human-readable argument preview, e.g. `(path: src/main.rs)`.
+        /// Empty when the tool call carried no arguments.
+        #[serde(default)]
+        preview: String,
     },
     ToolCompleted {
         session_id: String,

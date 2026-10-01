@@ -868,6 +868,7 @@ fn normalize_outbound_text(text: &str) -> String {
         .filter(|line| {
             // Skip lines like: "\u{001e}hakimi_tool_result:team — ✓ helpdesk completed"
             !line.contains("\u{001e}hakimi_tool_result:team")
+                && !line.contains("\u{001e}hakimi_tool_error:team")
         })
         .collect();
 

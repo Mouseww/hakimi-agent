@@ -2647,28 +2647,36 @@ fn format_gateway_tool_progress(notice: &str, timestamp: &str) -> String {
 /// Control-token prefix carrying a completed tool's output.
 const TOOL_RESULT_PREFIX: &str = "\u{001e}hakimi_tool_result:";
 
+/// Control-token prefix carrying a *failed* tool's output.
+///
+/// Kept distinct from [`TOOL_RESULT_PREFIX`] so a failure renders differently
+/// from a success instead of being indistinguishable in the transcript.
+const TOOL_ERROR_PREFIX: &str = "\u{001e}hakimi_tool_error:";
+
 /// Maximum characters of tool output forwarded into a chat bubble.
 const TOOL_RESULT_PREVIEW_CHARS: usize = 280;
 
-/// Format a `hakimi_tool_result:<tool>|<output>` notice as a compact chat line.
+/// Format a `<tool>|<output>` notice as a compact chat line.
 ///
-/// Chat bubbles carry progress, not transcripts, so the output is capped. The
-/// `team` tool is skipped because delegate progress bubbles already report it.
-fn format_gateway_tool_result(notice: &str, timestamp: &str) -> String {
+/// `ok` distinguishes a successful result from a failed one. Chat bubbles carry
+/// progress, not transcripts, so the output is capped. The `team` tool is
+/// skipped because delegate progress bubbles already report it.
+fn format_gateway_tool_result(notice: &str, timestamp: &str, ok: bool) -> String {
     let (tool, output) = notice.split_once('|').unwrap_or((notice, ""));
     let tool = tool.trim();
     if tool.is_empty() || tool == "team" {
         return String::new();
     }
+    let marker = if ok { "结果" } else { "失败" };
     let output = output.trim();
     if output.is_empty() {
-        return format!("⚙️ {timestamp} {tool} 结果");
+        return format!("⚙️ {timestamp} {tool} {marker}");
     }
     let mut preview: String = output.chars().take(TOOL_RESULT_PREVIEW_CHARS).collect();
     if output.chars().count() > TOOL_RESULT_PREVIEW_CHARS {
         preview.push_str("...");
     }
-    format!("⚙️ {timestamp} {tool} 结果\n{preview}")
+    format!("⚙️ {timestamp} {tool} {marker}\n{preview}")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7295,9 +7303,17 @@ Just send a message to chat with me!"
                     // Tool results carry their own control prefix. Without this
                     // arm the raw token falls through as assistant Content and
                     // is appended verbatim to the next prose bubble.
-                    if let Some(result_notice) = token.strip_prefix(TOOL_RESULT_PREFIX) {
+                    if let Some((result_notice, ok)) = token
+                        .strip_prefix(TOOL_RESULT_PREFIX)
+                        .map(|rest| (rest, true))
+                        .or_else(|| {
+                            token
+                                .strip_prefix(TOOL_ERROR_PREFIX)
+                                .map(|rest| (rest, false))
+                        })
+                    {
                         let timestamp = gateway_progress_timestamp();
-                        let text = format_gateway_tool_result(result_notice, &timestamp);
+                        let text = format_gateway_tool_result(result_notice, &timestamp, ok);
                         if !text.is_empty() {
                             let _ = ui_tx.send(GatewayStreamUiEvent::Tool(text));
                         }
@@ -11085,21 +11101,30 @@ gateways:
     #[test]
     fn gateway_tool_result_formats_as_capped_independent_event() {
         assert_eq!(
-            format_gateway_tool_result("terminal|STDOUT:\nGit not installed", "09:42"),
+            format_gateway_tool_result("terminal|STDOUT:\nGit not installed", "09:42", true),
             "⚙️ 09:42 terminal 结果\nSTDOUT:\nGit not installed"
         );
         // Empty output still reports the tool, never a bare prefix.
         assert_eq!(
-            format_gateway_tool_result("terminal|", "09:42"),
+            format_gateway_tool_result("terminal|", "09:42", true),
             "⚙️ 09:42 terminal 结果"
         );
+        // A failed tool is labelled distinctly from a successful one.
+        assert_eq!(
+            format_gateway_tool_result("terminal|Error: exit 1", "09:42", false),
+            "⚙️ 09:42 terminal 失败\nError: exit 1"
+        );
+        assert_eq!(
+            format_gateway_tool_result("terminal|", "09:42", false),
+            "⚙️ 09:42 terminal 失败"
+        );
         // Delegate bubbles already report team activity.
-        assert_eq!(format_gateway_tool_result("team|done", "09:42"), "");
-        assert_eq!(format_gateway_tool_result("|output", "09:42"), "");
+        assert_eq!(format_gateway_tool_result("team|done", "09:42", true), "");
+        assert_eq!(format_gateway_tool_result("|output", "09:42", true), "");
 
         // Long output is truncated on a char boundary, not a byte one.
         let long = "汉".repeat(400);
-        let formatted = format_gateway_tool_result(&format!("terminal|{long}"), "09:42");
+        let formatted = format_gateway_tool_result(&format!("terminal|{long}"), "09:42", true);
         assert!(formatted.ends_with("..."));
         assert_eq!(
             formatted.chars().filter(|c| *c == '汉').count(),
