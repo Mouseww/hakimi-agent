@@ -6761,20 +6761,57 @@ Just send a message to chat with me!"
                                     .env(GATEWAY_UPDATE_NOTIFY_BOT_ID_ENV, update_bot)
                                     .env(GATEWAY_UPDATE_NOTIFY_CHAT_ID_ENV, update_chat)
                                     .env(GATEWAY_UPDATE_NOTIFY_HOME_ENV, update_home)
-                                    .status()
+                                    .output()
                             })
                             .await;
 
-                            let success = matches!(update_result, Ok(Ok(status)) if status.success());
+                            // Surface the real reason an update failed instead of a generic
+                            // "check the logs". A silent failure here is exactly what made
+                            // `/update` impossible to diagnose from chat.
+                            let (success, already_latest, failure_detail) = match update_result {
+                                Ok(Ok(out)) if out.status.success() => {
+                                    let stdout = String::from_utf8_lossy(&out.stdout);
+                                    (true, stdout.contains("Already up to date"), String::new())
+                                }
+                                Ok(Ok(out)) => {
+                                    let stderr = String::from_utf8_lossy(&out.stderr);
+                                    let stdout = String::from_utf8_lossy(&out.stdout);
+                                    let raw = if stderr.trim().is_empty() {
+                                        stdout.trim().to_string()
+                                    } else {
+                                        stderr.trim().to_string()
+                                    };
+                                    let mut detail: String = raw.chars().take(600).collect();
+                                    if raw.chars().count() > 600 {
+                                        detail.push('…');
+                                    }
+                                    let code = out
+                                        .status
+                                        .code()
+                                        .map(|c| c.to_string())
+                                        .unwrap_or_else(|| "terminated by signal".to_string());
+                                    (false, false, format!("exit={code}\n{detail}"))
+                                }
+                                Ok(Err(err)) => (false, false, format!("failed to launch updater: {err}")),
+                                Err(err) => (false, false, format!("update task panicked: {err}")),
+                            };
+                            if !success {
+                                eprintln!("gateway /update failed: {failure_detail}");
+                            }
                             let result_msg = hakimi_gateway::GatewayMessage {
                                 platform: plat,
                                 bot_id: bot,
                                 chat_id: chat,
                                 user_id: "".to_string(),
-                                text: if success {
+                                text: if success && already_latest {
+                                    format!(
+                                        "✅ 已是最新版本 (v{})，无需更新。",
+                                        env!("CARGO_PKG_VERSION")
+                                    )
+                                } else if success {
                                     "✅ Hakimi 更新成功，正在重启 Gateway...".to_string()
                                 } else {
-                                    "❌ Hakimi 更新失败，请查看日志。".to_string()
+                                    format!("❌ Hakimi 更新失败：\n{failure_detail}")
                                 },
                                 media: None,
                                 callback_data: None,
@@ -6783,7 +6820,7 @@ Just send a message to chat with me!"
         };
                             let _ = gateway.route_message(&result_msg).await;
 
-                            if success {
+                            if success && !already_latest {
                                 // Try systemd restart first (matches /restart behavior),
                                 // fall back to direct process restart.
                                 let restarted = tokio::task::spawn_blocking(restart_gateway_service)
@@ -8842,6 +8879,15 @@ async fn self_update() -> Result<()> {
     let latest_release = latest_release(&client).await?;
     let latest_tag = latest_release.tag.as_str();
     println!("Latest release: {latest_tag}");
+
+    // Short-circuit when already on the newest release. Without this, `/update`
+    // on an up-to-date install re-downloads and reinstalls the same build and
+    // restarts the gateway for nothing — which from chat looks like a failed
+    // update (the bot goes briefly silent, then reports a restart).
+    if current_version == latest_tag.trim_start_matches('v') {
+        println!("✅ Already up to date (v{current_version}); nothing to install.");
+        return Ok(());
+    }
 
     let url = format!(
         "https://github.com/Mouseww/hakimi-agent/releases/download/{latest_tag}/hakimi-{arch_str}-{platform}.{ext}"
