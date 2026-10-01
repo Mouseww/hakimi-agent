@@ -24,6 +24,8 @@ libloading = "0.8"
 reqwest = { workspace = true, features = ["blocking"] }
 notify = "6.0"
 sha2 = "0.10"
+base64 = { workspace = true }
+ring = { workspace = true }
 anyhow = "1.0"
 chrono = "0.4"
 

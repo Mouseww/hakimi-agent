@@ -1,9 +1,48 @@
 use crate::{PluginError, PluginMetadata, PluginResult};
+use base64::Engine as _;
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
+
+/// Detached-signature sidecar path for a plugin library (`libfoo.so` -> `libfoo.so.sig`).
+fn signature_path(library: &Path) -> PathBuf {
+    let mut os = library.as_os_str().to_os_string();
+    os.push(".sig");
+    PathBuf::from(os)
+}
+
+/// Loadable plugin library extensions for the current platform.
+fn plugin_library_extensions() -> &'static [&'static str] {
+    if cfg!(target_os = "linux") {
+        &["so"]
+    } else if cfg!(target_os = "macos") {
+        &["dylib"]
+    } else if cfg!(target_os = "windows") {
+        &["dll"]
+    } else {
+        &["so", "dylib", "dll"]
+    }
+}
+
+/// Whether `path` looks like a loadable plugin library.
+fn is_plugin_library(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            plugin_library_extensions()
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(ext))
+        })
+        .unwrap_or(false)
+}
+
+/// Recover a plugin id from a library file name (`libhello.so` -> `hello`).
+fn plugin_id_from_path(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    Some(stem.strip_prefix("lib").unwrap_or(stem).to_string())
+}
 
 /// 插件加载器配置
 #[derive(Debug, Clone)]
@@ -227,14 +266,83 @@ impl PluginLoader {
         self.plugins.read().await.contains_key(plugin_id)
     }
 
-    /// 验证插件签名
-    fn verify_plugin_signature(&self, _path: &Path) -> PluginResult<()> {
-        // TODO: 实现签名验证逻辑
-        // 1. 读取 .sig 文件
-        // 2. 计算库文件 SHA256
-        // 3. 验证签名
+    /// Verify a plugin's detached Ed25519 signature.
+    ///
+    /// A signed plugin ships a `<library>.sig` JSON sidecar beside the dynamic
+    /// library:
+    ///
+    /// ```json
+    /// { "algorithm": "ed25519", "public_key": "<base64 32B>", "signature": "<base64 64B>" }
+    /// ```
+    ///
+    /// The signature covers the raw bytes of the library file. When
+    /// `HAKIMI_PLUGIN_PUBKEY` is set the sidecar's key must match it, which pins
+    /// trust to an operator-controlled key instead of letting a plugin vouch
+    /// for itself.
+    fn verify_plugin_signature(&self, path: &Path) -> PluginResult<()> {
+        #[derive(serde::Deserialize)]
+        struct SigFile {
+            #[serde(default)]
+            algorithm: String,
+            public_key: String,
+            signature: String,
+        }
 
-        tracing::warn!("Plugin signature verification not implemented yet");
+        let sig_path = signature_path(path);
+        let raw = std::fs::read_to_string(&sig_path).map_err(|err| {
+            PluginError::PermissionDenied(format!(
+                "signature file {} unreadable: {err}",
+                sig_path.display()
+            ))
+        })?;
+
+        let parsed: SigFile = serde_json::from_str(&raw).map_err(|err| {
+            PluginError::PermissionDenied(format!("invalid signature file: {err}"))
+        })?;
+
+        if !parsed.algorithm.is_empty() && !parsed.algorithm.eq_ignore_ascii_case("ed25519") {
+            return Err(PluginError::PermissionDenied(format!(
+                "unsupported signature algorithm: {}",
+                parsed.algorithm
+            )));
+        }
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let public_key = engine
+            .decode(parsed.public_key.trim())
+            .map_err(|err| PluginError::PermissionDenied(format!("bad public key: {err}")))?;
+        let signature = engine
+            .decode(parsed.signature.trim())
+            .map_err(|err| PluginError::PermissionDenied(format!("bad signature: {err}")))?;
+
+        if let Ok(pinned) = std::env::var("HAKIMI_PLUGIN_PUBKEY") {
+            let pinned = pinned.trim();
+            if !pinned.is_empty() {
+                let expected = engine.decode(pinned).map_err(|err| {
+                    PluginError::PermissionDenied(format!(
+                        "HAKIMI_PLUGIN_PUBKEY is not valid base64: {err}"
+                    ))
+                })?;
+                if expected != public_key {
+                    return Err(PluginError::PermissionDenied(format!(
+                        "plugin {} is signed by an untrusted key",
+                        path.display()
+                    )));
+                }
+            }
+        }
+
+        let bytes = std::fs::read(path)?;
+        ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &public_key)
+            .verify(&bytes, &signature)
+            .map_err(|_| {
+                PluginError::PermissionDenied(format!(
+                    "signature verification failed for {}",
+                    path.display()
+                ))
+            })?;
+
+        tracing::info!("verified plugin signature: {}", path.display());
         Ok(())
     }
 
@@ -273,17 +381,121 @@ impl PluginLoader {
         )))
     }
 
-    /// 启动文件监控（热加载）
-    pub async fn start_hot_reload(&self) -> PluginResult<()> {
+    /// Start watching the plugin directory and hot-reload changed libraries.
+    ///
+    /// Requires the loader behind an [`Arc`] so the watcher can hold a
+    /// [`Weak`] reference instead of pinning it forever. The watcher runs on a
+    /// dedicated OS thread (`notify` is blocking) and dispatches reloads back
+    /// onto the caller's Tokio runtime.
+    pub async fn start_hot_reload(self: &Arc<Self>) -> PluginResult<()> {
         if !self.config.enable_hot_reload {
             return Ok(());
         }
 
-        // TODO: 使用 notify crate 监控插件目录
-        // 当检测到 .so/.dylib/.dll 文件变化时，自动 reload_plugin()
+        let plugin_dir = self.config.plugin_dir.clone();
+        let weak = Arc::downgrade(self);
+        let runtime = tokio::runtime::Handle::current();
 
-        tracing::info!("Plugin hot-reload enabled (not implemented yet)");
+        std::thread::Builder::new()
+            .name("hakimi-plugin-hot-reload".to_string())
+            .spawn(move || hot_reload_loop(plugin_dir, weak, runtime))
+            .map_err(|err| {
+                PluginError::InitError(format!("failed to spawn hot-reload thread: {err}"))
+            })?;
+
+        tracing::info!(
+            "plugin hot-reload watching {}",
+            self.config.plugin_dir.display()
+        );
         Ok(())
+    }
+}
+
+/// Debounce window for coalescing rapid successive filesystem events.
+const HOT_RELOAD_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// Blocking watcher loop for plugin hot-reload.
+///
+/// Runs on a dedicated OS thread because `notify` is blocking. Events are
+/// debounced per-path and dispatched onto `runtime`, so the actual library
+/// swap happens on the async side. Holds only a [`Weak`] reference: when the
+/// owning [`PluginLoader`] is dropped the loop exits on its own.
+fn hot_reload_loop(plugin_dir: PathBuf, weak: Weak<PluginLoader>, runtime: tokio::runtime::Handle) {
+    use notify::{RecursiveMode, Watcher};
+    use std::sync::mpsc;
+
+    if let Err(err) = std::fs::create_dir_all(&plugin_dir) {
+        tracing::warn!(
+            "plugin hot-reload cannot create {}: {err}",
+            plugin_dir.display()
+        );
+        return;
+    }
+
+    let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
+    let mut watcher = match notify::recommended_watcher(move |res| {
+        let _ = tx.send(res);
+    }) {
+        Ok(watcher) => watcher,
+        Err(err) => {
+            tracing::warn!("plugin hot-reload watcher init failed: {err}");
+            return;
+        }
+    };
+
+    if let Err(err) = watcher.watch(&plugin_dir, RecursiveMode::NonRecursive) {
+        tracing::warn!(
+            "plugin hot-reload cannot watch {}: {err}",
+            plugin_dir.display()
+        );
+        return;
+    }
+
+    let mut pending: HashMap<PathBuf, std::time::Instant> = HashMap::new();
+
+    loop {
+        match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+            Ok(Ok(event)) => {
+                for path in event.paths {
+                    if is_plugin_library(&path) {
+                        pending.insert(path, std::time::Instant::now());
+                    }
+                }
+            }
+            Ok(Err(err)) => tracing::debug!("plugin hot-reload event error: {err}"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+
+        let now = std::time::Instant::now();
+        let due: Vec<PathBuf> = pending
+            .iter()
+            .filter(|(_, at)| now.duration_since(**at) >= HOT_RELOAD_DEBOUNCE)
+            .map(|(path, _)| path.clone())
+            .collect();
+
+        for path in due {
+            pending.remove(&path);
+            let Some(loader) = weak.upgrade() else {
+                return; // Owner dropped — stop watching.
+            };
+            let runtime = runtime.clone();
+            runtime.spawn(async move {
+                // Unload first: `dlopen` caches by path, so the old handle must
+                // be released or the "reload" would return the stale library.
+                if let Some(plugin_id) = plugin_id_from_path(&path) {
+                    if let Err(err) = loader.unload_plugin(&plugin_id).await {
+                        tracing::warn!("hot-reload unload failed for {plugin_id}: {err}");
+                    }
+                }
+                match loader.load_plugin(&path).await {
+                    Ok(id) => tracing::info!("hot-reloaded plugin `{id}` from {}", path.display()),
+                    Err(err) => {
+                        tracing::warn!("hot-reload failed for {}: {err}", path.display())
+                    }
+                }
+            });
+        }
     }
 }
 
@@ -384,5 +596,73 @@ mod tests {
 
         // 测试白名单逻辑（虽然会在加载时失败，但可以验证结构）
         assert_eq!(loader.config.allowed_plugins.len(), 1);
+    }
+
+    #[test]
+    fn test_plugin_id_from_path() {
+        assert_eq!(
+            plugin_id_from_path(Path::new("/tmp/libhello.so")).as_deref(),
+            Some("hello")
+        );
+        assert_eq!(
+            plugin_id_from_path(Path::new("/tmp/plain.dll")).as_deref(),
+            Some("plain")
+        );
+    }
+
+    #[test]
+    fn test_is_plugin_library() {
+        assert!(!is_plugin_library(Path::new("notes.txt")));
+        let native = format!("plugin.{}", plugin_library_extensions()[0]);
+        assert!(is_plugin_library(Path::new(&native)));
+    }
+
+    #[test]
+    fn test_verify_plugin_signature_missing_sidecar() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let library = temp_dir.path().join("libnosig.so");
+        fs::write(&library, b"unsigned").unwrap();
+
+        let loader = PluginLoader::new(PluginLoaderConfig::default());
+        assert!(loader.verify_plugin_signature(&library).is_err());
+    }
+
+    #[test]
+    fn test_verify_plugin_signature_roundtrip_and_tamper() {
+        use base64::Engine as _;
+        use ring::rand::SystemRandom;
+        use ring::signature::KeyPair;
+        use std::fs;
+        use tempfile::TempDir;
+
+        let rng = SystemRandom::new();
+        let pkcs8 = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let key_pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+
+        let temp_dir = TempDir::new().unwrap();
+        let library = temp_dir.path().join("libsigned.so");
+        let bytes = b"signed plugin payload";
+        fs::write(&library, bytes).unwrap();
+        let signature = key_pair.sign(bytes);
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let sidecar = serde_json::json!({
+            "algorithm": "ed25519",
+            "public_key": engine.encode(key_pair.public_key().as_ref()),
+            "signature": engine.encode(signature.as_ref()),
+        });
+        fs::write(signature_path(&library), sidecar.to_string()).unwrap();
+
+        let loader = PluginLoader::new(PluginLoaderConfig::default());
+        loader
+            .verify_plugin_signature(&library)
+            .expect("valid signature must verify");
+
+        // A tampered payload must be rejected.
+        fs::write(&library, b"tampered plugin payload").unwrap();
+        assert!(loader.verify_plugin_signature(&library).is_err());
     }
 }
