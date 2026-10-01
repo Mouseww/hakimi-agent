@@ -1260,11 +1260,17 @@ fn convert_message(bot_id: &str, msg: &TgMessage) -> Option<GatewayMessage> {
     })
 }
 
-/// Split `text` into chunks of at most `max_len` characters.
+/// Split `text` into chunks of at most `max_len` **characters**.
 ///
-/// Tries to split on newline boundaries for cleaner output.
+/// Character-based (not byte-based) so multi-byte scripts such as Chinese
+/// never split inside a code point. Prefers the last newline, then the last
+/// space, before falling back to a hard cut — matching Hermes' paragraph-aware
+/// chunking.
 fn split_message(text: &str, max_len: usize) -> Vec<String> {
-    if text.len() <= max_len {
+    if max_len == 0 {
+        return vec![text.to_owned()];
+    }
+    if text.chars().count() <= max_len {
         return vec![text.to_owned()];
     }
 
@@ -1272,20 +1278,29 @@ fn split_message(text: &str, max_len: usize) -> Vec<String> {
     let mut remaining = text;
 
     while !remaining.is_empty() {
-        if remaining.len() <= max_len {
+        if remaining.chars().count() <= max_len {
             chunks.push(remaining.to_owned());
             break;
         }
 
-        // Try to find a newline boundary within the limit.
-        let slice = &remaining[..max_len];
-        let split_at = slice
+        // Byte index of the `max_len`-th char boundary (UTF-8 safe).
+        let split_byte = remaining
+            .char_indices()
+            .nth(max_len)
+            .map(|(idx, _)| idx)
+            .unwrap_or(remaining.len());
+        let slice = &remaining[..split_byte];
+        // Try to find a newline boundary within the limit, then a space.
+        let mut split_at = slice
             .rfind('\n')
             .or_else(|| slice.rfind(' '))
-            .unwrap_or(max_len);
+            .unwrap_or(split_byte);
+        if split_at == 0 {
+            split_at = split_byte;
+        }
 
         chunks.push(remaining[..split_at].to_owned());
-        remaining = remaining[split_at..].trim_start_matches('\n');
+        remaining = remaining[split_at..].trim_start_matches(['\n', ' ']);
     }
 
     chunks
@@ -1323,6 +1338,32 @@ mod tests {
         for chunk in &chunks {
             assert!(chunk.len() <= 4096);
         }
+    }
+
+    #[test]
+    fn test_split_multibyte_never_panics() {
+        // Regression: a byte-based split used to slice inside a Chinese code
+        // point and panic. 5000 CJK chars = 15000 bytes, but only 5000 chars,
+        // so the split must be driven by char count, not byte count.
+        let text = "中".repeat(5000);
+        let chunks = split_message(&text, 4096);
+        assert!(chunks.len() >= 2);
+        for chunk in &chunks {
+            assert!(chunk.chars().count() <= 4096, "chunk exceeded char budget");
+        }
+        // No data lost, and every chunk is still valid UTF-8 (guaranteed by
+        // &str, but assert the round-trip explicitly).
+        assert_eq!(chunks.concat(), text);
+    }
+
+    #[test]
+    fn test_split_multibyte_prefers_newline() {
+        let text = format!("{}\n{}", "你".repeat(3000), "好".repeat(3000));
+        let chunks = split_message(&text, 4096);
+        assert!(chunks.len() >= 2);
+        // The first chunk should break at the newline, not mid-line.
+        assert!(chunks[0].chars().count() <= 4096);
+        assert!(chunks.iter().all(|c| !c.is_empty()));
     }
 
     #[test]

@@ -900,19 +900,31 @@ fn split_gateway_text(text: &str, max_chars: Option<usize>) -> Vec<String> {
         return vec![text.to_string()];
     }
 
+    // Character-based, newline-aware chunking. Mirrors the Telegram adapter's
+    // `split_message` so gateway-level splitting and adapter-level splitting
+    // agree on where a boundary falls.
     let mut chunks = Vec::new();
-    let mut current = String::new();
-    let mut current_count = 0usize;
-    for ch in text.chars() {
-        if current_count >= max_chars {
-            chunks.push(std::mem::take(&mut current));
-            current_count = 0;
+    let mut remaining = text;
+    while !remaining.is_empty() {
+        if remaining.chars().count() <= max_chars {
+            chunks.push(remaining.to_string());
+            break;
         }
-        current.push(ch);
-        current_count += 1;
-    }
-    if !current.is_empty() {
-        chunks.push(current);
+        let split_byte = remaining
+            .char_indices()
+            .nth(max_chars)
+            .map(|(idx, _)| idx)
+            .unwrap_or(remaining.len());
+        let slice = &remaining[..split_byte];
+        let mut split_at = slice
+            .rfind('\n')
+            .or_else(|| slice.rfind(' '))
+            .unwrap_or(split_byte);
+        if split_at == 0 {
+            split_at = split_byte;
+        }
+        chunks.push(remaining[..split_at].to_string());
+        remaining = remaining[split_at..].trim_start_matches(['\n', ' ']);
     }
     chunks
 }
