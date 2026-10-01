@@ -1015,13 +1015,155 @@ fn escape_markdown_v2(text: &str) -> String {
 /// escaped. This is what makes code blocks, headers, bold/italic and spoilers
 /// render natively in Telegram instead of showing literal `**` / fenced
 /// backticks as plain (oversized body) text.
+/// Matches a GFM table delimiter row: optional outer pipes, cells of dashes
+/// (with optional alignment colons) separated by `|`. Requires at least one
+/// internal `|` so a lone `---` rule is not matched.
+fn is_table_separator(line: &str) -> bool {
+    let re = regex::Regex::new(r"^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*){1,}\|?\s*$")
+        .expect("valid regex");
+    re.is_match(line)
+}
+
+/// Return true if `line` could plausibly be a GFM table data row.
+fn is_table_row(line: &str) -> bool {
+    let stripped = line.trim();
+    !stripped.is_empty() && stripped.contains('|')
+}
+
+/// Split `| a | b | c |` into `["a", "b", "c"]` with trims.
+fn split_markdown_table_row(line: &str) -> Vec<String> {
+    let mut s = line.trim();
+    if let Some(rest) = s.strip_prefix('|') {
+        s = rest;
+    }
+    if let Some(rest) = s.strip_suffix('|') {
+        s = rest;
+    }
+    s.split('|').map(|c| c.trim().to_string()).collect()
+}
+
+/// Render a detected GFM table as bold-heading + bullet groups, mirroring
+/// Hermes' `_render_table_block`.
+fn render_table_block(table_block: &[String]) -> String {
+    if table_block.len() < 3 {
+        return table_block.join("\n");
+    }
+
+    let headers = split_markdown_table_row(&table_block[0]);
+    if headers.len() < 2 {
+        return table_block.join("\n");
+    }
+
+    let first_data_row = if table_block.len() > 2 {
+        split_markdown_table_row(&table_block[2])
+    } else {
+        Vec::new()
+    };
+    let has_row_label_col = first_data_row.len() == headers.len() + 1;
+
+    let mut rendered_groups: Vec<String> = Vec::new();
+    for (offset, row) in table_block[2..].iter().enumerate() {
+        let index = offset + 1;
+        let cells = split_markdown_table_row(row);
+        let (heading, mut data_cells) = if has_row_label_col {
+            let heading = cells
+                .first()
+                .filter(|c| !c.is_empty())
+                .cloned()
+                .unwrap_or_else(|| format!("Row {index}"));
+            let rest = cells.get(1..).map(<[String]>::to_vec).unwrap_or_default();
+            (heading, rest)
+        } else {
+            let heading = cells
+                .iter()
+                .find(|c| !c.is_empty())
+                .cloned()
+                .unwrap_or_else(|| format!("Row {index}"));
+            (heading, cells.clone())
+        };
+
+        if data_cells.len() < headers.len() {
+            data_cells.resize(headers.len(), String::new());
+        } else if data_cells.len() > headers.len() {
+            data_cells.truncate(headers.len());
+        }
+
+        let mut bullets: Vec<String> = Vec::new();
+        for (header, value) in headers.iter().zip(data_cells.iter()) {
+            if !has_row_label_col && value == &heading {
+                continue;
+            }
+            bullets.push(format!("• {header}: {value}"));
+        }
+
+        let mut group_lines = vec![format!("**{heading}**")];
+        group_lines.extend(bullets);
+        rendered_groups.push(group_lines.join("\n"));
+    }
+
+    rendered_groups.join("\n\n")
+}
+
+/// Rewrite GFM pipe tables into bold-heading + bullet groups, mirroring
+/// Hermes' `convert_table_to_bullets`.
+///
+/// Telegram MarkdownV2 has no table syntax — `|` is just an escaped literal,
+/// so a pipe table renders as noisy backslash-pipe text with no alignment.
+/// Tables inside fenced code blocks are left alone.
+fn convert_table_to_bullets(text: &str) -> String {
+    if !text.contains('|') || !text.contains('-') {
+        return text.to_string();
+    }
+
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut in_fence = false;
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        let stripped = line.trim_start();
+
+        if stripped.starts_with("```") {
+            in_fence = !in_fence;
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+        if in_fence {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        if line.contains('|') && i + 1 < lines.len() && is_table_separator(lines[i + 1]) {
+            let mut table_block: Vec<String> = vec![line.to_string(), lines[i + 1].to_string()];
+            let mut j = i + 2;
+            while j < lines.len() && is_table_row(lines[j]) {
+                table_block.push(lines[j].to_string());
+                j += 1;
+            }
+            out.push(render_table_block(&table_block));
+            i = j;
+            continue;
+        }
+
+        out.push(line.to_string());
+        i += 1;
+    }
+
+    out.join("\n")
+}
+
 fn format_message(content: &str) -> String {
     if content.is_empty() {
         return String::new();
     }
 
     let mut placeholders: Vec<String> = Vec::new();
-    let mut text = content.to_string();
+
+    // 0) Rewrite GFM-style pipe tables into Telegram-friendly row groups
+    //    before the normal MarkdownV2 conversions run.
+    let mut text = convert_table_to_bullets(content);
 
     // 1) Protect fenced code blocks. Per the MarkdownV2 spec, `\` and `` ` ``
     //    inside pre/code must be escaped; the fences themselves stay intact so
@@ -1380,6 +1522,31 @@ mod mdv2_tests {
                 "chunk not fence-balanced: {chunk:?}"
             );
         }
+    }
+
+    // A GFM pipe table must be rewritten into bold-heading + bullet groups
+    // (mirroring Hermes' convert_table_to_bullets); otherwise Telegram renders
+    // it as noisy escaped pipes.
+    #[test]
+    fn pipe_table_becomes_bullet_groups() {
+        let src =
+            "| 工具 | 说明 |\n| --- | --- |\n| read_file | 读取文件 |\n| terminal | 执行命令 |";
+        let out = format_message(src);
+        assert!(!out.contains("\\|"), "table pipes leaked through: {out}");
+        assert!(out.contains("*read\\_file*"), "missing heading: {out}");
+        assert!(out.contains("• 说明: 读取文件"), "missing bullet: {out}");
+        assert!(out.contains("*terminal*"), "missing 2nd heading: {out}");
+        assert!(
+            out.contains("• 说明: 执行命令"),
+            "missing 2nd bullet: {out}"
+        );
+    }
+
+    // A table inside a fenced code block must be left untouched.
+    #[test]
+    fn fenced_table_is_not_converted() {
+        let src = "```\n| a | b |\n| --- | --- |\n| 1 | 2 |\n```";
+        assert_eq!(format_message(src), src);
     }
 }
 
