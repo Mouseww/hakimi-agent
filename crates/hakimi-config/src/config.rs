@@ -790,9 +790,13 @@ pub struct GatewaysConfig {
     #[serde(default = "default_hide_tool_details")]
     pub hide_tool_details: bool,
     /// Behavior when a new message arrives while an agent is already running.
-    /// - "parallel": run all messages concurrently as independent tasks
-    /// - "interrupt": immediately cancel the running task and start a new one
-    /// - "queue": queue the new message and process it after the current task finishes
+    /// - "queue" (default): hold the message and send it as the next normal
+    ///   user turn once the current run finishes (session-scoped, persisted)
+    /// - "steer": inject the message into the active run as mid-turn guidance
+    /// - "stop_and_send": cancel the active run, then send the message as the
+    ///   next normal user turn
+    /// - "parallel": run the message concurrently as an independent task
+    /// - "interrupt": legacy alias for "stop_and_send"
     #[serde(default = "default_busy_input_mode")]
     pub busy_input_mode: String,
     /// Platforms that are actually wired end to end.
@@ -857,7 +861,7 @@ fn default_hide_tool_details() -> bool {
 }
 
 fn default_busy_input_mode() -> String {
-    "parallel".to_string()
+    "queue".to_string()
 }
 
 /// Gateways that are supported end to end out of the box.
@@ -889,7 +893,7 @@ impl Default for GatewaysConfig {
             enabled_platforms: default_enabled_platforms(),
             filter_silence_narration: default_gateway_filter_silence_narration(),
             hide_tool_details: default_hide_tool_details(),
-            busy_input_mode: "parallel".to_string(),
+            busy_input_mode: "queue".to_string(),
             streaming: GatewayStreamingConfig::default(),
             telegram: TelegramGatewayConfig::default(),
             clawbot: ClawBotGatewayConfig::default(),

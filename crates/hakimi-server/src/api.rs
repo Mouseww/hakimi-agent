@@ -2161,18 +2161,22 @@ async fn gateway_update_config(
     let mut config = state.config.lock().await;
 
     if let Some(mode) = req.busy_input_mode {
-        if mode != "parallel" && mode != "queue" && mode != "interrupt" {
+        let normalized = mode.trim().to_ascii_lowercase();
+        if !matches!(
+            normalized.as_str(),
+            "queue" | "steer" | "stop_and_send" | "stop-and-send" | "parallel" | "interrupt"
+        ) {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
                     error: format!(
-                        "Invalid busy_input_mode: {}. Must be 'parallel', 'queue', or 'interrupt'",
+                        "Invalid busy_input_mode: {}. Must be 'queue', 'steer', or 'stop_and_send'",
                         mode
                     ),
                 }),
             ));
         }
-        config.gateways.busy_input_mode = mode.clone();
+        config.gateways.busy_input_mode = normalized;
     }
     if let Some(allow_all) = req.allow_all {
         config.gateways.allow_all = allow_all;
