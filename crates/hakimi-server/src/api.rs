@@ -2095,15 +2095,26 @@ async fn gateway_status(
 ) -> Result<Json<GatewayStatusResponse>, (StatusCode, Json<ErrorResponse>)> {
     let gateway_opt = state.gateway.as_ref();
 
-    if let Some(_gateway) = gateway_opt {
-        // Gateway is Arc<Gateway>, not Arc<Mutex<Gateway>>
-
-        // Get platform connection status from gateway
-        let platforms = vec![GatewayPlatformStatus {
-            name: "telegram".to_string(),
-            connected: true, // TODO: get actual status from gateway
-            bot_count: 1,    // TODO: get actual count
-        }];
+    if let Some(gateway) = gateway_opt {
+        // Aggregate live adapter status per platform. A platform counts as
+        // connected when at least one of its adapters is, and `bot_count` is
+        // the number of adapters registered for it — both come from the
+        // gateway itself, never from configuration guesses.
+        let mut by_platform: std::collections::BTreeMap<String, (bool, usize)> =
+            std::collections::BTreeMap::new();
+        for status in gateway.platform_status() {
+            let entry = by_platform.entry(status.platform).or_insert((false, 0));
+            entry.0 |= status.connected;
+            entry.1 += 1;
+        }
+        let platforms = by_platform
+            .into_iter()
+            .map(|(name, (connected, bot_count))| GatewayPlatformStatus {
+                name,
+                connected,
+                bot_count,
+            })
+            .collect();
 
         Ok(Json(GatewayStatusResponse {
             running: true,

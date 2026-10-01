@@ -269,8 +269,25 @@ pub trait PlatformAdapter: Send + Sync {
 /// Central gateway that owns a set of platform adapters and routes messages.
 pub struct Gateway {
     adapters: Vec<Box<dyn PlatformAdapter>>,
+    /// Adapters whose `connect()` has completed successfully, keyed by
+    /// `"{platform}:{bot_id}"`. Cleared for an adapter on disconnect and on a
+    /// failed reconnect, so this reflects reality rather than intent.
+    connected: std::collections::HashSet<String>,
     filter_silence_narration: bool,
     hide_tool_details: bool,
+}
+
+/// Live status of one registered adapter, as reported to the API/UI.
+#[derive(Debug, Clone)]
+pub struct PlatformStatus {
+    /// Platform name, e.g. `telegram`.
+    pub platform: String,
+    /// Bot / role identifier for this instance.
+    pub bot_id: String,
+    /// Whether `connect()` has completed and no disconnect has happened since.
+    pub connected: bool,
+    /// Error from the most recent failed connect attempt, if any.
+    pub last_error: Option<String>,
 }
 
 /// A received inbound message paired with its originating platform adapter name.
@@ -286,9 +303,48 @@ impl Gateway {
     pub fn new() -> Self {
         Self {
             adapters: Vec::new(),
+            connected: std::collections::HashSet::new(),
             filter_silence_narration: silence_filter_env_override().unwrap_or(true),
             hide_tool_details: false,
         }
+    }
+
+    /// Composite key identifying one adapter instance.
+    fn adapter_key(platform: &str, bot_id: &str) -> String {
+        format!("{platform}:{bot_id}")
+    }
+
+    /// Snapshot the live status of every registered adapter.
+    ///
+    /// This is the source of truth for the `/api/gateway/status` endpoint —
+    /// callers must not infer connectivity from configuration alone.
+    pub fn platform_status(&self) -> Vec<PlatformStatus> {
+        self.adapters
+            .iter()
+            .map(|adapter| {
+                let platform = adapter.name().to_string();
+                let bot_id = adapter.bot_id().to_string();
+                let connected = self
+                    .connected
+                    .contains(&Self::adapter_key(&platform, &bot_id));
+                PlatformStatus {
+                    platform,
+                    bot_id,
+                    connected,
+                    last_error: None,
+                }
+            })
+            .collect()
+    }
+
+    /// Whether any adapter on `platform` is currently connected.
+    pub fn platform_connected(&self, platform: &str) -> bool {
+        self.adapters.iter().any(|a| {
+            a.name() == platform
+                && self
+                    .connected
+                    .contains(&Self::adapter_key(a.name(), a.bot_id()))
+        })
     }
 
     /// Enable or disable outbound silence-narration filtering.
@@ -338,14 +394,22 @@ impl Gateway {
                 "",
             );
             match adapter.connect().await {
-                Ok(()) => lifecycle::record_gateway_event(
-                    "adapter.connect.ok",
-                    Some(&platform),
-                    Some(&bot_id),
-                    None,
-                    "",
-                ),
+                Ok(()) => {
+                    self.connected.insert(Self::adapter_key(&platform, &bot_id));
+                    lifecycle::record_gateway_event(
+                        "adapter.connect.ok",
+                        Some(&platform),
+                        Some(&bot_id),
+                        None,
+                        "",
+                    )
+                }
                 Err(err) => {
+                    // A failed (re)connect must drop any stale "connected" mark,
+                    // otherwise the status endpoint would keep reporting a dead
+                    // adapter as healthy.
+                    self.connected
+                        .remove(&Self::adapter_key(&platform, &bot_id));
                     lifecycle::record_gateway_event(
                         "adapter.connect.error",
                         Some(&platform),
@@ -374,13 +438,17 @@ impl Gateway {
                 "",
             );
             match adapter.disconnect().await {
-                Ok(()) => lifecycle::record_gateway_event(
-                    "adapter.disconnect.ok",
-                    Some(&platform),
-                    Some(&bot_id),
-                    None,
-                    "",
-                ),
+                Ok(()) => {
+                    self.connected
+                        .remove(&Self::adapter_key(&platform, &bot_id));
+                    lifecycle::record_gateway_event(
+                        "adapter.disconnect.ok",
+                        Some(&platform),
+                        Some(&bot_id),
+                        None,
+                        "",
+                    )
+                }
                 Err(err) => {
                     lifecycle::record_gateway_event(
                         "adapter.disconnect.error",
