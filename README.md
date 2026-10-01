@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.148-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.149-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
   <img src="https://img.shields.io/github/actions/workflow/status/Mouseww/hakimi-agent/ci.yml?branch=main&style=for-the-badge" alt="CI">
@@ -121,7 +121,7 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 ### Gateway highlights
 
 - Streaming with progressive edits, flood control, UTF-8-safe chunking
-- Busy input: queue or interrupt (`gateways.busy_input_mode`)
+- Busy input: queue / steer / stop-and-send (`gateways.busy_input_mode`) — queued input is persisted per session and replayed after a restart
 - Slash commands: `/cron`, `/usage`, `/stop`, `/undo`, `/voice`, `/update`, …
 - Optional `hide_tool_details` — keep ⚙️ progress indicators, hide raw STDOUT/JSON dumps
 - Tool results are labelled **结果 / 失败** by real exit status, so a failed tool never looks like a successful one
@@ -338,7 +338,7 @@ Message → Intent / Role → Context (compress → request-local plan → promp
 | WebUI password | `HAKIMI_WEBUI_PASSWORD` → Bearer prompt |
 | Language | `display.language` / `HAKIMI_LANGUAGE` |
 | Hide tool dumps | `gateways.hide_tool_details` (keeps ⚙️ progress) |
-| Busy input | `gateways.busy_input_mode`: `queue` \| `interrupt` |
+| Busy input | `gateways.busy_input_mode`: `queue` \| `steer` \| `stop_and_send` \| `parallel` |
 
 Run `hakimi setup` for the full wizard.
 

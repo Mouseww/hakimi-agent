@@ -160,7 +160,7 @@ gateways:
   allow_all: false                       # true = allow all users
   allowed_users: ["user_id_1"]           # global allowlist
   filter_silence_narration: true         # drop "(silent)" messages
-  busy_input_mode: "parallel"             # parallel | queue | interrupt
+  busy_input_mode: "queue"                 # queue | steer | stop_and_send | parallel
 ```
 
 ### Telegram

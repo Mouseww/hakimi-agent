@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Rust-DEA584?style=for-the-badge&logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/version-0.5.148-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.149-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/tests-1781-passing?style=for-the-badge&color=brightgreen" alt="Tests">
 </p>
@@ -110,7 +110,7 @@ hakimi --gateway start # 旧 Gateway 兼容入口
 ### Gateway 亮点
 
 - 流式编辑、限流、UTF-8 安全分片
-- 忙碌输入：排队或抢占（`gateways.busy_input_mode`）
+- 忙碌输入：排队 / 引导 / 停发（`gateways.busy_input_mode`），排队消息按会话持久化，重启后自动回灌
 - 斜杠指令：`/cron`、`/usage`、`/stop`、`/undo`、`/voice`、`/update` …
 - `hide_tool_details`：保留 ⚙️ 进度，隐藏 STDOUT/JSON 明细
 - 工具结果按真实退出态标注 **结果 / 失败**，失败的工具不再和成功的长得一样
@@ -299,7 +299,7 @@ hakimi-agent/
 | WebUI 密码 | `HAKIMI_WEBUI_PASSWORD` → Bearer |
 | 语言 | `display.language` / `HAKIMI_LANGUAGE` |
 | 隐藏工具明细 | `gateways.hide_tool_details`（保留 ⚙️ 进度） |
-| 忙碌输入 | `gateways.busy_input_mode`：`queue` \| `interrupt` |
+| 忙碌输入 | `gateways.busy_input_mode`：`queue` \| `steer` \| `stop_and_send` \| `parallel` |
 
 完整配置请用 `hakimi setup`。
 
