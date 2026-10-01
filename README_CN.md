@@ -113,6 +113,8 @@ hakimi --gateway start # 旧 Gateway 兼容入口
 - 忙碌输入：排队或抢占（`gateways.busy_input_mode`）
 - 斜杠指令：`/cron`、`/usage`、`/stop`、`/undo`、`/voice`、`/update` …
 - `hide_tool_details`：保留 ⚙️ 进度，隐藏 STDOUT/JSON 明细
+- 工具结果按真实退出态标注 **结果 / 失败**，失败的工具不再和成功的长得一样
+- 网关真实状态：平台面板上报每个 adapter 的实际连接态与 bot 数，而非硬编码
 - Cron：间隔 + 五段表达式，投递到 origin / home / 全频道
 
 ### 安全
@@ -128,6 +130,7 @@ hakimi --gateway start # 旧 Gateway 兼容入口
 
 - **MCP 双向**：客户端（stdio / HTTP / SSE）+ 目录片段，**并**提供服务端模式（`hakimi mcp serve`），让 Zed / OpenCode / Claude Code 能通过 stdio 调用 Hakimi 自己的工具
 - HTTP 插件（YAML）与 **WASM** 插件路径（演进中）
+- **插件签名 + 热加载**：原生插件在 `dlopen` 前先校验同名 Ed25519 `.sig` 分离签名（未签名库默认拒绝，`allow_unsigned` 可放行）；基于 `notify` 的目录监听会在库文件变更时就地重载，无需重启
 - Skills Hub 安装社区技能
 - OpenAI 兼容发现：`/v1/models`、`/v1/chat/completions`、`/v1/runs` …
 - 隔离 **profile**（`--profile`）隔离配置 / 记忆 / 会话 / cron

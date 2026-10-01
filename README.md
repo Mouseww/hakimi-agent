@@ -124,6 +124,8 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 - Busy input: queue or interrupt (`gateways.busy_input_mode`)
 - Slash commands: `/cron`, `/usage`, `/stop`, `/undo`, `/voice`, `/update`, …
 - Optional `hide_tool_details` — keep ⚙️ progress indicators, hide raw STDOUT/JSON dumps
+- Tool results are labelled **结果 / 失败** by real exit status, so a failed tool never looks like a successful one
+- Live gateway status: the platform panel reports each adapter's actual connection state and bot count instead of a hard-coded value
 - Cron: intervals + five-field expressions, deliver to origin / home / all channels
 
 ### Safety
@@ -139,6 +141,7 @@ Desktop Studio packs (deb / AppImage / MSI / DMG): Actions **Desktop** workflow 
 
 - **MCP both ways**: client (stdio / HTTP / SSE) + catalog snippets, **and** server mode (`hakimi mcp serve`) so Zed / OpenCode / Claude Code can call Hakimi's own tools over stdio
 - **HTTP plugins** (YAML) and **WASM** plugin path (evolving)
+- **Signed + hot-reloaded plugins**: native plugins are verified against a detached Ed25519 `.sig` sidecar before `dlopen` (unsigned libraries are rejected unless `allow_unsigned` is set), and a `notify`-based watcher reloads changed libraries in place without a restart
 - **Skills Hub**: install community skills
 - OpenAI-compatible discovery: `/v1/models`, `/v1/chat/completions`, `/v1/runs`, …
 - Isolated **profiles** (`--profile`) for config / memory / sessions / cron
