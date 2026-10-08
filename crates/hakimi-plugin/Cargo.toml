@@ -30,8 +30,8 @@ anyhow = "1.0"
 chrono = "0.4"
 
 # WASM runtime (optional feature)
-wasmtime = { version = "16.0", optional = true }
-wasmtime-wasi = { version = "16.0", optional = true }
+wasmtime = { version = "36.0.17", optional = true }
+wasmtime-wasi = { version = "36.0.17", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
