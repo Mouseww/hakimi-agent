@@ -8,7 +8,8 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use wasmtime::*;
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+use wasmtime_wasi::preview1::{self, WasiP1Ctx};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
 /// WASM 插件沙箱配置
 #[derive(Debug, Clone)]
@@ -43,7 +44,7 @@ impl Default for WasmSandboxConfig {
 
 /// WASM 插件实例存储状态
 struct WasmState {
-    wasi: WasiCtx,
+    wasi: WasiP1Ctx,
     max_memory: usize,
 }
 
@@ -124,7 +125,7 @@ impl WasmPluginLoader {
 
         // 创建链接器并添加 WASI 导入
         let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::add_to_linker(&mut linker, |s: &mut WasmState| &mut s.wasi)
+        preview1::add_to_linker_sync(&mut linker, |s: &mut WasmState| &mut s.wasi)
             .map_err(|e| PluginError::LoadError(format!("Failed to add WASI linker: {}", e)))?;
 
         // 添加自定义宿主函数
@@ -159,27 +160,32 @@ impl WasmPluginLoader {
     }
 
     /// 创建 WASI 上下文
-    fn create_wasi_context(&self) -> PluginResult<WasiCtx> {
+    fn create_wasi_context(&self) -> PluginResult<WasiP1Ctx> {
         let mut builder = WasiCtxBuilder::new();
 
         // 继承标准流
         builder.inherit_stdio();
 
-        // 配置预打开目录
-        for (guest_path, host_path) in &self.config.preopened_dirs {
-            // 使用 wasmtime_wasi::Dir 来打开目录
-            let dir =
-                wasmtime_wasi::Dir::open_ambient_dir(host_path, wasmtime_wasi::ambient_authority())
-                    .map_err(|e| {
-                        PluginError::LoadError(format!("Failed to open dir {}: {}", host_path, e))
-                    })?;
-
-            builder
-                .preopened_dir(dir, guest_path)
-                .map_err(|e| PluginError::LoadError(format!("Failed to preopen dir: {}", e)))?;
+        if self.config.allow_network {
+            builder.inherit_network();
         }
 
-        Ok(builder.build())
+        // 配置预打开目录
+        if self.config.allow_filesystem {
+            let (dir_perms, file_perms) = (DirPerms::all(), FilePerms::all());
+            for (guest_path, host_path) in &self.config.preopened_dirs {
+                builder
+                    .preopened_dir(host_path, guest_path, dir_perms, file_perms)
+                    .map_err(|e| {
+                        PluginError::LoadError(format!(
+                            "Failed to preopen dir {} -> {}: {}",
+                            host_path, guest_path, e
+                        ))
+                    })?;
+            }
+        }
+
+        Ok(builder.build_p1())
     }
 
     /// 添加宿主函数到链接器
@@ -428,9 +434,9 @@ impl ResourceLimiter for WasmState {
 
     fn table_growing(
         &mut self,
-        _current: u32,
-        desired: u32,
-        _maximum: Option<u32>,
+        _current: usize,
+        desired: usize,
+        _maximum: Option<usize>,
     ) -> anyhow::Result<bool> {
         // 限制表大小
         Ok(desired <= 10000)
