@@ -40,36 +40,7 @@ jobs:
           fi
       
       - name: 安全漏洞扫描
-        run: |
-          set -euo pipefail
-          cargo install cargo-audit --locked || cargo install cargo-audit || true
-          # Ensure jq is available for reliable JSON counting
-          sudo apt-get update -qq && sudo apt-get install -y -qq jq >/dev/null
-
-          cargo audit --json > audit.json || true
-          # Count real vulnerabilities (after audit.toml ignores), not mere key presence
-          count="$(jq -r '.vulnerabilities.count // (.vulnerabilities.list | length) // 0' audit.json)"
-          echo "Vulnerability count (after ignores): $count"
-
-          {
-            echo "## 🔐 安全漏洞扫描"
-            echo ""
-            if [ "$count" -gt 0 ]; then
-              echo "### ⚠️ 发现 $count 个安全漏洞"
-            else
-              echo "### ✅ 无未忽略的安全漏洞"
-            fi
-            echo ""
-            echo '```'
-            # Human-readable report; do not fail the shell on cargo audit's exit code here
-            cargo audit 2>&1 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$count" -gt 0 ]; then
-            echo "Failing step: $count vulnerability(ies) remain after ignores"
-            exit 1
-          fi
+        run: bash scripts/ci-security-audit.sh
       
       - name: 生成测试覆盖率报告
         if: always()

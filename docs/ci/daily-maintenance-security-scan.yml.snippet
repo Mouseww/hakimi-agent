@@ -1,8 +1,14 @@
 # Replace the "安全漏洞扫描" step in
-# .github/workflows/daily-maintenance.yml with:
+# .github/workflows/daily-maintenance.yml with the following.
 #
-# NOTE: Pushing changes under .github/workflows/ requires a GitHub token
-# with the `workflow` scope (current gh OAuth token only has repo/gist/read:org).
+# Applying this under .github/workflows/ requires a GitHub token with the
+# `workflow` scope. Until then, dependency bumps alone make cargo audit
+# exit 0, so the existing step should pass; this fix prevents false
+# failures when advisories reappear.
+#
+#   gh auth refresh -s workflow
+#   cp docs/ci/daily-maintenance.yml.intended .github/workflows/daily-maintenance.yml
+#   git add .github/workflows/daily-maintenance.yml && git commit && git push
 
       - name: 安全漏洞扫描
         run: bash scripts/ci-security-audit.sh
