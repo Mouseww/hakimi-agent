@@ -1,0 +1,8 @@
+# Replace the "安全漏洞扫描" step in
+# .github/workflows/daily-maintenance.yml with:
+#
+# NOTE: Pushing changes under .github/workflows/ requires a GitHub token
+# with the `workflow` scope (current gh OAuth token only has repo/gist/read:org).
+
+      - name: 安全漏洞扫描
+        run: bash scripts/ci-security-audit.sh
