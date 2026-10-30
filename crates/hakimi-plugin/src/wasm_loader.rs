@@ -62,7 +62,7 @@ impl WasmPluginLoader {
 
         // 启用 WASI 支持
         engine_config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
-        engine_config.wasm_threads(false); // 禁用多线程
+        // threads feature off on the wasmtime dep
 
         // 配置内存限制
         engine_config.max_wasm_stack(1024 * 1024); // 1MB stack
