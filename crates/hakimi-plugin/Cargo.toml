@@ -31,7 +31,7 @@ chrono = "0.4"
 
 # WASM runtime (optional feature)
 # Omit default `cache` (pulls zstd 0.13 / RUSTSEC-2026-0391,0398,0403; no 36.x bump exists).
-wasmtime = { version = "36.0.19", optional = true, default-features = false, features = [
+wasmtime = { version = "36.0.20", optional = true, default-features = false, features = [
     "async",
     "cranelift",
     "runtime",
@@ -48,7 +48,7 @@ wasmtime = { version = "36.0.19", optional = true, default-features = false, fea
     "gc-null",
     "component-model",
 ] }
-wasmtime-wasi = { version = "36.0.19", optional = true }
+wasmtime-wasi = { version = "36.0.20", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
