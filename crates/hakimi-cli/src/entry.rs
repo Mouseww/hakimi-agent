@@ -8840,7 +8840,10 @@ fn extract_binary_from_zip(data: &[u8], binary_name: &str) -> Result<Option<Vec<
     let mut archive = zip::ZipArchive::new(cursor)?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let path = std::path::Path::new(file.name());
+        let Ok(name) = file.name() else {
+            continue;
+        };
+        let path = std::path::Path::new(name.as_ref());
         if path.file_name().map(|n| n == binary_name).unwrap_or(false) {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;

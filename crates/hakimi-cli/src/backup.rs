@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result, bail};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
-use rusqlite::{Connection, DatabaseName, OpenFlags};
+use rusqlite::{Connection, MAIN_DB, OpenFlags};
 use std::{
     ffi::OsStr,
     fs,
@@ -288,7 +288,7 @@ fn append_backup_file<W: Write>(
 fn sqlite_backup(src: &Path, dst: &Path) -> Result<()> {
     let conn = Connection::open_with_flags(src, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .with_context(|| format!("failed to open sqlite database {}", src.display()))?;
-    conn.backup(DatabaseName::Main, dst, None)
+    conn.backup(MAIN_DB, dst, None::<fn(rusqlite::backup::Progress)>)
         .with_context(|| format!("failed to snapshot sqlite database {}", src.display()))?;
     Ok(())
 }

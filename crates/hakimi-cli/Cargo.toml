@@ -44,7 +44,7 @@ tempfile = "3"
 uuid = { workspace = true }
 flate2 = "1"
 tar = "0.4"
-zip = "2"
+zip = "9"
 base64.workspace = true
 fs2 = "0.4"
 
