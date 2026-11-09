@@ -71,7 +71,7 @@ crossterm = "0.28"
 unicode-width = "0.2"
 
 # Database
-rusqlite = { version = "0.35", features = ["bundled", "backup"] }
+rusqlite = { version = "0.41", features = ["bundled", "backup", "fallible_uint"] }
 
 # Config / paths
 dirs = "6"
