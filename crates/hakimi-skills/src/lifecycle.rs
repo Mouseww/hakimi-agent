@@ -406,8 +406,8 @@ mod tests {
 
         set.observe("modify and implement the fix", &skills);
         let active = set.active_skill_names();
-        assert!(active.contains(&"safe-editing".to_string()));
-        assert!(!active.contains(&"repo-search".to_string()));
+        assert!(active.iter().any(|i| i == "safe-editing"));
+        assert!(!active.iter().any(|i| i == "repo-search"));
         assert!(set.evicted().iter().any(|s| s.name == "repo-search"));
     }
 
