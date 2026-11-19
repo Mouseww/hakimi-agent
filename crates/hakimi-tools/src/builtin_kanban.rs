@@ -3163,18 +3163,26 @@ mod tests {
             .map(|tool| tool.name().to_string())
             .collect::<Vec<_>>();
         assert_eq!(names.len(), 18);
-        assert!(names.contains(&"kanban_create".to_string()));
-        assert!(names.contains(&"kanban_swarm_create".to_string()));
-        assert!(names.contains(&"kanban_heartbeat".to_string()));
-        assert!(names.contains(&"kanban_link".to_string()));
-        assert!(names.contains(&"kanban_events".to_string()));
-        assert!(names.contains(&"kanban_diagnostics".to_string()));
-        assert!(names.contains(&"kanban_assign".to_string()));
-        assert!(names.contains(&"kanban_worker_log".to_string()));
-        assert!(names.contains(&"kanban_notify_subscribe".to_string()));
-        assert!(names.contains(&"kanban_notify_list".to_string()));
-        assert!(names.contains(&"kanban_notify_unsubscribe".to_string()));
-        assert!(names.contains(&"kanban_notify_claim".to_string()));
+        assert!(names.iter().any(|i: &String| i == "kanban_create"));
+        assert!(names.iter().any(|i: &String| i == "kanban_swarm_create"));
+        assert!(names.iter().any(|i: &String| i == "kanban_heartbeat"));
+        assert!(names.iter().any(|i: &String| i == "kanban_link"));
+        assert!(names.iter().any(|i: &String| i == "kanban_events"));
+        assert!(names.iter().any(|i: &String| i == "kanban_diagnostics"));
+        assert!(names.iter().any(|i: &String| i == "kanban_assign"));
+        assert!(names.iter().any(|i: &String| i == "kanban_worker_log"));
+        assert!(
+            names
+                .iter()
+                .any(|i: &String| i == "kanban_notify_subscribe")
+        );
+        assert!(names.iter().any(|i: &String| i == "kanban_notify_list"));
+        assert!(
+            names
+                .iter()
+                .any(|i: &String| i == "kanban_notify_unsubscribe")
+        );
+        assert!(names.iter().any(|i: &String| i == "kanban_notify_claim"));
     }
 
     #[test]
