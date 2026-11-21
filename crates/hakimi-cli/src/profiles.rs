@@ -2159,13 +2159,13 @@ mod tests {
         let summary = manager.export("work", Some(&out)).unwrap();
         let names = names_in_archive(&summary.path);
 
-        assert!(names.contains(&"work/profile.yaml".to_string()));
-        assert!(names.contains(&"work/config.yaml".to_string()));
-        assert!(names.contains(&"work/memory/memory.md".to_string()));
-        assert!(!names.contains(&"work/.env".to_string()));
-        assert!(!names.contains(&"work/auth.json".to_string()));
-        assert!(!names.contains(&"work/gateway.pid".to_string()));
-        assert!(!names.contains(&"work/logs/gateway.log".to_string()));
+        assert!(names.iter().any(|i| i == "work/profile.yaml"));
+        assert!(names.iter().any(|i| i == "work/config.yaml"));
+        assert!(names.iter().any(|i| i == "work/memory/memory.md"));
+        assert!(!names.iter().any(|i| i == "work/.env"));
+        assert!(!names.iter().any(|i| i == "work/auth.json"));
+        assert!(!names.iter().any(|i| i == "work/gateway.pid"));
+        assert!(!names.iter().any(|i| i == "work/logs/gateway.log"));
         assert!(summary.skipped_count >= 4);
     }
 

@@ -466,9 +466,9 @@ mod tests {
         assert_eq!(summary.file_count, 3);
 
         let names = names_in_archive(&out);
-        assert!(names.contains(&".hakimi/config.yaml".to_string()));
-        assert!(names.contains(&".hakimi/.env".to_string()));
-        assert!(names.contains(&".hakimi/memory/notes.md".to_string()));
+        assert!(names.iter().any(|i| i == ".hakimi/config.yaml"));
+        assert!(names.iter().any(|i| i == ".hakimi/.env"));
+        assert!(names.iter().any(|i| i == ".hakimi/memory/notes.md"));
         assert!(!names.iter().any(|name| name.contains("/bin/")));
         assert!(!names.iter().any(|name| name.ends_with(".db-wal")));
     }
