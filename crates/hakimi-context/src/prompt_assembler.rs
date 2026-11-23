@@ -275,7 +275,7 @@ mod tests {
         assembler.add("identity", priority::IDENTITY, "I".repeat(999));
         assembler.add("notes", priority::RUNTIME_NOTES, "N".repeat(500));
         let _ = assembler.render();
-        assert!(assembler.dropped_sections().contains(&"notes".to_string()));
+        assert!(assembler.dropped_sections().iter().any(|i| i == "notes"));
     }
 
     #[test]
@@ -302,7 +302,7 @@ mod tests {
         let out = assembler.render();
         assert!(out.contains(&"P".repeat(300)));
         assert!(!out.contains('M'));
-        assert!(assembler.dropped_sections().contains(&"memory".to_string()));
+        assert!(assembler.dropped_sections().iter().any(|i| i == "memory"));
     }
 
     #[test]

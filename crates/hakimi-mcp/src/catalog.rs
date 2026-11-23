@@ -343,12 +343,12 @@ mod tests {
     fn test_categories_non_empty() {
         let cats = categories();
         assert!(!cats.is_empty());
-        assert!(cats.contains(&"database".to_string()));
-        assert!(cats.contains(&"automation".to_string()));
-        assert!(cats.contains(&"filesystem".to_string()));
-        assert!(cats.contains(&"search".to_string()));
-        assert!(cats.contains(&"scm".to_string()));
-        assert!(cats.contains(&"devtools".to_string()));
+        assert!(cats.iter().any(|i| i == "database"));
+        assert!(cats.iter().any(|i| i == "automation"));
+        assert!(cats.iter().any(|i| i == "filesystem"));
+        assert!(cats.iter().any(|i| i == "search"));
+        assert!(cats.iter().any(|i| i == "scm"));
+        assert!(cats.iter().any(|i| i == "devtools"));
     }
 
     #[test]
