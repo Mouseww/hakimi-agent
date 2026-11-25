@@ -195,9 +195,9 @@ mod tests {
 
         let job_ids = store.list_job_ids().unwrap();
         assert_eq!(job_ids.len(), 3);
-        assert!(job_ids.contains(&"job-1".to_string()));
-        assert!(job_ids.contains(&"job-2".to_string()));
-        assert!(job_ids.contains(&"job-3".to_string()));
+        assert!(job_ids.iter().any(|i| i == "job-1"));
+        assert!(job_ids.iter().any(|i| i == "job-2"));
+        assert!(job_ids.iter().any(|i| i == "job-3"));
     }
 
     #[test]
