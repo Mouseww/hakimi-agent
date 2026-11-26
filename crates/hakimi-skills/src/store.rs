@@ -195,14 +195,14 @@ mod tests {
 
         parent.observe("rust cargo test failed");
         let parent_active = parent.working_set().active_skill_names();
-        assert!(parent_active.contains(&"rust-debugging".to_string()));
+        assert!(parent_active.iter().any(|i| i == "rust-debugging"));
 
         let child = parent.fork_for_subtask("python test failed");
         let child_active = child.working_set().active_skill_names();
 
-        assert!(parent_active.contains(&"rust-debugging".to_string()));
-        assert!(child_active.contains(&"python-testing".to_string()));
-        assert!(!child_active.contains(&"rust-debugging".to_string()));
+        assert!(parent_active.iter().any(|i| i == "rust-debugging"));
+        assert!(child_active.iter().any(|i| i == "python-testing"));
+        assert!(!child_active.iter().any(|i| i == "rust-debugging"));
     }
 
     #[test]
