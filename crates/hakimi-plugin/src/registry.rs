@@ -64,7 +64,8 @@ impl PluginRegistry {
             if plugin
                 .metadata()
                 .dependencies
-                .contains(&plugin_id.to_string())
+                .iter()
+                .any(|i: &String| i == plugin_id)
             {
                 return Err(HakimiError::Other(format!(
                     "Cannot unregister '{}': plugin '{}' depends on it",
@@ -221,8 +222,8 @@ mod tests {
         assert_eq!(list.len(), 2);
 
         let ids: Vec<String> = list.iter().map(|m| m.id.clone()).collect();
-        assert!(ids.contains(&"plugin1".to_string()));
-        assert!(ids.contains(&"plugin2".to_string()));
+        assert!(ids.iter().any(|i| i == "plugin1"));
+        assert!(ids.iter().any(|i| i == "plugin2"));
     }
 
     #[tokio::test]

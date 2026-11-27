@@ -384,7 +384,7 @@ mod tests {
         let c = IntentClassifier::new();
         let p = c.classify("debug this crash");
         assert!(!p.predicted_actions.is_empty());
-        assert!(p.predicted_actions.contains(&"terminal".to_string()));
+        assert!(p.predicted_actions.iter().any(|i| i == "terminal"));
     }
 
     #[test]
