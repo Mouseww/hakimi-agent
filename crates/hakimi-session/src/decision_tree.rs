@@ -370,8 +370,8 @@ mod tests {
 
         let comparison = tree.compare_paths(&a_id, &b_id);
         assert_eq!(comparison.common_ancestor, "n0");
-        assert!(comparison.path_a_summary.contains(&"a".to_string()));
-        assert!(comparison.path_b_summary.contains(&"b".to_string()));
+        assert!(comparison.path_a_summary.iter().any(|i| i == "a"));
+        assert!(comparison.path_b_summary.iter().any(|i| i == "b"));
     }
 
     #[test]

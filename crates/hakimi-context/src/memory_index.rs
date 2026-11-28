@@ -231,8 +231,8 @@ mod tests {
     #[test]
     fn tokenize_emits_cjk_bigrams() {
         let tokens = tokenize("部署重启");
-        assert!(tokens.contains(&"部署".to_string()));
-        assert!(tokens.contains(&"重启".to_string()));
+        assert!(tokens.iter().any(|i| i == "部署"));
+        assert!(tokens.iter().any(|i| i == "重启"));
     }
 
     #[test]
